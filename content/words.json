@@ -1,0 +1,12 @@
+{
+  "print": {
+    "word": "print",
+    "full": "print",
+    "ipa": "/prɪnt/",
+    "meaning": "打印；印出",
+    "python": "把括号里的内容显示到屏幕上，也就是「输出」。",
+    "example": "print(\"你好\")",
+    "note": "不是缩写，就是普通英文单词 print。",
+    "source": "https://dictionary.cambridge.org/dictionary/english/print"
+  }
+}

@@ -33,7 +33,7 @@ const inputModeConf = new Compartment();
 const inputModeAttr = (useSystem) =>
   EditorView.contentAttributes.of({ inputmode: useSystem ? "text" : "none", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
 
-export function createEditor(parent, doc = "") {
+export function createEditor(parent, doc = "", extra = []) {
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -52,6 +52,7 @@ export function createEditor(parent, doc = "") {
         keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
         inputModeConf.of(inputModeAttr(false)),
         EditorView.lineWrapping,
+        ...extra,
       ],
     }),
   });

@@ -4,26 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#f7f7f5" />
-  <title>碎片编程 · 技术验证</title>
+  <meta name="description" content="碎片编程：每天几分钟，用手机从零学 Python。" />
+  <title>碎片编程</title>
 </head>
 <body>
-  <main id="app">
-    <section id="task">
-      <h1>第 1 步 · 技术验证</h1>
-      <p>任务：写一行代码，让程序输出 <code>5</code>。<br>提示：<code>print(2 + 3)</code></p>
-    </section>
-    <div id="editor" aria-label="代码编辑区"></div>
-    <div id="controls">
-      <button id="run" type="button" disabled>Run</button>
-      <button id="stop" type="button" disabled>Stop</button>
-      <span id="status" role="status" aria-live="polite">准备中…</span>
-    </div>
-    <pre id="output" aria-live="polite"></pre>
-    <div id="system-bar" hidden>
-      正在使用系统键盘（没弹出就再点一下代码区） <button id="back-to-kb" type="button">返回内置键盘</button>
-    </div>
-    <div id="keyboard" role="group" aria-label="编程键盘"></div>
-  </main>
-  <script type="module" src="./src/main.js"></script>
+  <div id="app"></div>
+  <script type="module" src="./src/app.js"></script>
 </body>
 </html>

@@ -1,10 +1,10 @@
 # newfirst-app（碎片编程）
 
-网址：https://nomuhoshi.github.io/newfirst-app/
+网址：https://nomuhoshi.github.io/newfirst-app/ （技术验证页：/lab.html）
 
 我的第一个公开发布的应用：**用手机学 Python 的网页应用（PWA）**，免费发布，不上 App Store。
 
-> 状态：规格 v0.1 已完成，第 1 步（技术验证页）代码完成，自动测试 64/64 通过（已按 GPT 交叉审查修复），iPhone 真机核心项通过，第 1 步完成（2026-11-01）。
+> 状态：第 2 步完成——N01「输出与执行顺序」一节完整的课已上线，自动测试 135 项通过，等待 iPhone 试学（2026-11-01）。
 
 ## 目标
 - 面向公众，免费，只用手机就能学 Python
@@ -22,6 +22,8 @@
 | `spec/SPEC.md` | **产品规格 v0.1（权威）** |
 | `docs/05-tech-plan.md` | 技术方案与第一步计划（待确认） |
 | `docs/06-step1-checklist.md` | 第 1 步验收记录和 iPhone 手动测试清单 |
+| `docs/07-step2-checklist.md` | 第 2 步（N01 一节课）验收记录和试学清单 |
+| `content/` | 课程内容（JSON），加课只需要加内容 |
 | `src/` | 应用代码 |
 | `tests/` | 自动测试 |
 | `spikes/` | 技术验证用的临时代码 |

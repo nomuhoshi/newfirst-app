@@ -21,7 +21,7 @@ try {
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(BASE);
+  await page.goto(BASE + "lab.html");
 
   const status = () => page.locator("#status").textContent();
   const output = () => page.locator("#output").textContent();

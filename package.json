@@ -8,7 +8,7 @@
     "dev": "npm run copy-pyodide && vite --host",
     "build": "npm run copy-pyodide && vite build",
     "preview": "vite preview --host",
-    "test": "node tests/step1.test.mjs",
+    "test": "node tests/step1.test.mjs && node tests/step2.test.mjs",
     "test:setup": "playwright install chromium"
   },
   "dependencies": {
