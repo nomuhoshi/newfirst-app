@@ -11,6 +11,11 @@ import { createKeyboard } from "./keyboard.js";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
 import { checkOutput, explainForBeginner } from "./checker.js";
+
+// iPhone 的 Safari 底部有浮动工具栏，会盖住页面最下面一排；从主屏幕打开时没有这个问题
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+if (isIOS && !standalone) document.documentElement.classList.add("ios-browser");
 import { onActivate } from "./activate.js";
 import { loadState, saveState, clearState } from "./storage.js";
 
@@ -154,7 +159,9 @@ function openOverlay(title, bodyNodes, onClose) {
       h("div", { class: "sheet-body" }, bodyNodes),
     ),
   );
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  // 点背景关闭；但刚打开的 0.8 秒内忽略，避免打开它的那次触摸“幽灵点击”到背景上又把它关掉
+  const openedAt = Date.now();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay && Date.now() - openedAt > 800) close(); });
   document.body.append(overlay);
   overlay.querySelector("[data-close]").focus();
   return close;
@@ -452,6 +459,7 @@ function renderCode(s) {
 
   const taskBody = h("div", { class: "task-body" },
     h("p", { class: "prompt pre-line", text: ex.prompt }),
+    ex.target ? h("div", { class: "target" }, h("div", { class: "ex-label", text: "要输出的样子" }), h("pre", { class: "result", text: ex.target })) : null,
     ex.note ? h("p", { class: "note", text: ex.note }) : null,
     h("div", { class: "tools" }, button("查看讲解", openLessonReview, "btn small"), hintBtn, wordChip("print")),
     hintList,

@@ -112,6 +112,12 @@ try {
 
   // E2 补全代码
   check("练习 2/3：补全代码，初始为 print()", /练习 2\/3/.test(await text()) && (await doc()) === "print()");
+  const kbPos = async () => page.evaluate(() => Math.round(document.getElementById("keyboard").getBoundingClientRect().bottom));
+  const before = await kbPos();
+  await page.mouse.wheel(0, 600);
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await page.waitForTimeout(200);
+  check("键盘固定在屏幕底部，页面滚动时不移动", before === (await kbPos()) && before >= 800 && (await page.evaluate(() => window.scrollY)) === 0, `bottom=${before}`);
   check("光标在括号里面", await page.evaluate(() => window.__app.view.state.selection.main.head === 6));
   await setDoc("print(Hi)");
   fb = await checkAndWait();

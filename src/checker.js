@@ -24,7 +24,9 @@ export function checkExact(actual, expected) {
   }
   const i = a.findIndex((line, k) => line !== e[k]);
   let msg = `第 ${i + 1} 行应该是「${e[i]}」，你的程序输出的是「${a[i]}」。`;
-  if (a[i].replace(/\s/g, "") === e[i].replace(/\s/g, "")) msg += "差别在空格上，注意不要多打或少打空格。";
+  const lead = (t) => /^ */.exec(t)[0].length;
+  if (a[i].trim() === e[i].trim() && lead(a[i]) !== lead(e[i])) msg += `这一行前面应该有 ${lead(e[i])} 个空格，你的有 ${lead(a[i])} 个。空格要写在引号里面。`;
+  else if (a[i].replace(/\s/g, "") === e[i].replace(/\s/g, "")) msg += "差别在空格上，注意不要多打或少打空格。";
   else if (/^["'“”].*["'“”]$/.test(a[i])) msg += "引号不会显示出来，只要把文字放在引号里面。";
   return { pass: false, message: msg };
 }

@@ -105,3 +105,17 @@ pre.result { background: var(--bg); border: 1px dashed var(--line); }
 .gloss td { padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
 
 .toast { position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); background: var(--fg); color: var(--bg); padding: 12px 14px; border-radius: 12px; font-size: 14px; z-index: 60; }
+
+.target { margin: 6px 0; }
+.target pre.result { display: inline-block; min-width: 50%; }
+/* Safari 底部浮动工具栏会盖住键盘最后一排，在浏览器里打开时给键盘下面留出空间 */
+.ios-browser #keyboard { padding-bottom: 76px; }
+.ios-browser .view { padding-bottom: 96px; }
+
+/* 整个页面固定不动：只有内容区自己滚动，键盘始终贴在屏幕底部，不会跟着页面一起被拖动 */
+html, body { position: fixed; inset: 0; overflow: hidden; overscroll-behavior: none; }
+#app { overflow: hidden; }
+#keyboard { touch-action: none; flex: 0 0 auto; }
+.code-view > * { flex-shrink: 0; }
+.code-view #editor { flex: 1 1 auto; min-height: 72px; overflow: auto; overscroll-behavior: contain; }
+.code-view #task, .view, .code-view #output { overscroll-behavior: contain; }
