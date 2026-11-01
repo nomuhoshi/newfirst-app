@@ -1,8 +1,9 @@
-// 碎片编程：第 2 步 —— N01 一节完整的课。
-// 流程：首页 → 3 张讲解卡 → 3 道练习 → 小任务（看过答案则加一道变化题）→ 完成页。
+// 碎片编程：教程式学习。
+// 一课 = 几页正文（短讲解 → 代码例子 → 运行结果，例子可以“试一试”）+ 学完一组后的综合练习（可跳过）。
 import "./style.css";
 import "./app.css";
-import lesson from "../content/n01.json";
+import course from "../content/course.json";
+import l01 from "../content/l01.json";
 import words from "../content/words.json";
 import { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
@@ -11,13 +12,15 @@ import { createKeyboard } from "./keyboard.js";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
 import { checkOutput, explainForBeginner } from "./checker.js";
+import { onActivate } from "./activate.js";
+import { loadState, saveState, clearState } from "./storage.js";
+
+const LESSONS = { L01: l01 };
 
 // iPhone 的 Safari 底部有浮动工具栏，会盖住页面最下面一排；从主屏幕打开时没有这个问题
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
 if (isIOS && !standalone) document.documentElement.classList.add("ios-browser");
-import { onActivate } from "./activate.js";
-import { loadState, saveState, clearState } from "./storage.js";
 
 // ---------- 小工具：创建元素（只用 textContent，绝不把内容当 HTML） ----------
 function h(tag, attrs = {}, ...children) {
@@ -42,26 +45,13 @@ function button(label, fn, cls = "btn", attrs = {}) {
 const loaded = loadState();
 let state = loaded.state;
 let notice = loaded.notice;
+if (notice) saveState(state); // 迁移或修复后的记录立即存一次，下次打开不再重复提示
 function persist() {
   if (!saveState(state)) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
 }
-
-// ---------- 课程步骤 ----------
-const STEPS = [
-  ...lesson.cards.map((card, i) => ({ kind: "card", card, i })),
-  ...lesson.exercises.map((ex, i) => ({ kind: ex.type, ex, i })),
-  { kind: "code", ex: lesson.task, isTask: true },
-  { kind: "code", ex: lesson.taskVariant, isVariant: true },
-  { kind: "summary" },
-];
-const skip = (i) => STEPS[i]?.isVariant && !state.needVariant;
-function stepLabel(s) {
-  if (s.kind === "card") return `讲解 ${s.i + 1}/${lesson.cards.length}`;
-  if (s.isTask) return "小任务";
-  if (s.isVariant) return "小任务 · 变化";
-  if (s.kind === "summary") return "完成";
-  return `练习 ${s.i + 1}/${lesson.exercises.length}`;
-}
+const lesson = () => LESSONS[state.lesson] || l01;
+const pages = () => lesson().pages;
+const isExercise = (p) => p && p.kind === "exercise";
 
 // ---------- Python 运行 ----------
 const appEl = document.getElementById("app");
@@ -151,20 +141,20 @@ function topbar(title, { back } = {}) {
   );
 }
 
-function openOverlay(title, bodyNodes, onClose) {
+function openOverlay(title, bodyNodes, { onClose, full } = {}) {
   const close = () => { overlay.remove(); onClose?.(); };
-  const overlay = h("div", { class: "overlay", role: "dialog", "aria-modal": "true", "aria-label": title },
+  const overlay = h("div", { class: "overlay" + (full ? " full" : ""), role: "dialog", "aria-modal": "true", "aria-label": title },
     h("div", { class: "sheet" },
-      h("div", { class: "sheet-head" }, h("h2", { text: title }), button("关闭", close, "btn small", { "data-close": "" })),
+      h("div", { class: "sheet-head" }, h("h2", { text: title }), button(full ? "返回教程" : "关闭", close, "btn small", { "data-close": "" })),
       h("div", { class: "sheet-body" }, bodyNodes),
     ),
   );
   // 点背景关闭；但刚打开的 0.8 秒内忽略，避免打开它的那次触摸“幽灵点击”到背景上又把它关掉
   const openedAt = Date.now();
-  overlay.addEventListener("click", (e) => { if (e.target === overlay && Date.now() - openedAt > 800) close(); });
+  overlay.addEventListener("click", (e) => { if (!full && e.target === overlay && Date.now() - openedAt > 800) close(); });
   document.body.append(overlay);
-  overlay.querySelector("[data-close]").focus();
-  return close;
+  if (!full) overlay.querySelector("[data-close]").focus();
+  return { overlay, close };
 }
 
 function wordChip(key) {
@@ -185,25 +175,10 @@ function openWord(key) {
   ]);
 }
 
-function cardNodes(card, { compact } = {}) {
-  return h("article", { class: "card" + (compact ? " compact" : "") },
-    h("h2", { text: card.title }),
-    card.body.map((p) => h("p", { text: p })),
-    h("div", { class: "example" },
-      h("div", { class: "ex-block" }, h("div", { class: "ex-label", text: "代码" }), h("pre", { class: "code", text: card.example.code })),
-      h("div", { class: "ex-block" }, h("div", { class: "ex-label", text: "运行结果" }), h("pre", { class: "result", text: card.example.output })),
-    ),
-    h("div", { class: "chips" }, card.words.map(wordChip)),
-  );
-}
-function openLessonReview() {
-  openOverlay("查看讲解", lesson.cards.map((c) => cardNodes(c, { compact: true })));
-}
-
 function openHelp() {
   const glossary = [
-    ["Run", "/rʌn/", "运行代码，看结果"], ["Check", "/tʃek/", "检查答案是否符合题目"], ["Hint", "/hɪnt/", "提示，一次给一级"],
-    ["Next", "/nekst/", "下一步"], ["Back", "/bæk/", "上一步"], ["Stop", "/stɑːp/", "停止正在运行的代码"],
+    ["Run", "/rʌn/", "运行代码，看结果"], ["Check", "/tʃek/", "检查练习答案"], ["Hint", "/hɪnt/", "提示，一次给一级"],
+    ["Next", "/nekst/", "下一页"], ["Back", "/bæk/", "上一页"], ["Stop", "/stɑːp/", "停止正在运行的代码"],
     ["Meaning", "/ˈmiːnɪŋ/", "查看词义"], ["Tab", "/tæb/", "缩进 4 个空格"], ["⇧Tab", "Shift /ʃɪft/ + Tab", "取消缩进"],
     ["Undo", "/ʌnˈduː/", "撤销上一步编辑"], ["Enter", "/ˈentɚ/", "换行"], ["⌫", "Backspace /ˈbækspeɪs/", "删除前一个字符"],
     ["⌨︎", "", "切换到手机自带键盘（输入中文时用）"],
@@ -214,7 +189,7 @@ function openHelp() {
     h("h3", { text: "学习记录" }),
     h("p", { text: "进度只保存在这台设备的浏览器里，不会上传。清除网站数据、使用无痕模式或换手机，记录都可能丢失。" }),
     h("h3", { text: "添加到主屏幕" }),
-    h("p", { text: "iPhone：用 Safari 打开本页 → 点底部的分享按钮 → 「添加到主屏幕」。" }),
+    h("p", { text: "iPhone：用 Safari 打开本页 → 点分享按钮 → 「添加到主屏幕」。从主屏幕打开是全屏的，键盘也不会被浏览器工具栏挡住。" }),
   ]);
 }
 
@@ -227,178 +202,34 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.remove(), 6000);
 }
 
-// ---------- 页面切换 ----------
-let cleanup = null; // 离开当前页面时要做的事（例如保存草稿）
-function go(i) {
-  if (cleanup) { cleanup(); cleanup = null; }
-  while (skip(i)) i += i > state.step ? 1 : -1;
-  state.step = Math.max(0, Math.min(STEPS.length - 1, i));
-  persist();
-  renderStep();
-}
-const next = () => go(state.step + 1);
-const prev = () => go(state.step - 1);
-
-function renderHome() {
-  if (cleanup) { cleanup(); cleanup = null; }
-  const doneN01 = state.done.N01;
-  const statusText = doneN01 ? "已完成" : state.started ? `学习中：${stepLabel(STEPS[state.step])}` : "未开始";
-  let confirmBox = null;
-  const clearBtn = button("清除学习记录", () => {
-    if (confirmBox) return;
-    confirmBox = h("div", { class: "confirm", role: "alertdialog" },
-      h("p", { text: "确定要清除这台设备上的全部学习记录吗？代码草稿也会删除。" }),
-      button("确定清除", () => { state = clearState(); renderHome(); showToast("学习记录已清除。"); }, "btn danger"),
-      button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
-    );
-    clearBtn.after(confirmBox);
-  }, "link small");
-  appEl.replaceChildren(
-    topbar(""),
-    h("main", { class: "view home" },
-      notice ? h("p", { class: "notice", role: "status", text: notice }) : null,
-      h("h1", { text: "碎片编程" }),
-      h("p", { class: "lead", text: "每天几分钟，从看懂代码到写出小程序。" }),
-      h("section", { class: "lesson-card" },
-        h("div", { class: "lesson-id", text: lesson.id }),
-        h("h2", { text: lesson.title }),
-        h("p", { text: lesson.goal }),
-        h("p", { class: "meta", text: `约 ${lesson.minutes} 分钟 · ${lesson.cards.length} 张讲解 · ${lesson.exercises.length} 道练习 · 1 个小任务 · 状态：${statusText}` }),
-        button(doneN01 ? "再学一遍" : state.started ? "继续学习" : "开始学习", () => {
-          if (doneN01 && state.step === STEPS.length - 1) state.step = 0;
-          state.started = true;
-          go(state.step);
-        }, "btn primary big"),
-      ),
-      h("p", { class: "meta", text: "下一节「N02 变量与赋值」即将推出。" }),
-      clearBtn,
-    ),
-  );
-  notice = null;
-}
-
-function renderStep() {
-  const s = STEPS[state.step];
-  window.scrollTo(0, 0);
-  if (s.kind === "card") renderCard(s);
-  else if (s.kind === "choice") renderChoice(s);
-  else if (s.kind === "code") renderCode(s);
-  else renderSummary();
-}
-
-function navRow({ canNext = true, nextLabel = "Next" } = {}) {
-  const nextBtn = button(nextLabel, () => { if (!nextBtn.disabled) next(); }, "btn primary");
-  nextBtn.disabled = !canNext;
-  const row = h("nav", { class: "nav-row" },
-    state.step > 0 ? button("Back", prev, "btn") : h("span"),
-    nextBtn,
-  );
-  return { row, nextBtn };
-}
-
-function renderCard(s) {
-  const { row } = navRow();
-  appEl.replaceChildren(
-    topbar(stepLabel(s), { back: renderHome }),
-    h("main", { class: "view" }, cardNodes(s.card), row),
-  );
-}
-
-function hintBox(ex, { onSolution } = {}) {
-  const list = h("ol", { class: "hints" });
-  const render = () => {
-    const n = state.hintLevel[ex.id] || 0;
-    list.replaceChildren(...ex.hints.slice(0, n).map((t, i) => h("li", {}, h("b", { text: i === 2 ? "参考答案：" : `提示 ${i + 1}：` }), h("span", { class: "pre-line", text: i === 2 ? t.replace(/^参考答案[：:]?\s*/, "") : t }))));
-    btn.textContent = n >= ex.hints.length ? "提示已全部显示" : n === ex.hints.length - 1 ? "Hint · 看答案" : `Hint · ${n + 1}/${ex.hints.length}`;
-    btn.disabled = n >= ex.hints.length;
-  };
-  const btn = button("Hint", () => {
-    const n = (state.hintLevel[ex.id] || 0) + 1;
-    if (n > ex.hints.length) return;
-    state.hintLevel[ex.id] = n;
-    if (n === ex.hints.length && !state.done[ex.id]) { state.viewedSolution[ex.id] = true; onSolution?.(); }
-    persist();
-    render();
-  }, "btn small");
-  render();
-  return { btn, list };
-}
-
-function markWrong(id) {
-  if (!state.done[id] && !state.firstWrong[id]) { state.firstWrong[id] = true; persist(); }
-}
-
-function renderChoice(s) {
-  const ex = s.ex;
-  const { row, nextBtn } = navRow({ canNext: !!state.done[ex.id] });
-  const feedback = h("div", { class: "feedback", role: "status", "aria-live": "polite" });
-  const { btn: hintBtn, list: hintList } = hintBox(ex);
-  const opts = h("div", { class: "options" }, ex.options.map((o) => {
-    const b = button(h("pre", { text: o.text }), () => {
-      opts.querySelectorAll(".option").forEach((x) => x.classList.remove("picked-wrong"));
-      if (o.correct) {
-        b.classList.add("picked-right");
-        feedback.className = "feedback ok";
-        feedback.replaceChildren(h("b", { text: "✓ 正确。" }), " ", o.reason);
-        state.done[ex.id] = true; persist();
-        nextBtn.disabled = false;
-      } else {
-        b.classList.add("picked-wrong");
-        feedback.className = "feedback bad";
-        feedback.replaceChildren(h("b", { text: "✗ 不对。" }), " ", o.reason, " 再选一次。");
-        markWrong(ex.id);
-      }
-    }, "option", { "aria-label": `选项：${o.text.replace(/\n/g, " 换行 ")}` });
-    return b;
-  }));
-  appEl.replaceChildren(
-    topbar(stepLabel(s), { back: renderHome }),
-    h("main", { class: "view" },
-      h("div", { class: "ex-head" }, h("h2", { text: ex.title }), state.done[ex.id] ? h("span", { class: "badge", text: "已完成 ✓" }) : null),
-      h("p", { class: "prompt", text: ex.prompt }),
-      h("pre", { class: "code", text: ex.code }),
-      opts,
-      feedback,
-      h("div", { class: "tools" }, button("查看讲解", openLessonReview, "btn small"), hintBtn, wordChip("print")),
-      hintList,
-      row,
-    ),
-  );
-}
-
-function renderCode(s) {
-  const ex = s.ex;
-  const id = ex.id;
-  // 初始代码：优先用草稿；变化题从上一题的代码开始
-  const draft = state.drafts[id];
-  const startCode = draft ? draft.code
-    : ex.initialFrom ? (state.drafts[ex.initialFrom]?.code ?? "")
-    : (ex.initialCode ?? "");
-
+// ---------- 代码区（编辑器 + 自制键盘），例子“试一试”和练习共用 ----------
+// draftKey：草稿保存在 state.drafts 里的名字
+function buildCodeArea({ draftKey, initialCode }) {
+  const draft = state.drafts[draftKey];
   const editorEl = h("div", { id: "editor", "aria-label": "代码编辑区" });
-  const outEl = h("pre", { id: "output", class: "out", "aria-live": "polite" });
-  const statusEl = h("span", { id: "status", role: "status" });
-  const feedback = h("div", { class: "feedback", role: "status", "aria-live": "polite" });
   const kbEl = h("div", { id: "keyboard", role: "group", "aria-label": "编程键盘" });
   const sysBar = h("div", { id: "system-bar", hidden: true }, "正在使用系统键盘（没弹出就再点一下代码区） ");
 
   let saveTimer = null;
+  let view = null;
   const saveDraft = () => {
     clearTimeout(saveTimer);
     if (!view) return;
+    const code = view.state.doc.toString();
     const sel = view.state.selection.main;
-    state.drafts[id] = { code: view.state.doc.toString(), anchor: sel.anchor, head: sel.head };
+    if (code === initialCode && !state.drafts[draftKey]) return; // 没改过就不存
+    state.drafts[draftKey] = { code, anchor: sel.anchor, head: sel.head };
     persist();
   };
-  const view = createEditor(editorEl, startCode, [
+  view = createEditor(editorEl, draft ? draft.code : initialCode, [
     EditorView.updateListener.of((u) => {
       if (u.docChanged || u.selectionSet) { clearTimeout(saveTimer); saveTimer = setTimeout(saveDraft, 300); }
     }),
   ]);
   const len = view.state.doc.length;
-  const a = draft ? Math.min(draft.anchor, len) : (ex.initialCursor ?? len);
+  const a = draft ? Math.min(draft.anchor, len) : len;
   const hd = draft ? Math.min(draft.head, len) : a;
-  view.dispatch({ selection: EditorSelection.range(Math.min(a, len), Math.min(hd, len)) });
+  view.dispatch({ selection: EditorSelection.range(a, hd) });
 
   let useSystem = false;
   const toggleSystem = () => {
@@ -410,21 +241,218 @@ function renderCode(s) {
   sysBar.append(button("返回内置键盘", toggleSystem, "btn small", { id: "back-to-kb" }));
   createKeyboard(kbEl, view, { onToggleSystem: toggleSystem });
 
-  const { row, nextBtn } = navRow({ canNext: !!state.done[id] });
+  window.__app.view = view;
+  window.__app.saveDraft = saveDraft;
+  const destroy = () => {
+    saveDraft(); view.destroy();
+    if (window.__app.view === view) { window.__app.view = null; window.__app.saveDraft = null; }
+  };
+  const reset = () => {
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: initialCode }, selection: { anchor: initialCode.length } });
+    delete state.drafts[draftKey];
+    persist();
+  };
+  return { view, editorEl, kbEl, sysBar, saveDraft, destroy, reset };
+}
+
+// ---------- 页面切换 ----------
+let cleanup = null; // 离开当前页面时要做的事（例如保存草稿）
+function leave() { if (cleanup) { cleanup(); cleanup = null; } }
+function go(i) {
+  leave();
+  state.page = Math.max(0, Math.min(pages().length, i)); // pages().length = 完成页
+  persist();
+  renderPage();
+}
+const next = () => go(state.page + 1);
+const prev = () => go(state.page - 1);
+
+function pageLabel(i) {
+  const ps = pages();
+  if (i >= ps.length) return "完成";
+  return `${i + 1}/${ps.length}`;
+}
+
+function lessonStatus(id) {
+  if (state.lessonDone[id]) return "已学完";
+  if (state.lesson === id && state.started) return `学到 ${pageLabel(state.page)}`;
+  return "未开始";
+}
+
+function renderHome() {
+  leave();
+  let confirmBox = null;
+  const clearBtn = button("清除学习记录", () => {
+    if (confirmBox) return;
+    confirmBox = h("div", { class: "confirm", role: "alertdialog" },
+      h("p", { text: "确定要清除这台设备上的全部学习记录吗？代码草稿也会删除。" }),
+      button("确定清除", () => { state = clearState(); renderHome(); showToast("学习记录已清除。"); }, "btn danger"),
+      button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
+    );
+    clearBtn.after(confirmBox);
+  }, "link small");
+
+  const L = lesson();
+  const started = state.started && !state.lessonDone[L.id];
+  appEl.replaceChildren(
+    topbar(""),
+    h("main", { class: "view home" },
+      notice ? h("p", { class: "notice", role: "status", text: notice }) : null,
+      h("h1", { text: "碎片编程" }),
+      h("p", { class: "lead", text: "每天几分钟，用手机从零学 Python。" }),
+      h("section", { class: "lesson-card" },
+        h("div", { class: "lesson-id", text: `第一课 · ${L.id}` }),
+        h("h2", { text: L.title }),
+        h("p", { text: L.goal }),
+        h("p", { class: "meta", text: `约 ${L.minutes} 分钟 · ${L.pages.filter((p) => !isExercise(p)).length} 段讲解 · ${L.pages.filter(isExercise).length} 道练习 · ${lessonStatus(L.id)}` }),
+        button(state.lessonDone[L.id] ? "再学一遍" : started ? "继续学习" : "开始学习", () => {
+          if (state.lessonDone[L.id] && state.page >= pages().length) state.page = 0;
+          state.started = true;
+          go(state.page);
+        }, "btn primary big"),
+      ),
+      h("h3", { class: "roadmap-title", text: "课程路线" }),
+      h("ol", { class: "roadmap" }, course.lessons.map((c) => h("li", { class: c.available ? "on" : "off" },
+        h("span", { class: "rm-id", text: c.id }), h("span", { class: "rm-title", text: c.title }),
+        h("span", { class: "rm-state", text: c.available ? lessonStatus(c.id) : "即将推出" }),
+      ))),
+      clearBtn,
+    ),
+  );
+  notice = null;
+}
+
+function renderPage() {
+  const ps = pages();
+  if (state.page >= ps.length) return renderSummary();
+  const p = ps[state.page];
+  if (isExercise(p)) renderExercise(p);
+  else renderReading(p);
+}
+
+function navRow({ nextLabel = "Next", nextCls = "btn primary" } = {}) {
+  const nextBtn = button(nextLabel, () => next(), nextCls, { "data-next": "" });
+  const row = h("nav", { class: "nav-row" },
+    state.page > 0 ? button("Back", prev, "btn") : h("span"),
+    nextBtn,
+  );
+  return { row, nextBtn };
+}
+
+// 正文页：段落、提示框、代码例子（代码 + 运行结果 + 试一试）
+function renderReading(p) {
+  const blocks = p.blocks.map((b) => {
+    if (b.t === "p") return h("p", { text: b.text });
+    if (b.t === "tip") return h("p", { class: "tip-box", text: b.text });
+    if (b.t === "code") {
+      const edited = !!state.drafts[b.id];
+      return h("div", { class: "example", "data-example": b.id },
+        h("div", { class: "ex-block" }, h("div", { class: "ex-label", text: "代码" }), h("pre", { class: "code", text: b.code })),
+        h("div", { class: "ex-block" }, h("div", { class: "ex-label", text: "运行结果" }), h("pre", { class: "result", text: b.output })),
+        h("div", { class: "ex-actions" },
+          button(edited ? "试一试（有改动）" : "试一试", () => openPlayground(b), "btn small try", { "aria-label": `修改并运行这个例子` }),
+        ),
+      );
+    }
+    return null;
+  });
+  const { row } = navRow();
+  appEl.replaceChildren(
+    topbar(`${lesson().id} · ${pageLabel(state.page)}`, { back: renderHome }),
+    h("main", { class: "view reading" },
+      h("h2", { text: p.title }),
+      blocks,
+      p.words?.length ? h("div", { class: "chips" }, p.words.map(wordChip)) : null,
+      row,
+    ),
+  );
+}
+
+// “试一试”：全屏打开代码区，可以改、可以运行；“返回教程”回到刚才读的位置
+function openPlayground(b) {
+  const outEl = h("pre", { id: "output", class: "out", "aria-live": "polite" });
+  const statusEl = h("span", { id: "status", role: "status" });
+  const area = buildCodeArea({ draftKey: b.id, initialCode: b.code });
+  let busy = false;
+  const run = async () => {
+    if (busy) return;
+    busy = true;
+    await execCode(area.view.state.doc.toString(), outEl, statusEl);
+    busy = false;
+  };
+  const scrollY = document.querySelector(".view")?.scrollTop || 0;
+  const { overlay } = openOverlay("试一试：改一改，再点 Run", [
+    h("div", { class: "code-view" },
+      h("p", { class: "note pad", text: "随便改，改坏了点「恢复原样」。原来的运行结果：" + b.output.replace(/\n/g, " ⏎ ") }),
+      area.editorEl,
+      h("div", { id: "controls" },
+        button("Run", run, "btn run", { id: "run" }),
+        button("Stop", () => runner.stop(), "btn", { id: "stop" }),
+        button("恢复原样", () => { area.reset(); outEl.textContent = ""; statusEl.textContent = ""; }, "btn small"),
+        statusEl,
+      ),
+      outEl,
+      area.sysBar,
+      area.kbEl,
+    ),
+  ], {
+    full: true,
+    onClose: () => {
+      area.destroy();
+      renderPage();
+      const v = document.querySelector(".view");
+      if (v) v.scrollTop = scrollY;
+    },
+  });
+  overlay.classList.add("playground");
+  area.view.focus();
+}
+
+function hintBox(ex) {
+  const list = h("ol", { class: "hints" });
+  const render = () => {
+    const n = state.hintLevel[ex.id] || 0;
+    list.replaceChildren(...ex.hints.slice(0, n).map((t, i) => h("li", {},
+      h("b", { text: i === ex.hints.length - 1 ? "参考答案：" : `提示 ${i + 1}：` }),
+      h("span", { class: "pre-line", text: i === ex.hints.length - 1 ? t.replace(/^参考答案[：:]?\s*/, "") : t }))));
+    btn.textContent = n >= ex.hints.length ? "提示已全部显示" : n === ex.hints.length - 1 ? "Hint · 看答案" : `Hint · ${n + 1}/${ex.hints.length}`;
+    btn.disabled = n >= ex.hints.length;
+  };
+  const btn = button("Hint", () => {
+    const n = (state.hintLevel[ex.id] || 0) + 1;
+    if (n > ex.hints.length) return;
+    state.hintLevel[ex.id] = n;
+    if (n === ex.hints.length && !state.exDone[ex.id]) state.viewedSolution[ex.id] = true;
+    persist();
+    render();
+  }, "btn small");
+  render();
+  return { btn, list };
+}
+
+// 综合练习：可以做，也可以跳过
+function renderExercise(ex) {
+  const outEl = h("pre", { id: "output", class: "out", "aria-live": "polite" });
+  const statusEl = h("span", { id: "status", role: "status" });
+  const feedback = h("div", { class: "feedback", role: "status", "aria-live": "polite" });
+  const area = buildCodeArea({ draftKey: ex.id, initialCode: ex.initialCode || "" });
+  const done = () => !!state.exDone[ex.id];
+  const { row, nextBtn } = navRow({ nextLabel: done() ? "Next" : "跳过", nextCls: done() ? "btn primary" : "btn" });
+  const markNext = () => { nextBtn.textContent = "Next"; nextBtn.className = "btn primary"; };
   const { btn: hintBtn, list: hintList } = hintBox(ex);
 
   let busy = false;
   const runBtn = button("Run", async () => {
     if (busy) return;
     busy = true; feedback.replaceChildren(); feedback.className = "feedback";
-    const r = await execCode(view.state.doc.toString(), outEl, statusEl);
-    if (r.error) { const extra = explainForBeginner(r.error, view.state.doc.toString()); if (extra) { feedback.className = "feedback bad"; feedback.textContent = extra; } }
+    const code = area.view.state.doc.toString();
+    const r = await execCode(code, outEl, statusEl);
+    if (r.error) { const extra = explainForBeginner(r.error, code); if (extra) { feedback.className = "feedback bad"; feedback.textContent = extra; } }
     busy = false;
   }, "btn run", { id: "run" });
-  const stopBtn = button("Stop", () => runner.stop(), "btn", { id: "stop" });
   const checkBtn = button("Check", async () => {
     if (busy) return;
-    const code = view.state.doc.toString();
+    const code = area.view.state.doc.toString();
     feedback.replaceChildren(); feedback.className = "feedback"; // 先清掉上一次的结果，避免看错
     if (!code.trim()) { feedback.className = "feedback bad"; feedback.textContent = "代码还是空的，先写一点再检查。"; return; }
     busy = true;
@@ -432,26 +460,21 @@ function renderCode(s) {
     busy = false;
     if (r.status === "loadError" || r.status === "busy") return;
     if (r.error) {
-      markWrong(id);
       feedback.className = "feedback bad";
       feedback.replaceChildren(h("b", { text: "✗ 程序出错了。" }), " ", explainForBeginner(r.error, code) || "看看上面的错误说明，改好后再检查。");
       return;
     }
     if (r.status !== "done") { feedback.className = "feedback bad"; feedback.textContent = "程序没有正常结束，改好后再检查。"; return; }
-    const res = checkOutput(ex.check, r.out);
+    const res = checkOutput(ex.check, r.out, code);
     if (res.pass) {
-      state.done[id] = true;
-      if (s.isTask && state.viewedSolution[id]) state.needVariant = true;
+      state.exDone[ex.id] = true;
+      delete state.exSkipped[ex.id];
       persist();
-      statusEl.textContent = "题目通过";
+      statusEl.textContent = "练习通过";
       feedback.className = "feedback ok";
-      const msg = s.isTask && state.needVariant && !state.done[lesson.taskVariant.id]
-        ? "你看过参考答案，再做一个小变化就算完成本节。点 Next 继续。"
-        : "输出完全符合要求。点 Next 继续。";
-      feedback.replaceChildren(h("b", { text: "✓ 通过！" }), " ", msg);
-      nextBtn.disabled = false;
+      feedback.replaceChildren(h("b", { text: "✓ 通过！" }), " 点 Next 继续。");
+      markNext();
     } else {
-      markWrong(id);
       feedback.className = "feedback bad";
       feedback.replaceChildren(h("b", { text: "✗ 还不对。" }), " ", res.message);
     }
@@ -459,9 +482,8 @@ function renderCode(s) {
 
   const taskBody = h("div", { class: "task-body" },
     h("p", { class: "prompt pre-line", text: ex.prompt }),
-    ex.target ? h("div", { class: "target" }, h("div", { class: "ex-label", text: "要输出的样子" }), h("pre", { class: "result", text: ex.target })) : null,
     ex.note ? h("p", { class: "note", text: ex.note }) : null,
-    h("div", { class: "tools" }, button("查看讲解", openLessonReview, "btn small"), hintBtn, wordChip("print")),
+    h("div", { class: "tools" }, hintBtn, (ex.words || []).map(wordChip)),
     hintList,
   );
   const collapseBtn = button("收起", () => {
@@ -470,46 +492,49 @@ function renderCode(s) {
   }, "link small");
 
   appEl.replaceChildren(
-    topbar(stepLabel(s), { back: renderHome }),
+    topbar(`${lesson().id} · ${pageLabel(state.page)}`, { back: renderHome }),
     h("main", { class: "code-view" },
       h("section", { id: "task" },
-        h("div", { class: "ex-head" }, h("h2", { text: ex.title }), state.done[id] ? h("span", { class: "badge", text: "已完成 ✓" }) : null, collapseBtn),
+        h("div", { class: "ex-head" }, h("h2", { text: ex.title }), done() ? h("span", { class: "badge", text: "已完成 ✓" }) : null, collapseBtn),
         taskBody,
       ),
-      editorEl,
-      h("div", { id: "controls" }, runBtn, stopBtn, checkBtn, statusEl),
+      area.editorEl,
+      h("div", { id: "controls" }, runBtn, button("Stop", () => runner.stop(), "btn", { id: "stop" }), checkBtn, statusEl),
       outEl,
       feedback,
       row,
-      sysBar,
-      kbEl,
+      area.sysBar,
+      area.kbEl,
     ),
   );
-  view.focus();
-
-  cleanup = () => { saveDraft(); view.destroy(); window.__app.view = null; };
-  window.__app.view = view;
+  // 跳过：记下来，完成页会提醒可以回来做
+  onActivate(nextBtn, () => { if (!state.exDone[ex.id]) { state.exSkipped[ex.id] = true; persist(); } });
+  area.view.focus();
+  cleanup = () => area.destroy();
 }
 
 function renderSummary() {
-  state.done.N01 = true; persist();
-  const items = [...lesson.exercises, lesson.task, ...(state.needVariant ? [lesson.taskVariant] : [])];
+  const L = lesson();
+  state.lessonDone[L.id] = true; persist();
+  const exercises = L.pages.filter(isExercise);
+  const nextLesson = course.lessons[course.lessons.findIndex((c) => c.id === L.id) + 1];
   appEl.replaceChildren(
     topbar("完成", { back: renderHome }),
     h("main", { class: "view" },
-      h("h1", { text: "N01 完成！" }),
-      h("p", { text: "你学会了：让程序输出内容、print 的写法（括号和引号）、程序从上往下执行。" }),
-      h("ul", { class: "summary" }, items.map((e) => h("li", {},
-        h("span", { text: state.done[e.id] ? "✓ " : "· " }),
+      h("h1", { text: `学完了：${L.title}` }),
+      h("p", { text: "你学会了：用 print 输出内容、用变量存值、加减乘除，以及一次输出多个值。" }),
+      h("h3", { text: "练习" }),
+      h("ul", { class: "summary" }, exercises.map((e) => h("li", {},
+        h("span", { text: state.exDone[e.id] ? "✓ " : "· " }),
         e.title,
-        state.viewedSolution[e.id] ? h("span", { class: "muted", text: "（看过答案）" }) : null,
-        state.firstWrong[e.id] ? h("span", { class: "muted", text: "（第一次答错，以后会复习）" }) : null,
+        state.exDone[e.id] && state.viewedSolution[e.id] ? h("span", { class: "muted", text: "（看过答案）" }) : null,
+        !state.exDone[e.id] ? h("span", { class: "muted", text: "（跳过了，随时可以回来做）" }) : null,
       ))),
       !state.installTipClosed ? h("div", { class: "tip" },
-        h("p", { text: "想像 App 一样打开？iPhone：Safari 底部分享按钮 → 「添加到主屏幕」。" }),
+        h("p", { text: "想像 App 一样打开？iPhone：Safari 分享按钮 → 「添加到主屏幕」。" }),
         button("知道了", (e) => { state.installTipClosed = true; persist(); e.currentTarget?.parentElement?.remove(); }, "btn small"),
       ) : null,
-      h("p", { class: "meta", text: "下一节「N02 变量与赋值」即将推出。" }),
+      nextLesson ? h("p", { class: "meta", text: `下一课「${nextLesson.title}」${nextLesson.available ? "" : "即将推出"}。` }) : null,
       h("nav", { class: "nav-row" }, button("Back", prev, "btn"), button("回到首页", renderHome, "btn primary")),
     ),
   );
@@ -517,12 +542,7 @@ function renderSummary() {
 
 // 切到后台或关闭页面时，尽力立即保存
 function flushSave() {
-  const v = window.__app.view;
-  const s = STEPS[state.step];
-  if (v && s && s.kind === "code") {
-    const sel = v.state.selection.main;
-    state.drafts[s.ex.id] = { code: v.state.doc.toString(), anchor: sel.anchor, head: sel.head };
-  }
+  if (window.__app.saveDraft) window.__app.saveDraft();
   persist();
 }
 addEventListener("pagehide", flushSave);
@@ -536,6 +556,6 @@ if (vv) {
   fit();
 }
 
+window.__app = { runner, getState: () => state, view: null, saveDraft: null };
 runner.boot(); // 后台加载 Python，不挡住阅读
-window.__app = { runner, getState: () => state, lesson };
 renderHome();

@@ -54,8 +54,16 @@ export function checkSelfIntro(actual, order) {
   return { pass: true };
 }
 
-export function checkOutput(check, actual) {
-  if (check.kind === "exact") return checkExact(actual, check.expected);
+// check.mustUse：输出对了还不够，还要检查是否用了这一课要练的写法（例如真的用了变量）
+export function checkOutput(check, actual, code = "") {
+  if (check.kind === "exact") {
+    const r = checkExact(actual, check.expected);
+    if (!r.pass) return r;
+    for (const rule of check.mustUse || []) {
+      if (!new RegExp(rule.pattern).test(code)) return { pass: false, message: "输出对了，但还差一步：" + rule.message };
+    }
+    return r;
+  }
   if (check.kind === "selfIntro") return checkSelfIntro(actual, check.order);
   throw new Error("未知的判分方式：" + check.kind);
 }
@@ -75,10 +83,13 @@ export function explainForBeginner(err, code = "") {
     return "括号没有配对：每个 ( 都需要一个 ) 。";
   }
   if (err.kind === "NameError") {
-    return "Python 把没加引号的文字当成了一个名字（变量），但这个名字不存在。要显示文字，请用英文双引号把它包起来。";
+    return "Python 找不到这个名字。如果你想显示文字，请用英文双引号把它包起来；如果它是变量，检查拼写和大小写，并确认前面已经用 = 存过值。";
   }
   if (err.kind === "IndentationError") {
-    return "这一节的代码每行都应该从最左边开始写，前面不要有空格。";
+    return "这一课的代码每行都应该从最左边开始写，前面不要有空格。";
+  }
+  if (err.kind === "TypeError" && /str.*int|int.*str|concatenate/.test(m)) {
+    return "文字和数字不能直接用 + 连在一起。想把它们显示在同一行，可以用逗号：print(\"总价\", 140)。";
   }
   return "";
 }

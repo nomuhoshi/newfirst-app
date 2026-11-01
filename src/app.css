@@ -119,3 +119,28 @@ html, body { position: fixed; inset: 0; overflow: hidden; overscroll-behavior: n
 .code-view > * { flex-shrink: 0; }
 .code-view #editor { flex: 1 1 auto; min-height: 72px; overflow: auto; overscroll-behavior: contain; }
 .code-view #task, .view, .code-view #output { overscroll-behavior: contain; }
+
+/* ---- 教程式页面 ---- */
+.reading h2 { font-size: 21px; }
+.reading p { font-size: 16px; line-height: 1.75; }
+.tip-box { background: color-mix(in srgb, var(--accent) 9%, transparent); border-left: 3px solid var(--accent); padding: 8px 12px; border-radius: 6px; font-size: 14px !important; }
+.reading .example { background: var(--out-bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.ex-actions { display: flex; justify-content: flex-end; }
+.ex-actions .try { min-height: 40px; }
+.roadmap-title { font-size: 15px; margin: 18px 0 6px; color: var(--muted); }
+.roadmap { list-style: none; padding: 0; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.roadmap li { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 15px; }
+.roadmap li:last-child { border-bottom: none; }
+.roadmap li.off { color: var(--muted); }
+.rm-id { font: 600 12px ui-monospace, Menlo, monospace; color: var(--accent); min-width: 30px; }
+.roadmap li.off .rm-id { color: var(--muted); }
+.rm-title { flex: 1; }
+.rm-state { font-size: 12px; color: var(--muted); }
+.note.pad { padding: 0 16px; }
+
+/* “试一试”全屏浮层 */
+.overlay.full { align-items: stretch; background: var(--bg); }
+.overlay.full .sheet { max-height: none; height: var(--app-h, 100dvh); border-radius: 0; padding-bottom: 0; padding-top: env(safe-area-inset-top); }
+.overlay.full .sheet-body { padding: 0; flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; }
+.overlay.full .code-view { flex: 1 1 auto; }
+.ios-browser .overlay.full #keyboard { padding-bottom: 76px; }
