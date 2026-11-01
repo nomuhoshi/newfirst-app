@@ -1,0 +1,573 @@
+{
+  "id": "U1",
+  "title": "奶茶店点单屏",
+  "subtitle": "输出、变量和简单运算",
+  "lessons": [
+    {
+      "id": "U1L1",
+      "title": "让屏幕说话",
+      "concept": "print 输出",
+      "story": "街角的奶茶店想要一块点单屏。第一步：让屏幕显示文字。",
+      "introCode": "print(\"欢迎光临！\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(\"欢迎光临！\")",
+          "options": [
+            {
+              "text": "欢迎光临！",
+              "correct": true,
+              "why": "print(...) 会把括号里的内容显示到屏幕上。"
+            },
+            {
+              "text": "\"欢迎光临！\"",
+              "correct": false,
+              "why": "引号只是告诉 Python「这是一段文字」，引号本身不会显示。"
+            },
+            {
+              "text": "print(\"欢迎光临！\")",
+              "correct": false,
+              "why": "print、括号和引号是写给 Python 看的，屏幕上只显示引号里的文字。"
+            }
+          ],
+          "tip": "print(...) 会把括号里的内容显示到屏幕上。文字要放在英文引号 \" \" 里。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：今日推荐：珍珠奶茶",
+          "code": "print({0})",
+          "tokens": [
+            "\"今日推荐：珍珠奶茶\"",
+            "今日推荐：珍珠奶茶"
+          ],
+          "answer": [
+            "\"今日推荐：珍珠奶茶\""
+          ],
+          "expected": "今日推荐：珍珠奶茶",
+          "why": {
+            "今日推荐：珍珠奶茶": "文字没加引号，Python 会把它当成代码去执行，程序会出错。"
+          },
+          "hint": "文字要放在英文引号里。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(\"营业时间\")\nprint(10)\nprint(22)",
+          "options": [
+            {
+              "text": "营业时间\n10\n22",
+              "correct": true,
+              "why": "每个 print 单独显示一行，从上往下依次执行。"
+            },
+            {
+              "text": "营业时间 10 22",
+              "correct": false,
+              "why": "每个 print 都会单独占一行，不会挤在同一行。"
+            },
+            {
+              "text": "10\n22\n营业时间",
+              "correct": false,
+              "why": "程序从上往下执行，第一行的 print 先显示。"
+            }
+          ],
+          "tip": "数字可以直接写，不用加引号。程序从上往下，一行一行执行。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，让屏幕依次显示：欢迎光临！、今天有新品、请点单",
+          "lines": [
+            "print(\"欢迎光临！\")",
+            "print(\"今天有新品\")",
+            "print(\"请点单\")"
+          ],
+          "shuffled": [
+            2,
+            0,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected": "欢迎光临！\n今天有新品\n请点单",
+          "hint": "想先显示哪一行，就把它放在最上面。"
+        }
+      ]
+    },
+    {
+      "id": "U1L2",
+      "title": "记住顾客",
+      "concept": "变量",
+      "story": "顾客点单时，屏幕要记住他的名字。这就要用到「变量」。",
+      "introCode": "name = \"小林\"\nprint(name)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "name = \"小林\"\nprint(name)",
+          "options": [
+            {
+              "text": "小林",
+              "correct": true,
+              "why": "变量 name 里存着「小林」，print(name) 显示的是存的值。"
+            },
+            {
+              "text": "name",
+              "correct": false,
+              "why": "print(name) 里没有引号，所以显示的是变量里存的值，不是 name 这个词。"
+            },
+            {
+              "text": "\"小林\"",
+              "correct": false,
+              "why": "引号不会显示出来。"
+            }
+          ],
+          "tip": "变量是一个名字，用来存值。写法：名字 = 值。这里的 = 意思是「把右边的值存进左边」。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "name = \"小林\"\nprint(\"name\")",
+          "options": [
+            {
+              "text": "name",
+              "correct": true,
+              "why": "加了引号，\"name\" 就只是一段普通文字。"
+            },
+            {
+              "text": "小林",
+              "correct": false,
+              "why": "这里 name 加了引号，就变成了文字 name 本身，不再是变量。"
+            }
+          ],
+          "tip": "变量名不加引号；加了引号就成了普通文字。"
+        },
+        {
+          "type": "fill",
+          "prompt": "新顾客叫「阿杰」。把名字存进变量 name。",
+          "code": "name = {0}\nprint(name)",
+          "tokens": [
+            "\"阿杰\"",
+            "阿杰",
+            "\"name\""
+          ],
+          "answer": [
+            "\"阿杰\""
+          ],
+          "expected": "阿杰",
+          "why": {
+            "阿杰": "文字要加引号，不然 Python 会去找一个叫「阿杰」的变量，找不到就出错。",
+            "\"name\"": "这样存进去的是文字 name，屏幕会显示 name。"
+          },
+          "hint": "名字是文字，要加引号。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕应该显示杯数 2，但程序出错了。修好它。",
+          "code": "cups = 2\nprint({0})",
+          "tokens": [
+            "cups",
+            "Cups",
+            "\"cups\""
+          ],
+          "answer": [
+            "cups"
+          ],
+          "expected": "2",
+          "why": {
+            "Cups": "大小写不同就是不同的名字：Cups 和 cups 是两个变量，Cups 没有存过值。",
+            "\"cups\"": "加了引号会显示 cups 这个词，不是 2。"
+          },
+          "initial": [
+            "Cups"
+          ],
+          "hint": "变量名要和存值时一模一样，包括大小写。"
+        }
+      ]
+    },
+    {
+      "id": "U1L3",
+      "title": "顾客改单",
+      "concept": "重新赋值",
+      "story": "顾客说：「还是要 3 杯吧。」变量里的值可以换成新的。",
+      "introCode": "cups = 2\ncups = 3\nprint(cups)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 2\ncups = 3\nprint(cups)",
+          "options": [
+            {
+              "text": "3",
+              "correct": true,
+              "why": "第二行把 cups 改成了 3，旧值 2 被替换掉。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "第二行已经把 cups 改成了 3。"
+            },
+            {
+              "text": "2\n3",
+              "correct": false,
+              "why": "只有一个 print，所以只显示一次。"
+            }
+          ],
+          "tip": "给变量重新赋值，新值会替换旧值。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 2\nprint(cups)\ncups = 3",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "print 在改单之前执行，那时 cups 还是 2。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "程序从上往下执行：print 在第二行，那时 cups 还没改成 3。"
+            }
+          ],
+          "tip": "程序从上往下执行，print 显示的是那一刻的值。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，让屏幕先显示改单前的 2，再显示改单后的 3",
+          "lines": [
+            "cups = 2",
+            "print(cups)",
+            "cups = 3",
+            "print(cups)"
+          ],
+          "shuffled": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "2\n3",
+          "hint": "先存 2 并显示，再改成 3 并显示。"
+        },
+        {
+          "type": "fill",
+          "prompt": "顾客最后改成了 5 杯。补全程序。",
+          "code": "cups = 3\ncups = {0}\nprint(cups)",
+          "tokens": [
+            "5",
+            "2",
+            "cups"
+          ],
+          "answer": [
+            "5"
+          ],
+          "expected": "5",
+          "why": {
+            "2": "2 是更早的旧数字，顾客要的是 5 杯。",
+            "cups": "cups = cups 不会改变任何值，还是 3。"
+          },
+          "hint": "把新的杯数存进 cups。"
+        }
+      ]
+    },
+    {
+      "id": "U1L4",
+      "title": "算价格",
+      "concept": "加减乘除",
+      "story": "珍珠奶茶 15 元一杯。让程序帮店员算钱。",
+      "introCode": "print(15 * 3)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(15 * 3)",
+          "options": [
+            {
+              "text": "45",
+              "correct": true,
+              "why": "15 × 3 = 45。"
+            },
+            {
+              "text": "15 * 3",
+              "correct": false,
+              "why": "没有引号，Python 会把它当算式算出结果。"
+            },
+            {
+              "text": "153",
+              "correct": false,
+              "why": "* 是乘号，不是把数字拼在一起。"
+            }
+          ],
+          "tip": "+ 加，- 减，* 乘，/ 除。乘号是 *，不是 ×。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(15 * 2 + 5)",
+          "options": [
+            {
+              "text": "35",
+              "correct": true,
+              "why": "先算 15 * 2 = 30，再加 5。"
+            },
+            {
+              "text": "105",
+              "correct": false,
+              "why": "和数学一样先乘除后加减：先算 15 * 2，不是先算 2 + 5。"
+            }
+          ],
+          "tip": "和数学一样：先乘除，后加减；括号里的先算。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(30 / 2)",
+          "options": [
+            {
+              "text": "15.0",
+              "correct": true,
+              "why": "用 / 做除法，结果总是带小数点。"
+            },
+            {
+              "text": "15",
+              "correct": false,
+              "why": "用 / 除，结果总带小数点，所以是 15.0。"
+            }
+          ],
+          "tip": "用 / 做除法，结果总是带小数点，即使能整除。"
+        },
+        {
+          "type": "fill",
+          "prompt": "3 杯一共 45 元。补全运算符。",
+          "code": "print(15 {0} 3)",
+          "tokens": [
+            "*",
+            "+",
+            "x"
+          ],
+          "answer": [
+            "*"
+          ],
+          "expected": "45",
+          "why": {
+            "+": "15 + 3 = 18，这是加法。",
+            "x": "乘号是 *，不是字母 x。"
+          },
+          "hint": "一杯 15 元，3 杯是乘法。"
+        }
+      ]
+    },
+    {
+      "id": "U1L5",
+      "title": "加一杯",
+      "concept": "变量参与计算",
+      "story": "把单价和杯数存进变量，程序就能自己算总价。顾客还想再加一杯。",
+      "introCode": "price = 15\ncups = 3\nprint(price * cups)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "price = 15\ncups = 3\nprint(price * cups)",
+          "options": [
+            {
+              "text": "45",
+              "correct": true,
+              "why": "price * cups 就是 15 * 3。"
+            },
+            {
+              "text": "price * cups",
+              "correct": false,
+              "why": "没有引号，Python 会用变量里的值算出结果。"
+            },
+            {
+              "text": "153",
+              "correct": false,
+              "why": "* 是乘号，不是把数字拼在一起。"
+            }
+          ],
+          "tip": "变量也能参与计算：Python 会先取出变量里的值再算。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 3\ncups = cups + 1\nprint(cups)",
+          "options": [
+            {
+              "text": "4",
+              "correct": true,
+              "why": "先算右边 3 + 1 = 4，再存回 cups。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "第二行已经把 cups 加了 1。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "cups + 1 是在旧值 3 的基础上加 1。"
+            }
+          ],
+          "tip": "cups = cups + 1：先算右边（旧值加 1），再把结果存回 cups。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 4\nprint(\"杯数\", cups)",
+          "options": [
+            {
+              "text": "杯数 4",
+              "correct": true,
+              "why": "逗号隔开的两个值，显示时中间自动加一个空格。"
+            },
+            {
+              "text": "杯数4",
+              "correct": false,
+              "why": "用逗号隔开的值之间会自动加一个空格。"
+            },
+            {
+              "text": "杯数, 4",
+              "correct": false,
+              "why": "逗号是用来分隔的，不会显示出来。"
+            }
+          ],
+          "tip": "print 里用逗号隔开多个值，显示时中间会加一个空格。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：总价 60",
+          "code": "price = 15\ncups = 4\nprint(\"总价\", {0})",
+          "tokens": [
+            "price * cups",
+            "60",
+            "price + cups"
+          ],
+          "answer": [
+            "price * cups"
+          ],
+          "expected": "总价 60",
+          "why": {
+            "60": "直接写 60 也能显示，但换了杯数就要手改。让程序用 price * cups 自己算。",
+            "price + cups": "15 + 4 = 19，这是加法。"
+          },
+          "hint": "总价 = 单价 × 杯数。"
+        }
+      ]
+    },
+    {
+      "id": "U1L6",
+      "title": "结账小票",
+      "concept": "单元复习",
+      "review": true,
+      "story": "最后一关：把学过的连起来，做一张结账小票。",
+      "introCode": "price = 15\ncups = 2\nprint(\"总价\", price * cups)",
+      "exercises": [
+        {
+          "type": "order",
+          "prompt": "排好顺序，让小票显示：总价 30",
+          "lines": [
+            "price = 15",
+            "cups = 2",
+            "print(\"总价\", price * cups)"
+          ],
+          "shuffled": [
+            2,
+            1,
+            0
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              1,
+              0,
+              2
+            ]
+          ],
+          "expected": "总价 30",
+          "hint": "变量要先存好值，才能拿来算。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "name = \"小林\"\nname = \"阿杰\"\nprint(\"顾客\", name)",
+          "options": [
+            {
+              "text": "顾客 阿杰",
+              "correct": true,
+              "why": "第二行把名字换成了阿杰。"
+            },
+            {
+              "text": "顾客 小林",
+              "correct": false,
+              "why": "第二行已经把 name 换成了阿杰。"
+            },
+            {
+              "text": "顾客 name",
+              "correct": false,
+              "why": "name 没有引号，显示的是变量里存的值。"
+            }
+          ]
+        },
+        {
+          "type": "fill",
+          "prompt": "顾客又加了一杯，屏幕应该显示 3",
+          "code": "cups = 2\ncups = cups {0} 1\nprint(cups)",
+          "tokens": [
+            "+",
+            "-",
+            "*"
+          ],
+          "answer": [
+            "+"
+          ],
+          "expected": "3",
+          "why": {
+            "-": "2 - 1 = 1，杯数变少了。",
+            "*": "2 * 1 = 2，没有变化。"
+          },
+          "hint": "加一杯，用加号。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(45 / 2)",
+          "options": [
+            {
+              "text": "22.5",
+              "correct": true,
+              "why": "45 ÷ 2 = 22.5。"
+            },
+            {
+              "text": "22",
+              "correct": false,
+              "why": "/ 不会去掉小数部分。"
+            },
+            {
+              "text": "22.0",
+              "correct": false,
+              "why": "45 ÷ 2 是 22.5，不是整数。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

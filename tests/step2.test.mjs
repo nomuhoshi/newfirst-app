@@ -1,11 +1,11 @@
-// 第二步的自动测试：教程式第一课「输出、变量和简单运算」。
+// 多邻国式关卡的自动测试：内容核对 + 做题流程 + XP/红心/连续天数 + 旧记录迁移。
 // 桌面 Chromium 模拟手机触摸，不能代替 iPhone 真机。运行：npm run build && node tests/step2.test.mjs
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
-import { checkOutput, checkExact } from "../src/checker.js";
+import { freshState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, HEART_REGEN_MS } from "../src/storage.js";
 
-const L = JSON.parse(readFileSync(new URL("../content/l01.json", import.meta.url)));
+const unit = JSON.parse(readFileSync(new URL("../content/unit1.json", import.meta.url)));
 const course = JSON.parse(readFileSync(new URL("../content/course.json", import.meta.url)));
 const PORT = 4319;
 const BASE = `http://localhost:${PORT}/`;
@@ -18,39 +18,40 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "✅" : "❌"} ${name}${detail ? "  — " + detail : ""}`);
 }
 
-const reading = L.pages.filter((p) => p.kind !== "exercise");
-const exercises = L.pages.filter((p) => p.kind === "exercise");
-const examples = reading.flatMap((p) => p.blocks.filter((b) => b.t === "code"));
+// ---------- 内容结构 ----------
+const L = unit.lessons;
+const allEx = L.flatMap((l) => l.exercises.map((e) => ({ ...e, lesson: l.id })));
+check("内容：第 1 单元 6 关，最后一关是单元复习", L.length === 6 && L.at(-1).review === true);
+check("内容：每关 3–5 道题，都有故事开场和示例代码", L.every((l) => l.exercises.length >= 3 && l.exercises.length <= 5 && l.story && l.introCode));
+check("内容：关卡 id 不重复，且课程路线只有第 1 单元可用", new Set(L.map((l) => l.id)).size === L.length && course.units.filter((u) => u.available).length === 1);
+check("内容：全部是点选题（选输出 / 填词块 / 排顺序）", allEx.every((e) => ["predict", "fill", "order"].includes(e.type)));
+check("内容：每道选输出题恰好一个正确选项，每个选项都有解释", allEx.filter((e) => e.type === "predict").every((e) => e.options.filter((o) => o.correct).length === 1 && e.options.every((o) => o.why)));
+check("内容：填空题的答案都在词块里，错误词块都有解释", allEx.filter((e) => e.type === "fill").every((e) => e.answer.every((a) => e.tokens.includes(a)) && e.tokens.filter((t) => !e.answer.includes(t)).every((t) => e.why[t])));
+check("内容：排序题打乱后的顺序不等于答案", allEx.filter((e) => e.type === "order").every((e) => e.shuffled.slice().sort().join() === e.lines.map((_, i) => i).join() && !e.answers.some((a) => a.join() === e.shuffled.join())));
+const firstIntro = {};
+for (const l of L) for (const e of l.exercises) { if (/ = /.test(e.code || e.lines?.join("\n") || "") && !firstIntro.var) firstIntro.var = l.id; }
+check("内容：变量（=）第一次出现在第 2 关「记住顾客」，不早于讲解", firstIntro.var === "U1L2");
 
-// ---------- 内容结构（不需要浏览器） ----------
-check("内容：课程路线里第一课可用，且只出现一次", course.lessons.filter((c) => c.id === L.id).length === 1 && course.lessons[0].available);
-check("内容：第一课包含 4 段正文和 2 道练习", reading.length === 4 && exercises.length === 2);
-check("内容：练习排在相关正文之后（变量讲完才练变量）", L.pages.findIndex((p) => p.id === "X1") > L.pages.findIndex((p) => p.id === "P2") && L.pages.at(-1).id === "X2");
-check("内容：每页 id 不重复", new Set(L.pages.map((p) => p.id)).size === L.pages.length);
-check("内容：每个例子 id 不重复", new Set(examples.map((b) => b.id)).size === examples.length);
-const seen = new Set();
-let conceptOrderOk = true;
-for (const p of reading) {
-  const text = p.blocks.filter((b) => b.t !== "code").map((b) => b.text).join("");
-  for (const b of p.blocks) {
-    if (b.t === "p" || b.t === "tip") { if (/=/.test(b.text)) seen.add("="); if (/\*/.test(b.text)) seen.add("*"); if (/逗号/.test(b.text)) seen.add(","); }
-    if (b.t === "code") {
-      if (/ = /.test(b.code) && !seen.has("=")) conceptOrderOk = false;
-      if (/\*/.test(b.code) && !seen.has("*")) conceptOrderOk = false;
-      if (/print\([^)]*,/.test(b.code) && !seen.has(",")) conceptOrderOk = false;
-    }
-  }
-  void text;
+// ---------- 纯逻辑：红心、连续天数 ----------
+{
+  const s = freshState(); const t0 = 1_000_000_000_000;
+  s.heartsAt = t0; loseHeart(s, t0); loseHeart(s, t0);
+  check("红心：答错两次剩 3 颗", s.hearts === 3);
+  regenHearts(s, t0 + HEART_REGEN_MS - 1);
+  check("红心：不到 30 分钟不恢复", s.hearts === 3);
+  regenHearts(s, t0 + HEART_REGEN_MS * 2 + 5);
+  check("红心：60 分钟后恢复 2 颗", s.hearts === 5);
+  regenHearts(s, t0 + HEART_REGEN_MS * 50);
+  check("红心：最多 5 颗", s.hearts === HEARTS_MAX);
+  const st = freshState();
+  bumpStreak(st, new Date(2026, 10, 1, 9)); check("连续天数：第一天 = 1", st.streak === 1);
+  bumpStreak(st, new Date(2026, 10, 1, 22)); check("连续天数：同一天多次完成不重复加", st.streak === 1);
+  bumpStreak(st, new Date(2026, 10, 2, 8)); check("连续天数：第二天 = 2", st.streak === 2);
+  check("连续天数：隔了两天没学，显示 0", currentStreak(st, new Date(2026, 10, 5)) === 0);
+  bumpStreak(st, new Date(2026, 10, 5)); check("连续天数：断了之后重新从 1 开始", st.streak === 1);
+  const st2 = freshState(); bumpStreak(st2, new Date(2026, 11, 31)); bumpStreak(st2, new Date(2027, 0, 1));
+  check("连续天数：跨年也算连续", st2.streak === 2);
 }
-check("内容：= 、* 、逗号都在例子用到之前先解释", conceptOrderOk);
-
-// ---------- 判分逻辑 ----------
-const x2 = exercises.find((e) => e.id === "X2");
-check("判分：输出对但没存变量，先提示 price = 35", /price = 35/.test(checkOutput(x2.check, "总价 140\n", 'print("总价", 140)').message));
-check("判分：存了变量但没用乘法，提示 price * count", /price \* count/.test(checkOutput(x2.check, "总价 140\n", 'price = 35\ncount = 4\nprint("总价", 140)').message));
-check("判分：正确写法通过", checkOutput(x2.check, "总价 140\n", "price = 35\ncount = 4\nprint(\"总价\", price * count)").pass);
-check("判分：另一种正确写法（先算 total）也通过", checkOutput(x2.check, "总价 140\n", "price = 35\ncount = 4\ntotal = count * price\nprint(\"总价\", total)").pass);
-check("判分：输出不对时仍先说明输出问题", /第 1 行应该是「总价 140」/.test(checkExact("总价140\n", "总价 140").message));
 
 const browser = await chromium.launch();
 try {
@@ -61,204 +62,244 @@ try {
   await page.goto(BASE);
   await page.waitForFunction(() => window.__app?.runner?.state === "ready", null, { timeout: 60000 });
 
-  // ---------- 内容核对：每个例子、每个参考答案都真实运行 ----------
+  // ---------- 内容核对：真实运行 ----------
   const runPy = (code) => page.evaluate((c) => new Promise((resolve) => {
-    const r = window.__app.runner;
-    let out = "";
+    const r = window.__app.runner; let out = "";
     const po = r.onOutput, ps = r.onStatus;
     r.onOutput = (t) => { out += t; };
-    r.onStatus = (s, info) => { if (s === "done") { r.onOutput = po; r.onStatus = ps; ps(s, info); resolve({ out, error: info.error }); } };
+    r.onStatus = (s, info) => { if (s === "done") { r.onOutput = po; r.onStatus = ps; ps(s, info); resolve(info.error ? "ERR:" + info.error.kind : out.replace(/\n$/, "")); } };
     r.run(c);
   }), code);
-  for (const b of examples) {
-    const r = await runPy(b.code);
-    check(`内容：例子 ${b.id} 显示的运行结果与真实运行一致`, !r.error && checkExact(r.out, b.output).pass, JSON.stringify(r.out));
-  }
-  for (const ex of exercises) {
-    const r = await runPy(ex.solution);
-    check(`内容：${ex.id} 参考答案能通过判分`, !r.error && checkOutput(ex.check, r.out, ex.solution).pass, JSON.stringify(r.out));
-    check(`内容：${ex.id} 最后一级提示就是参考答案`, ex.hints.at(-1).includes(ex.solution.split("\n")[0]));
+  const perms = (n) => n <= 1 ? [[0]] : perms(n - 1).flatMap((p) => Array.from({ length: n }, (_, i) => [...p.slice(0, i), n - 1, ...p.slice(i)]));
+  let contentOk = 0;
+  for (const e of allEx) {
+    if (e.type === "predict") {
+      const out = await runPy(e.code);
+      const ok = e.options.every((o) => (o.text === out) === !!o.correct);
+      check(`内容：${e.lesson} 选输出题与真实运行一致`, ok, ok ? "" : JSON.stringify(out));
+      contentOk += ok;
+    } else if (e.type === "fill") {
+      const fillCode = (toks) => toks.reduce((c, t, i) => c.replace(`{${i}}`, t), e.code);
+      const out = await runPy(fillCode(e.answer));
+      let ok = out === e.expected;
+      for (const t of e.tokens.filter((x) => !e.answer.includes(x))) {
+        const o = await runPy(fillCode([t]));
+        // 错误词块：要么输出不同/出错，要么解释里明确说明“也能显示但不对”
+        if (o === e.expected && !/也能显示/.test(e.why[t])) ok = false;
+      }
+      check(`内容：${e.lesson} 填空题答案运行得到要求的输出`, ok, ok ? "" : JSON.stringify(out));
+    } else {
+      const answerTexts = e.answers.map((a) => a.map((k) => e.lines[k]).join("\n"));
+      let ok = true;
+      for (const p of perms(e.lines.length)) {
+        const code = p.map((k) => e.lines[k]).join("\n");
+        const out = await runPy(code);
+        if ((out === e.expected) !== answerTexts.includes(code)) ok = false;
+      }
+      check(`内容：${e.lesson} 排序题只有列出的顺序能得到要求的输出`, ok);
+    }
   }
 
-  // ---------- 学习流程 ----------
+  // ---------- 流程 ----------
   const text = () => page.locator("#app").innerText();
-  const tapText = (t) => page.getByRole("button", { name: t, exact: true }).first().tap();
-  const setDoc = (t) => page.evaluate((t) => { const v = window.__app.view; v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: t }, selection: { anchor: t.length } }); }, t);
-  const doc = () => page.evaluate(() => window.__app.view.state.doc.toString());
-  const feedback = () => page.locator(".feedback").first().innerText();
-  const key = (k) => page.locator(`.kb-key[data-key=${JSON.stringify(k)}]`).first();
-  const checkAndWait = async () => {
-    await page.locator("#check").tap();
-    await page.waitForFunction(() => { const f = document.querySelector(".feedback"); return f && f.textContent.trim().length > 0; }, null, { timeout: 20000 });
-    return feedback();
-  };
-  const runAndWait = async () => {
-    await page.locator("#run").tap();
-    await page.waitForFunction(() => /运行成功|运行出错|已停止/.test(document.getElementById("status")?.textContent || ""), null, { timeout: 20000 });
-    return page.locator("#output").innerText();
-  };
+  const tapBtn = (name) => page.getByRole("button", { name, exact: true }).first().tap();
+  const ex = () => page.evaluate(() => window.__app.currentEx);
+  const st = () => page.evaluate(() => window.__app.getState());
+  async function answer(correct = true) {
+    const e = await ex();
+    if (e.type === "predict") {
+      const i = e.options.findIndex((o) => !!o.correct === correct);
+      await page.locator(".choice").nth(i).tap();
+    } else if (e.type === "fill") {
+      const toks = correct ? e.answer : [e.tokens.find((t) => !e.answer.includes(t) && !(e.initial || []).includes(t)) ?? e.tokens.find((t) => !e.answer.includes(t))];
+      for (const t of toks) await page.locator(`[data-token=${JSON.stringify(t)}]`).tap();
+    } else {
+      const order = correct ? e.answers[0] : [...e.answers[0]].reverse();
+      for (const k of order) await page.locator(`.order-bank [data-line="${k}"]`).first().tap();
+    }
+    await page.locator("[data-check]").tap();
+    await page.waitForSelector(".feedbar");
+    return page.locator(".feedbar").innerText();
+  }
+  const cont = async () => { await page.locator("[data-continue]").tap(); };
+  async function playLesson({ wrongFirst = 0 } = {}) {
+    await page.waitForSelector(".intro-title");
+    await tapBtn("继续");
+    let wrongs = wrongFirst; let n = 0;
+    while (await page.locator("[data-check]").count()) {
+      const fb = await answer(wrongs-- <= 0);
+      await cont(); n++;
+      if (n > 30) throw new Error("做题循环过多");
+      if (/红心用完了/.test(fb)) return fb;
+    }
+  }
 
-  check("首页：显示第一课和课程路线", /输出、变量和简单运算/.test(await text()) && (await page.locator(".roadmap li").count()) === course.lessons.length);
-  check("首页：后续课程标为即将推出，不能误点进去", /即将推出/.test(await text()) && (await page.locator(".roadmap button").count()) === 0);
-  await tapText("开始学习");
+  // 开场
+  check("首次打开：显示小码开场介绍", /你好，我是小码/.test(await text()));
+  await tapBtn("继续"); await tapBtn("继续");
+  check("开场第 3 屏：说明卡住可以点小码", /卡住了就点我/.test(await text()));
+  await tapBtn("开始学习");
+  check("关卡地图：显示单元、XP、红心、连续天数", /奶茶店点单屏/.test(await text()) && (await page.locator(".statsbar").innerText()).includes("5"));
+  check("关卡地图：第 1 关是当前关，其余锁住", (await page.locator(".node.current").count()) === 1 && (await page.locator(".node.locked").count()) === 5);
+  check("关卡地图：后面的单元显示即将推出", /即将推出/.test(await text()));
+  await page.locator('[data-lesson="U1L3"]').tap();
+  await page.waitForSelector(".overlay");
+  check("点锁住的关卡：提示先完成前面的", /先完成前面的关卡/.test(await page.locator(".overlay").innerText()));
+  await tapBtn("知道了");
 
-  // 正文 1：print
-  check("第 1 页：print 讲解 + 例子 + 运行结果", /让程序显示内容/.test(await text()) && (await page.locator(".example").count()) === 1);
-  check("正文页没有键盘，阅读区干净", (await page.locator("#keyboard").count()) === 0);
-  await page.getByRole("button", { name: "查看 print 的词义" }).first().tap();
-  check("词义卡可选打开：有音标和用途", /\/prɪnt\//.test(await page.locator(".overlay").innerText()));
-  await page.locator(".overlay [data-close]").tap();
+  // 第 1 关
+  await page.locator('[data-lesson="U1L1"]').tap();
+  await page.waitForSelector(".overlay");
+  check("关卡弹窗：显示故事和可得 XP", /奶茶店/.test(await page.locator(".overlay").innerText()) && /\+50 XP/.test(await page.locator(".overlay").innerText()));
+  await page.locator(".overlay .btn3d.primary").tap();
+  check("开场卡：故事 + 示例代码 + 标题", /让屏幕说话/.test(await text()) && (await page.locator(".intro-screen .codeblock").count()) === 1);
+  await tapBtn("继续");
+  check("第 1 题：检查按钮在选择前不可用", await page.locator("[data-check]").isDisabled());
+  // 小码提示
+  await page.getByRole("button", { name: "让小码给个提示" }).tap();
+  await page.waitForSelector(".overlay");
+  const hint1 = await page.locator(".overlay").innerText();
+  await tapBtn("好的");
+  check("点小码：给出提示或答案", /小码提示|答案是/.test(hint1));
+  // 答错
+  let fb = await answer(false);
+  let s = await st();
+  check("答错：显示原因和正确答案", /不对哦/.test(fb) && /正确答案/.test(fb));
+  check("答错：扣 1 颗红心", s.hearts === 4 && /剩 4 颗/.test(fb));
+  check("答错：运行结果面板显示真实输出", await page.locator(".outpanel[open]").count() === 1);
+  await page.waitForFunction(() => /欢迎光临/.test(document.querySelector(".outpanel pre")?.textContent || ""), null, { timeout: 15000 });
+  check("运行结果是 Python 真实运行出来的", (await page.locator(".outpanel pre").innerText()).trim() === "欢迎光临！");
+  await cont();
+  // 做完剩下的（包括回炉的错题）
+  let seen = 0;
+  while (await page.locator("[data-check]").count()) {
+    const e = await ex();
+    if (e.type === "fill") {
+      // 填空交互：⌫、重新开始
+      await page.locator(`[data-token=${JSON.stringify(e.tokens[1])}]`).tap();
+      await page.getByRole("button", { name: "清空当前空格" }).tap();
+      check("填空：⌫ 清空当前空格", (await page.locator('[data-slot="0"]').innerText()).trim() === "");
+    }
+    if (e.type === "order") {
+      await page.locator(".order-bank .line-chip").first().tap();
+      await page.locator(".order-mine .line-chip").first().tap();
+      check("排序：点已放好的行可以退回", (await page.locator(".order-mine .line-chip").count()) === 0);
+      await page.locator(".order-bank .line-chip").first().tap();
+      await page.getByRole("button", { name: "↺ 重新开始" }).tap();
+      check("排序：重新开始清空", (await page.locator(".order-mine .line-chip").count()) === 0);
+    }
+    fb = await answer(true);
+    check(`答对（${e.type}）：+10 XP`, /答对了/.test(fb) && /\+10 XP/.test(fb));
+    await cont();
+    if (++seen > 10) break;
+  }
+  check("错题回炉：答错的第 1 题在最后又出现了一次", seen === 4);
+  check("通关页：完成、本关 XP、连续天数", /完成！/.test(await text()) && /\+50/.test(await text()) && /🔥 1/.test(await text()));
+  check("通关页：提示今天学习完成", /今天的学习完成了/.test(await text()));
+  s = await st();
+  check("记录：XP 50、第 1 关完成、连续 1 天", s.xp === 50 && s.done.U1L1 && s.streak === 1);
+  await cont();
+  check("回到地图：第 1 关打勾，第 2 关成为当前关", (await page.locator('[data-lesson="U1L1"]').getAttribute("class")).includes("done") && (await page.locator('[data-lesson="U1L2"]').getAttribute("class")).includes("current"));
 
-  // 试一试：改例子并运行
-  await page.getByRole("button", { name: "修改并运行这个例子" }).first().tap();
-  check("试一试：打开全屏代码区，内容是例子代码", (await page.locator(".overlay.full").count()) === 1 && (await doc()) === examples[0].code);
-  let out = await runAndWait();
-  check("试一试：直接运行得到例子的结果", out.trim() === examples[0].output);
-  await setDoc('print("我改过了")');
-  out = await runAndWait();
-  check("试一试：改了以后运行得到新结果", out.trim() === "我改过了");
-  await key("{backspace}").tap();
-  check("试一试：可以用内置键盘编辑", (await doc()).length === 'print("我改过了")'.length - 1);
-  await tapText("恢复原样");
-  check("试一试：恢复原样", (await doc()) === examples[0].code);
-  await setDoc('print("再改一次")');
-  await page.waitForTimeout(400);
-  await tapText("返回教程");
-  check("返回教程：回到原来的正文页", /让程序显示内容/.test(await text()) && (await page.locator(".overlay").count()) === 0);
-  check("改过的例子标注“有改动”，教程里的原例子不变", /有改动/.test(await text()) && (await page.locator(".example pre.code").first().innerText()) === examples[0].code);
-
-  // 可以直接往下读
-  await tapText("Next");
-  check("第 2 页：变量", /变量：给值起个名字/.test(await text()) && (await page.locator(".example").count()) === 3);
-  check("变量页解释了 = 的意思和不加引号", /把右边的值存进左边的名字/.test(await text()) && /没有引号/.test(await text()));
-  await tapText("Next");
-
-  // 练习 1：可以跳过
-  check("第 3 页：小练习，按钮是“跳过”", /小练习：用变量/.test(await text()) && (await page.locator("[data-next]").innerText()) === "跳过");
-  await setDoc('print("东京")');
-  let fb = await checkAndWait();
-  check("练习 1：输出对但没用变量，提示用 city", /city = "东京"/.test(fb), fb.slice(0, 50));
-  await setDoc('city = "东京"\nprint("city")');
-  fb = await checkAndWait();
-  check("练习 1：把变量名加了引号，说明输出不对", /第 1 行应该是「东京」/.test(fb), fb.slice(0, 50));
-  await setDoc('city = "东京"\nprint(City)');
-  fb = await checkAndWait();
-  check("练习 1：大小写写错，提示检查拼写和大小写", /大小写/.test(fb), fb.slice(0, 60));
-  await tapText("跳过");
-  check("跳过练习后继续往下学", /简单运算/.test(await text()));
-  await tapText("Back");
-  check("回到练习，草稿还在", (await doc()) === 'city = "东京"\nprint(City)');
-  await setDoc('city = "东京"\nprint(city)');
-  fb = await checkAndWait();
-  check("练习 1 通过，按钮变成 Next", /✓ 通过/.test(fb) && (await page.locator("[data-next]").innerText()) === "Next");
-  await tapText("Next");
-
-  // 正文 3、4
-  check("第 4 页：简单运算，例子含 / 的小数说明", /简单运算/.test(await text()) && /4\.0/.test(await text()));
-  await page.getByRole("button", { name: "修改并运行这个例子" }).nth(3).tap();
-  await setDoc("price = 120\ncount = 5\ntotal = price * count\nprint(total)");
-  out = await runAndWait();
-  check("试一试：改变量值，结果跟着变", out.trim() === "600");
-  await tapText("返回教程");
-  await tapText("Next");
-  check("第 5 页：一次输出多个值", /一次输出多个值/.test(await text()));
-
-  // 中途离开再回来
+  // 重新打开，记录还在
   await page.reload();
-  await page.waitForFunction(() => document.querySelector("#app")?.innerText.includes("继续学习"));
-  check("重新打开：首页显示继续学习和位置", /继续学习/.test(await text()) && /学到 5\/6/.test(await text()));
-  await tapText("继续学习");
-  check("重新打开：回到第 5 页", /一次输出多个值/.test(await text()));
-  await tapText("Next");
+  await page.waitForSelector(".statsbar");
+  check("重新打开：直接进地图，XP 和进度都在", (await page.locator(".statsbar").innerText()).includes("50") && (await page.locator(".node.done").count()) === 1);
 
-  // 综合练习
-  check("第 6 页：综合练习", /综合练习：算总价/.test(await text()));
-  await setDoc('print("总价" + 140)');
-  fb = await checkAndWait();
-  check("综合练习：文字 + 数字报错，解释用逗号", /逗号/.test(fb), fb.slice(0, 60));
-  await setDoc('price = 35\ncount = 4\nprint("总价", 140)');
-  fb = await checkAndWait();
-  check("综合练习：没用乘法算，提示 price * count", /price \* count/.test(fb), fb.slice(0, 60));
-  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: /^Hint/ }).first().tap();
-  check("三级提示：最后显示参考答案", /参考答案/.test(await text()));
-  await setDoc('price = 35\ncount = 4\nprint("总价", price * count)');
-  fb = await checkAndWait();
-  check("综合练习通过", /✓ 通过/.test(fb));
-  await tapText("Next");
+  // 修程序题：初始带错词，没改前不能检查
+  await page.locator('[data-lesson="U1L2"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
+  await tapBtn("继续");
+  while (true) {
+    const e = await ex();
+    if (e.type === "fill" && e.initial) {
+      check("修程序题：初始空格里是错的词", (await page.locator('[data-slot="0"]').innerText()).trim() === e.initial[0]);
+      check("修程序题：还没改就不能检查", await page.locator("[data-check]").isDisabled());
+      fb = await answer(false);
+      check("修程序题：选错时解释原因（引号/大小写）", /引号|大小写/.test(fb), fb.slice(0, 60));
+      await cont();
+      break;
+    }
+    await answer(true); await cont();
+  }
+  // 退出确认
+  await page.getByRole("button", { name: "退出本关" }).tap();
+  await tapBtn("继续学习");
+  check("退出确认：选继续学习，留在本关", (await page.locator("[data-check]").count()) === 1);
+  await page.getByRole("button", { name: "退出本关" }).tap();
+  await tapBtn("退出");
+  check("退出确认：选退出，回到地图，本关仍未完成", /奶茶店点单屏/.test(await text()) && !(await st()).done.U1L2);
 
-  check("完成页：学完第一课", /学完了：输出、变量和简单运算/.test(await text()));
-  check("完成页：两道练习都显示完成，标注看过答案", (await page.locator(".summary li").count()) === 2 && /看过答案/.test(await text()) && !/跳过了/.test(await text()));
-  check("完成页：告诉下一课是什么", /下一课「文字（字符串）与长度」/.test(await text()));
-  await tapText("回到首页");
-  check("首页：第一课显示已学完，没有重复课程", /已学完/.test(await text()) && (await page.locator(".lesson-card").count()) === 1);
+  // 红心用完
+  await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 0; s.heartsAt = Date.now(); window.__app.persist(); window.__app.renderPath(); });
+  await page.locator('[data-lesson="U1L2"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
+  await page.waitForFunction(() => /红心用完了/.test(document.body.innerText));
+  check("红心为 0：不能开始新关卡，提示等待或复习", /每 30 分钟恢复 1 颗/.test(await page.locator(".overlay").innerText()));
+  await page.locator(".overlay .btn3d.primary").tap(); // 复习「让屏幕说话」
+  await page.waitForSelector(".intro-title");
+  check("复习模式：不显示红心，显示护盾", /复习/.test(await text()) && (await page.locator(".lessonbar").innerText()).includes("🛡"));
+  await tapBtn("继续");
+  fb = await answer(false);
+  check("复习模式：答错不扣红心", (await st()).hearts === 0 && !/❤️ -1/.test(fb));
+  await cont();
+  while (await page.locator("[data-check]").count()) { await answer(true); await cont(); }
+  check("复习完成：恢复 1 颗红心", /恢复 1 颗红心/.test(await text()) && (await st()).hearts === 1);
+  check("复习：每题 +5 XP", (await st()).xp > 50);
+  await cont();
 
-  // 键盘固定（练习页）
-  await tapText("再学一遍");
-  await tapText("Next"); await tapText("Next"); // 到练习 1
-  const kbPos = () => page.evaluate(() => Math.round(document.getElementById("keyboard").getBoundingClientRect().bottom));
-  const before = await kbPos();
-  await page.mouse.wheel(0, 600);
-  await page.evaluate(() => window.scrollTo(0, 500));
-  await page.waitForTimeout(200);
-  check("练习页键盘固定在底部，页面滚动时不移动", before === (await kbPos()) && (await page.evaluate(() => window.scrollY)) === 0, `bottom=${before}`);
+  // 中途红心用完
+  await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 1; window.__app.persist(); window.__app.renderPath(); });
+  await page.locator('[data-lesson="U1L2"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
+  await tapBtn("继续");
+  fb = await answer(false);
+  check("最后一颗红心答错：按钮变成“红心用完了”", /红心用完了/.test(fb));
+  await cont();
+  check("红心用完：回到地图并提示复习", /红心用完了/.test(await page.locator(".overlay").innerText()));
+  await tapBtn("稍后再来");
+
+  // 我的
+  await page.getByRole("button", { name: "我的" }).tap();
+  check("我的：显示 XP、连续天数、完成关卡、红心和规则", /经验值/.test(await text()) && /已完成关卡/.test(await text()) && /每 30 分钟恢复/.test(await text()));
+  await tapBtn("清除学习记录"); await tapBtn("取消");
+  check("清除记录：取消不变", (await st()).xp > 0);
+  await tapBtn("清除学习记录"); await tapBtn("确定清除");
+  check("清除记录：XP 和进度清零", (await st()).xp === 0 && Object.keys((await st()).done).length === 0);
+  await page.getByRole("button", { name: "学习", exact: true }).tap();
 
   // 宽度
   for (const w of [360, 390, 430]) {
     await page.setViewportSize({ width: w, height: 800 });
-    check(`${w}px 宽度无横向溢出`, !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
+    check(`${w}px：地图无横向溢出`, !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
   }
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // 清除记录
-  await page.locator(".top-back").tap();
-  await tapText("清除学习记录"); await tapText("取消");
-  check("清除记录：取消后不变", /已学完|学到/.test(await text()));
-  await tapText("清除学习记录"); await tapText("确定清除");
-  check("清除记录：确认后回到未开始", /开始学习/.test(await text()) && /未开始/.test(await text()));
-
-  // 旧版（v1）进度：提示更新，不沿用旧完成状态，不出现旧课程
+  // 旧版（第 2 版教程）记录迁移
   const p4 = await ctx.newPage();
   await p4.addInitScript(() => {
-    if (sessionStorage.getItem("seeded")) return;
-    sessionStorage.setItem("seeded", "1");
-    localStorage.setItem("suipian.progress", JSON.stringify({ version: 1, lesson: "N01", step: 8, started: true, done: { E1: true, E2: true, E3: true, T1: true, N01: true }, drafts: { T1: { code: "print(1)", anchor: 0, head: 0 } }, installTipClosed: true }));
+    if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
+    localStorage.setItem("suipian.progress", JSON.stringify({ version: 2, lesson: "L01", page: 6, started: true, lessonDone: { L01: true }, exDone: { X1: true, X2: true }, drafts: { P1a: { code: "x" } }, installTipClosed: true }));
   });
   await p4.goto(BASE);
+  await p4.getByRole("button", { name: "继续", exact: true }).tap(); await p4.getByRole("button", { name: "继续", exact: true }).tap(); await p4.getByRole("button", { name: "开始学习" }).tap();
   const t4 = await p4.locator("#app").innerText();
-  check("旧进度：提示课程已更新", /课程已更新为新版教程/.test(t4));
-  check("旧进度：第一课显示未开始，不沿用旧完成状态", /未开始/.test(t4) && /开始学习/.test(t4) && !/已学完/.test(t4));
-  check("旧进度：首页没有旧的 N01 课程", !/N01/.test(t4) && !/输出与执行顺序/.test(t4));
-  const st4 = await p4.evaluate(() => window.__app.getState());
-  check("旧进度：旧草稿和完成记录已清掉，保留“已关闭安装提示”", Object.keys(st4.drafts).length === 0 && Object.keys(st4.exDone).length === 0 && st4.installTipClosed === true && st4.version === 2);
-  await p4.reload();
-  check("旧进度：迁移后再打开不再重复提示", !/课程已更新/.test(await p4.locator("#app").innerText()));
+  const s4 = await p4.evaluate(() => window.__app.getState());
+  check("旧版记录：提示改版，不沿用旧完成状态", /课程改版为关卡模式/.test(t4) && Object.keys(s4.done).length === 0 && s4.xp === 0 && s4.version === 3);
+  check("旧版记录：没有旧课程出现", !/L01|输出、变量和简单运算」/.test(t4) && (await p4.locator(".node.done").count()) === 0);
   await p4.close();
 
-  // 存储不可用 / 记录损坏
-  const p2 = await ctx.newPage();
+  // 存储不可用 / 损坏
+  const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const p2 = await ctx2.newPage();
   await p2.addInitScript(() => { Storage.prototype.setItem = () => { throw new Error("quota"); }; });
   await p2.goto(BASE);
-  await p2.getByRole("button", { name: "开始学习" }).tap();
-  check("存储写入失败：提示无法保存，页面不白屏", /无法保存进度/.test(await p2.locator(".toast").innerText().catch(() => "")) && /让程序显示内容/.test(await p2.locator("#app").innerText()));
+  await p2.getByRole("button", { name: "继续", exact: true }).tap(); await p2.getByRole("button", { name: "继续", exact: true }).tap(); await p2.getByRole("button", { name: "开始学习" }).tap();
+  check("存储写入失败：提示无法保存，页面仍可用", /无法保存进度/.test(await p2.locator(".toast").innerText().catch(() => "")) && /奶茶店/.test(await p2.locator("#app").innerText()));
   await p2.close();
-  const p3 = await ctx.newPage();
+  const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const p3 = await ctx3.newPage();
   await p3.addInitScript(() => { try { localStorage.setItem("suipian.progress", "{坏掉的数据"); } catch {} });
   await p3.goto(BASE);
-  check("记录损坏：提示并从头开始，不白屏", /记录损坏/.test(await p3.locator("#app").innerText()) && /开始学习/.test(await p3.locator("#app").innerText()));
+  check("记录损坏：从头开始，不白屏", /你好，我是小码/.test(await p3.locator("#app").innerText()));
   await p3.close();
-
-  // 截图
-  await page.goto(BASE);
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await page.screenshot({ path: "tests/shot-home.png" });
-  await tapText("开始学习"); await tapText("Next");
-  await page.screenshot({ path: "tests/shot-card2.png" });
-  await page.getByRole("button", { name: "修改并运行这个例子" }).first().tap();
-  await page.locator("#run").tap(); await page.waitForTimeout(800);
-  await page.screenshot({ path: "tests/shot-choice.png" });
-  await tapText("返回教程"); await tapText("Next");
-  await page.screenshot({ path: "tests/shot-code.png" });
 
   check("页面无脚本错误", errors.length === 0, errors.join(" | "));
 } finally {

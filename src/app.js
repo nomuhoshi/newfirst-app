@@ -1,21 +1,23 @@
-// 碎片编程：教程式学习。
-// 一课 = 几页正文（短讲解 → 代码例子 → 运行结果，例子可以“试一试”）+ 学完一组后的综合练习（可跳过）。
+// 碎片编程：多邻国式关卡学习。
+// 首页是关卡地图；每关 = 故事开场 + 4 道点选题（选输出 / 点词块填空或修程序 / 排顺序）。
+// 答错扣红心、错题放到最后再做；答对加 XP；每天完成一关续上连续天数。
 import "./style.css";
 import "./app.css";
+import "./game.css";
 import course from "../content/course.json";
-import l01 from "../content/l01.json";
+import unit1 from "../content/unit1.json";
 import words from "../content/words.json";
-import { EditorView } from "@codemirror/view";
-import { EditorSelection } from "@codemirror/state";
-import { createEditor, setSystemKeyboard } from "./editor.js";
-import { createKeyboard } from "./keyboard.js";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
-import { checkOutput, explainForBeginner } from "./checker.js";
 import { onActivate } from "./activate.js";
-import { loadState, saveState, clearState } from "./storage.js";
+import {
+  loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
+} from "./storage.js";
 
-const LESSONS = { L01: l01 };
+const UNITS = { U1: unit1 };
+const XP_CORRECT = 10;
+const XP_REVIEW = 5;
+const XP_FINISH = 10;
 
 // iPhone 的 Safari 底部有浮动工具栏，会盖住页面最下面一排；从主屏幕打开时没有这个问题
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -37,162 +39,106 @@ function h(tag, attrs = {}, ...children) {
 }
 function button(label, fn, cls = "btn", attrs = {}) {
   const b = h("button", { type: "button", class: cls, ...attrs }, label);
-  onActivate(b, fn);
+  onActivate(b, (e) => { if (!b.disabled) fn(e); });
   return b;
+}
+const svgNS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs, ...kids) {
+  const el = document.createElementNS(svgNS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  kids.forEach((k) => el.append(k));
+  return el;
+}
+
+// 默认吉祥物“小码”：圆角方块 + 两只眼睛 + >_ 嘴巴（以后可以换成正式设计）
+function mascot(size = 96, mood = "happy") {
+  const s = svg("svg", { viewBox: "0 0 100 100", width: size, height: size, class: "mascot", "aria-hidden": "true" },
+    svg("defs", {}, svg("linearGradient", { id: "mg", x1: "0", y1: "0", x2: "0", y2: "1" },
+      svg("stop", { offset: "0", "stop-color": "#7c6cff" }), svg("stop", { offset: "1", "stop-color": "#4fb3ff" }))),
+    svg("rect", { x: "8", y: "12", width: "84", height: "78", rx: "26", fill: "url(#mg)" }),
+    svg("circle", { cx: "36", cy: "44", r: "9", fill: "#fff" }), svg("circle", { cx: "64", cy: "44", r: "9", fill: "#fff" }),
+    svg("circle", { cx: mood === "sad" ? "36" : "38", cy: mood === "sad" ? "47" : "45", r: "4", fill: "#1b1b2f" }),
+    svg("circle", { cx: mood === "sad" ? "64" : "66", cy: mood === "sad" ? "47" : "45", r: "4", fill: "#1b1b2f" }),
+    svg("text", { x: "50", y: "75", "text-anchor": "middle", "font-size": "18", "font-family": "Menlo, monospace", "font-weight": "700", fill: "#fff" }, document.createTextNode(mood === "sad" ? "> ._" : ">_")),
+  );
+  return s;
+}
+
+// 简单的代码着色（只用于显示）
+function codeLine(text) {
+  const frag = [];
+  const re = /("[^"]*"?)|(\b\d+(?:\.\d+)?\b)|(\bprint\b)|([=+\-*/()])/g;
+  let last = 0; let m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) frag.push(document.createTextNode(text.slice(last, m.index)));
+    const cls = m[1] ? "tk-str" : m[2] ? "tk-num" : m[3] ? "tk-fn" : "tk-op";
+    frag.push(h("span", { class: cls, text: m[0] }));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) frag.push(document.createTextNode(text.slice(last)));
+  return frag;
+}
+function codeBlock(code, cls = "") {
+  return h("div", { class: "codeblock " + cls }, code.split("\n").map((line, i) =>
+    h("div", { class: "cl" }, h("span", { class: "ln", text: String(i + 1) }), h("span", { class: "lc" }, codeLine(line)))));
 }
 
 // ---------- 状态与保存 ----------
 const loaded = loadState();
 let state = loaded.state;
 let notice = loaded.notice;
-if (notice) saveState(state); // 迁移或修复后的记录立即存一次，下次打开不再重复提示
+if (notice) saveState(state); // 迁移或修复后的记录立即存一次，下次不再重复提示
 function persist() {
   if (!saveState(state)) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
 }
-const lesson = () => LESSONS[state.lesson] || l01;
-const pages = () => lesson().pages;
-const isExercise = (p) => p && p.kind === "exercise";
+const allLessons = () => course.units.filter((u) => u.available).flatMap((u) => UNITS[u.id].lessons.map((l) => ({ ...l, unit: u.id })));
+const firstUndone = () => allLessons().find((l) => !state.done[l.id]);
+function lessonStatus(l) {
+  if (state.done[l.id]) return "done";
+  return firstUndone()?.id === l.id ? "current" : "locked";
+}
 
-// ---------- Python 运行 ----------
+// ---------- Python 运行（显示“运行结果”用） ----------
 const appEl = document.getElementById("app");
-let pyState = "loading";
 const listeners = new Set();
 const runner = new Runner({
-  onStatus(s, info) {
-    if (s === "loading") pyState = "loading";
-    else if (s === "ready") pyState = "ready";
-    else if (s === "loadError" || s === "slowLoad") pyState = s;
-    updatePyBadge();
-    for (const l of [...listeners]) l.status?.(s, info);
-  },
+  onStatus(s, info) { for (const l of [...listeners]) l.status?.(s, info); },
   onOutput(t) { for (const l of [...listeners]) l.output?.(t); },
 });
-
-function waitReady() {
-  if (runner.state === "ready") return Promise.resolve(true);
-  if (runner.state === "loadError") runner.boot();
+function runForOutput(code) {
   return new Promise((resolve) => {
-    const l = { status: (s) => {
-      if (s === "ready") { listeners.delete(l); resolve(true); }
-      else if (s === "loadError") { listeners.delete(l); resolve(false); }
-    } };
-    listeners.add(l);
-  });
-}
-
-// 执行一段代码，把输出实时显示在 outEl 里；返回 { status, out, error }
-async function execCode(code, outEl, statusEl) {
-  outEl.className = "out";
-  if (runner.state !== "ready") {
-    statusEl.textContent = "Python 还在加载，请稍等…";
-    const ok = await waitReady();
-    if (!ok) { statusEl.textContent = "Python 加载失败，请检查网络后再试。"; return { status: "loadError" }; }
-  }
-  outEl.textContent = "";
-  statusEl.textContent = "运行中…";
-  return new Promise((resolve) => {
-    let out = "";
-    const l = {
-      output: (t) => { out += t; outEl.textContent += t; },
-      status: (s, info) => {
-        if (!["done", "timeout", "stopped", "outputLimit", "outputLimitStopped"].includes(s)) return;
-        listeners.delete(l);
-        if (s === "done" && info.error) {
-          outEl.textContent += (out ? "\n" : "") + describeError(info.error);
-          outEl.className = "out error";
-          statusEl.textContent = "运行出错";
-        } else if (s === "done") {
-          if (!out) { outEl.textContent = "程序运行完成，没有输出"; outEl.className = "out muted"; }
-          statusEl.textContent = "运行成功";
-        } else if (s === "timeout") {
-          outEl.textContent += "\n⏱ 运行超过 5 秒，已自动停止。"; outEl.className = "out error"; statusEl.textContent = "已停止";
-        } else if (s === "stopped") {
-          outEl.textContent += "\n■ 已停止。"; statusEl.textContent = "已停止";
-        } else {
-          outEl.textContent += "\n⚠ 输出超过 100 行或 8 KB，已停止。"; outEl.className = "out error"; statusEl.textContent = "已停止";
-        }
-        resolve({ status: s, out, error: info && info.error });
-      },
+    const go = () => {
+      let out = "";
+      const l = {
+        output: (t) => { out += t; },
+        status: (s, info) => {
+          if (!["done", "timeout", "stopped", "outputLimit", "outputLimitStopped"].includes(s)) return;
+          listeners.delete(l);
+          resolve(s === "done" ? { out, error: info.error } : { out, error: { kind: "Stopped", line: null, msg: "运行被停止" } });
+        },
+      };
+      listeners.add(l);
+      if (!runner.run(code)) { listeners.delete(l); resolve(null); }
     };
-    listeners.add(l);
-    if (!runner.run(code)) { listeners.delete(l); statusEl.textContent = "正在运行上一段代码，请稍候"; resolve({ status: "busy" }); }
+    if (runner.state === "ready") return go();
+    if (runner.state === "loadError") runner.boot();
+    const w = { status: (s) => {
+      if (s === "ready") { listeners.delete(w); go(); }
+      else if (s === "loadError") { listeners.delete(w); resolve(null); }
+    } };
+    listeners.add(w);
   });
 }
 
-// ---------- 顶栏、浮层、提示 ----------
-let pyBadge;
-function updatePyBadge() {
-  if (!pyBadge) return;
-  pyBadge.replaceChildren();
-  if (pyState === "ready") pyBadge.append("Python 已就绪");
-  else if (pyState === "loading") pyBadge.append("Python 加载中…");
-  else pyBadge.append("Python 加载失败 ", button("重试", () => runner.boot(), "link"));
-  pyBadge.dataset.state = pyState;
-}
-
-function topbar(title, { back } = {}) {
-  pyBadge = h("span", { class: "py-badge", role: "status" });
-  updatePyBadge();
-  return h("header", { class: "topbar" },
-    back ? button("‹ 首页", back, "link top-back", { "aria-label": "回到首页" }) : h("span", { class: "brand", text: "碎片编程" }),
-    h("span", { class: "top-title", text: title }),
-    pyBadge,
-    button("?", openHelp, "icon-btn", { "aria-label": "帮助" }),
-  );
-}
-
-function openOverlay(title, bodyNodes, { onClose, full } = {}) {
-  const close = () => { overlay.remove(); onClose?.(); };
-  const overlay = h("div", { class: "overlay" + (full ? " full" : ""), role: "dialog", "aria-modal": "true", "aria-label": title },
-    h("div", { class: "sheet" },
-      h("div", { class: "sheet-head" }, h("h2", { text: title }), button(full ? "返回教程" : "关闭", close, "btn small", { "data-close": "" })),
-      h("div", { class: "sheet-body" }, bodyNodes),
-    ),
-  );
-  // 点背景关闭；但刚打开的 0.8 秒内忽略，避免打开它的那次触摸“幽灵点击”到背景上又把它关掉
+// ---------- 通用浮层 / 提示 ----------
+function sheet(content, { onClose, cls = "" } = {}) {
+  const close = () => { wrap.remove(); onClose?.(); };
   const openedAt = Date.now();
-  overlay.addEventListener("click", (e) => { if (!full && e.target === overlay && Date.now() - openedAt > 800) close(); });
-  document.body.append(overlay);
-  if (!full) overlay.querySelector("[data-close]").focus();
-  return { overlay, close };
+  const wrap = h("div", { class: "overlay " + cls, role: "dialog", "aria-modal": "true" }, h("div", { class: "sheet" }, content(close)));
+  wrap.addEventListener("click", (e) => { if (e.target === wrap && Date.now() - openedAt > 800) close(); });
+  document.body.append(wrap);
+  return close;
 }
-
-function wordChip(key) {
-  return button(`${key} · Meaning`, () => openWord(key), "chip", { "aria-label": `查看 ${key} 的词义` });
-}
-function openWord(key) {
-  const w = words[key];
-  openOverlay(`词义：${w.word}`, [
-    h("p", { class: "word-big" }, h("code", { text: w.word }), "  ", h("span", { class: "ipa", text: w.ipa })),
-    h("dl", { class: "word-dl" },
-      h("dt", { text: "完整英文" }), h("dd", { text: w.full }),
-      h("dt", { text: "字面意思" }), h("dd", { text: w.meaning }),
-      h("dt", { text: "在 Python 里" }), h("dd", { text: w.python }),
-      h("dt", { text: "例子" }), h("dd", {}, h("code", { text: w.example })),
-      w.note ? [h("dt", { text: "说明" }), h("dd", { text: w.note })] : null,
-    ),
-    h("p", { class: "source" }, "音标来源：", h("a", { href: w.source, target: "_blank", rel: "noopener", text: "Cambridge Dictionary（美式）" })),
-  ]);
-}
-
-function openHelp() {
-  const glossary = [
-    ["Run", "/rʌn/", "运行代码，看结果"], ["Check", "/tʃek/", "检查练习答案"], ["Hint", "/hɪnt/", "提示，一次给一级"],
-    ["Next", "/nekst/", "下一页"], ["Back", "/bæk/", "上一页"], ["Stop", "/stɑːp/", "停止正在运行的代码"],
-    ["Meaning", "/ˈmiːnɪŋ/", "查看词义"], ["Tab", "/tæb/", "缩进 4 个空格"], ["⇧Tab", "Shift /ʃɪft/ + Tab", "取消缩进"],
-    ["Undo", "/ʌnˈduː/", "撤销上一步编辑"], ["Enter", "/ˈentɚ/", "换行"], ["⌫", "Backspace /ˈbækspeɪs/", "删除前一个字符"],
-    ["⌨︎", "", "切换到手机自带键盘（输入中文时用）"],
-  ];
-  openOverlay("帮助", [
-    h("h3", { text: "按钮是什么意思" }),
-    h("table", { class: "gloss" }, glossary.map(([b, ipa, zh]) => h("tr", {}, h("td", {}, h("b", { text: b })), h("td", { class: "ipa", text: ipa }), h("td", { text: zh })))),
-    h("h3", { text: "学习记录" }),
-    h("p", { text: "进度只保存在这台设备的浏览器里，不会上传。清除网站数据、使用无痕模式或换手机，记录都可能丢失。" }),
-    h("h3", { text: "添加到主屏幕" }),
-    h("p", { text: "iPhone：用 Safari 打开本页 → 点分享按钮 → 「添加到主屏幕」。从主屏幕打开是全屏的，键盘也不会被浏览器工具栏挡住。" }),
-  ]);
-}
-
 let toastTimer;
 function showToast(msg) {
   let t = document.querySelector(".toast");
@@ -201,352 +147,409 @@ function showToast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.remove(), 6000);
 }
+const fmtWait = (ms) => { const m = Math.ceil(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)} 小时 ${m % 60} 分钟` : `${m} 分钟`; };
 
-// ---------- 代码区（编辑器 + 自制键盘），例子“试一试”和练习共用 ----------
-// draftKey：草稿保存在 state.drafts 里的名字
-function buildCodeArea({ draftKey, initialCode }) {
-  const draft = state.drafts[draftKey];
-  const editorEl = h("div", { id: "editor", "aria-label": "代码编辑区" });
-  const kbEl = h("div", { id: "keyboard", role: "group", "aria-label": "编程键盘" });
-  const sysBar = h("div", { id: "system-bar", hidden: true }, "正在使用系统键盘（没弹出就再点一下代码区） ");
+// ---------- 开场介绍 ----------
+function renderOnboarding(i = 0) {
+  const steps = [
+    { text: "你好，我是小码！", sub: "" },
+    { text: "我会陪你一关一关学 Python。", sub: "每关只要两三分钟，全部用点的，不用打字。" },
+    { text: "卡住了就点我，我会给你提示。", sub: "做题时我在左下角。" },
+  ];
+  const s = steps[i];
+  appEl.replaceChildren(h("main", { class: "onboard" },
+    h("div", { class: "onboard-mid" }, mascot(120), h("h1", { text: s.text }), s.sub ? h("p", { text: s.sub }) : null),
+    h("div", { class: "onboard-dots" }, steps.map((_, k) => h("span", { class: k === i ? "on" : "" }))),
+    button(i < steps.length - 1 ? "继续" : "开始学习", () => {
+      if (i < steps.length - 1) renderOnboarding(i + 1);
+      else { state.onboarded = true; persist(); renderPath(); }
+    }, "btn3d primary wide"),
+  ));
+}
 
-  let saveTimer = null;
-  let view = null;
-  const saveDraft = () => {
-    clearTimeout(saveTimer);
-    if (!view) return;
-    const code = view.state.doc.toString();
-    const sel = view.state.selection.main;
-    if (code === initialCode && !state.drafts[draftKey]) return; // 没改过就不存
-    state.drafts[draftKey] = { code, anchor: sel.anchor, head: sel.head };
-    persist();
-  };
-  view = createEditor(editorEl, draft ? draft.code : initialCode, [
-    EditorView.updateListener.of((u) => {
-      if (u.docChanged || u.selectionSet) { clearTimeout(saveTimer); saveTimer = setTimeout(saveDraft, 300); }
-    }),
+// ---------- 顶部状态栏 ----------
+function statsBar() {
+  const wait = regenHearts(state);
+  const hearts = h("span", { class: "stat hearts", title: wait ? `下一颗红心：${fmtWait(wait)}后` : "红心已满", "aria-label": `红心 ${state.hearts}` }, "❤️ ", String(state.hearts));
+  return h("header", { class: "statsbar" },
+    h("span", { class: "stat streak", "aria-label": `连续 ${currentStreak(state)} 天` }, "🔥 ", String(currentStreak(state))),
+    h("span", { class: "stat xp", "aria-label": `经验值 ${state.xp}` }, "⚡ ", String(state.xp)),
+    hearts,
+  );
+}
+function tabBar(active) {
+  return h("nav", { class: "tabbar" },
+    button(h("span", {}, "🏠", h("small", { text: "学习" })), renderPath, "tab" + (active === "path" ? " on" : ""), { "aria-label": "学习" }),
+    button(h("span", {}, "👤", h("small", { text: "我的" })), renderMe, "tab" + (active === "me" ? " on" : ""), { "aria-label": "我的" }),
+  );
+}
+
+// ---------- 关卡地图 ----------
+function renderPath() {
+  regenHearts(state);
+  const units = course.units.map((u) => {
+    if (!u.available) {
+      return h("section", { class: "unit locked" }, h("div", { class: "unit-banner" },
+        h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元 · 即将推出` }), h("h2", { text: u.title }), h("p", { text: u.subtitle })));
+    }
+    const lessons = UNITS[u.id].lessons;
+    return h("section", { class: "unit" },
+      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元` }), h("h2", { text: u.title }), h("p", { text: u.subtitle })),
+      h("ol", { class: "path" }, lessons.map((l, i) => {
+        const st = lessonStatus(l);
+        const offset = [0, 1, 2, 1, 0, -1][i % 6];
+        const node = button(
+          h("span", { class: "node-face", "aria-hidden": "true" }, st === "done" ? "✓" : st === "locked" ? "🔒" : l.review ? "🏆" : "★"),
+          () => openLessonSheet(l), `node ${st}${l.review ? " review" : ""}`,
+          { "aria-label": `${l.title}（${st === "done" ? "已完成" : st === "current" ? "当前关卡" : "未解锁"}）`, "data-lesson": l.id },
+        );
+        return h("li", { class: "path-item", style: `--off:${offset}` },
+          st === "current" ? h("div", { class: "bubble", text: i === 0 && !state.done[l.id] && state.xp === 0 ? "从这里开始" : "开始" }) : null,
+          node, h("div", { class: "node-label", text: l.title }));
+      })),
+    );
+  });
+  appEl.replaceChildren(
+    statsBar(),
+    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, units),
+    tabBar("path"),
+  );
+  notice = null;
+  // 当前关卡滚到可见
+  appEl.querySelector(".node.current")?.scrollIntoView({ block: "center" });
+}
+
+function openLessonSheet(l) {
+  const st = lessonStatus(l);
+  sheet((close) => [
+    h("div", { class: "lsheet" },
+      h("div", { class: "lsheet-concept", text: l.concept }),
+      h("h2", { text: l.title }),
+      h("p", { text: st === "locked" ? "先完成前面的关卡，这一关才会解锁。" : l.story }),
+      st === "locked" ? button("知道了", close, "btn3d wide")
+        : st === "done" ? [button("复习（不扣红心，完成后 +1 ❤️）", () => { close(); startLesson(l, { review: true }); }, "btn3d primary wide"), button("关闭", close, "btn3d ghost wide")]
+        : [button(`开始 +${l.exercises.length * XP_CORRECT + XP_FINISH} XP`, () => { close(); startLesson(l); }, "btn3d primary wide"), button("关闭", close, "btn3d ghost wide")],
+    ),
   ]);
-  const len = view.state.doc.length;
-  const a = draft ? Math.min(draft.anchor, len) : len;
-  const hd = draft ? Math.min(draft.head, len) : a;
-  view.dispatch({ selection: EditorSelection.range(a, hd) });
-
-  let useSystem = false;
-  const toggleSystem = () => {
-    useSystem = !useSystem;
-    setSystemKeyboard(view, useSystem);
-    kbEl.hidden = useSystem;
-    sysBar.hidden = !useSystem;
-  };
-  sysBar.append(button("返回内置键盘", toggleSystem, "btn small", { id: "back-to-kb" }));
-  createKeyboard(kbEl, view, { onToggleSystem: toggleSystem });
-
-  window.__app.view = view;
-  window.__app.saveDraft = saveDraft;
-  const destroy = () => {
-    saveDraft(); view.destroy();
-    if (window.__app.view === view) { window.__app.view = null; window.__app.saveDraft = null; }
-  };
-  const reset = () => {
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: initialCode }, selection: { anchor: initialCode.length } });
-    delete state.drafts[draftKey];
-    persist();
-  };
-  return { view, editorEl, kbEl, sysBar, saveDraft, destroy, reset };
 }
 
-// ---------- 页面切换 ----------
-let cleanup = null; // 离开当前页面时要做的事（例如保存草稿）
-function leave() { if (cleanup) { cleanup(); cleanup = null; } }
-function go(i) {
-  leave();
-  state.page = Math.max(0, Math.min(pages().length, i)); // pages().length = 完成页
-  persist();
-  renderPage();
-}
-const next = () => go(state.page + 1);
-const prev = () => go(state.page - 1);
-
-function pageLabel(i) {
-  const ps = pages();
-  if (i >= ps.length) return "完成";
-  return `${i + 1}/${ps.length}`;
+// 红心用完：不能开始新关卡，可以复习恢复
+function openNoHearts(forLesson) {
+  const wait = regenHearts(state);
+  const doneList = allLessons().filter((x) => state.done[x.id]);
+  const practice = doneList[doneList.length - 1] || forLesson;
+  sheet((close) => [
+    h("div", { class: "lsheet" },
+      mascot(72, "sad"),
+      h("h2", { text: "红心用完了" }),
+      h("p", { text: `每 30 分钟恢复 1 颗，下一颗还要 ${fmtWait(wait)}。也可以做一关复习：复习不扣红心，完成后恢复 1 颗。` }),
+      button(`复习「${practice.title}」`, () => { close(); startLesson(practice, { review: true }); }, "btn3d primary wide"),
+      button("稍后再来", close, "btn3d ghost wide"),
+    ),
+  ]);
 }
 
-function lessonStatus(id) {
-  if (state.lessonDone[id]) return "已学完";
-  if (state.lesson === id && state.started) return `学到 ${pageLabel(state.page)}`;
-  return "未开始";
-}
-
-function renderHome() {
-  leave();
+// ---------- 我的 ----------
+function renderMe() {
   let confirmBox = null;
   const clearBtn = button("清除学习记录", () => {
     if (confirmBox) return;
     confirmBox = h("div", { class: "confirm", role: "alertdialog" },
-      h("p", { text: "确定要清除这台设备上的全部学习记录吗？代码草稿也会删除。" }),
-      button("确定清除", () => { state = clearState(); renderHome(); showToast("学习记录已清除。"); }, "btn danger"),
+      h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
+      button("确定清除", () => { state = clearState(); state.onboarded = true; persist(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
       button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
     );
     clearBtn.after(confirmBox);
   }, "link small");
-
-  const L = lesson();
-  const started = state.started && !state.lessonDone[L.id];
+  const wait = regenHearts(state);
+  const doneCount = allLessons().filter((l) => state.done[l.id]).length;
   appEl.replaceChildren(
-    topbar(""),
-    h("main", { class: "view home" },
-      notice ? h("p", { class: "notice", role: "status", text: notice }) : null,
-      h("h1", { text: "碎片编程" }),
-      h("p", { class: "lead", text: "每天几分钟，用手机从零学 Python。" }),
-      h("section", { class: "lesson-card" },
-        h("div", { class: "lesson-id", text: `第一课 · ${L.id}` }),
-        h("h2", { text: L.title }),
-        h("p", { text: L.goal }),
-        h("p", { class: "meta", text: `约 ${L.minutes} 分钟 · ${L.pages.filter((p) => !isExercise(p)).length} 段讲解 · ${L.pages.filter(isExercise).length} 道练习 · ${lessonStatus(L.id)}` }),
-        button(state.lessonDone[L.id] ? "再学一遍" : started ? "继续学习" : "开始学习", () => {
-          if (state.lessonDone[L.id] && state.page >= pages().length) state.page = 0;
-          state.started = true;
-          go(state.page);
-        }, "btn primary big"),
+    statsBar(),
+    h("main", { class: "view me" },
+      h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: "记录只保存在这台设备上" }))),
+      h("div", { class: "me-grid" },
+        h("div", { class: "me-card" }, h("b", { text: `🔥 ${currentStreak(state)}` }), h("span", { text: "连续天数" })),
+        h("div", { class: "me-card" }, h("b", { text: `⚡ ${state.xp}` }), h("span", { text: "经验值 XP" })),
+        h("div", { class: "me-card" }, h("b", { text: `${doneCount}/${allLessons().length}` }), h("span", { text: "已完成关卡" })),
+        h("div", { class: "me-card" }, h("b", { text: `❤️ ${state.hearts}/${HEARTS_MAX}` }), h("span", { text: wait ? `${fmtWait(wait)}后 +1` : "红心已满" })),
       ),
-      h("h3", { class: "roadmap-title", text: "课程路线" }),
-      h("ol", { class: "roadmap" }, course.lessons.map((c) => h("li", { class: c.available ? "on" : "off" },
-        h("span", { class: "rm-id", text: c.id }), h("span", { class: "rm-title", text: c.title }),
-        h("span", { class: "rm-state", text: c.available ? lessonStatus(c.id) : "即将推出" }),
-      ))),
+      h("h3", { text: "规则" }),
+      h("ul", { class: "rules" },
+        h("li", { text: `答对一题 +${XP_CORRECT} XP，完成一关再 +${XP_FINISH} XP；复习每题 +${XP_REVIEW} XP。` }),
+        h("li", { text: "答错扣 1 颗红心，这道题会放到本关最后再做一次。" }),
+        h("li", { text: "红心每 30 分钟恢复 1 颗；复习关不扣红心，完成后恢复 1 颗。" }),
+        h("li", { text: "每天完成至少一关，连续天数 +1；断一天就从头算。" }),
+      ),
+      h("h3", { text: "添加到主屏幕" }),
+      h("p", { text: "iPhone：用 Safari 打开 → 分享按钮 → 「添加到主屏幕」。从主屏幕打开是全屏的，记录也和 Safari 分开保存。" }),
       clearBtn,
     ),
+    tabBar("me"),
   );
-  notice = null;
 }
 
-function renderPage() {
-  const ps = pages();
-  if (state.page >= ps.length) return renderSummary();
-  const p = ps[state.page];
-  if (isExercise(p)) renderExercise(p);
-  else renderReading(p);
+// ---------- 做题 ----------
+function startLesson(l, { review = false } = {}) {
+  regenHearts(state);
+  if (!review && state.hearts <= 0) return openNoHearts(l);
+  const run = {
+    lesson: l, review,
+    queue: l.exercises.map((_, i) => i),
+    total: l.exercises.length,
+    correct: 0,
+    xp: 0,
+    wrongOnce: new Set(),
+    mistakes: 0,
+  };
+  renderIntro(run);
 }
 
-function navRow({ nextLabel = "Next", nextCls = "btn primary" } = {}) {
-  const nextBtn = button(nextLabel, () => next(), nextCls, { "data-next": "" });
-  const row = h("nav", { class: "nav-row" },
-    state.page > 0 ? button("Back", prev, "btn") : h("span"),
-    nextBtn,
+function lessonHeader(run) {
+  const pct = Math.round((run.correct / run.total) * 100);
+  return h("header", { class: "lessonbar" },
+    button("✕", () => confirmExit(run), "icon-btn ghost", { "aria-label": "退出本关" }),
+    h("div", { class: "progress", role: "progressbar", "aria-valuenow": String(pct), "aria-valuemin": "0", "aria-valuemax": "100" }, h("div", { class: "progress-fill", style: `width:${Math.max(4, pct)}%` })),
+    run.review ? h("span", { class: "stat", title: "复习不扣红心" }, "🛡️") : h("span", { class: "stat hearts", "aria-label": `红心 ${state.hearts}` }, "❤️ ", String(state.hearts)),
   );
-  return { row, nextBtn };
 }
 
-// 正文页：段落、提示框、代码例子（代码 + 运行结果 + 试一试）
-function renderReading(p) {
-  const blocks = p.blocks.map((b) => {
-    if (b.t === "p") return h("p", { text: b.text });
-    if (b.t === "tip") return h("p", { class: "tip-box", text: b.text });
-    if (b.t === "code") {
-      const edited = !!state.drafts[b.id];
-      return h("div", { class: "example", "data-example": b.id },
-        h("div", { class: "ex-block" }, h("div", { class: "ex-label", text: "代码" }), h("pre", { class: "code", text: b.code })),
-        h("div", { class: "ex-block" }, h("div", { class: "ex-label", text: "运行结果" }), h("pre", { class: "result", text: b.output })),
-        h("div", { class: "ex-actions" },
-          button(edited ? "试一试（有改动）" : "试一试", () => openPlayground(b), "btn small try", { "aria-label": `修改并运行这个例子` }),
-        ),
-      );
-    }
-    return null;
-  });
-  const { row } = navRow();
+function confirmExit(run) {
+  sheet((close) => [h("div", { class: "lsheet" },
+    h("h2", { text: "要退出这一关吗？" }),
+    h("p", { text: "退出后，本关的答题进度不会保存（XP 和红心变化会保留）。" }),
+    button("继续学习", close, "btn3d primary wide"),
+    button("退出", () => { close(); renderPath(); }, "btn3d danger-ghost wide"),
+  )]);
+}
+
+function renderIntro(run) {
+  const l = run.lesson;
   appEl.replaceChildren(
-    topbar(`${lesson().id} · ${pageLabel(state.page)}`, { back: renderHome }),
-    h("main", { class: "view reading" },
-      h("h2", { text: p.title }),
-      blocks,
-      p.words?.length ? h("div", { class: "chips" }, p.words.map(wordChip)) : null,
-      row,
+    lessonHeader(run),
+    h("main", { class: "lesson" },
+      h("div", { class: "intro-screen" }, codeBlock(l.introCode, "phone")),
+      h("div", { class: "intro-concept", text: (run.review ? "复习 · " : "") + l.concept }),
+      h("h1", { class: "intro-title", text: l.title }),
+      h("p", { class: "intro-story", text: l.story }),
     ),
+    h("footer", { class: "lessonfoot" }, h("span", { class: "mascot-slot" }, mascot(56)), button("继续", () => renderExercise(run), "btn3d primary grow")),
   );
 }
 
-// “试一试”：全屏打开代码区，可以改、可以运行；“返回教程”回到刚才读的位置
-function openPlayground(b) {
-  const outEl = h("pre", { id: "output", class: "out", "aria-live": "polite" });
-  const statusEl = h("span", { id: "status", role: "status" });
-  const area = buildCodeArea({ draftKey: b.id, initialCode: b.code });
-  let busy = false;
-  const run = async () => {
-    if (busy) return;
-    busy = true;
-    await execCode(area.view.state.doc.toString(), outEl, statusEl);
-    busy = false;
-  };
-  const scrollY = document.querySelector(".view")?.scrollTop || 0;
-  const { overlay } = openOverlay("试一试：改一改，再点 Run", [
-    h("div", { class: "code-view" },
-      h("p", { class: "note pad", text: "随便改，改坏了点「恢复原样」。原来的运行结果：" + b.output.replace(/\n/g, " ⏎ ") }),
-      area.editorEl,
-      h("div", { id: "controls" },
-        button("Run", run, "btn run", { id: "run" }),
-        button("Stop", () => runner.stop(), "btn", { id: "stop" }),
-        button("恢复原样", () => { area.reset(); outEl.textContent = ""; statusEl.textContent = ""; }, "btn small"),
-        statusEl,
-      ),
-      outEl,
-      area.sysBar,
-      area.kbEl,
+function renderExercise(run) {
+  if (run.queue.length === 0) return renderFinish(run);
+  const idx = run.queue[0];
+  const ex = run.lesson.exercises[idx];
+  window.__app.currentEx = ex; // 给自动测试用
+  let hintShown = false;
+
+  const outPanel = h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
+  const checkBtn = button("检查", () => check(), "btn3d primary grow", { "data-check": "" });
+  checkBtn.disabled = true;
+
+  // 各题型的答题区，返回 { node, answer(), ready(), describe() }
+  const area = ex.type === "predict" ? predictArea(ex, () => (checkBtn.disabled = !area.ready()))
+    : ex.type === "fill" ? fillArea(ex, () => (checkBtn.disabled = !area.ready()))
+    : orderArea(ex, () => (checkBtn.disabled = !area.ready()));
+
+  const helpBtn = button(mascot(56), () => {
+    const text = hintShown || !ex.hint ? correctAnswerText(ex) : ex.hint;
+    const title = hintShown || !ex.hint ? "答案是：" : "小码提示：";
+    hintShown = true;
+    sheet((close) => [h("div", { class: "lsheet hint" }, h("div", { class: "hint-row" }, mascot(48), h("b", { text: title })), h("pre", { class: "hint-text", text }), button("好的", close, "btn3d primary wide"))]);
+  }, "mascot-btn", { "aria-label": "让小码给个提示" });
+
+  appEl.replaceChildren(
+    lessonHeader(run),
+    h("main", { class: "lesson" },
+      ex.tip ? h("p", { class: "tip-line", text: "💡 " + ex.tip }) : null,
+      h("h2", { class: "q", text: ex.prompt }),
+      area.node,
+      outPanel,
     ),
-  ], {
-    full: true,
-    onClose: () => {
-      area.destroy();
-      renderPage();
-      const v = document.querySelector(".view");
-      if (v) v.scrollTop = scrollY;
-    },
-  });
-  overlay.classList.add("playground");
-  area.view.focus();
-}
+    h("footer", { class: "lessonfoot" }, helpBtn, checkBtn),
+  );
 
-function hintBox(ex) {
-  const list = h("ol", { class: "hints" });
-  const render = () => {
-    const n = state.hintLevel[ex.id] || 0;
-    list.replaceChildren(...ex.hints.slice(0, n).map((t, i) => h("li", {},
-      h("b", { text: i === ex.hints.length - 1 ? "参考答案：" : `提示 ${i + 1}：` }),
-      h("span", { class: "pre-line", text: i === ex.hints.length - 1 ? t.replace(/^参考答案[：:]?\s*/, "") : t }))));
-    btn.textContent = n >= ex.hints.length ? "提示已全部显示" : n === ex.hints.length - 1 ? "Hint · 看答案" : `Hint · ${n + 1}/${ex.hints.length}`;
-    btn.disabled = n >= ex.hints.length;
-  };
-  const btn = button("Hint", () => {
-    const n = (state.hintLevel[ex.id] || 0) + 1;
-    if (n > ex.hints.length) return;
-    state.hintLevel[ex.id] = n;
-    if (n === ex.hints.length && !state.exDone[ex.id]) state.viewedSolution[ex.id] = true;
-    persist();
-    render();
-  }, "btn small");
-  render();
-  return { btn, list };
-}
+  function check() {
+    checkBtn.disabled = true;
+    area.lock();
+    const ok = area.isCorrect();
+    // 显示真实运行结果：选输出题跑原程序，其他题跑你拼出来的程序
+    const code = ex.type === "predict" ? ex.code : area.code();
+    const pre = outPanel.querySelector("pre");
+    pre.textContent = "运行中…";
+    outPanel.open = true;
+    runForOutput(code).then((r) => {
+      if (!r) { pre.textContent = "（Python 还没加载好，暂时看不到运行结果）"; return; }
+      pre.textContent = r.error ? (r.out ? r.out + "\n" : "") + describeError(r.error) : (r.out || "程序运行完成，没有输出");
+      pre.className = "out" + (r.error ? " error" : "");
+    });
 
-// 综合练习：可以做，也可以跳过
-function renderExercise(ex) {
-  const outEl = h("pre", { id: "output", class: "out", "aria-live": "polite" });
-  const statusEl = h("span", { id: "status", role: "status" });
-  const feedback = h("div", { class: "feedback", role: "status", "aria-live": "polite" });
-  const area = buildCodeArea({ draftKey: ex.id, initialCode: ex.initialCode || "" });
-  const done = () => !!state.exDone[ex.id];
-  const { row, nextBtn } = navRow({ nextLabel: done() ? "Next" : "跳过", nextCls: done() ? "btn primary" : "btn" });
-  const markNext = () => { nextBtn.textContent = "Next"; nextBtn.className = "btn primary"; };
-  const { btn: hintBtn, list: hintList } = hintBox(ex);
-
-  let busy = false;
-  const runBtn = button("Run", async () => {
-    if (busy) return;
-    busy = true; feedback.replaceChildren(); feedback.className = "feedback";
-    const code = area.view.state.doc.toString();
-    const r = await execCode(code, outEl, statusEl);
-    if (r.error) { const extra = explainForBeginner(r.error, code); if (extra) { feedback.className = "feedback bad"; feedback.textContent = extra; } }
-    busy = false;
-  }, "btn run", { id: "run" });
-  const checkBtn = button("Check", async () => {
-    if (busy) return;
-    const code = area.view.state.doc.toString();
-    feedback.replaceChildren(); feedback.className = "feedback"; // 先清掉上一次的结果，避免看错
-    if (!code.trim()) { feedback.className = "feedback bad"; feedback.textContent = "代码还是空的，先写一点再检查。"; return; }
-    busy = true;
-    const r = await execCode(code, outEl, statusEl);
-    busy = false;
-    if (r.status === "loadError" || r.status === "busy") return;
-    if (r.error) {
-      feedback.className = "feedback bad";
-      feedback.replaceChildren(h("b", { text: "✗ 程序出错了。" }), " ", explainForBeginner(r.error, code) || "看看上面的错误说明，改好后再检查。");
-      return;
-    }
-    if (r.status !== "done") { feedback.className = "feedback bad"; feedback.textContent = "程序没有正常结束，改好后再检查。"; return; }
-    const res = checkOutput(ex.check, r.out, code);
-    if (res.pass) {
-      state.exDone[ex.id] = true;
-      delete state.exSkipped[ex.id];
-      persist();
-      statusEl.textContent = "练习通过";
-      feedback.className = "feedback ok";
-      feedback.replaceChildren(h("b", { text: "✓ 通过！" }), " 点 Next 继续。");
-      markNext();
+    if (ok) {
+      run.correct++;
+      const gain = run.review ? XP_REVIEW : XP_CORRECT;
+      run.xp += gain; state.xp += gain; persist();
     } else {
-      feedback.className = "feedback bad";
-      feedback.replaceChildren(h("b", { text: "✗ 还不对。" }), " ", res.message);
+      run.mistakes++;
+      if (!run.review) { loseHeart(state); persist(); }
+      run.queue.push(idx); // 错题放到最后再做
     }
-  }, "btn primary", { id: "check" });
+    run.queue.shift();
+    const reason = ok ? area.why() : area.whyWrong();
+    const outOfHearts = !ok && !run.review && state.hearts <= 0;
+    const fb = h("div", { class: "feedbar " + (ok ? "ok" : "bad"), role: "status" },
+      h("div", { class: "fb-head" }, h("b", { text: ok ? "答对了！" : "不对哦" }), ok ? h("span", { class: "fb-xp", text: `+${run.review ? XP_REVIEW : XP_CORRECT} XP` }) : null),
+      reason ? h("p", { text: reason }) : null,
+      !ok ? h("p", { class: "fb-answer" }, "正确答案：", h("code", { text: correctAnswerText(ex) })) : null,
+      !ok && !run.review ? h("p", { class: "fb-heart", text: `❤️ -1（剩 ${state.hearts} 颗）。这道题稍后再做一次。` }) : null,
+      button(outOfHearts ? "红心用完了" : "继续", () => {
+        if (outOfHearts) { renderPath(); openNoHearts(run.lesson); return; }
+        renderExercise(run);
+      }, "btn3d " + (ok ? "primary" : "danger") + " wide", { "data-continue": "" }),
+    );
+    appEl.querySelector(".lessonfoot").replaceWith(fb);
+    appEl.querySelector(".lessonbar").replaceWith(lessonHeader(run));
+  }
+}
 
-  const taskBody = h("div", { class: "task-body" },
-    h("p", { class: "prompt pre-line", text: ex.prompt }),
-    ex.note ? h("p", { class: "note", text: ex.note }) : null,
-    h("div", { class: "tools" }, hintBtn, (ex.words || []).map(wordChip)),
-    hintList,
-  );
-  const collapseBtn = button("收起", () => {
-    taskBody.hidden = !taskBody.hidden;
-    collapseBtn.textContent = taskBody.hidden ? "展开题目" : "收起";
-  }, "link small");
+function correctAnswerText(ex) {
+  if (ex.type === "predict") return ex.options.find((o) => o.correct).text;
+  if (ex.type === "fill") { let c = ex.code; ex.answer.forEach((t, i) => (c = c.replace(`{${i}}`, t))); return c; }
+  return ex.answers[0].map((k) => ex.lines[k]).join("\n");
+}
 
-  appEl.replaceChildren(
-    topbar(`${lesson().id} · ${pageLabel(state.page)}`, { back: renderHome }),
-    h("main", { class: "code-view" },
-      h("section", { id: "task" },
-        h("div", { class: "ex-head" }, h("h2", { text: ex.title }), done() ? h("span", { class: "badge", text: "已完成 ✓" }) : null, collapseBtn),
-        taskBody,
+// 选输出题
+function predictArea(ex, onChange) {
+  let picked = null; let locked = false;
+  const opts = h("div", { class: "choices" }, ex.options.map((o, i) => {
+    const b = button(h("pre", { text: o.text }), () => {
+      if (locked) return;
+      picked = i;
+      opts.querySelectorAll(".choice").forEach((x, k) => x.classList.toggle("sel", k === i));
+      onChange();
+    }, "choice", { "aria-label": `选项：${o.text.replace(/\n/g, " 换行 ")}` });
+    return b;
+  }));
+  return {
+    node: h("div", {}, codeBlock(ex.code), opts),
+    ready: () => picked !== null,
+    lock: () => { locked = true; opts.querySelectorAll(".choice").forEach((x, k) => { if (ex.options[k].correct) x.classList.add("right"); else if (k === picked) x.classList.add("wrong"); }); },
+    isCorrect: () => !!ex.options[picked].correct,
+    why: () => ex.options[picked].why,
+    whyWrong: () => ex.options[picked].why,
+    code: () => ex.code,
+  };
+}
+
+// 点词块填空 / 修程序
+function fillArea(ex, onChange) {
+  const n = (ex.code.match(/\{\d+\}/g) || []).length;
+  let slots = ex.initial ? [...ex.initial] : Array(n).fill(null);
+  let active = Math.max(0, slots.findIndex((s) => s === null || (ex.initial && s === ex.initial[0])));
+  let locked = false;
+  const codeEl = h("div", { class: "codeblock fill" });
+  const bank = h("div", { class: "bank" });
+  const render = () => {
+    codeEl.replaceChildren(...ex.code.split("\n").map((line, li) => {
+      const parts = line.split(/(\{\d+\})/);
+      return h("div", { class: "cl" }, h("span", { class: "ln", text: String(li + 1) }), h("span", { class: "lc" }, parts.flatMap((p) => {
+        const m = /^\{(\d+)\}$/.exec(p);
+        if (!m) return codeLine(p);
+        const k = Number(m[1]);
+        return button(slots[k] ?? "", () => { if (!locked) { active = k; render(); } },
+          "slot" + (slots[k] ? " filled" : "") + (k === active && !locked ? " active" : ""), { "aria-label": `空格 ${k + 1}：${slots[k] || "空"}`, "data-slot": String(k) });
+      })));
+    }));
+    bank.replaceChildren(
+      h("div", { class: "bank-ctrl" },
+        button("⌫", () => { if (!locked) { slots[active] = null; render(); onChange(); } }, "kchip ctrl", { "aria-label": "清空当前空格" }),
+        button("‹", () => { if (!locked) { active = Math.max(0, active - 1); render(); } }, "kchip ctrl", { "aria-label": "上一个空格" }),
+        button("›", () => { if (!locked) { active = Math.min(n - 1, active + 1); render(); } }, "kchip ctrl", { "aria-label": "下一个空格" }),
       ),
-      area.editorEl,
-      h("div", { id: "controls" }, runBtn, button("Stop", () => runner.stop(), "btn", { id: "stop" }), checkBtn, statusEl),
-      outEl,
-      feedback,
-      row,
-      area.sysBar,
-      area.kbEl,
-    ),
-  );
-  // 跳过：记下来，完成页会提醒可以回来做
-  onActivate(nextBtn, () => { if (!state.exDone[ex.id]) { state.exSkipped[ex.id] = true; persist(); } });
-  area.view.focus();
-  cleanup = () => area.destroy();
+      h("div", { class: "bank-tokens" }, ex.tokens.map((t) => button(t, () => {
+        if (locked) return;
+        slots[active] = t;
+        const nextEmpty = slots.findIndex((s) => s === null);
+        if (nextEmpty !== -1) active = nextEmpty;
+        render(); onChange();
+      }, "kchip tok", { "data-token": t }))),
+    );
+  };
+  render();
+  const reset = button("↺ 重新开始", () => { if (!locked) { slots = ex.initial ? [...ex.initial] : Array(n).fill(null); active = 0; render(); onChange(); } }, "link small reset");
+  const code = () => { let c = ex.code; slots.forEach((t, i) => (c = c.replace(`{${i}}`, t ?? ""))); return c; };
+  const wrongToken = () => slots.find((t, i) => t !== ex.answer[i]);
+  return {
+    node: h("div", {}, codeEl, bank, reset),
+    ready: () => slots.every((s) => s !== null) && !(ex.initial && slots.every((s, i) => s === ex.initial[i])),
+    lock: () => { locked = true; render(); },
+    isCorrect: () => slots.every((t, i) => t === ex.answer[i]),
+    why: () => "",
+    whyWrong: () => ex.why?.[wrongToken()] || "这样运行出来的结果和要求不一样，看看下面的运行结果。",
+    code,
+  };
 }
 
-function renderSummary() {
-  const L = lesson();
-  state.lessonDone[L.id] = true; persist();
-  const exercises = L.pages.filter(isExercise);
-  const nextLesson = course.lessons[course.lessons.findIndex((c) => c.id === L.id) + 1];
-  appEl.replaceChildren(
-    topbar("完成", { back: renderHome }),
-    h("main", { class: "view" },
-      h("h1", { text: `学完了：${L.title}` }),
-      h("p", { text: "你学会了：用 print 输出内容、用变量存值、加减乘除，以及一次输出多个值。" }),
-      h("h3", { text: "练习" }),
-      h("ul", { class: "summary" }, exercises.map((e) => h("li", {},
-        h("span", { text: state.exDone[e.id] ? "✓ " : "· " }),
-        e.title,
-        state.exDone[e.id] && state.viewedSolution[e.id] ? h("span", { class: "muted", text: "（看过答案）" }) : null,
-        !state.exDone[e.id] ? h("span", { class: "muted", text: "（跳过了，随时可以回来做）" }) : null,
-      ))),
-      !state.installTipClosed ? h("div", { class: "tip" },
-        h("p", { text: "想像 App 一样打开？iPhone：Safari 分享按钮 → 「添加到主屏幕」。" }),
-        button("知道了", (e) => { state.installTipClosed = true; persist(); e.currentTarget?.parentElement?.remove(); }, "btn small"),
-      ) : null,
-      nextLesson ? h("p", { class: "meta", text: `下一课「${nextLesson.title}」${nextLesson.available ? "" : "即将推出"}。` }) : null,
-      h("nav", { class: "nav-row" }, button("Back", prev, "btn"), button("回到首页", renderHome, "btn primary")),
-    ),
-  );
+// 排顺序
+function orderArea(ex, onChange) {
+  let chosen = [];
+  let locked = false;
+  const mine = h("div", { class: "order-mine", "aria-label": "你的程序" });
+  const bank = h("div", { class: "order-bank" });
+  const render = () => {
+    mine.replaceChildren(...(chosen.length ? chosen.map((k, i) => button(h("span", {}, h("span", { class: "ln", text: String(i + 1) }), codeLine(ex.lines[k])), () => {
+      if (locked) return; chosen.splice(i, 1); render(); onChange();
+    }, "line-chip in", { "data-line": String(k) })) : [h("p", { class: "muted order-empty", text: "点下面的代码行，按顺序放到这里" })]));
+    bank.replaceChildren(...ex.shuffled.filter((k) => !chosen.includes(k)).map((k) => button(h("span", {}, codeLine(ex.lines[k])), () => {
+      if (locked) return; chosen.push(k); render(); onChange();
+    }, "line-chip", { "data-line": String(k) })));
+  };
+  render();
+  const reset = button("↺ 重新开始", () => { if (!locked) { chosen = []; render(); onChange(); } }, "link small reset");
+  const code = () => chosen.map((k) => ex.lines[k]).join("\n");
+  const answerTexts = ex.answers.map((a) => a.map((k) => ex.lines[k]).join("\n"));
+  return {
+    node: h("div", {}, h("div", { class: "order-label", text: "你的程序" }), mine, h("div", { class: "order-label", text: "代码行" }), bank, reset),
+    ready: () => chosen.length === ex.lines.length,
+    lock: () => { locked = true; },
+    isCorrect: () => answerTexts.includes(code()),
+    why: () => "",
+    whyWrong: () => "顺序不对。程序从上往下一行一行执行：变量要先存好值，才能拿来用；想先显示的，就放在前面。",
+    code,
+  };
 }
 
-// 切到后台或关闭页面时，尽力立即保存
-function flushSave() {
-  if (window.__app.saveDraft) window.__app.saveDraft();
+function renderFinish(run) {
+  const l = run.lesson;
+  const firstTime = !state.done[l.id];
+  state.done[l.id] = true;
+  state.lessonsCompleted++;
+  const bonus = run.review ? 0 : XP_FINISH;
+  run.xp += bonus; state.xp += bonus;
+  const newDay = bumpStreak(state);
+  let heartMsg = null;
+  if (run.review) {
+    regenHearts(state);
+    if (state.hearts < HEARTS_MAX) { state.hearts++; heartMsg = `复习奖励：恢复 1 颗红心（现在 ${state.hearts} 颗）`; }
+  }
   persist();
+  const accuracy = Math.round((run.total / (run.total + run.mistakes)) * 100);
+  appEl.replaceChildren(
+    h("main", { class: "finish" },
+      mascot(120),
+      h("h1", { text: run.mistakes === 0 ? "完美！" : "完成！" }),
+      h("p", { class: "muted", text: firstTime ? `「${l.title}」通关` : `复习「${l.title}」完成` }),
+      h("div", { class: "finish-stats" },
+        h("div", { class: "fs" }, h("small", { text: "本关 XP" }), h("b", { text: `+${run.xp}` })),
+        h("div", { class: "fs" }, h("small", { text: "正确率" }), h("b", { text: `${accuracy}%` })),
+        h("div", { class: "fs" }, h("small", { text: "连续天数" }), h("b", { text: `🔥 ${currentStreak(state)}` })),
+      ),
+      newDay ? h("p", { class: "streak-msg", text: currentStreak(state) > 1 ? `连续学习 ${currentStreak(state)} 天，保持住！` : "今天的学习完成了，明天再来续上连续天数！" }) : null,
+      heartMsg ? h("p", { class: "heart-msg", text: heartMsg }) : null,
+      button("继续", renderPath, "btn3d primary wide", { "data-continue": "" }),
+    ),
+  );
 }
-addEventListener("pagehide", flushSave);
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushSave(); });
 
 // iPhone 弹出系统键盘时，按实际可视高度排版
 const vv = window.visualViewport;
@@ -555,7 +558,9 @@ if (vv) {
   vv.addEventListener("resize", fit);
   fit();
 }
+// 回到前台时刷新红心显示
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { runner, getState: () => state, view: null, saveDraft: null };
-runner.boot(); // 后台加载 Python，不挡住阅读
-renderHome();
+window.__app = { runner, getState: () => state, setState: (s) => { state = s; }, persist, renderPath, words };
+runner.boot(); // 后台加载 Python，用来显示真实运行结果
+if (state.onboarded) renderPath(); else renderOnboarding();

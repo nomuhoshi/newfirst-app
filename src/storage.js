@@ -2,30 +2,32 @@
 // 读写都包在 try/catch 里：无痕模式、存储被禁用时不能让页面白屏。
 
 const KEY = "suipian.progress";
-export const DATA_VERSION = 2;
+export const DATA_VERSION = 3;
+
+export const HEARTS_MAX = 5;
+export const HEART_REGEN_MS = 30 * 60 * 1000; // 每 30 分钟恢复 1 颗
 
 export function freshState() {
   return {
     version: DATA_VERSION,
-    lesson: "L01",
-    page: 0,              // 当前在第几页（正文或练习），最后一页之后是完成页
-    started: false,
-    lessonDone: {},       // 学完的课 { L01: true }
-    exDone: {},           // 做对的练习 { X1: true }
-    exSkipped: {},        // 跳过的练习
-    viewedSolution: {},   // 看过参考答案的练习
-    hintLevel: {},        // 每道练习已看到第几级提示
-    drafts: {},           // 代码草稿：例子（P2a…）和练习（X1…）各自一份 { code, anchor, head }
+    onboarded: false,     // 看过开场介绍
+    xp: 0,
+    hearts: HEARTS_MAX,
+    heartsAt: Date.now(), // 上一次计算红心恢复的时间
+    streak: 0,            // 连续学习天数
+    lastDay: null,        // 最后一次完成关卡的日期（本地日期 YYYY-MM-DD）
+    done: {},             // 完成的关卡 { U1L1: true }
+    lessonsCompleted: 0,  // 完成关卡的总次数（含复习）
     installTipClosed: false,
     lastActive: 0,
   };
 }
 
-// 第 1 版（N01 讲解卡 + 选择题 + 自我介绍任务）的记录：题目都已撤下，不能沿用完成状态
-function migrateV1(old) {
+// 旧版记录（第 1 版讲解卡、第 2 版教程）：题目都已撤下，不沿用完成状态
+function migrateOld(old) {
   const s = freshState();
   s.installTipClosed = !!old.installTipClosed;
-  return { state: s, notice: "课程已更新为新版教程，旧版练习的记录不再使用，请从第一课开始。" };
+  return { state: s, notice: "课程改版为关卡模式，旧版的学习记录不再使用，请从第一关开始。" };
 }
 
 export function loadState() {
@@ -42,14 +44,11 @@ export function loadState() {
   } catch {
     return { state: freshState(), notice: "本机记录损坏，已从头开始。" };
   }
-  if (data && data.version === 1) return migrateV1(data);
-  if (!data || data.version !== DATA_VERSION) {
-    return { state: freshState(), notice: "学习记录的格式无法识别，已从头开始。" };
-  }
+  if (data && (data.version === 1 || data.version === 2)) return migrateOld(data);
+  if (!data || data.version !== DATA_VERSION) return { state: freshState(), notice: "学习记录的格式无法识别，已从头开始。" };
   return { state: { ...freshState(), ...data }, notice: null };
 }
 
-// 返回 true 表示保存成功
 export function saveState(state) {
   try {
     state.lastActive = Date.now();
@@ -63,4 +62,47 @@ export function saveState(state) {
 export function clearState() {
   try { localStorage.removeItem(KEY); } catch { /* 忽略 */ }
   return freshState();
+}
+
+// ---------- 红心 ----------
+// 按经过的时间恢复红心；返回下一颗恢复还要多少毫秒（满了返回 0）
+export function regenHearts(state, now = Date.now()) {
+  if (state.hearts >= HEARTS_MAX) { state.heartsAt = now; return 0; }
+  const n = Math.floor((now - state.heartsAt) / HEART_REGEN_MS);
+  if (n > 0) {
+    state.hearts = Math.min(HEARTS_MAX, state.hearts + n);
+    state.heartsAt += n * HEART_REGEN_MS;
+    if (state.hearts >= HEARTS_MAX) state.heartsAt = now;
+  }
+  return state.hearts >= HEARTS_MAX ? 0 : HEART_REGEN_MS - (now - state.heartsAt);
+}
+
+export function loseHeart(state, now = Date.now()) {
+  regenHearts(state, now);
+  if (state.hearts >= HEARTS_MAX) state.heartsAt = now; // 从满格开始计时
+  state.hearts = Math.max(0, state.hearts - 1);
+}
+
+// ---------- 连续天数 ----------
+export function dayKey(d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function daysBetween(a, b) {
+  const [y1, m1, d1] = a.split("-").map(Number);
+  const [y2, m2, d2] = b.split("-").map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+}
+// 完成一关时调用
+export function bumpStreak(state, now = new Date()) {
+  const today = dayKey(now);
+  if (state.lastDay === today) return false;
+  state.streak = state.lastDay && daysBetween(state.lastDay, today) === 1 ? state.streak + 1 : 1;
+  state.lastDay = today;
+  return true; // 今天第一次完成
+}
+// 显示用：昨天之前就断了的话显示 0
+export function currentStreak(state, now = new Date()) {
+  if (!state.lastDay) return 0;
+  return daysBetween(state.lastDay, dayKey(now)) <= 1 ? state.streak : 0;
 }
