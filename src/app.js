@@ -1,6 +1,7 @@
-// 碎片编程：多邻国式关卡学习。
+// 碎片编程：关卡式学习（原创视觉“墨蓝实验手账”）。
 // 首页是关卡地图；每关 = 故事开场 + 4 道点选题（选输出 / 点词块填空或修程序 / 排顺序）。
 // 答错扣红心、错题放到最后再做；答对加 XP；每天完成一关续上连续天数。
+// 点“检查”的时间线（ms）：0 提交并锁定 → 120 揭示结果 + 声音 → 240 红心/XP 更新 → 280（减少动态效果时 120）可以继续。
 import "./style.css";
 import "./app.css";
 import "./game.css";
@@ -10,6 +11,7 @@ import words from "../content/words.json";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
 import { onActivate } from "./activate.js";
+import * as feel from "./feel.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
@@ -18,6 +20,9 @@ const UNITS = { U1: unit1 };
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;
+const REVEAL_MS = 120;     // 点“检查”到出现结果
+const STATS_MS = 240;      // 红心 / 统计更新
+const CONTINUE_MS = 280;   // “继续”可用
 
 // iPhone 的 Safari 底部有浮动工具栏，会盖住页面最下面一排；从主屏幕打开时没有这个问题
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -50,18 +55,51 @@ function svg(tag, attrs, ...kids) {
   return el;
 }
 
-// 默认吉祥物“小码”：圆角方块 + 两只眼睛 + >_ 嘴巴（以后可以换成正式设计）
+// ---------- 自绘线条图标（24×24，描边 2，颜色跟随文字） ----------
+const ICONS = {
+  flame: "M12 3c.8 3.2 5 5.2 5 9.8a5 5 0 0 1-10 0c0-2 .9-3.3 2.2-4.4.4 1.6 1.2 2.3 2 2.6-.4-2.6-.2-5 .8-8z",
+  bolt: "M13 2.5 5.5 13H11l-1 8.5L18.5 10H13z",
+  heart: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
+  home: "M4 11l8-7 8 7v9H4zM10 20v-6h4v6",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 21c0-4 3.5-6 7.5-6s7.5 2 7.5 6",
+  check: "M5 12.5l4.5 4.5L19 7",
+  lock: "M7 11h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
+  star: "M12 3l2.7 5.9 6.3.7-4.7 4.3 1.3 6.2L12 16.8l-5.6 3.3 1.3-6.2L3 9.6l6.3-.7z",
+  trophy: "M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3M12 14v4M8 21h8",
+  shield: "M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z",
+  close: "M6 6l12 12M18 6L6 18",
+  cross: "M7 7l10 10M17 7L7 17",
+};
+function icon(name, { size = 22, fill = false, cls = "" } = {}) {
+  return svg("svg", { viewBox: "0 0 24 24", width: size, height: size, class: "ico " + cls, "aria-hidden": "true",
+    fill: fill ? "currentColor" : "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+  svg("path", { d: ICONS[name] }));
+}
+
+// ---------- 吉祥物“小码”：折角记录卡（暖白主体、墨蓝括号眼睛、铜橙折角、短脚） ----------
 function mascot(size = 96, mood = "happy") {
-  const s = svg("svg", { viewBox: "0 0 100 100", width: size, height: size, class: "mascot", "aria-hidden": "true" },
-    svg("defs", {}, svg("linearGradient", { id: "mg", x1: "0", y1: "0", x2: "0", y2: "1" },
-      svg("stop", { offset: "0", "stop-color": "#7c6cff" }), svg("stop", { offset: "1", "stop-color": "#4fb3ff" }))),
-    svg("rect", { x: "8", y: "12", width: "84", height: "78", rx: "26", fill: "url(#mg)" }),
-    svg("circle", { cx: "36", cy: "44", r: "9", fill: "#fff" }), svg("circle", { cx: "64", cy: "44", r: "9", fill: "#fff" }),
-    svg("circle", { cx: mood === "sad" ? "36" : "38", cy: mood === "sad" ? "47" : "45", r: "4", fill: "#1b1b2f" }),
-    svg("circle", { cx: mood === "sad" ? "64" : "66", cy: mood === "sad" ? "47" : "45", r: "4", fill: "#1b1b2f" }),
-    svg("text", { x: "50", y: "75", "text-anchor": "middle", "font-size": "18", "font-family": "Menlo, monospace", "font-weight": "700", fill: "#fff" }, document.createTextNode(mood === "sad" ? "> ._" : ">_")),
+  if (mood === "sad") mood = "companion";
+  const eye = (d) => svg("path", { d, class: "m-ink" });
+  const eyes = {
+    happy: [eye("M36 44Q31 51 36 58"), eye("M64 44Q69 51 64 58")],
+    think: [eye("M37 40Q32 47 37 54"), eye("M66 40Q71 47 66 54")],
+    companion: [eye("M31 50Q36 56 41 50"), eye("M59 50Q64 56 69 50")],
+    celebrate: [eye("M31 54Q36 46 41 54"), eye("M59 54Q64 46 69 54")],
+  }[mood];
+  const mouth = {
+    happy: svg("path", { d: "M42 68Q50 75 58 68", class: "m-ink" }),
+    think: svg("path", { d: "M45 69H57", class: "m-ink" }),
+    companion: svg("path", { d: "M44 68Q50 72 56 68", class: "m-ink" }),
+    celebrate: svg("path", { d: "M42 66Q50 80 58 66z", class: "m-ink m-solid" }),
+  }[mood];
+  return svg("svg", { viewBox: "0 0 100 100", width: size, height: size, class: "mascot", "aria-hidden": "true" },
+    svg("rect", { x: "26", y: "86", width: "14", height: "9", rx: "3", class: "m-solid m-ink" }),
+    svg("rect", { x: "60", y: "86", width: "14", height: "9", rx: "3", class: "m-solid m-ink" }),
+    svg("path", { d: "M22 12H66L90 36V80Q90 90 80 90H22Q12 90 12 80V22Q12 12 22 12Z", class: "m-body" }),
+    svg("path", { d: "M66 12L90 36H76Q66 36 66 26Z", class: "m-fold" }),
+    ...eyes, mouth,
+    mood === "celebrate" ? svg("path", { d: "M14 6v8M10 10h8", class: "m-spark" }) : null,
   );
-  return s;
 }
 
 // 简单的代码着色（只用于显示）
@@ -87,6 +125,7 @@ function codeBlock(code, cls = "") {
 const loaded = loadState();
 let state = loaded.state;
 let notice = loaded.notice;
+feel.setPrefs(state.prefs);
 if (notice) saveState(state); // 迁移或修复后的记录立即存一次，下次不再重复提示
 function persist() {
   if (!saveState(state)) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
@@ -97,6 +136,7 @@ function lessonStatus(l) {
   if (state.done[l.id]) return "done";
   return firstUndone()?.id === l.id ? "current" : "locked";
 }
+let currentRun = null;
 
 // ---------- Python 运行（显示“运行结果”用） ----------
 const appEl = document.getElementById("app");
@@ -152,13 +192,13 @@ const fmtWait = (ms) => { const m = Math.ceil(ms / 60000); return m >= 60 ? `${M
 // ---------- 开场介绍 ----------
 function renderOnboarding(i = 0) {
   const steps = [
-    { text: "你好，我是小码！", sub: "" },
-    { text: "我会陪你一关一关学 Python。", sub: "每关只要两三分钟，全部用点的，不用打字。" },
-    { text: "卡住了就点我，我会给你提示。", sub: "做题时我在左下角。" },
+    { text: "你好，我是小码！", sub: "", mood: "happy" },
+    { text: "我会陪你一关一关学 Python。", sub: "每关只要两三分钟，全部用点的，不用打字。", mood: "companion" },
+    { text: "卡住了就点我，我会给你提示。", sub: "做题时我在左下角。", mood: "think" },
   ];
   const s = steps[i];
   appEl.replaceChildren(h("main", { class: "onboard" },
-    h("div", { class: "onboard-mid" }, mascot(120), h("h1", { text: s.text }), s.sub ? h("p", { text: s.sub }) : null),
+    h("div", { class: "onboard-mid" }, mascot(120, s.mood), h("h1", { text: s.text }), s.sub ? h("p", { text: s.sub }) : null),
     h("div", { class: "onboard-dots" }, steps.map((_, k) => h("span", { class: k === i ? "on" : "" }))),
     button(i < steps.length - 1 ? "继续" : "开始学习", () => {
       if (i < steps.length - 1) renderOnboarding(i + 1);
@@ -168,25 +208,31 @@ function renderOnboarding(i = 0) {
 }
 
 // ---------- 顶部状态栏 ----------
+function heartStat(extraCls = "") {
+  return h("span", { class: "stat hearts " + extraCls, title: "红心", "aria-label": `红心 ${state.hearts}` },
+    icon("heart", { size: 20, fill: state.hearts > 0 }), String(state.hearts));
+}
 function statsBar() {
   const wait = regenHearts(state);
-  const hearts = h("span", { class: "stat hearts", title: wait ? `下一颗红心：${fmtWait(wait)}后` : "红心已满", "aria-label": `红心 ${state.hearts}` }, "❤️ ", String(state.hearts));
+  const hearts = heartStat();
+  hearts.title = wait ? `下一颗红心：${fmtWait(wait)}后` : "红心已满";
   return h("header", { class: "statsbar" },
-    h("span", { class: "stat streak", "aria-label": `连续 ${currentStreak(state)} 天` }, "🔥 ", String(currentStreak(state))),
-    h("span", { class: "stat xp", "aria-label": `经验值 ${state.xp}` }, "⚡ ", String(state.xp)),
+    h("span", { class: "stat streak", "aria-label": `连续 ${currentStreak(state)} 天` }, icon("flame", { size: 20 }), String(currentStreak(state))),
+    h("span", { class: "stat xp", "aria-label": `经验值 ${state.xp}` }, icon("bolt", { size: 20 }), String(state.xp)),
     hearts,
   );
 }
 function tabBar(active) {
   return h("nav", { class: "tabbar" },
-    button(h("span", {}, "🏠", h("small", { text: "学习" })), renderPath, "tab" + (active === "path" ? " on" : ""), { "aria-label": "学习" }),
-    button(h("span", {}, "👤", h("small", { text: "我的" })), renderMe, "tab" + (active === "me" ? " on" : ""), { "aria-label": "我的" }),
+    button(h("span", {}, icon("home", { size: 24 }), h("small", { text: "学习" })), renderPath, "tab" + (active === "path" ? " on" : ""), { "aria-label": "学习" }),
+    button(h("span", {}, icon("user", { size: 24 }), h("small", { text: "我的" })), renderMe, "tab" + (active === "me" ? " on" : ""), { "aria-label": "我的" }),
   );
 }
 
 // ---------- 关卡地图 ----------
 function renderPath() {
   regenHearts(state);
+  currentRun = null;
   const units = course.units.map((u) => {
     if (!u.available) {
       return h("section", { class: "unit locked" }, h("div", { class: "unit-banner" },
@@ -199,7 +245,7 @@ function renderPath() {
         const st = lessonStatus(l);
         const offset = [0, 1, 2, 1, 0, -1][i % 6];
         const node = button(
-          h("span", { class: "node-face", "aria-hidden": "true" }, st === "done" ? "✓" : st === "locked" ? "🔒" : l.review ? "🏆" : "★"),
+          h("span", { class: "node-face", "aria-hidden": "true" }, icon(st === "done" ? "check" : st === "locked" ? "lock" : l.review ? "trophy" : "star", { size: 28, fill: st === "current" && !l.review })),
           () => openLessonSheet(l), `node ${st}${l.review ? " review" : ""}`,
           { "aria-label": `${l.title}（${st === "done" ? "已完成" : st === "current" ? "当前关卡" : "未解锁"}）`, "data-lesson": l.id },
         );
@@ -227,7 +273,7 @@ function openLessonSheet(l) {
       h("h2", { text: l.title }),
       h("p", { text: st === "locked" ? "先完成前面的关卡，这一关才会解锁。" : l.story }),
       st === "locked" ? button("知道了", close, "btn3d wide")
-        : st === "done" ? [button("复习（不扣红心，完成后 +1 ❤️）", () => { close(); startLesson(l, { review: true }); }, "btn3d primary wide"), button("关闭", close, "btn3d ghost wide")]
+        : st === "done" ? [button("复习（不扣红心，完成后 +1 红心）", () => { close(); startLesson(l, { review: true }); }, "btn3d primary wide"), button("关闭", close, "btn3d ghost wide")]
         : [button(`开始 +${l.exercises.length * XP_CORRECT + XP_FINISH} XP`, () => { close(); startLesson(l); }, "btn3d primary wide"), button("关闭", close, "btn3d ghost wide")],
     ),
   ]);
@@ -240,7 +286,7 @@ function openNoHearts(forLesson) {
   const practice = doneList[doneList.length - 1] || forLesson;
   sheet((close) => [
     h("div", { class: "lsheet" },
-      mascot(72, "sad"),
+      mascot(72, "companion"),
       h("h2", { text: "红心用完了" }),
       h("p", { text: `每 30 分钟恢复 1 颗，下一颗还要 ${fmtWait(wait)}。也可以做一关复习：复习不扣红心，完成后恢复 1 颗。` }),
       button(`复习「${practice.title}」`, () => { close(); startLesson(practice, { review: true }); }, "btn3d primary wide"),
@@ -250,29 +296,51 @@ function openNoHearts(forLesson) {
 }
 
 // ---------- 我的 ----------
+function toggleRow(label, sub, key, { disabled = false } = {}) {
+  const on = !!state.prefs[key] && !disabled;
+  const sw = h("button", { type: "button", class: "switch" + (on ? " on" : ""), role: "switch", "aria-checked": String(on), "aria-label": label, "data-pref": key, disabled: disabled || null },
+    h("span", { class: "knob" }));
+  onActivate(sw, () => {
+    if (sw.disabled) return;
+    state.prefs[key] = !state.prefs[key];
+    feel.setPrefs(state.prefs);
+    persist();
+    sw.classList.toggle("on", state.prefs[key]);
+    sw.setAttribute("aria-checked", String(state.prefs[key]));
+    if (key === "sound" && state.prefs.sound) feel.play("select");
+    if (key === "haptics" && state.prefs.haptics) feel.haptic();
+  });
+  return h("div", { class: "toggle-row" }, h("div", {}, h("b", { text: label }), h("small", { text: sub })), sw);
+}
+
 function renderMe() {
+  currentRun = null;
   let confirmBox = null;
   const clearBtn = button("清除学习记录", () => {
     if (confirmBox) return;
     confirmBox = h("div", { class: "confirm", role: "alertdialog" },
       h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
-      button("确定清除", () => { state = clearState(); state.onboarded = true; persist(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
+      button("确定清除", () => { const prefs = state.prefs; state = clearState(); state.prefs = prefs; state.onboarded = true; persist(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
       button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
     );
     clearBtn.after(confirmBox);
   }, "link small");
   const wait = regenHearts(state);
   const doneCount = allLessons().filter((l) => state.done[l.id]).length;
+  const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? icon(ic, { size: 20 }) : null, value), h("span", { text: label }));
   appEl.replaceChildren(
     statsBar(),
     h("main", { class: "view me" },
       h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: "记录只保存在这台设备上" }))),
       h("div", { class: "me-grid" },
-        h("div", { class: "me-card" }, h("b", { text: `🔥 ${currentStreak(state)}` }), h("span", { text: "连续天数" })),
-        h("div", { class: "me-card" }, h("b", { text: `⚡ ${state.xp}` }), h("span", { text: "经验值 XP" })),
-        h("div", { class: "me-card" }, h("b", { text: `${doneCount}/${allLessons().length}` }), h("span", { text: "已完成关卡" })),
-        h("div", { class: "me-card" }, h("b", { text: `❤️ ${state.hearts}/${HEARTS_MAX}` }), h("span", { text: wait ? `${fmtWait(wait)}后 +1` : "红心已满" })),
+        statCard("flame", String(currentStreak(state)), "连续天数"),
+        statCard("bolt", String(state.xp), "经验值 XP"),
+        statCard(null, `${doneCount}/${allLessons().length}`, "已完成关卡"),
+        statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
+      h("h3", { text: "声音与振动" }),
+      toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
+      toggleRow("振动", feel.hapticsSupported() ? "点“检查”时轻振一下" : "这台设备的浏览器不支持网页振动（iPhone 都是这样）", "haptics", { disabled: !feel.hapticsSupported() }),
       h("h3", { text: "规则" }),
       h("ul", { class: "rules" },
         h("li", { text: `答对一题 +${XP_CORRECT} XP，完成一关再 +${XP_FINISH} XP；复习每题 +${XP_REVIEW} XP。` }),
@@ -301,15 +369,16 @@ function startLesson(l, { review = false } = {}) {
     wrongOnce: new Set(),
     mistakes: 0,
   };
+  currentRun = run;
   renderIntro(run);
 }
 
 function lessonHeader(run) {
   const pct = Math.round((run.correct / run.total) * 100);
   return h("header", { class: "lessonbar" },
-    button("✕", () => confirmExit(run), "icon-btn ghost", { "aria-label": "退出本关" }),
+    button(icon("close", { size: 24 }), () => confirmExit(run), "icon-btn ghost", { "aria-label": "退出本关" }),
     h("div", { class: "progress", role: "progressbar", "aria-valuenow": String(pct), "aria-valuemin": "0", "aria-valuemax": "100" }, h("div", { class: "progress-fill", style: `width:${Math.max(4, pct)}%` })),
-    run.review ? h("span", { class: "stat", title: "复习不扣红心" }, "🛡️") : h("span", { class: "stat hearts", "aria-label": `红心 ${state.hearts}` }, "❤️ ", String(state.hearts)),
+    run.review ? h("span", { class: "stat shield", title: "复习不扣红心" }, icon("shield", { size: 22 })) : heartStat(),
   );
 }
 
@@ -341,28 +410,31 @@ function renderExercise(run) {
   const idx = run.queue[0];
   const ex = run.lesson.exercises[idx];
   window.__app.currentEx = ex; // 给自动测试用
+  window.__app.renders = (window.__app.renders || 0) + 1;
   let hintShown = false;
+  let submitted = false; // 一道题只能提交一次
 
   const outPanel = h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
   const checkBtn = button("检查", () => check(), "btn3d primary grow", { "data-check": "" });
   checkBtn.disabled = true;
+  const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
 
-  // 各题型的答题区，返回 { node, answer(), ready(), describe() }
-  const area = ex.type === "predict" ? predictArea(ex, () => (checkBtn.disabled = !area.ready()))
-    : ex.type === "fill" ? fillArea(ex, () => (checkBtn.disabled = !area.ready()))
-    : orderArea(ex, () => (checkBtn.disabled = !area.ready()));
+  // 各题型的答题区，返回 { node, ready(), lock(), mark(), isCorrect(), why(), whyWrong(), code() }
+  const area = ex.type === "predict" ? predictArea(ex, onChange)
+    : ex.type === "fill" ? fillArea(ex, onChange)
+    : orderArea(ex, onChange);
 
-  const helpBtn = button(mascot(56), () => {
+  const helpBtn = button(mascot(56, "think"), () => {
     const text = hintShown || !ex.hint ? correctAnswerText(ex) : ex.hint;
     const title = hintShown || !ex.hint ? "答案是：" : "小码提示：";
     hintShown = true;
-    sheet((close) => [h("div", { class: "lsheet hint" }, h("div", { class: "hint-row" }, mascot(48), h("b", { text: title })), h("pre", { class: "hint-text", text }), button("好的", close, "btn3d primary wide"))]);
+    sheet((close) => [h("div", { class: "lsheet hint" }, h("div", { class: "hint-row" }, mascot(48, "think"), h("b", { text: title })), h("pre", { class: "hint-text", text }), button("好的", close, "btn3d primary wide"))]);
   }, "mascot-btn", { "aria-label": "让小码给个提示" });
 
   appEl.replaceChildren(
     lessonHeader(run),
     h("main", { class: "lesson" },
-      ex.tip ? h("p", { class: "tip-line", text: "💡 " + ex.tip }) : null,
+      ex.tip ? h("p", { class: "tip-line" }, h("b", { text: "提示 " }), ex.tip) : null,
       h("h2", { class: "q", text: ex.prompt }),
       area.node,
       outPanel,
@@ -371,20 +443,15 @@ function renderExercise(run) {
   );
 
   function check() {
+    if (submitted || checkBtn.disabled) return; // 重复点击不会二次计分
+    submitted = true;
+    // ---- 0 ms：提交并锁定，计分只发生这一次 ----
     checkBtn.disabled = true;
+    checkBtn.textContent = "检查中";
     area.lock();
+    feel.haptic(); // 必须在用户点击的这一刻请求
     const ok = area.isCorrect();
-    // 显示真实运行结果：选输出题跑原程序，其他题跑你拼出来的程序
-    const code = ex.type === "predict" ? ex.code : area.code();
-    const pre = outPanel.querySelector("pre");
-    pre.textContent = "运行中…";
-    outPanel.open = true;
-    runForOutput(code).then((r) => {
-      if (!r) { pre.textContent = "（Python 还没加载好，暂时看不到运行结果）"; return; }
-      pre.textContent = r.error ? (r.out ? r.out + "\n" : "") + describeError(r.error) : (r.out || "程序运行完成，没有输出");
-      pre.className = "out" + (r.error ? " error" : "");
-    });
-
+    const reduce = feel.reducedMotion();
     if (ok) {
       run.correct++;
       const gain = run.review ? XP_REVIEW : XP_CORRECT;
@@ -397,18 +464,50 @@ function renderExercise(run) {
     run.queue.shift();
     const reason = ok ? area.why() : area.whyWrong();
     const outOfHearts = !ok && !run.review && state.hearts <= 0;
+
+    // 显示真实运行结果：选输出题跑原程序，其他题跑你拼出来的程序
+    const code = ex.type === "predict" ? ex.code : area.code();
+    const pre = outPanel.querySelector("pre");
+    pre.textContent = "运行中…";
+    outPanel.open = true;
+    runForOutput(code).then((r) => {
+      if (!pre.isConnected) return;
+      if (!r) { pre.textContent = "（Python 还没加载好，暂时看不到运行结果）"; return; }
+      pre.textContent = r.error ? (r.out ? r.out + "\n" : "") + describeError(r.error) : (r.out || "程序运行完成，没有输出");
+      pre.className = "out" + (r.error ? " error" : "");
+    });
+
+    let continued = false;
+    const contBtn = button(outOfHearts ? "红心用完了" : "继续", () => {
+      if (continued) return; // 快速连点“继续”只算一次
+      continued = true;
+      if (outOfHearts) { renderPath(); openNoHearts(run.lesson); return; }
+      renderExercise(run);
+    }, "btn3d " + (ok ? "primary" : "danger") + " wide", { "data-continue": "" });
+    contBtn.disabled = true;
     const fb = h("div", { class: "feedbar " + (ok ? "ok" : "bad"), role: "status" },
-      h("div", { class: "fb-head" }, h("b", { text: ok ? "答对了！" : "不对哦" }), ok ? h("span", { class: "fb-xp", text: `+${run.review ? XP_REVIEW : XP_CORRECT} XP` }) : null),
+      h("div", { class: "fb-head" }, icon(ok ? "check" : "cross", { size: 26, cls: "fb-ico" }), h("b", { text: ok ? "答对了！" : "不对哦" }), ok ? h("span", { class: "fb-xp", text: `+${run.review ? XP_REVIEW : XP_CORRECT} XP` }) : null),
       reason ? h("p", { text: reason }) : null,
       !ok ? h("p", { class: "fb-answer" }, "正确答案：", h("code", { text: correctAnswerText(ex) })) : null,
-      !ok && !run.review ? h("p", { class: "fb-heart", text: `❤️ -1（剩 ${state.hearts} 颗）。这道题稍后再做一次。` }) : null,
-      button(outOfHearts ? "红心用完了" : "继续", () => {
-        if (outOfHearts) { renderPath(); openNoHearts(run.lesson); return; }
-        renderExercise(run);
-      }, "btn3d " + (ok ? "primary" : "danger") + " wide", { "data-continue": "" }),
+      !ok && !run.review ? h("p", { class: "fb-heart" }, icon("heart", { size: 16 }), `红心 -1（剩 ${state.hearts} 颗）。这道题稍后再做一次。`) : null,
+      contBtn,
     );
-    appEl.querySelector(".lessonfoot").replaceWith(fb);
-    appEl.querySelector(".lessonbar").replaceWith(lessonHeader(run));
+
+    // ---- 120 ms：揭示结果 ----
+    setTimeout(() => {
+      if (!checkBtn.isConnected) return; // 这期间已经离开了这道题，旧回调什么也不做
+      area.mark();
+      feel.play(ok ? "correct" : "wrong");
+      appEl.querySelector(".lessonfoot").replaceWith(fb);
+      // ---- 240 ms：红心 / 统计更新 ----
+      setTimeout(() => {
+        if (!fb.isConnected) return;
+        appEl.querySelector(".lessonbar").replaceWith(lessonHeader(run));
+        if (!ok && !run.review) appEl.querySelector(".lessonbar .hearts")?.classList.add("lost");
+      }, reduce ? 0 : STATS_MS - REVEAL_MS);
+      // ---- 280 ms：可以继续（减少动态效果时揭示即可继续） ----
+      setTimeout(() => { if (fb.isConnected) contBtn.disabled = false; }, reduce ? 0 : CONTINUE_MS - REVEAL_MS);
+    }, REVEAL_MS);
   }
 }
 
@@ -425,6 +524,7 @@ function predictArea(ex, onChange) {
     const b = button(h("pre", { text: o.text }), () => {
       if (locked) return;
       picked = i;
+      feel.play("select");
       opts.querySelectorAll(".choice").forEach((x, k) => x.classList.toggle("sel", k === i));
       onChange();
     }, "choice", { "aria-label": `选项：${o.text.replace(/\n/g, " 换行 ")}` });
@@ -433,7 +533,8 @@ function predictArea(ex, onChange) {
   return {
     node: h("div", {}, codeBlock(ex.code), opts),
     ready: () => picked !== null,
-    lock: () => { locked = true; opts.querySelectorAll(".choice").forEach((x, k) => { if (ex.options[k].correct) x.classList.add("right"); else if (k === picked) x.classList.add("wrong"); }); },
+    lock: () => { locked = true; }, // 先保持中性的“已选中”外观
+    mark: () => { opts.querySelectorAll(".choice").forEach((x, k) => { if (ex.options[k].correct) x.classList.add("right"); else if (k === picked) x.classList.add("wrong"); }); },
     isCorrect: () => !!ex.options[picked].correct,
     why: () => ex.options[picked].why,
     whyWrong: () => ex.options[picked].why,
@@ -447,6 +548,7 @@ function fillArea(ex, onChange) {
   let slots = ex.initial ? [...ex.initial] : Array(n).fill(null);
   let active = Math.max(0, slots.findIndex((s) => s === null || (ex.initial && s === ex.initial[0])));
   let locked = false;
+  let marked = false;
   const codeEl = h("div", { class: "codeblock fill" });
   const bank = h("div", { class: "bank" });
   const render = () => {
@@ -456,19 +558,21 @@ function fillArea(ex, onChange) {
         const m = /^\{(\d+)\}$/.exec(p);
         if (!m) return codeLine(p);
         const k = Number(m[1]);
-        return button(slots[k] ?? "", () => { if (!locked) { active = k; render(); } },
-          "slot" + (slots[k] ? " filled" : "") + (k === active && !locked ? " active" : ""), { "aria-label": `空格 ${k + 1}：${slots[k] || "空"}`, "data-slot": String(k) });
+        const bad = marked && slots[k] !== ex.answer[k];
+        return button(slots[k] ?? "", () => { if (!locked) { active = k; feel.play("select"); render(); } },
+          "slot" + (slots[k] ? " filled" : "") + (k === active && !locked ? " active" : "") + (marked ? (bad ? " wrong" : " right") : ""), { "aria-label": `空格 ${k + 1}：${slots[k] || "空"}`, "data-slot": String(k) });
       })));
     }));
     bank.replaceChildren(
       h("div", { class: "bank-ctrl" },
-        button("⌫", () => { if (!locked) { slots[active] = null; render(); onChange(); } }, "kchip ctrl", { "aria-label": "清空当前空格" }),
-        button("‹", () => { if (!locked) { active = Math.max(0, active - 1); render(); } }, "kchip ctrl", { "aria-label": "上一个空格" }),
-        button("›", () => { if (!locked) { active = Math.min(n - 1, active + 1); render(); } }, "kchip ctrl", { "aria-label": "下一个空格" }),
+        button("⌫", () => { if (!locked) { slots[active] = null; feel.play("undo"); render(); onChange(); } }, "kchip ctrl", { "aria-label": "清空当前空格" }),
+        button("‹", () => { if (!locked) { active = Math.max(0, active - 1); feel.play("select"); render(); } }, "kchip ctrl", { "aria-label": "上一个空格" }),
+        button("›", () => { if (!locked) { active = Math.min(n - 1, active + 1); feel.play("select"); render(); } }, "kchip ctrl", { "aria-label": "下一个空格" }),
       ),
       h("div", { class: "bank-tokens" }, ex.tokens.map((t) => button(t, () => {
         if (locked) return;
         slots[active] = t;
+        feel.play("place");
         const nextEmpty = slots.findIndex((s) => s === null);
         if (nextEmpty !== -1) active = nextEmpty;
         render(); onChange();
@@ -476,13 +580,14 @@ function fillArea(ex, onChange) {
     );
   };
   render();
-  const reset = button("↺ 重新开始", () => { if (!locked) { slots = ex.initial ? [...ex.initial] : Array(n).fill(null); active = 0; render(); onChange(); } }, "link small reset");
+  const reset = button("↺ 重新开始", () => { if (!locked) { slots = ex.initial ? [...ex.initial] : Array(n).fill(null); active = 0; feel.play("undo"); render(); onChange(); } }, "link small reset");
   const code = () => { let c = ex.code; slots.forEach((t, i) => (c = c.replace(`{${i}}`, t ?? ""))); return c; };
   const wrongToken = () => slots.find((t, i) => t !== ex.answer[i]);
   return {
     node: h("div", {}, codeEl, bank, reset),
     ready: () => slots.every((s) => s !== null) && !(ex.initial && slots.every((s, i) => s === ex.initial[i])),
     lock: () => { locked = true; render(); },
+    mark: () => { marked = true; render(); },
     isCorrect: () => slots.every((t, i) => t === ex.answer[i]),
     why: () => "",
     whyWrong: () => ex.why?.[wrongToken()] || "这样运行出来的结果和要求不一样，看看下面的运行结果。",
@@ -498,20 +603,21 @@ function orderArea(ex, onChange) {
   const bank = h("div", { class: "order-bank" });
   const render = () => {
     mine.replaceChildren(...(chosen.length ? chosen.map((k, i) => button(h("span", {}, h("span", { class: "ln", text: String(i + 1) }), codeLine(ex.lines[k])), () => {
-      if (locked) return; chosen.splice(i, 1); render(); onChange();
+      if (locked) return; chosen.splice(i, 1); feel.play("undo"); render(); onChange();
     }, "line-chip in", { "data-line": String(k) })) : [h("p", { class: "muted order-empty", text: "点下面的代码行，按顺序放到这里" })]));
     bank.replaceChildren(...ex.shuffled.filter((k) => !chosen.includes(k)).map((k) => button(h("span", {}, codeLine(ex.lines[k])), () => {
-      if (locked) return; chosen.push(k); render(); onChange();
+      if (locked) return; chosen.push(k); feel.play("place"); render(); onChange();
     }, "line-chip", { "data-line": String(k) })));
   };
   render();
-  const reset = button("↺ 重新开始", () => { if (!locked) { chosen = []; render(); onChange(); } }, "link small reset");
+  const reset = button("↺ 重新开始", () => { if (!locked) { chosen = []; feel.play("undo"); render(); onChange(); } }, "link small reset");
   const code = () => chosen.map((k) => ex.lines[k]).join("\n");
   const answerTexts = ex.answers.map((a) => a.map((k) => ex.lines[k]).join("\n"));
   return {
     node: h("div", {}, h("div", { class: "order-label", text: "你的程序" }), mine, h("div", { class: "order-label", text: "代码行" }), bank, reset),
     ready: () => chosen.length === ex.lines.length,
     lock: () => { locked = true; },
+    mark: () => { mine.classList.add(answerTexts.includes(code()) ? "right" : "wrong"); },
     isCorrect: () => answerTexts.includes(code()),
     why: () => "",
     whyWrong: () => "顺序不对。程序从上往下一行一行执行：变量要先存好值，才能拿来用；想先显示的，就放在前面。",
@@ -533,20 +639,22 @@ function renderFinish(run) {
     if (state.hearts < HEARTS_MAX) { state.hearts++; heartMsg = `复习奖励：恢复 1 颗红心（现在 ${state.hearts} 颗）`; }
   }
   persist();
+  currentRun = null;
+  feel.play("finish"); // 连续天数增加也复用这一个声音，不叠播
   const accuracy = Math.round((run.total / (run.total + run.mistakes)) * 100);
   appEl.replaceChildren(
     h("main", { class: "finish" },
-      mascot(120),
+      mascot(120, "celebrate"),
       h("h1", { text: run.mistakes === 0 ? "完美！" : "完成！" }),
       h("p", { class: "muted", text: firstTime ? `「${l.title}」通关` : `复习「${l.title}」完成` }),
       h("div", { class: "finish-stats" },
-        h("div", { class: "fs" }, h("small", { text: "本关 XP" }), h("b", { text: `+${run.xp}` })),
+        h("div", { class: "fs" }, h("small", { text: "本关 XP" }), h("b", {}, icon("bolt", { size: 20 }), `+${run.xp}`)),
         h("div", { class: "fs" }, h("small", { text: "正确率" }), h("b", { text: `${accuracy}%` })),
-        h("div", { class: "fs" }, h("small", { text: "连续天数" }), h("b", { text: `🔥 ${currentStreak(state)}` })),
+        h("div", { class: "fs" }, h("small", { text: "连续天数" }), h("b", {}, icon("flame", { size: 20 }), String(currentStreak(state)))),
       ),
       newDay ? h("p", { class: "streak-msg", text: currentStreak(state) > 1 ? `连续学习 ${currentStreak(state)} 天，保持住！` : "今天的学习完成了，明天再来续上连续天数！" }) : null,
       heartMsg ? h("p", { class: "heart-msg", text: heartMsg }) : null,
-      button("继续", renderPath, "btn3d primary wide", { "data-continue": "" }),
+      button("继续", () => { feel.haptic(); renderPath(); }, "btn3d primary wide", { "data-continue": "" }),
     ),
   );
 }
@@ -561,6 +669,6 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { runner, getState: () => state, setState: (s) => { state = s; }, persist, renderPath, words };
+window.__app = { runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
 runner.boot(); // 后台加载 Python，用来显示真实运行结果
 if (state.onboarded) renderPath(); else renderOnboarding();

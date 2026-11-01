@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { freshState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, HEART_REGEN_MS } from "../src/storage.js";
 
+const css = readFileSync(new URL("../src/game.css", import.meta.url), "utf8");
 const unit = JSON.parse(readFileSync(new URL("../content/unit1.json", import.meta.url)));
 const course = JSON.parse(readFileSync(new URL("../content/course.json", import.meta.url)));
 const PORT = 4319;
@@ -194,7 +195,7 @@ try {
     if (++seen > 10) break;
   }
   check("错题回炉：答错的第 1 题在最后又出现了一次", seen === 4);
-  check("通关页：完成、本关 XP、连续天数", /完成！/.test(await text()) && /\+50/.test(await text()) && /🔥 1/.test(await text()));
+  check("通关页：完成、本关 XP、连续天数", /完成！/.test(await text()) && /\+50/.test(await text()) && (await page.locator(".fs").nth(2).innerText()).includes("1"));
   check("通关页：提示今天学习完成", /今天的学习完成了/.test(await text()));
   s = await st();
   check("记录：XP 50、第 1 关完成、连续 1 天", s.xp === 50 && s.done.U1L1 && s.streak === 1);
@@ -236,10 +237,10 @@ try {
   check("红心为 0：不能开始新关卡，提示等待或复习", /每 30 分钟恢复 1 颗/.test(await page.locator(".overlay").innerText()));
   await page.locator(".overlay .btn3d.primary").tap(); // 复习「让屏幕说话」
   await page.waitForSelector(".intro-title");
-  check("复习模式：不显示红心，显示护盾", /复习/.test(await text()) && (await page.locator(".lessonbar").innerText()).includes("🛡"));
+  check("复习模式：不显示红心，显示护盾", /复习/.test(await text()) && (await page.locator(".lessonbar .shield").count()) === 1);
   await tapBtn("继续");
   fb = await answer(false);
-  check("复习模式：答错不扣红心", (await st()).hearts === 0 && !/❤️ -1/.test(fb));
+  check("复习模式：答错不扣红心", (await st()).hearts === 0 && !/红心 -1/.test(fb));
   await cont();
   while (await page.locator("[data-check]").count()) { await answer(true); await cont(); }
   check("复习完成：恢复 1 颗红心", /恢复 1 颗红心/.test(await text()) && (await st()).hearts === 1);
@@ -265,8 +266,161 @@ try {
   check("清除记录：XP 和进度清零", (await st()).xp === 0 && Object.keys((await st()).done).length === 0);
   await page.getByRole("button", { name: "学习", exact: true }).tap();
 
+
+  // ---------- 手感：时间线、重复提交、旧回调、音效、振动、减少动态效果 ----------
+  // onActivate 在刚有过 pointerdown 时会忽略 click，所以测试里用 pointerdown 事件模拟“手指按下”
+  await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; s.heartsAt = Date.now(); window.__app.persist(); window.__app.renderPath(); });
+  await page.locator('[data-lesson="U1L1"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
+  await tapBtn("继续");
+  await page.waitForSelector("[data-check]");
+  // 选一个选项，量“检查”到出结果、到可继续的毫秒数
+  const pickCorrect = async () => {
+    const e = await ex();
+    if (e.type === "predict") await page.locator(".choice").nth(e.options.findIndex((o) => o.correct)).tap();
+    else if (e.type === "fill") for (const t of e.answer) await page.locator(`[data-token=${JSON.stringify(t)}]`).tap();
+    else for (const k of e.answers[0]) await page.locator(`.order-bank [data-line="${k}"]`).first().tap();
+  };
+  await pickCorrect();
+  const tl = await page.evaluate(() => new Promise((resolve) => {
+    const t0 = performance.now(); const r = {};
+    const xp0 = window.__app.getState().xp;
+    const btn = document.querySelector("[data-check]");
+    for (let i = 0; i < 3; i++) btn.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true })); // 连点三次
+    r.labelAtOnce = btn.textContent; r.disabledAtOnce = btn.disabled;
+    const tick = () => {
+      const fb = document.querySelector(".feedbar");
+      if (fb && r.reveal == null) { r.reveal = performance.now() - t0; r.contDisabledAtReveal = fb.querySelector("[data-continue]").disabled; }
+      const c = fb?.querySelector("[data-continue]");
+      if (c && !c.disabled && r.cont == null) { r.cont = performance.now() - t0; r.xpGain = window.__app.getState().xp - xp0; return resolve(r); }
+      if (performance.now() - t0 > 3000) return resolve(r);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+  check("手感：点检查后立刻锁定并显示“检查中”", tl.labelAtOnce === "检查中" && tl.disabledAtOnce === true);
+  check("手感：结果不是瞬间出现，约 120ms 后揭示", tl.reveal >= 100 && tl.reveal < 600, `${Math.round(tl.reveal)}ms`);
+  check("手感：揭示时“继续”还不能点，约 280ms 才可用", tl.contDisabledAtReveal === true && tl.cont >= 250 && tl.cont < 900, `${Math.round(tl.cont)}ms`);
+  check("重复提交：连点三次检查只计一次分（+10 XP）", tl.xpGain === 10, `xpGain=${tl.xpGain}`);
+  const fx = await page.evaluate(() => window.__app.feel.log.slice());
+  check("音效：答对播放“答对”音，选择时有点选 / 放入音", fx.includes("correct") && (fx.includes("select") || fx.includes("place")), fx.join(","));
+  // 快速连点“继续”只前进一题
+  const r0 = await page.evaluate(() => window.__app.renders);
+  await page.evaluate(() => { const c = document.querySelector("[data-continue]"); for (let i = 0; i < 3; i++) c.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true })); });
+  await page.waitForSelector("[data-check], .finish");
+  check("快速继续：连点三次“继续”只前进一题", (await page.evaluate(() => window.__app.renders)) - r0 === 1);
+  // 离题后旧回调：点检查后立刻回到地图，120ms 后不能冒出反馈条
+  await pickCorrect();
+  await page.evaluate(() => { document.querySelector("[data-check]").dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true })); window.__app.renderPath(); });
+  await page.waitForTimeout(700);
+  check("离题后旧回调：回到地图后不会冒出反馈条", (await page.locator(".feedbar").count()) === 0 && /奶茶店点单屏/.test(await text()));
+  // 回到这一关，把这一关做完，保证后面的测试状态干净
+  await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); window.__app.renderPath(); });
+  await page.locator(".node.current").tap(); await page.locator(".overlay .btn3d.primary").tap();
+  await tapBtn("继续");
+  while (await page.locator("[data-check]").count()) { await answer(true); await cont(); }
+  await cont();
+
+  // 减少动态效果：揭示后“继续”马上可用，动画关闭
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); window.__app.renderPath(); });
+  await page.locator(".node.current").tap(); await page.locator(".overlay .btn3d.primary").tap();
+  await tapBtn("继续");
+  await pickCorrect();
+  const rm = await page.evaluate(() => new Promise((resolve) => {
+    const t0 = performance.now();
+    document.querySelector("[data-check]").dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true }));
+    const tick = () => {
+      const fb = document.querySelector(".feedbar");
+      if (fb) { const c = fb.querySelector("[data-continue]"); return setTimeout(() => resolve({ reveal: performance.now() - t0, contEnabled: !c.disabled, anim: getComputedStyle(fb).animationName }), 30); }
+      if (performance.now() - t0 > 2000) return resolve({});
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+  check("减少动态效果：约 120ms 后直接给出完整结果并可继续，动画关闭", rm.reveal >= 100 && rm.contEnabled === true && rm.anim === "none", JSON.stringify(rm));
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await cont();
+  await page.getByRole("button", { name: "退出本关" }).tap(); await tapBtn("退出");
+
+  // 设置：音效 / 振动开关保存在本机，刷新后仍在，且不影响学习进度
+  await page.getByRole("button", { name: "我的" }).tap();
+  check("我的：有音效和振动开关", (await page.locator(".switch").count()) === 2);
+  await page.locator('[data-pref="sound"]').tap();
+  check("音效开关：关闭后保存在记录里", (await st()).prefs.sound === false && (await page.locator('[data-pref="sound"]').getAttribute("aria-checked")) === "false");
+  const xpBefore = (await st()).xp;
+  await page.reload(); await page.waitForSelector(".statsbar");
+  await page.getByRole("button", { name: "我的" }).tap();
+  check("刷新后：音效开关保持关闭，XP 不变", (await st()).prefs.sound === false && (await st()).xp === xpBefore && (await page.locator('[data-pref="sound"]').getAttribute("aria-checked")) === "false");
+  await page.evaluate(() => window.__app.feel.log.length = 0);
+  await page.evaluate(() => { const s = window.__app.getState(); s.prefs.sound = true; window.__app.setState(s); window.__app.persist(); });
+
+  // 旧 v3 记录（没有 prefs）：保留全部进度，只补默认偏好
+  const p5 = await ctx.newPage();
+  await p5.addInitScript(() => {
+    if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
+    localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 130, hearts: 3, heartsAt: Date.now(), streak: 4, lastDay: "2026-11-01", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: true, lastActive: 1 }));
+  });
+  await p5.goto(BASE); await p5.waitForSelector(".statsbar");
+  const s5 = await p5.evaluate(() => window.__app.getState());
+  check("v3 升级：学习记录全部保留，只补上偏好默认值", s5.xp === 130 && s5.streak === 4 && s5.done.U1L1 && s5.done.U1L2 && s5.lessonsCompleted === 2 && s5.prefs.sound === true && s5.prefs.haptics === true && s5.version === 3);
+  check("v3 升级：没有出现改版提示", !/课程改版|无法识别/.test(await p5.locator("#app").innerText()));
+  await p5.close();
+
+  // 振动：支持时只在“检查”请求一次；不支持时不报错
+  const pv = await ctx.newPage();
+  const verrs = []; pv.on("pageerror", (e) => verrs.push(e.message));
+  await pv.addInitScript(() => { window.__vib = []; navigator.vibrate = (n) => { window.__vib.push(n); return true; }; });
+  await pv.goto(BASE); await pv.waitForSelector(".statsbar");
+  await pv.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.hearts = 5; window.__app.persist(); window.__app.renderPath(); });
+  await pv.locator(".node.current").tap(); await pv.locator(".overlay .btn3d.primary").tap();
+  await pv.getByRole("button", { name: "继续", exact: true }).tap();
+  await pv.locator(".choice").first().tap();
+  check("振动：只选择答案时不振动", (await pv.evaluate(() => window.__vib.length)) === 0);
+  await pv.locator("[data-check]").tap();
+  check("振动：点检查请求一次 12ms 短振", JSON.stringify(await pv.evaluate(() => window.__vib)) === "[12]");
+  await pv.close();
+  const pn = await ctx.newPage();
+  const nerrs = []; pn.on("pageerror", (e) => nerrs.push(e.message));
+  await pn.addInitScript(() => {
+    Object.defineProperty(navigator, "vibrate", { value: undefined, configurable: true });
+    window.AudioContext = undefined; window.webkitAudioContext = undefined;
+  });
+  await pn.goto(BASE); await pn.waitForSelector(".statsbar");
+  await pn.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+  await pn.locator(".node.current").tap(); await pn.locator(".overlay .btn3d.primary").tap();
+  await pn.getByRole("button", { name: "继续", exact: true }).tap();
+  await pn.locator(".choice").first().tap(); await pn.locator("[data-check]").tap();
+  await pn.waitForSelector(".feedbar");
+  await pn.locator("[data-continue]").tap();
+  await pn.getByRole("button", { name: "我的" }).tap().catch(() => {});
+  check("无声音 / 无振动环境：学习照常进行，没有脚本错误", nerrs.length === 0 && (await pn.locator(".feedbar, .lesson, .view").count()) > 0, nerrs.join("|"));
+  await pn.close();
+  const pa = await ctx.newPage();
+  const aerrs = []; pa.on("pageerror", (e) => aerrs.push(e.message));
+  await pa.addInitScript(() => { window.AudioContext = function () { throw new Error("audio blocked"); }; window.webkitAudioContext = undefined; });
+  await pa.goto(BASE); await pa.waitForSelector(".statsbar");
+  await pa.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+  await pa.locator(".node.current").tap(); await pa.locator(".overlay .btn3d.primary").tap();
+  await pa.getByRole("button", { name: "继续", exact: true }).tap();
+  await pa.locator(".choice").first().tap(); await pa.locator("[data-check]").tap(); await pa.waitForSelector(".feedbar");
+  check("音频创建失败：学习照常进行，没有脚本错误", aerrs.length === 0, aerrs.join("|"));
+  await pa.close();
+
+  // 配色对比度（读取 game.css 里的浅色 / 深色色值）
+  const hexOf = (block) => Object.fromEntries([...block.matchAll(/--g-([\w-]+):\s*(#[0-9A-Fa-f]{6})/g)].map((m) => [m[1], m[2]]));
+  const [lightPart, darkPart] = css.split("@media (prefers-color-scheme: dark)");
+  const light = hexOf(lightPart); const dark = { ...light, ...hexOf(darkPart.split("@media (prefers-reduced-motion")[0]) };
+  const lum = (hx) => { const c = [1, 3, 5].map((i) => parseInt(hx.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+  const pairs = [["fg", "bg"], ["fg", "card"], ["muted", "bg"], ["muted", "card"], ["on-primary", "primary"], ["primary", "bg"], ["ok", "ok-bg"], ["bad", "bad-bg"], ["on-ok", "ok"], ["on-copper", "copper"], ["copper", "card"], ["bad", "bg"], ["code-fg", "code-bg"], ["tk-str", "code-bg"], ["tk-num", "code-bg"], ["tk-fn", "code-bg"], ["tk-op", "code-bg"], ["code-dim", "code-bg"], ["chip-fg", "chip"]];
+  for (const [name, pal] of [["浅色", light], ["深色", dark]]) {
+    const bad = pairs.filter(([a, b]) => ratio(pal[a], pal[b]) < 4.5).map(([a, b]) => `${a}/${b}=${ratio(pal[a], pal[b]).toFixed(2)}`);
+    check(`配色对比度：${name}主要文字组合都 ≥ 4.5:1`, bad.length === 0, bad.join(" "));
+  }
+  check("配色对比度：主按钮文字浅色 ≈ 8.8、深色 ≈ 9.4", Math.abs(ratio(light["on-primary"], light.primary) - 8.77) < 0.2 && Math.abs(ratio(dark["on-primary"], dark.primary) - 9.4) < 0.3);
+
   // 宽度
-  for (const w of [360, 390, 430]) {
+  for (const w of [320, 360, 390, 430]) {
     await page.setViewportSize({ width: w, height: 800 });
     check(`${w}px：地图无横向溢出`, !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
   }

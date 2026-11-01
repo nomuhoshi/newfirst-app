@@ -20,6 +20,7 @@ export function freshState() {
     lessonsCompleted: 0,  // 完成关卡的总次数（含复习）
     installTipClosed: false,
     lastActive: 0,
+    prefs: { sound: true, haptics: true }, // 音效、振动开关（旧 v3 记录没有这一项，加载时补上默认值）
   };
 }
 
@@ -46,7 +47,10 @@ export function loadState() {
   }
   if (data && (data.version === 1 || data.version === 2)) return migrateOld(data);
   if (!data || data.version !== DATA_VERSION) return { state: freshState(), notice: "学习记录的格式无法识别，已从头开始。" };
-  return { state: { ...freshState(), ...data }, notice: null };
+  // 旧的 v3 记录只补新增的偏好，学习进度原样保留
+  const base = freshState();
+  const prefs = { ...base.prefs, ...(data.prefs && typeof data.prefs === "object" ? data.prefs : {}) };
+  return { state: { ...base, ...data, prefs }, notice: null };
 }
 
 export function saveState(state) {
