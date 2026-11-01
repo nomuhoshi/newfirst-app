@@ -1,5 +1,6 @@
-// 自制编程键盘。按键用 pointerdown + preventDefault，避免点按键时编辑器失去焦点。
+// 自制编程键盘。手指点按键不会让编辑器失去焦点；外接键盘和读屏软件也能激活按键。
 import { typeChar, commands } from "./editor.js";
+import { onActivate } from "./activate.js";
 
 const LETTERS = [
   ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
@@ -64,7 +65,7 @@ export function createKeyboard(root, view, { onToggleSystem }) {
       if (k === "{shift}" && shift) b.classList.add("kb-on");
       b.textContent = LABELS[k] || (shift && k.length === 1 ? k.toUpperCase() : k);
       if (ARIA[k]) b.setAttribute("aria-label", ARIA[k]);
-      b.addEventListener("pointerdown", (e) => { e.preventDefault(); press(k); });
+      onActivate(b, () => press(k));
       row.appendChild(b);
     }
     return row;

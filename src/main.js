@@ -4,6 +4,7 @@ import { createEditor, setSystemKeyboard } from "./editor.js";
 import { createKeyboard } from "./keyboard.js";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
+import { onActivate } from "./activate.js";
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
@@ -24,7 +25,7 @@ function toggleSystem() {
   kbEl.hidden = useSystem;
   sysBar.hidden = !useSystem;
 }
-$("back-to-kb").addEventListener("click", toggleSystem);
+onActivate($("back-to-kb"), toggleSystem);
 
 // 输出区：只用 textContent，绝不把用户输出当 HTML
 function setOutput(text, cls = "") {
@@ -82,8 +83,10 @@ const runner = new Runner({
         appendOutput("\n■ 已停止。");
         break;
       case "outputLimit":
+      case "outputLimitStopped":
         appendOutput("\n⚠ 输出超过 100 行或 8 KB，已停止。");
         outEl.className = "error";
+        statusEl.textContent = "已达到输出上限";
         break;
     }
     const running = runner.state === "running";
@@ -93,12 +96,22 @@ const runner = new Runner({
   onOutput: appendOutput,
 });
 
-runBtn.addEventListener("pointerdown", (e) => {
-  e.preventDefault();
+onActivate(runBtn, () => {
   if (runner.state === "loadError") { runner.boot(); return; }
   runner.run(view.state.doc.toString());
 });
-stopBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); runner.stop(); });
+onActivate(stopBtn, () => runner.stop());
+
+// iPhone 弹出系统键盘时，可视区域会变小：按实际可视高度排版，并让当前行保持可见
+const vv = window.visualViewport;
+if (vv) {
+  const fit = () => {
+    document.documentElement.style.setProperty("--app-h", vv.height + "px");
+    view.dispatch({ scrollIntoView: true });
+  };
+  vv.addEventListener("resize", fit);
+  fit();
+}
 
 runner.boot(); // 页面打开后就在后台加载 Python，不挡住编辑
 view.focus();

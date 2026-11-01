@@ -1,5 +1,5 @@
 # 把网站发布到 GitHub Pages（Settings → Pages 的 Source 为 GitHub Actions）。
-# 每次推送到 main 自动构建并发布；也可以在 Actions 页面手动运行。
+# 每次推送到 main：安装 → 构建 → 自动测试 → 测试通过才发布。也可以在 Actions 页面手动运行。
 name: Deploy to GitHub Pages
 on:
   push:
@@ -22,7 +22,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - run: npm run build
+      - name: 自动测试（不通过就不部署）
+        run: npm test
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

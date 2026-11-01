@@ -1,85 +1,83 @@
-// 主线程这边的“运行管理员”：负责启动工作线程、超时、Stop、输出上限、防止重复运行。
+// 主线程这边的“运行管理员”：负责启动工作线程、超时、Stop、输出上限（第二层保护）、防止重复运行。
+import { LIMITS as WORKER_LIMITS } from "./py-worker-limits.js";
 
 export const LIMITS = {
-  runMs: 5000,        // 单次执行最多 5 秒（不含首次加载）
-  loadMs: 30000,      // 加载超过 30 秒就提示重试
-  maxLines: 100,      // 输出最多 100 行
-  maxBytes: 8 * 1024, // 或 8 KiB
+  runMs: 5000,   // 单次执行最多 5 秒（不含首次加载）
+  loadMs: 30000, // 加载超过 30 秒就提示重试
+  ...WORKER_LIMITS,
 };
+
+const utf8 = new TextEncoder();
 
 export class Runner {
   constructor({ onStatus, onOutput }) {
-    this.onStatus = onStatus;   // (status, info) => void
-    this.onOutput = onOutput;   // (text) => void
+    this.onStatus = onStatus; // (status, info) => void
+    this.onOutput = onOutput; // (text) => void
     this.worker = null;
-    this.state = "idle";        // idle | loading | ready | running | loadError
+    this.state = "idle";      // idle | loading | ready | running | loadError
     this.runId = 0;
-    this.current = null;        // 当前这次运行的信息
+    this.current = null;      // 当前这次运行：{ id, worker, timer, bytes, lines }
+    this.loadTimer = null;
   }
 
   get indexURL() {
     return new URL("pyodide/", document.baseURI).href;
   }
 
+  // 统一清理“当前运行”，任何结束路径都走这里，避免旧计时器误杀新线程
+  #clearRun() {
+    if (this.current) clearTimeout(this.current.timer);
+    this.current = null;
+  }
+
   boot() {
+    this.#clearRun();
+    clearTimeout(this.loadTimer);
     if (this.worker) this.worker.terminate();
     this.state = "loading";
     this.onStatus("loading");
     const w = new Worker(new URL("./py-worker.js", import.meta.url), { type: "module" });
     this.worker = w;
-    const loadTimer = setTimeout(() => {
+    this.loadTimer = setTimeout(() => {
       if (this.worker === w && this.state === "loading") this.onStatus("slowLoad");
     }, LIMITS.loadMs);
-    w.onmessage = (e) => this.#onMessage(w, e.data, loadTimer);
+    w.onmessage = (e) => this.#onMessage(w, e.data);
     w.onerror = (e) => {
       if (this.worker !== w) return;
-      clearTimeout(loadTimer);
+      e.preventDefault?.();
+      clearTimeout(this.loadTimer);
+      this.#clearRun();
       this.state = "loadError";
-      this.onStatus("loadError", { msg: e.message || "工作线程启动失败" });
+      this.onStatus("loadError", { msg: (e && e.message) || "工作线程出错" });
     };
     w.postMessage({ type: "init", indexURL: this.indexURL });
   }
 
-  #onMessage(w, m, loadTimer) {
+  #onMessage(w, m) {
     if (w !== this.worker) return; // 已被终止的旧线程，忽略
     if (m.type === "ready") {
-      clearTimeout(loadTimer);
+      clearTimeout(this.loadTimer);
       this.state = "ready";
       this.onStatus("ready", { ms: m.ms });
     } else if (m.type === "loadError") {
-      clearTimeout(loadTimer);
+      clearTimeout(this.loadTimer);
       this.state = "loadError";
       this.onStatus("loadError", { msg: m.msg });
     } else if (m.type === "out") {
       const c = this.current;
       if (!c || m.id !== c.id) return; // 迟到的旧输出，忽略
-      // 只显示到上限为止，超出的部分丢掉，然后停止运行
-      let text = m.text;
-      let over = false;
-      if (c.bytes + text.length > LIMITS.maxBytes) {
-        text = text.slice(0, LIMITS.maxBytes - c.bytes);
-        over = true;
-      }
-      let idx = -1;
-      for (let n = c.lines; n < LIMITS.maxLines; n++) {
-        idx = text.indexOf("\n", idx + 1);
-        if (idx === -1) break;
-      }
-      if (idx !== -1 && c.lines + (text.match(/\n/g) || []).length > LIMITS.maxLines) {
-        text = text.slice(0, idx + 1);
-        over = true;
-      }
-      c.bytes += text.length;
-      c.lines += (text.match(/\n/g) || []).length;
-      this.onOutput(text);
-      if (over || c.lines >= LIMITS.maxLines || c.bytes >= LIMITS.maxBytes) this.#abort("outputLimit");
+      // 第二层保护：按 UTF-8 字节和行数再检查一次
+      c.bytes += utf8.encode(m.text).length;
+      c.lines += (m.text.match(/\n/g) || []).length;
+      if (c.bytes > LIMITS.maxBytes + 4 || c.lines > LIMITS.maxLines) { this.#abort("outputLimit"); return; }
+      this.onOutput(m.text);
     } else if (m.type === "done") {
       const c = this.current;
       if (!c || m.id !== c.id) return;
-      clearTimeout(c.timer);
-      this.current = null;
+      this.#clearRun();
       this.state = "ready";
-      this.onStatus("done", { error: m.error, hadOutput: c.bytes > 0 });
+      if (m.limitHit) this.onStatus("outputLimitStopped");
+      else this.onStatus("done", { error: m.error, hadOutput: c.bytes > 0 });
     }
   }
 
@@ -87,13 +85,17 @@ export class Runner {
   run(code, data = null) {
     if (this.state !== "ready") return false;
     const id = ++this.runId;
+    const w = this.worker;
     this.state = "running";
     this.current = {
-      id, lines: 0, bytes: 0,
-      timer: setTimeout(() => this.#abort("timeout"), LIMITS.runMs),
+      id, worker: w, bytes: 0, lines: 0,
+      timer: setTimeout(() => {
+        // 只在“还是同一次运行、同一个线程”时才超时终止
+        if (this.current && this.current.id === id && this.worker === w) this.#abort("timeout");
+      }, LIMITS.runMs),
     };
     this.onStatus("running");
-    this.worker.postMessage({ type: "run", id, code, data });
+    w.postMessage({ type: "run", id, code, data });
     return true;
   }
 
@@ -103,9 +105,7 @@ export class Runner {
 
   // 终止线程是唯一能可靠停住 Python 死循环的方法；之后重新加载
   #abort(reason) {
-    const c = this.current;
-    if (c) clearTimeout(c.timer);
-    this.current = null;
+    this.#clearRun();
     this.onStatus(reason);
     this.boot();
   }

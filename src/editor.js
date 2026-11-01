@@ -11,6 +11,23 @@ import { indentUnit } from "@codemirror/language";
 
 const INDENT = "    "; // 4 个空格
 
+// 去掉行尾的 # 注释（忽略字符串里的 #），用来判断“代码部分”是否以冒号结尾
+export function codePart(text) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === "\\") { i++; continue; }
+      if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === "#") {
+      return text.slice(0, i);
+    }
+  }
+  return text;
+}
+
 // inputmode="none" 让手机不弹出系统键盘；切换成 "text" 就用系统键盘
 const inputModeConf = new Compartment();
 const inputModeAttr = (useSystem) =>
@@ -30,7 +47,9 @@ export function createEditor(parent, doc = "") {
         python(),
         indentUnit.of(INDENT),
         EditorState.tabSize.of(4),
-        keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]), // 外接键盘也能用
+        // 外接键盘：Tab / Shift+Tab 缩进（按 Esc 后再按 Tab 可以离开编辑区）
+        keymap.of([{ key: "Tab", run: (v) => { commands.tab(v); return true; }, shift: (v) => { commands.untab(v); return true; } }]),
+        keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
         inputModeConf.of(inputModeAttr(false)),
         EditorView.lineWrapping,
       ],
@@ -41,9 +60,9 @@ export function createEditor(parent, doc = "") {
 
 export function setSystemKeyboard(view, useSystem) {
   view.dispatch({ effects: inputModeConf.reconfigure(inputModeAttr(useSystem)) });
-  // iOS 需要先失焦再聚焦，键盘类型才会更新
+  // iOS 只在“用户刚点了按钮”的同一时刻允许弹出键盘，所以这里同步重新聚焦，不用延迟
   view.contentDOM.blur();
-  setTimeout(() => view.focus(), 50);
+  view.focus();
 }
 
 const BRACKETS = new Set(["(", ")", "[", "]", "{", "}", "'", '"']);
@@ -75,7 +94,7 @@ export const commands = {
     const before = state.sliceDoc(line.from, sel.from);
     let indent = /^ */.exec(line.text)[0];
     if (indent.length > before.length) indent = indent.slice(0, before.length);
-    if (/:\s*$/.test(before)) indent += INDENT;
+    if (/:\s*$/.test(codePart(before))) indent += INDENT;
     view.dispatch(state.replaceSelection("\n" + indent), { scrollIntoView: true, userEvent: "input" });
     return true;
   },

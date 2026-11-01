@@ -18,7 +18,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
   font-family: -apple-system, "PingFang SC", "Hiragino Sans", system-ui, sans-serif; }
-#app { display: flex; flex-direction: column; height: 100dvh; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+#app { display: flex; flex-direction: column; height: var(--app-h, 100dvh); padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 #task { padding: 10px 16px 4px; }
 #task h1 { font-size: 15px; margin: 0 0 4px; color: var(--muted); font-weight: 600; }
 #task p { margin: 0; font-size: 15px; line-height: 1.5; }
