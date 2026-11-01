@@ -1,0 +1,18 @@
+<!doctype html><meta charset=utf-8><script type=module>
+let w, ready;
+function boot(){ w = new Worker("./worker.mjs",{type:"module"}); ready = new Promise(r=>{w.onmessage=e=>{if(e.data.type==="ready")r(e.data.ms)}}); return ready; }
+function run(code, vars, timeout=5000){ return new Promise(res=>{ const id=Math.random(); const t=setTimeout(()=>{w.terminate(); res({type:"timeout"});},timeout);
+  w.onmessage=e=>{ if(e.data.id===id){clearTimeout(t);res(e.data);} }; w.postMessage({id,code,vars}); }); }
+window.results = (async()=>{ const R={};
+  R.firstLoadMs = await boot();
+  R.print = await run("print(2 + 3)");
+  R.noOutput = await run("x = 1");
+  R.leak = await run("print('x' in dir())");
+  R.vars = await run("print(sum(nums)/len(nums))",{nums:[2,4,6]});
+  R.syntax = await run("if True\n    print(1)");
+  R.nameErr = await run("print(y)");
+  let t=performance.now(); R.infinite = await run("while True:\n    pass"); R.infiniteStopMs=Math.round(performance.now()-t);
+  t=performance.now(); R.reloadMs = await boot(); R.reloadWallMs=Math.round(performance.now()-t);
+  R.afterReload = await run("print('ok')");
+  return R; })();
+</script>
