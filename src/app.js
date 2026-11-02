@@ -218,6 +218,7 @@ function lessonStatus(l) {
   return firstUndone()?.id === l.id ? "current" : "locked";
 }
 let currentRun = null;
+const swInfo = { status: "未启用", caches: [] }; // 给“我的”页诊断和测试看
 
 // ---------- Python 运行（显示“运行结果”用） ----------
 const appEl = document.getElementById("app");
@@ -248,6 +249,26 @@ function runForOutput(code) {
       else if (s === "loadError") { listeners.delete(w); resolve(null); }
     } };
     listeners.add(w);
+  });
+}
+
+// 在“运行结果”面板里显示真实运行结果。Python 加载不了（比如离线）时如实说明并给“重试”，不显示任何预设输出。
+function showRun(panel, code) {
+  const pre = panel.querySelector("pre");
+  panel.querySelector(".py-retry")?.remove();
+  pre.className = "out";
+  pre.textContent = "运行中…";
+  panel.open = true;
+  runForOutput(code).then((r) => {
+    if (!pre.isConnected) return;
+    if (!r) {
+      pre.textContent = (navigator.onLine === false ? "你现在离线。" : "Python 运行环境没有加载成功。") + "Python运行功能需要联网后加载，联网后点“重试”。选择、填空、排序的判分不受影响。";
+      pre.className = "out offline";
+      panel.append(button("重试", () => showRun(panel, code), "btn small py-retry", { "data-retry-python": "" }));
+      return;
+    }
+    pre.textContent = r.error ? (r.out ? r.out + "\n" : "") + describeError(r.error) : (r.out || "程序运行完成，没有输出");
+    pre.className = "out" + (r.error ? " error" : "");
   });
 }
 
@@ -402,7 +423,10 @@ function selfTest() {
   const showDiag = (extra = "") => {
     const d = feel.diagnostics();
     diag.textContent = [
-      `版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}`,
+      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}`,
+      `缓存版本：${swInfo.caches.length ? swInfo.caches.join("、").replace(/suipian-/g, "").slice(0, 40) : "无"}`,
+      `离线支持：${swInfo.status}`,
+      `网络：${navigator.onLine === false ? "离线" : "在线"}`,
       `运行方式：${standalone ? "主屏幕 App" : "浏览器"}`,
       `音效开关：${d.soundPref ? "开" : "关"}`,
       `AudioContext：${d.audioState}${d.sampleRate ? `（${d.sampleRate} Hz）` : ""}`,
@@ -415,14 +439,15 @@ function selfTest() {
     ].filter(Boolean).join("\n");
   };
   showDiag();
+  refreshSwInfo().then(() => { if (diag.isConnected) showDiag(); });
   return h("div", { class: "selftest" },
     h("div", { class: "selftest-btns" },
       button("试听音效", () => { feel.preview().then((ok) => showDiag(ok ? "试听：已播放答对音（听不到就看上面的状态）" : "试听：没有播放成功")); showDiag("试听：请求中…"); }, "btn3d wide", { "data-selftest": "sound" }),
-      button("试振动", () => {
+      feel.hapticsSupported() ? button("试振动", () => {
         let r = "没有网页振动接口，这个按钮不会振动";
         if (feel.hapticsSupported()) { try { r = navigator.vibrate(12) ? "已请求 12ms 振动" : "振动请求被浏览器拒绝"; } catch { r = "振动请求出错"; } }
         showDiag("试振动：" + r);
-      }, "btn3d wide", { "data-selftest": "haptic" }),
+      }, "btn3d wide", { "data-selftest": "haptic" }) : null,
     ),
     h("div", { class: "soundrow", role: "group", "aria-label": "正式音效试听" },
       ...[["select", "点选"], ["place", "放入"], ["undo", "撤销"], ["correct", "答对"], ["wrong", "答错"], ["finish", "过关"]].map(([k, label]) =>
@@ -579,11 +604,13 @@ function renderMe() {
       ),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
-      toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，下面可以自测", "haptics"),
+      feel.hapticsSupported()
+        ? toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，下面可以自测", "haptics")
+        : h("div", { class: "toggle-row no-haptics", "data-no-haptics": "" }, h("div", {}, h("b", { text: "振动" }), h("small", { text: "此设备暂不支持网页触感反馈。" }))),
       keyLab(),
       selfTest(),
       audioLab(),
-      hapticLab(),
+      feel.hapticsSupported() || /[?&]haptic-lab\b/.test(location.search) ? hapticLab() : null, // 没有振动接口的设备不显示无效的振动测试（开发者可加 ?haptic-lab 打开）
       h("h3", { text: "规则" }),
       h("ul", { class: "rules" },
         h("li", { text: `答对一题 +${XP_CORRECT} XP，完成一关再 +${XP_FINISH} XP；复习每题 +${XP_REVIEW} XP。` }),
@@ -628,7 +655,7 @@ function lessonHeader(run) {
 function confirmExit(run) {
   sheet((close) => [h("div", { class: "lsheet" },
     h("h2", { text: "要退出这一关吗？" }),
-    h("p", { text: "退出后，本关的答题进度不会保存（XP 和红心变化会保留）。" }),
+    h("p", { text: "退出后，本关答题位置不会保存，下次从第 1 题重新开始。已得的 XP 和已扣的红心会保留。" }),
     button("继续学习", close, "btn3d primary wide"),
     button("退出", () => { close(); renderPath(); }, "btn3d danger-ghost wide"),
   )]);
@@ -714,15 +741,7 @@ function renderExercise(run) {
 
     // 显示真实运行结果：选输出题跑原程序，其他题跑你拼出来的程序
     const code = ex.type === "predict" ? ex.code : area.code();
-    const pre = outPanel.querySelector("pre");
-    pre.textContent = "运行中…";
-    outPanel.open = true;
-    runForOutput(code).then((r) => {
-      if (!pre.isConnected) return;
-      if (!r) { pre.textContent = "（Python 还没加载好，暂时看不到运行结果）"; return; }
-      pre.textContent = r.error ? (r.out ? r.out + "\n" : "") + describeError(r.error) : (r.out || "程序运行完成，没有输出");
-      pre.className = "out" + (r.error ? " error" : "");
-    });
+    showRun(outPanel, code);
 
     let continued = false;
     const contBtn = button(outOfHearts ? "红心用完了" : "继续", () => {
@@ -916,6 +935,32 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
+window.__app = { swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
+// ---------- 离线支持（Service Worker）----------
+// 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
+let swReg = null;
+async function refreshSwInfo() {
+  if (!("serviceWorker" in navigator)) { swInfo.status = "此浏览器不支持"; return swInfo; }
+  try {
+    swInfo.caches = typeof caches !== "undefined" ? (await caches.keys()).filter((k) => k.startsWith("suipian-")) : [];
+    swInfo.status = navigator.serviceWorker.controller ? "已启用（断网后可打开地图和课程）" : (swReg ? "正在安装，刷新一次后生效" : "未启用");
+  } catch { swInfo.status = "读取失败"; }
+  return swInfo;
+}
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController) showToast("已更新到新版本，刷新页面后使用最新内容。");
+    refreshSwInfo();
+  });
+  const register = () => navigator.serviceWorker.register("./sw.js").then((reg) => { swReg = reg; refreshSwInfo(); }).catch((e) => { swInfo.status = "注册失败：" + (e?.message || e); });
+  if (document.readyState === "complete") register(); else window.addEventListener("load", register);
+  // 回到前台、恢复网络时检查有没有新版本，避免长期停在旧课程
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") swReg?.update().catch(() => {}); });
+}
+window.addEventListener("online", () => {
+  if (runner.state === "loadError") runner.boot(); // 恢复网络后自动重新加载 Python
+  swReg?.update().catch(() => {});
+});
 runner.boot(); // 后台加载 Python，用来显示真实运行结果
 if (state.onboarded) renderPath(); else renderOnboarding();

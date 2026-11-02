@@ -585,8 +585,9 @@ try {
   await pm.goto(BASE); await pm.waitForSelector(".statsbar, .onboard");
   await pm.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   await pm.getByRole("button", { name: "我的" }).tap();
-  await pm.locator('[data-selftest="haptic"]').tap();
-  check("试振动按钮：没有接口时说明情况，不报错；振动开关仍可点", /没有网页振动接口/.test(await pm.locator('[aria-label="诊断信息"]').innerText()) && (await pm.locator('[data-pref="haptics"]').isEnabled()));
+  // 第五轮 GPT 决定（取代第三轮的“始终显示”）：没有 navigator.vibrate 时用功能检测隐藏无效的振动开关和测试，只显示说明
+  check("振动功能检测：没有接口时不显示振动开关、“试振动”按钮和振动测试，显示“此设备暂不支持网页触感反馈。”，诊断仍说明没有接口", (await pm.locator('[data-pref="haptics"]').count()) === 0 && (await pm.locator('[data-selftest="haptic"]').count()) === 0 && (await pm.locator("[data-haptic]").count()) === 0 && (await pm.locator("[data-no-haptics]").count()) === 1 && /此设备暂不支持网页触感反馈。/.test(await pm.locator("#app").innerText()) && /网页振动接口：没有/.test(await pm.locator('[aria-label="诊断信息"]').innerText()));
+  check("振动功能检测：没有接口时音效开关仍在，答题照常（“检查”不报错）", (await pm.locator('[data-pref="sound"]').count()) === 1 && await pm.evaluate(() => { try { window.__app.feel.haptic(); return true; } catch { return false; } }));
   check("文案：不再写“iPhone 都是这样/一定没有振动”", !/iPhone 都是这样|一定没有振动/.test(await pm.locator("#app").innerText()));
   await pm.close();
 

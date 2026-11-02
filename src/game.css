@@ -265,5 +265,11 @@ body { background: var(--g-bg); color: var(--g-fg); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .circuit-bg .pulse { display: none; }
-  .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .node:active { transform: none; }
+  .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .node:active, .keybtn:active { transform: none; }
+  /* 不位移，按下时只有即时的描边 / 亮度变化 */
+  .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .keybtn:active { outline: 3px solid var(--g-primary); outline-offset: -3px; }
+  .node:active { filter: brightness(1.12); }
 }
+.out.offline { color: var(--g-muted); }
+.py-retry { margin-top: 8px; }
+.no-haptics small { display: block; }
