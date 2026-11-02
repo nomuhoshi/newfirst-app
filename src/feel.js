@@ -1,18 +1,19 @@
 // 手感：Web Audio 合成音效 + 振动请求。全部包在 try/catch 里：没有声音或振动能力时学习照常进行。
 // 不下载任何音频文件。
 //
-// iPhone 无声的原因（第二轮修复）：iOS Safari 只承认 touchend / click / keydown 是“能解锁音频的用户操作”，
-// 不承认 pointerdown。第一版只在 pointerdown 里创建并恢复 AudioContext，所以它在 iPhone 上一直停在
-// suspended，而播放函数在非 running 时直接放弃，结果就是完全没声音。现在改成：
-//   1. 在 pointerdown / touchend / click / keydown 都尝试创建和恢复，并播一个静音缓冲完成解锁；
-//   2. 播放时如果还没 running，就先 resume，成功后（300ms 内）再播；
-//   3. 合成音量整体调高；
-//   4. “我的”页有试听按钮和诊断信息，方便在真机上确认。
+// iPhone 无声的原因（第三轮定位）：iOS Safari 只承认 touchend / click / keydown 是“能解锁音频的用户操作”，
+// 不承认 pointerdown。游戏里的按钮原来都是在 pointerdown 时就执行（包括“试听音效”），而“我的”页的
+// 音频测试 A/B/C 用的是真正的 click，所以测试能响、正式关卡没声音。现在：
+//   1. 游戏按钮改成真正的 click（见 app.js 的 button()），选项、检查、继续都发生在合法的用户操作里；
+//   2. 只在 touchend / click / keydown 里创建和恢复 AudioContext，每次还没 running 就再解锁一次
+//      （此前只在第一次、而且是在 pointerdown 里播过静音缓冲，之后再也没有重试）；
+//   3. 播放时如果还没 running，先 resume，成功后（300ms 内）再播；
+//   4. 状态变化会记录下来，显示在“我的”页的诊断里。
 
 const prefs = { sound: true, haptics: true };
 export const log = []; // 给自动测试和诊断看：实际请求过哪些音效 / 振动
 const note = (n) => { log.push(n); if (log.length > 200) log.shift(); };
-export const stats = { played: 0, dropped: 0, resumed: 0, lastError: "" };
+export const stats = { played: 0, dropped: 0, resumed: 0, unlocks: 0, lastError: "", history: [] };
 
 export const reducedMotion = () => {
   try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
@@ -33,6 +34,8 @@ function getCtx() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) { stats.lastError = "浏览器没有 AudioContext"; return null; }
     ctx = new AC();
+    stats.history.push(`创建:${ctx.state}`);
+    ctx.addEventListener?.("statechange", () => { stats.history.push(`→${ctx.state}`); if (stats.history.length > 8) stats.history.shift(); });
     master = ctx.createGain();
     master.gain.value = 0.9;
     master.connect(ctx.destination);
@@ -42,18 +45,19 @@ function getCtx() {
   return ctx;
 }
 
-// 用户操作里调用：创建 / 恢复音频环境，并播一个极短的静音缓冲（iOS 的标准解锁做法）
+// 用户操作（touchend / click / keydown）里调用：创建 / 恢复音频环境，并播一个极短的静音缓冲。
+// 只要还没 running 就重试，不再“只试一次”。
 export function unlock() {
   const c = getCtx();
   if (!c) return;
   try {
-    if (c.state !== "running") c.resume().then(() => { stats.resumed++; }).catch((e) => { stats.lastError = "resume 失败：" + (e?.message || e); });
-    if (!primed) {
+    if (c.state !== "running") {
+      stats.unlocks++;
+      c.resume().then(() => { stats.resumed++; }).catch((e) => { stats.lastError = "resume 失败：" + (e?.message || e); });
       const src = c.createBufferSource();
       src.buffer = c.createBuffer(1, 1, 22050);
       src.connect(c.destination);
       src.start(0);
-      primed = true;
     }
   } catch (e) { stats.lastError = "解锁失败：" + (e?.message || e); }
 }
@@ -142,12 +146,13 @@ export function diagnostics() {
     soundPref: prefs.sound,
     hapticsPref: prefs.haptics,
     ...stats,
+    history: stats.history.join(" "),
   };
 }
 
 if (typeof document !== "undefined") {
   // iOS 只承认 touchend / click / keydown 为能解锁音频的操作，所以全部监听
-  for (const type of ["pointerdown", "touchend", "click", "keydown"]) document.addEventListener(type, unlock, { capture: true, passive: true });
+  for (const type of ["touchend", "click", "keydown"]) document.addEventListener(type, unlock, { capture: true, passive: true });
   // 切到后台就停止声音，回来不重播历史事件
   document.addEventListener("visibilitychange", () => {
     if (!ctx) return;

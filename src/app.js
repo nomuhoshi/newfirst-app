@@ -10,7 +10,6 @@ import unit1 from "../content/unit1.json";
 import words from "../content/words.json";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
-import { onActivate } from "./activate.js";
 import * as feel from "./feel.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
@@ -44,7 +43,8 @@ function h(tag, attrs = {}, ...children) {
 }
 function button(label, fn, cls = "btn", attrs = {}) {
   const b = h("button", { type: "button", class: cls, ...attrs }, label);
-  onActivate(b, (e) => { if (!b.disabled) fn(e); });
+  // 用真正的 click（不是 pointerdown）：iOS 只承认 click / touchend 是能解锁声音的用户操作
+  b.addEventListener("click", (e) => { if (!b.disabled) fn(e); });
   return b;
 }
 const svgNS = "http://www.w3.org/2000/svg";
@@ -343,7 +343,7 @@ function toggleRow(label, sub, key, { disabled = false } = {}) {
   const on = !!state.prefs[key] && !disabled;
   const sw = h("button", { type: "button", class: "switch" + (on ? " on" : ""), role: "switch", "aria-checked": String(on), "aria-label": label, "data-pref": key, disabled: disabled || null },
     h("span", { class: "knob" }));
-  onActivate(sw, () => {
+  sw.addEventListener("click", () => {
     if (sw.disabled) return;
     state.prefs[key] = !state.prefs[key];
     feel.setPrefs(state.prefs);
@@ -367,7 +367,8 @@ function selfTest() {
       `音效开关：${d.soundPref ? "开" : "关"}`,
       `AudioContext：${d.audioState}${d.sampleRate ? `（${d.sampleRate} Hz）` : ""}`,
       `音频会话：${d.audioSession}`,
-      `已播放 ${d.played} 次，被丢弃 ${d.dropped} 次`,
+      `已播放 ${d.played} 次，被丢弃 ${d.dropped} 次，解锁尝试 ${d.unlocks} 次`,
+      `状态变化：${d.history || "无"}`,
       `网页振动接口：${d.vibrate ? "有" : "没有"}`,
       `最近错误：${d.lastError || "无"}`,
       extra,
@@ -383,6 +384,9 @@ function selfTest() {
         showDiag("试振动：" + r);
       }, "btn3d wide", { "data-selftest": "haptic" }),
     ),
+    h("div", { class: "soundrow", role: "group", "aria-label": "正式音效试听" },
+      ...[["select", "点选"], ["place", "放入"], ["undo", "撤销"], ["correct", "答对"], ["wrong", "答错"], ["finish", "过关"]].map(([k, label]) =>
+        button(label, () => { feel.play(k, { force: true }).then((ok) => showDiag(`正式音效「${label}」：${ok ? "已播放" : "没有播放成功"}`)); }, "chip", { "data-sound": k }))),
     diag,
   );
 }
@@ -452,6 +456,33 @@ function audioLab() {
   );
 }
 
+// 振动测试（等待 iPhone 真机确认）：四种互相独立的控件。结果只记录“点了”，不会宣布“振动成功”。
+// iPhone 的 Safari 没有 navigator.vibrate；已知唯一可能的触感是系统自带的 <input type="checkbox" switch>
+// 在用户亲手点它时给的反馈，所以这里放了几种真实控件，让你逐个确认手上有没有感觉。
+function hapticLab() {
+  const log = h("pre", { class: "diag", "aria-label": "振动测试结果" }, "每个都点几下，凭手感告诉我哪几个有轻微触感。");
+  const counts = {};
+  const mark = (name) => () => {
+    counts[name] = (counts[name] || 0) + 1;
+    let api = "";
+    if (feel.hapticsSupported()) { try { api = navigator.vibrate(12) ? "；已请求 navigator.vibrate(12)" : "；vibrate 被拒绝"; } catch { api = "；vibrate 出错"; } } else api = "；没有 navigator.vibrate";
+    log.textContent = Object.entries(counts).map(([k, n]) => `${k}：点了 ${n} 次`).join("\n") + api + "\n（是否真的有触感：等待 iPhone 真机确认）";
+  };
+  const sw = h("input", { type: "checkbox", switch: true, "data-haptic": "switch", "aria-label": "原生开关" });
+  sw.addEventListener("change", mark("2 原生开关"));
+  const hidden = h("input", { type: "checkbox", switch: true, class: "hap-hidden", "data-haptic": "check-label", "aria-label": "检查按钮样式" });
+  hidden.addEventListener("change", mark("4 检查按钮样式"));
+  return h("div", { class: "selftest hapticlab" },
+    h("h3", { text: "振动测试" }),
+    h("p", { class: "muted small", text: "四种控件各点几下，告诉我哪几个手上有轻微触感（iPhone 的 Safari 没有振动接口，这是在找系统自带的反馈）。" }),
+    h("button", { type: "button", class: "btn3d wide", "data-haptic": "button", onclick: mark("1 普通按钮") }, "1 普通按钮"),
+    h("label", { class: "hap-row" }, h("span", { text: "2 原生开关（直接点右边的开关）" }), sw),
+    h("button", { type: "button", class: "choice hap-choice", "data-haptic": "choice", onclick: mark("3 选项样式") }, "3 选项样式的按钮"),
+    h("label", { class: "btn3d primary hap-check", "data-haptic": "check-box" }, "4 检查按钮样式（外观是按钮，里面是隐藏的开关）", hidden),
+    log,
+  );
+}
+
 function renderMe() {
   currentRun = null;
   let confirmBox = null;
@@ -482,6 +513,7 @@ function renderMe() {
       toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，下面可以自测", "haptics"),
       selfTest(),
       audioLab(),
+      hapticLab(),
       h("h3", { text: "规则" }),
       h("ul", { class: "rules" },
         h("li", { text: `答对一题 +${XP_CORRECT} XP，完成一关再 +${XP_FINISH} XP；复习每题 +${XP_REVIEW} XP。` }),

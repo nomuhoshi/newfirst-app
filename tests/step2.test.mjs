@@ -268,7 +268,7 @@ try {
 
 
   // ---------- 手感：时间线、重复提交、旧回调、音效、振动、减少动态效果 ----------
-  // onActivate 在刚有过 pointerdown 时会忽略 click，所以测试里用 pointerdown 事件模拟“手指按下”
+  // 游戏按钮现在是真正的 click（iOS 只承认 click / touchend 能解锁声音），测试里用 click 事件模拟
   await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; s.heartsAt = Date.now(); window.__app.persist(); window.__app.renderPath(); });
   await page.locator('[data-lesson="U1L1"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
   await tapBtn("继续");
@@ -285,7 +285,7 @@ try {
     const t0 = performance.now(); const r = {};
     const xp0 = window.__app.getState().xp;
     const btn = document.querySelector("[data-check]");
-    for (let i = 0; i < 3; i++) btn.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true })); // 连点三次
+    for (let i = 0; i < 3; i++) btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); // 连点三次
     r.labelAtOnce = btn.textContent; r.disabledAtOnce = btn.disabled;
     const tick = () => {
       const fb = document.querySelector(".feedbar");
@@ -305,12 +305,12 @@ try {
   check("音效：答对播放“答对”音，选择时有点选 / 放入音", fx.includes("correct") && (fx.includes("select") || fx.includes("place")), fx.join(","));
   // 快速连点“继续”只前进一题
   const r0 = await page.evaluate(() => window.__app.renders);
-  await page.evaluate(() => { const c = document.querySelector("[data-continue]"); for (let i = 0; i < 3; i++) c.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true })); });
+  await page.evaluate(() => { const c = document.querySelector("[data-continue]"); for (let i = 0; i < 3; i++) c.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); });
   await page.waitForSelector("[data-check], .finish");
   check("快速继续：连点三次“继续”只前进一题", (await page.evaluate(() => window.__app.renders)) - r0 === 1);
   // 离题后旧回调：点检查后立刻回到地图，120ms 后不能冒出反馈条
   await pickCorrect();
-  await page.evaluate(() => { document.querySelector("[data-check]").dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true })); window.__app.renderPath(); });
+  await page.evaluate(() => { document.querySelector("[data-check]").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); window.__app.renderPath(); });
   await page.waitForTimeout(700);
   check("离题后旧回调：回到地图后不会冒出反馈条", (await page.locator(".feedbar").count()) === 0 && /奶茶店点单屏/.test(await text()));
   // 回到这一关，把这一关做完，保证后面的测试状态干净
@@ -328,7 +328,7 @@ try {
   await pickCorrect();
   const rm = await page.evaluate(() => new Promise((resolve) => {
     const t0 = performance.now();
-    document.querySelector("[data-check]").dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true }));
+    document.querySelector("[data-check]").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     const tick = () => {
       const fb = document.querySelector(".feedbar");
       if (fb) { const c = fb.querySelector("[data-continue]"); return setTimeout(() => resolve({ reveal: performance.now() - t0, contEnabled: !c.disabled, anim: getComputedStyle(fb).animationName }), 30); }
@@ -516,7 +516,7 @@ try {
   await pj.addInitScript(fakeAudio);
   await pj.goto(BASE); await pj.waitForSelector(".statsbar, .onboard");
   await pj.evaluate(() => { document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
-  check("音频：仅有 pointerdown 时不会误认为已解锁（修复前的状态）", (await pj.evaluate(() => window.__ac.inst?.state)) === "suspended");
+  check("音频：只有 pointerdown 时不会创建也不会解锁音频（iOS 不承认它）", (await pj.evaluate(() => window.__ac.inst?.state ?? "none")) !== "running");
   await pj.evaluate(() => { document.dispatchEvent(new Event("touchend", { bubbles: true })); });
   check("音频：随后的 touchend 能解锁", (await pj.evaluate(() => window.__ac.inst?.state)) === "running");
   await pj.close();
@@ -570,6 +570,45 @@ try {
     check("测试 B：点击后显示 readyState，并报告 audio.play() 成功或失败（含具体错误）", /\[B\] 点击：readyState=\d/.test(res2) && /\[B\] audio\.play\(\) (成功|失败：\w+：)/.test(res2), res2.replace(/\n/g, " | "));
     check("音频测试：整个过程没有脚本错误", lerrs.length === 0, lerrs.join("|"));
     await pl.close();
+  }
+
+
+  // ---------- 第三轮：正式关卡的声音（游戏按钮改为真正的 click）和振动测试 ----------
+  {
+    const pf = await ctx.newPage();
+    const ferrs = []; pf.on("pageerror", (e) => ferrs.push(e.message));
+    await pf.addInitScript(fakeAudio);
+    await pf.goto(BASE); await pf.waitForSelector(".statsbar, .onboard");
+    await pf.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.hearts = 5; s.prefs.sound = true; window.__app.setState(s); window.__app.persist(); window.__app.renderPath(); });
+    // 游戏按钮只响应 click：只有 pointerdown 时不会触发（否则声音会发生在 iOS 不承认的操作里）
+    await pf.locator(".node.current").tap(); await pf.locator(".overlay .btn3d.primary").tap(); await pf.getByRole("button", { name: "继续", exact: true }).tap(); await pf.waitForSelector("[data-check]");
+    await pf.evaluate(() => document.querySelector(".choice").dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true })));
+    check("游戏按钮：只有 pointerdown 不会触发选择（必须是真正的 click）", (await pf.locator(".choice.sel").count()) === 0);
+    // 完整做一题：声音全部发生在 click 之后，且 AudioContext 已 running
+    const f0 = await pf.evaluate(() => window.__ac.osc);
+    await pf.locator(".choice").first().tap();
+    const f0b = await pf.evaluate(() => ({ osc: window.__ac.osc, st: window.__ac.inst?.state, ev: window.__ac.resumeEvents, log: window.__app.feel.log.slice(-4) }));
+    check("正式关卡：点选时合成了声音，AudioContext 是 running", f0b.osc > f0 && f0b.st === "running", JSON.stringify({ f0, ...f0b }));
+    const f1 = await pf.evaluate(() => window.__ac.osc);
+    await pf.locator("[data-check]").tap(); await pf.waitForSelector(".feedbar"); await pf.waitForTimeout(80);
+    check("正式关卡：检查后 120ms 的结果音在 running 状态下播放", (await pf.evaluate(() => window.__ac.osc)) - f1 >= 2);
+    // 回到“我的”：正式音效试听、诊断
+    await pf.locator("[data-continue]").tap(); await pf.getByRole("button", { name: "退出本关" }).tap(); await pf.getByRole("button", { name: "退出", exact: true }).tap();
+    await pf.getByRole("button", { name: "我的" }).tap();
+    check("我的：有 6 个正式音效试听按钮", (await pf.locator("[data-sound]").count()) === 6);
+    const f2 = await pf.evaluate(() => window.__ac.osc);
+    await pf.locator('[data-sound="correct"]').tap(); await pf.waitForTimeout(100);
+    const fd = await pf.locator('[aria-label="诊断信息"]').innerText();
+    check("正式音效试听：点“答对”播放两个音，并报告已播放", (await pf.evaluate(() => window.__ac.osc)) - f2 >= 2 && /正式音效「答对」：已播放/.test(fd), fd.replace(/\n/g, " | "));
+    check("诊断：显示解锁尝试次数和状态变化", /解锁尝试 \d+ 次/.test(fd) && /状态变化：.*创建:suspended/.test(fd), fd.replace(/\n/g, " | "));
+    // 振动测试：四种独立控件，只记录点击，不宣布成功
+    check("振动测试：四种控件（普通按钮、原生开关、选项、检查按钮样式）都在", (await pf.locator("[data-haptic]").count()) === 5 && (await pf.locator('input[switch][data-haptic="switch"]').count()) === 1 && (await pf.locator('input[switch][data-haptic="check-label"]').count()) === 1);
+    await pf.locator('[data-haptic="button"]').tap(); await pf.locator('[data-haptic="choice"]').tap();
+    await pf.locator('[data-haptic="switch"]').tap(); await pf.locator('[data-haptic="check-label"]').tap({ force: true });
+    const hl = await pf.locator('[aria-label="振动测试结果"]').innerText();
+    check("振动测试：四种控件的点击都被记录，并标注“等待 iPhone 真机确认”（不凭接口返回值宣布成功）", /1 普通按钮：点了 1 次/.test(hl) && /2 原生开关：点了 1 次/.test(hl) && /3 选项样式：点了 1 次/.test(hl) && /4 检查按钮样式：点了 1 次/.test(hl) && /等待 iPhone 真机确认/.test(hl) && !/振动成功/.test(hl), hl.replace(/\n/g, " | "));
+    check("正式关卡声音：整个过程没有脚本错误", ferrs.length === 0, ferrs.join("|"));
+    await pf.close();
   }
 
   // 宽度
