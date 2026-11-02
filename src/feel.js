@@ -120,6 +120,10 @@ export function play(name, { force = false } = {}) {
   } catch (e) { stats.lastError = "播放失败：" + (e?.message || e); return Promise.resolve(false); }
 }
 
+// 给其他模块（按键音效实验室）用：在用户操作里取得共享的音频环境和总音量节点
+export function audioContext() { unlock(); return getCtx(); }
+export function masterNode() { return master; }
+
 // 试听按钮：必须在点击里调用；播放答对音
 export function preview() {
   unlock();

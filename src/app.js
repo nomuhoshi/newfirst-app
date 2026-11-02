@@ -11,6 +11,7 @@ import words from "../content/words.json";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
+import { KEY_SOUNDS, playKey } from "./keysounds.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
@@ -80,39 +81,63 @@ function icon(name, { size = 22, fill = false, cls = "" } = {}) {
 
 // ---------- 流动电路背景：稀疏的线 + 少量缓慢移动的光点（8–12 秒一次） ----------
 // 纯装饰：不拦截点击和滚动；减少动态效果时光点隐藏、线条静止；切到后台时暂停动画。
-// 每条线：{ d: 路径（可含分支），pulse: 光点走的那一段，pads: 焊点 }。
-// 第一屏 7 条路径从上、左、右三个方向进入，其中 4 条带分支；全部留在两侧和上下边缘，中间给文字和节点留空。
-const CIRCUITS = {
-  full: {
-    lines: [
-      { d: "M0 100H44L64 120V250M64 176H98", pulse: "M0 100H44L64 120V250", pads: [[64, 250], [98, 176], [64, 176]] },
-      { d: "M118 56V92L134 108H168", pulse: "M118 56V92L134 108H168", pads: [[168, 108]] },
-      { d: "M390 148H352L338 162V332M338 248H306", pulse: "M390 148H352L338 162V332", pads: [[338, 332], [306, 248], [338, 248]] },
-      { d: "M0 430H34L54 450V566M54 510H86", pulse: "M0 430H34L54 450V566", pads: [[54, 566], [86, 510], [54, 510]] },
-      { d: "M390 520H358L342 536V684L326 700H298", pulse: "M390 520H358L342 536V684L326 700H298", pads: [[298, 700]] },
-      { d: "M0 744H64L84 724V690", pulse: "M0 744H64L84 724V690", pads: [[84, 690]] },
-      { d: "M290 56V84L306 100H330", pulse: "M290 56V84L306 100H330", pads: [[330, 100]] },
-    ],
-    pulses: [[0, 10, 0], [2, 12, -4], [3, 9, -2], [4, 11, -7]],
-  },
-  edge: {
-    lines: [
-      { d: "M6 0V220L12 226V500", pulse: "M6 0V220L12 226V500", pads: [[12, 500]] },
-      { d: "M384 100V380L378 386V700", pulse: "M384 100V380L378 386V700", pads: [[378, 700]] },
-      { d: "M6 620V844", pulse: "M6 620V844", pads: [[6, 844]] },
-      { d: "M384 760V844", pulse: "M384 760V844", pads: [[384, 844]] },
-    ],
-    pulses: [[0, 11, 0], [1, 9, -5]],
-  },
-};
-function circuit(variant = "full") {
-  const c = CIRCUITS[variant];
-  return svg("svg", { class: "circuit-bg " + variant, viewBox: "0 0 390 844", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true", focusable: "false" },
+// 电路按“当前窗口的实际大小”生成（手机竖屏、iPad 小窗口、横屏都能看到），窗口变化时重新生成。
+// 第一屏 7 条路径从左、右、上三个方向进入，其中 4 条带分支；全部在两侧和上下边缘，中间留空给文字和节点。
+const BEND = 16; // 45° 拐角的大小
+function circuitLayout(variant, W, H) {
+  const r = Math.round;
+  const lines = [];
+  const add = (d, pulse, pads) => lines.push({ d, pulse, pads });
+  if (variant === "edge") {
+    const m = (x, y0, y1, y2) => `M${x} ${r(y0)}V${r(y1)}L${x + (x < W / 2 ? 6 : -6)} ${r(y1 + 6)}V${r(y2)}`;
+    const a = m(6, 0, H * 0.26, H * 0.6); add(a, a, [[12, r(H * 0.6)]]);
+    const b = m(W - 6, H * 0.12, H * 0.45, H * 0.83); add(b, b, [[W - 12, r(H * 0.83)]]);
+    const c = `M6 ${r(H * 0.72)}V${r(H)}`; add(c, c, [[6, r(H)]]);
+    const d = `M${W - 6} ${r(H * 0.9)}V${r(H)}`; add(d, d, [[W - 6, r(H)]]);
+    return { lines, pulses: [[0, 11, 0], [1, 9, -5]] };
+  }
+  // 从左边进入：横走到 x1，45° 拐弯后竖走到 y2，可在 yb 处接一条横向分支（长 bl）
+  const side = (right, y0, x1, y2, yb, bl) => {
+    const sx = (x) => r(right ? W - x : x); const dir = y2 >= y0 ? 1 : -1;
+    const xs = x1 + BEND;
+    const main = `M${right ? r(W) : 0} ${r(y0)}H${sx(x1)}L${sx(xs)} ${r(y0 + BEND * dir)}V${r(y2)}`;
+    const pads = [[sx(xs), r(y2)]];
+    let d = main;
+    if (yb != null) { d += `M${sx(xs)} ${r(yb)}H${sx(xs + bl)}`; pads.push([sx(xs + bl), r(yb)], [sx(xs), r(yb)]); }
+    add(d, main, pads);
+  };
+  const top = (x0, y1, x2) => { const d = `M${r(x0)} 0V${r(y1)}L${r(x0 + BEND)} ${r(y1 + BEND)}H${r(x2)}`; add(d, d, [[r(x2), r(y1 + BEND)]]); };
+  side(false, H * 0.12, W * 0.10, H * 0.31, H * 0.215, W * 0.10);
+  top(W * 0.30, H * 0.12, W * 0.43);
+  side(true, H * 0.17, W * 0.09, H * 0.39, H * 0.29, W * 0.08);
+  side(false, H * 0.52, W * 0.08, H * 0.68, H * 0.60, W * 0.08);
+  side(true, H * 0.64, W * 0.09, H * 0.84, H * 0.75, W * 0.08);
+  side(false, H * 0.90, W * 0.16, H * 0.82, null, 0);
+  top(W * 0.74, H * 0.10, W * 0.88);
+  return { lines, pulses: [[0, 10, 0], [2, 12, -4], [3, 9, -2], [4, 11, -7]] };
+}
+function fillCircuit(el, variant) {
+  const W = Math.max(240, Math.round(window.innerWidth)); const H = Math.max(240, Math.round(window.innerHeight));
+  el.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const c = circuitLayout(variant, W, H);
+  el.replaceChildren(
     ...c.lines.map((l) => svg("path", { d: l.d, class: "trace" })),
     ...c.lines.flatMap((l) => l.pads.map(([x, y]) => svg("circle", { cx: String(x), cy: String(y), r: "3.5", class: "pad" }))),
     ...c.pulses.map(([i, dur, delay]) => svg("path", { d: c.lines[i].pulse, class: "pulse", pathLength: "100", style: `animation-duration:${dur}s;animation-delay:${delay}s` })),
   );
 }
+const liveCircuits = new Set();
+function circuit(variant = "full") {
+  const el = svg("svg", { class: "circuit-bg " + variant, preserveAspectRatio: "none", "aria-hidden": "true", focusable: "false" });
+  fillCircuit(el, variant);
+  liveCircuits.add([el, variant]);
+  return el;
+}
+let circuitTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(circuitTimer);
+  circuitTimer = setTimeout(() => { for (const entry of [...liveCircuits]) { if (entry[0].isConnected) fillCircuit(entry[0], entry[1]); else liveCircuits.delete(entry); } }, 120);
+});
 document.addEventListener("visibilitychange", () => document.documentElement.classList.toggle("bg-paused", document.hidden));
 
 // ---------- 六边形电路关卡节点 ----------
@@ -496,6 +521,32 @@ function hapticLab() {
   );
 }
 
+// 按键音效选择实验室：A–J 十个“矮轴机械键盘”方向的短音效，点一下试听，点中的会高亮并保存在本机。
+// 暂时只在这里试听，不接进答题流程；选定后再做同系列的“点选、放入、撤销、答对、答错、过关”。
+function keyLab() {
+  const status = h("p", { class: "muted small keylab-status", role: "status" });
+  const showSel = () => { const k = KEY_SOUNDS.find((x) => x.id === state.prefs.keySound); status.textContent = k ? `已选：${k.id} ${k.name}` : "还没有选择：点一下试听，满意的会高亮并保存。"; };
+  const btns = KEY_SOUNDS.map((k) => {
+    const b = h("button", { type: "button", class: "keybtn" + (state.prefs.keySound === k.id ? " sel" : ""), "data-keysound": k.id, "aria-pressed": String(state.prefs.keySound === k.id) },
+      h("b", { text: k.id }), h("span", { text: k.name }), h("small", { text: k.desc }));
+    b.addEventListener("click", () => {
+      const r = playKey(k.id);
+      state.prefs.keySound = k.id; persist();
+      btns.forEach((x) => { const on = x === b; x.classList.toggle("sel", on); x.setAttribute("aria-pressed", String(on)); });
+      showSel();
+      if (!r.ok) status.textContent += "（这次没有发出声音：" + (r.state || "音频环境不可用") + "）";
+    });
+    return b;
+  });
+  showSel();
+  return h("div", { class: "keylab" },
+    h("h3", { text: "按键音效选择" }),
+    h("p", { class: "muted small", text: "十个原创的矮轴键盘方向音效，每个约 40–100 毫秒。点一下试听，点中的会高亮并保存；可以连续点。选好后告诉我字母。" }),
+    h("div", { class: "keygrid" }, btns),
+    status,
+  );
+}
+
 function renderMe() {
   currentRun = null;
   let confirmBox = null;
@@ -524,6 +575,7 @@ function renderMe() {
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
       toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，下面可以自测", "haptics"),
+      keyLab(),
       selfTest(),
       audioLab(),
       hapticLab(),
@@ -859,6 +911,6 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
+window.__app = { keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
 runner.boot(); // 后台加载 Python，用来显示真实运行结果
 if (state.onboarded) renderPath(); else renderOnboarding();

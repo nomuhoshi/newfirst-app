@@ -441,23 +441,36 @@ try {
   // 电路背景
   await page.evaluate(() => window.__app.renderPath());
   check("电路：地图页有稀疏电路背景", (await page.locator(".circuit-bg.full").count()) === 1 && (await page.locator(".circuit-bg .trace").count()) <= 8);
-  const dense = await page.evaluate(() => {
-    const traces = [...document.querySelectorAll(".circuit-bg.full .trace")];
+  const measureCircuit = (pg) => pg.evaluate(() => {
+    const svg = document.querySelector(".circuit-bg.full"); const [, , W, H] = svg.getAttribute("viewBox").split(" ").map(Number);
+    const traces = [...svg.querySelectorAll(".trace")];
     const sides = new Set(); let branches = 0; let centerHit = 0; let outside = 0;
     for (const t of traces) {
       const d = t.getAttribute("d"); const m = d.match(/^M(-?[\d.]+) (-?[\d.]+)/);
       const x = +m[1], y = +m[2];
-      if (x <= 0) sides.add("左"); else if (x >= 390) sides.add("右"); else if (y <= 60) sides.add("上"); else sides.add("下");
+      if (x <= 0) sides.add("左"); else if (x >= W) sides.add("右"); else if (y <= 0) sides.add("上"); else sides.add("下");
       if ((d.match(/M/g) || []).length > 1) branches++;
       const len = t.getTotalLength();
-      for (let i = 0; i <= 80; i++) { const p = t.getPointAtLength((len * i) / 80); if (p.x > 140 && p.x < 260 && p.y > 150 && p.y < 720) centerHit++; if (p.x < -1 || p.x > 391 || p.y < -1 || p.y > 845) outside++; }
+      for (let i = 0; i <= 80; i++) { const p = t.getPointAtLength((len * i) / 80); if (p.x > W * 0.36 && p.x < W * 0.64 && p.y > H * 0.18 && p.y < H * 0.85) centerHit++; if (p.x < -1 || p.x > W + 1 || p.y < -1 || p.y > H + 1) outside++; }
     }
-    return { n: traces.length, sides: [...sides], branches, pads: document.querySelectorAll(".circuit-bg.full .pad").length, pulses: document.querySelectorAll(".circuit-bg.full .pulse").length, centerHit, outside };
+    return { W, H, n: traces.length, sides: [...sides], branches, pads: svg.querySelectorAll(".pad").length, pulses: svg.querySelectorAll(".pulse").length, centerHit, outside };
   });
+  const dense = await measureCircuit(page);
   check("电路：第一屏有 5–7 条独立路径，从至少 3 个方向进入", dense.n >= 5 && dense.n <= 7 && dense.sides.length >= 3, JSON.stringify(dense));
   check("电路：有分支和焊点（至少 3 条带分支，焊点不少于 8 个，不密集）", dense.branches >= 3 && dense.pads >= 8 && dense.pads <= 16, JSON.stringify(dense));
   check("电路：3–4 个缓慢光点", dense.pulses >= 3 && dense.pulses <= 4);
   check("电路：中间区域（文字和节点所在）留空，路径都在屏幕内", dense.centerHit === 0 && dense.outside === 0, JSON.stringify(dense));
+  // 窗口形状不同（比如 iPad 的小窗口 425×390）时，电路按实际大小重新生成，仍然看得到、仍然留空
+  await page.setViewportSize({ width: 425, height: 390 });
+  await page.waitForTimeout(300);
+  const small = await measureCircuit(page);
+  check("电路：窗口变成 425×390（iPad 小窗口）后按新尺寸重新生成，仍有 5–7 条路径、3 个以上方向、中间留空", small.W === 425 && small.H === 390 && small.n >= 5 && small.n <= 7 && small.sides.length >= 3 && small.centerHit === 0 && small.outside === 0 && small.branches >= 3, JSON.stringify(small));
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(300);
+  const wide = await measureCircuit(page);
+  check("电路：横屏 844×390 也能生成并留空", wide.W === 844 && wide.n >= 5 && wide.centerHit === 0 && wide.outside === 0, JSON.stringify(wide));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
   const cb = await page.evaluate(() => {
     const g = document.querySelector(".circuit-bg"); const c = getComputedStyle(g);
     const pulses = [...document.querySelectorAll(".circuit-bg .pulse")].map((p) => ({ n: getComputedStyle(p).animationName, d: parseFloat(getComputedStyle(p).animationDuration) }));
@@ -627,6 +640,39 @@ try {
     check("振动测试：四种控件的点击都被记录，并标注“等待 iPhone 真机确认”（不凭接口返回值宣布成功）", /1 普通按钮：点了 1 次/.test(hl) && /2 原生开关：点了 1 次/.test(hl) && /3 选项样式：点了 1 次/.test(hl) && /4 检查按钮样式：点了 1 次/.test(hl) && /等待 iPhone 真机确认/.test(hl) && !/振动成功/.test(hl), hl.replace(/\n/g, " | "));
     check("正式关卡声音：整个过程没有脚本错误", ferrs.length === 0, ferrs.join("|"));
     await pf.close();
+  }
+
+
+  // ---------- 按键音效选择实验室（A–J） ----------
+  {
+    const pk2 = await ctx.newPage();
+    const kerrs = []; pk2.on("pageerror", (e) => kerrs.push(e.message));
+    await pk2.goto(BASE); await pk2.waitForSelector(".statsbar, .onboard");
+    await pk2.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.prefs.keySound = null; window.__app.setState(s); window.__app.persist(); window.__app.renderPath(); });
+    await pk2.getByRole("button", { name: "我的" }).tap();
+    check("音效实验室：A–J 十个试听按钮，各带名称和一句描述", (await pk2.locator("[data-keysound]").count()) === 10 && (await pk2.evaluate(() => [...document.querySelectorAll("[data-keysound]")].map((b) => b.dataset.keysound).join(""))) === "ABCDEFGHIJ" && (await pk2.locator(".keybtn small").count()) === 10);
+    const meas = await pk2.evaluate(async () => { const k = await window.__app.keysounds(); const out = {}; for (const { id } of k.KEY_SOUNDS) out[id] = await k.measureKey(id); return out; });
+    const ids = Object.keys(meas);
+    check("音效实验室：每个音效约 40–100 毫秒", ids.every((i) => meas[i].ms >= 40 && meas[i].ms <= 100), ids.map((i) => `${i}${meas[i].ms}`).join(" "));
+    const dbs = ids.map((i) => 20 * Math.log10(meas[i].rms));
+    check("音效实验室：十个音效响度接近（RMS 差距 ≤ 2dB），峰值不削波", Math.max(...dbs) - Math.min(...dbs) <= 2 && ids.every((i) => meas[i].peak < 0.9), `${(Math.max(...dbs) - Math.min(...dbs)).toFixed(2)}dB`);
+    check("音效实验室：十个音效互不相同（响度包络或时长不全相同）", new Set(ids.map((i) => `${meas[i].ms}-${meas[i].peak.toFixed(3)}`)).size === 10);
+    await pk2.locator('[data-keysound="B"]').tap();
+    check("音效实验室：点 B 后高亮并保存到本机", (await pk2.locator('[data-keysound="B"]').getAttribute("aria-pressed")) === "true" && (await pk2.locator(".keybtn.sel").count()) === 1 && (await pk2.evaluate(() => window.__app.getState().prefs.keySound)) === "B" && /已选：B 奶油矮轴/.test(await pk2.locator(".keylab-status").innerText()));
+    await pk2.locator('[data-keysound="J"]').tap();
+    check("音效实验室：再点 J，高亮换到 J，B 取消", (await pk2.locator(".keybtn.sel").count()) === 1 && (await pk2.locator('[data-keysound="J"]').getAttribute("aria-pressed")) === "true" && (await pk2.locator('[data-keysound="B"]').getAttribute("aria-pressed")) === "false");
+    const burst = await pk2.evaluate(async () => {
+      const k = await window.__app.keysounds(); const b = document.querySelector('[data-keysound="A"]'); let maxActive = 0;
+      for (let i = 0; i < 60; i++) { b.dispatchEvent(new MouseEvent("click", { bubbles: true })); maxActive = Math.max(maxActive, k.activeCount()); }
+      return maxActive;
+    });
+    check("音效实验室：连续快速点击 60 次，同时发声不超过 3 个（不会无限叠加）", burst <= 3, `max=${burst}`);
+    await pk2.reload(); await pk2.waitForSelector(".statsbar");
+    await pk2.getByRole("button", { name: "我的" }).tap();
+    check("音效实验室：刷新后选择仍在（A 是最后一次点的）", (await pk2.evaluate(() => window.__app.getState().prefs.keySound)) === "A" && (await pk2.locator('[data-keysound="A"]').getAttribute("aria-pressed")) === "true");
+    check("音效实验室：只是试听，不接进答题流程（答题用的音效引擎没有被替换）", await pk2.evaluate(() => !window.__app.feel.log.some((n) => /^[A-J]$/.test(n))));
+    check("音效实验室：没有脚本错误", kerrs.length === 0, kerrs.join("|"));
+    await pk2.close();
   }
 
   // 宽度

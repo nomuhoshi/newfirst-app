@@ -243,6 +243,14 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .selftest-btns .btn3d { margin-top: 8px; }
 .diag { margin: 10px 0 0; padding: 10px 12px; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; font: 12px/1.7 ui-monospace, Menlo, monospace; white-space: pre-wrap; color: var(--g-muted); }
 
+.keygrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+.keybtn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 76px; padding: 10px 12px; text-align: left; background: var(--g-card); color: var(--g-fg); border: 1.5px solid var(--g-line); border-radius: 12px; transition: border-color .08s, background-color .08s; }
+.keybtn:active { transform: translateY(1px); }
+.keybtn b { font-size: 18px; color: var(--g-copper); }
+.keybtn span { font-weight: 700; font-size: 15px; }
+.keybtn small { font-size: 12px; color: var(--g-muted); line-height: 1.4; }
+.keybtn.sel { border-color: var(--g-primary); border-width: 2.5px; padding: 9.5px 11.5px; background: color-mix(in srgb, var(--g-primary) 10%, var(--g-card)); }
+.keylab-status { margin: 4px 0 8px; }
 .soundrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .soundrow .chip { min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); font-size: 14px; font-weight: 700; }
 .hapticlab .choice { width: 100%; margin-top: 10px; text-align: center; }

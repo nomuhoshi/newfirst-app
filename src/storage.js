@@ -20,7 +20,7 @@ export function freshState() {
     lessonsCompleted: 0,  // 完成关卡的总次数（含复习）
     installTipClosed: false,
     lastActive: 0,
-    prefs: { sound: true, haptics: true }, // 音效、振动开关（旧 v3 记录没有这一项，加载时补上默认值）
+    prefs: { sound: true, haptics: true, keySound: null }, // keySound：在“我的”页选中的按键音效 A–J； 音效、振动开关（旧 v3 记录没有这一项，加载时补上默认值）
   };
 }
 
