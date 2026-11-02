@@ -496,7 +496,7 @@ try {
   await pi.getByRole("button", { name: "我的" }).tap();
   const o2 = await pi.evaluate(() => window.__ac.osc);
   await pi.locator('[data-selftest="sound"]').tap(); await pi.waitForTimeout(150);
-  const diagTxt = await pi.locator(".diag").innerText();
+  const diagTxt = await pi.locator('[aria-label="诊断信息"]').innerText();
   check("试听按钮：点击后播放答对音（两个音），诊断里显示 AudioContext 状态和播放次数", (await pi.evaluate(() => window.__ac.osc)) - o2 >= 2 && /AudioContext：running/.test(diagTxt) && /已播放 [1-9]/.test(diagTxt) && /已播放答对音/.test(diagTxt), diagTxt.replace(/\n/g, " | "));
   check("诊断：显示版本、运行方式、振动接口、最近错误", /版本：/.test(diagTxt) && /运行方式：/.test(diagTxt) && /网页振动接口：/.test(diagTxt) && /最近错误：/.test(diagTxt));
   // 关闭音效后：普通点选没有声音，试听仍然能响
@@ -527,7 +527,7 @@ try {
   await pk.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   await pk.getByRole("button", { name: "我的" }).tap();
   await pk.locator('[data-selftest="haptic"]').tap();
-  check("试振动按钮：有接口时请求一次 12ms，并显示结果", JSON.stringify(await pk.evaluate(() => window.__vib)) === "[12]" && /已请求 12ms 振动/.test(await pk.locator(".diag").innerText()));
+  check("试振动按钮：有接口时请求一次 12ms，并显示结果", JSON.stringify(await pk.evaluate(() => window.__vib)) === "[12]" && /已请求 12ms 振动/.test(await pk.locator('[aria-label="诊断信息"]').innerText()));
   check("振动开关：始终可以点（不再因为接口检测而被禁用）", await pk.locator('[data-pref="haptics"]').isEnabled());
   await pk.close();
   const pm = await ctx.newPage();
@@ -536,9 +536,41 @@ try {
   await pm.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   await pm.getByRole("button", { name: "我的" }).tap();
   await pm.locator('[data-selftest="haptic"]').tap();
-  check("试振动按钮：没有接口时说明情况，不报错；振动开关仍可点", /没有网页振动接口/.test(await pm.locator(".diag").innerText()) && (await pm.locator('[data-pref="haptics"]').isEnabled()));
+  check("试振动按钮：没有接口时说明情况，不报错；振动开关仍可点", /没有网页振动接口/.test(await pm.locator('[aria-label="诊断信息"]').innerText()) && (await pm.locator('[data-pref="haptics"]').isEnabled()));
   check("文案：不再写“iPhone 都是这样/一定没有振动”", !/iPhone 都是这样|一定没有振动/.test(await pm.locator("#app").innerText()));
   await pm.close();
+
+
+  // ---------- 第三轮 P0：音频兼容性测试（iPhone 仍无声，先查原因） ----------
+  {
+    const wav = readFileSync(new URL("../public/sfx/test-beep.wav", import.meta.url));
+    check("音频文件：test-beep.wav 是有效的 WAV（RIFF/WAVE），小于 30KB", wav.slice(0, 4).toString() === "RIFF" && wav.slice(8, 12).toString() === "WAVE" && wav.length < 30000, `${wav.length} 字节`);
+    const pl = await ctx.newPage();
+    const lerrs = []; pl.on("pageerror", (e) => lerrs.push(e.message));
+    await pl.addInitScript(fakeAudio);
+    await pl.goto(BASE); await pl.waitForSelector(".statsbar, .onboard");
+    await pl.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+    await pl.getByRole("button", { name: "我的" }).tap();
+    check("音频测试：“我的”页有 A / B / C 三个测试按钮和结果区", (await pl.locator("[data-audiotest]").count()) === 3 && (await pl.locator('[aria-label="音频测试结果"]').count()) === 1);
+    const sync = await pl.evaluate(() => {
+      const b = document.querySelector('[data-audiotest="webaudio"]'); const o0 = window.__ac.osc; const c0 = window.__ac.created;
+      b.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      return { osc: window.__ac.osc - o0, created: window.__ac.created - c0, state: window.__ac.inst.state };
+    });
+    check("测试 A：点击时同步新建 AudioContext 并发声（振荡器在同一个事件里就被启动，不等 Promise）", sync.osc === 1 && sync.created === 1 && sync.state === "running", JSON.stringify(sync));
+    await pl.waitForTimeout(500);
+    const res = await pl.locator('[aria-label="音频测试结果"]').innerText();
+    check("测试 A：结果显示运行方式、音频会话、创建时状态、0.4 秒后状态和时钟", /运行方式：/.test(res) && /音频会话：/.test(res) && /\[A\] 点击内已发出声音指令；创建时 state=suspended/.test(res) && /\[A\] 0\.4 秒后 state=running/.test(res), res.replace(/\n/g, " | "));
+    const syncC = await pl.evaluate(() => { const b = document.querySelector('[data-audiotest="playback"]'); const o0 = window.__ac.osc; b.dispatchEvent(new MouseEvent("click", { bubbles: true })); return window.__ac.osc - o0; });
+    check("测试 C：同样在点击内同步发声", syncC === 1);
+    await pl.locator('[data-audiotest="file"]').tap();
+    await pl.waitForFunction(() => /\[B\] audio\.play\(\) (成功|失败)/.test(document.querySelector('[aria-label="音频测试结果"]').textContent), null, { timeout: 8000 }).catch(() => {});
+    const res2 = await pl.locator('[aria-label="音频测试结果"]').innerText();
+    check("测试 B：本地文件网络读取 200，并显示加载结果", /\[文件\] 网络读取 200，\d+ 字节/.test(res2) && /\[文件\] 加载成功/.test(res2), res2.replace(/\n/g, " | "));
+    check("测试 B：点击后显示 readyState，并报告 audio.play() 成功或失败（含具体错误）", /\[B\] 点击：readyState=\d/.test(res2) && /\[B\] audio\.play\(\) (成功|失败：\w+：)/.test(res2), res2.replace(/\n/g, " | "));
+    check("音频测试：整个过程没有脚本错误", lerrs.length === 0, lerrs.join("|"));
+    await pl.close();
+  }
 
   // 宽度
   for (const w of [320, 360, 390, 430]) {

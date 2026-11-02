@@ -387,6 +387,71 @@ function selfTest() {
   );
 }
 
+// 音频兼容性测试（排查 iPhone 无声）：A / C 是 Web Audio，B 是本地 WAV 文件走 <audio>。
+// 三个测试都在点击事件里同步发声：不经过延迟、Promise 链、onActivate 或自动播放；
+// 结果显示只是“事后报告”，不参与发声。
+function audioLab() {
+  const lines = [];
+  const out = h("pre", { class: "diag", "aria-label": "音频测试结果" });
+  const session = () => { try { return navigator.audioSession ? navigator.audioSession.type : "（浏览器没有 audioSession）"; } catch { return "（读取失败）"; } };
+  const ua = (navigator.userAgent.match(/(Version|CriOS|Chrome|OS) ?\/?[\d._]+/g) || []).slice(0, 2).join(" ");
+  const render = () => { out.textContent = [`运行方式：${standalone ? "主屏幕 App" : "Safari / 浏览器"}`, `系统：${ua || "未知"}`, `音频会话：${session()}`, "—", ...lines].join("\n"); };
+  const say = (msg) => { lines.push(msg); if (lines.length > 14) lines.shift(); render(); };
+  const url = new URL("sfx/test-beep.wav", document.baseURI).href;
+  const audio = new Audio();
+  audio.preload = "auto";
+  audio.addEventListener("canplaythrough", () => say(`[文件] 加载成功（${Number.isFinite(audio.duration) ? audio.duration.toFixed(2) : "?"} 秒）`));
+  audio.addEventListener("error", () => say(`[文件] 加载失败（code ${audio.error?.code}：${audio.error?.message || "无信息"}）`));
+  audio.src = url;
+  try { audio.load(); } catch (err) { say(`[文件] load() 出错：${err.message}`); }
+  fetch(url).then((r) => r.arrayBuffer().then((b) => say(`[文件] 网络读取 ${r.status}，${b.byteLength} 字节`))).catch((err) => say(`[文件] 网络读取失败：${err.message}`));
+  render();
+
+  // Web Audio：在点击里新建 AudioContext，立刻 resume() 并 start()，不等待任何 Promise
+  const webAudio = (type, tag) => () => {
+    try {
+      let setNote = "";
+      try { if (navigator.audioSession) { navigator.audioSession.type = type; setNote = `，audioSession 设为 ${type}`; } } catch (err) { setNote = `，audioSession 设置失败：${err.message}`; }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { say(`[${tag}] 浏览器没有 AudioContext`); return; }
+      const c = new AC();
+      const s0 = c.state;
+      c.resume(); // 同步发起，不等结果
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = "sine";
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.6, c.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.3);
+      o.connect(g); g.connect(c.destination);
+      o.start();
+      o.stop(c.currentTime + 0.35);
+      say(`[${tag}] 点击内已发出声音指令；创建时 state=${s0}${setNote}`);
+      setTimeout(() => say(`[${tag}] 0.4 秒后 state=${c.state}，currentTime=${c.currentTime.toFixed(3)}（大于 0 说明音频时钟在走）`), 400);
+    } catch (err) { say(`[${tag}] 出错：${err.name}：${err.message}`); }
+  };
+  // 本地文件：在点击里直接 audio.play()，then/catch 只用来显示结果
+  const fileTest = () => {
+    try {
+      say(`[B] 点击：readyState=${audio.readyState}，networkState=${audio.networkState}，error=${audio.error ? audio.error.code : "无"}`);
+      audio.pause();
+      audio.currentTime = 0;
+      const p = audio.play();
+      if (p && p.then) p.then(() => say("[B] audio.play() 成功")).catch((err) => say(`[B] audio.play() 失败：${err.name}：${err.message}`));
+      else say("[B] audio.play() 已调用（浏览器没有返回 Promise）");
+    } catch (err) { say(`[B] play() 抛出：${err.name}：${err.message}`); }
+  };
+  return h("div", { class: "selftest audiolab" },
+    h("h3", { text: "音频兼容性测试" }),
+    h("p", { class: "muted small", text: "排查 iPhone 无声：每个按钮都在点击里直接发声。请先关掉静音键，把音量调到一半，三个都点一遍，告诉我哪个能响，并截图下面的结果。" }),
+    h("button", { type: "button", class: "btn3d wide", "data-audiotest": "webaudio", onclick: webAudio("ambient", "A") }, "测试 A：Web Audio 提示音"),
+    h("button", { type: "button", class: "btn3d wide", "data-audiotest": "file", onclick: fileTest }, "测试 B：本地 WAV 文件（<audio>）"),
+    h("button", { type: "button", class: "btn3d wide", "data-audiotest": "playback", onclick: webAudio("playback", "C") }, "测试 C：Web Audio + 播放模式"),
+    out,
+  );
+}
+
 function renderMe() {
   currentRun = null;
   let confirmBox = null;
@@ -416,6 +481,7 @@ function renderMe() {
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
       toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，下面可以自测", "haptics"),
       selfTest(),
+      audioLab(),
       h("h3", { text: "规则" }),
       h("ul", { class: "rules" },
         h("li", { text: `答对一题 +${XP_CORRECT} XP，完成一关再 +${XP_FINISH} XP；复习每题 +${XP_REVIEW} XP。` }),
