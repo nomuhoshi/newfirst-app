@@ -1,5 +1,7 @@
 # newfirst-app（碎片编程）
 
+> **接手的 AI 请先读 `AGENTS.md`。**
+
 网址：https://nomuhoshi.github.io/newfirst-app/ （技术验证页：/lab.html）
 
 我的第一个公开发布的应用：**用手机学 Python 的网页应用（PWA）**，免费发布，不上 App Store。
