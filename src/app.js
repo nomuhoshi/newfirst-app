@@ -51,7 +51,7 @@ const svgNS = "http://www.w3.org/2000/svg";
 function svg(tag, attrs, ...kids) {
   const el = document.createElementNS(svgNS, tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-  kids.forEach((k) => el.append(k));
+  kids.forEach((k) => { if (k != null && k !== false) el.append(k); });
   return el;
 }
 
@@ -69,11 +69,53 @@ const ICONS = {
   shield: "M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z",
   close: "M6 6l12 12M18 6L6 18",
   cross: "M7 7l10 10M17 7L7 17",
+  play: "M8 5.5v13l11-6.5z",
+  review: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5",
 };
 function icon(name, { size = 22, fill = false, cls = "" } = {}) {
   return svg("svg", { viewBox: "0 0 24 24", width: size, height: size, class: "ico " + cls, "aria-hidden": "true",
     fill: fill ? "currentColor" : "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
   svg("path", { d: ICONS[name] }));
+}
+
+// ---------- 流动电路背景：稀疏的线 + 少量缓慢移动的光点（8–12 秒一次） ----------
+// 纯装饰：不拦截点击和滚动；减少动态效果时光点隐藏、线条静止；切到后台时暂停动画。
+// 每条线：[路径, 终点x, 终点y]；光点沿同一条路径走：[路径索引, 秒数, 延迟]
+const CIRCUITS = {
+  full: {
+    lines: [["M0 120H60L80 140V300L100 320H170", 170, 320], ["M390 220H330L310 240V420L290 440H230", 230, 440], ["M0 520H40L60 540V700L80 720H140", 140, 720],
+      ["M390 640H350L330 660V780", 330, 780], ["M120 0V60L140 80H200", 200, 80], ["M270 844V790L250 770H190", 190, 770]],
+    pulses: [[0, 10, 0], [1, 12, -4], [2, 9, -2], [5, 11, -7]],
+  },
+  edge: {
+    lines: [["M6 0V220L12 226V500", 12, 500], ["M384 100V380L378 386V700", 378, 700], ["M6 620V844", 6, 844], ["M384 760V844", 384, 844]],
+    pulses: [[0, 11, 0], [1, 9, -5]],
+  },
+};
+function circuit(variant = "full") {
+  const c = CIRCUITS[variant];
+  return svg("svg", { class: "circuit-bg " + variant, viewBox: "0 0 390 844", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true", focusable: "false" },
+    ...c.lines.map(([d]) => svg("path", { d, class: "trace" })),
+    ...c.lines.map(([, x, y]) => svg("circle", { cx: String(x), cy: String(y), r: "3.5", class: "pad" })),
+    ...c.pulses.map(([i, dur, delay]) => svg("path", { d: c.lines[i][0], class: "pulse", pathLength: "100", style: `animation-duration:${dur}s;animation-delay:${delay}s` })),
+  );
+}
+document.addEventListener("visibilitychange", () => document.documentElement.classList.toggle("bg-paused", document.hidden));
+
+// ---------- 六边形电路关卡节点 ----------
+function hexNode(st, review) {
+  const kind = st === "done" ? "check" : st === "current" ? (review ? "review" : "play") : review ? "review" : "lock";
+  const inner = icon(kind, { size: 32, fill: kind === "play", cls: "hex-ico" });
+  inner.setAttribute("x", "20"); inner.setAttribute("y", "20");
+  const badge = st === "locked" && review ? icon("lock", { size: 16, cls: "hex-badge" }) : null;
+  if (badge) { badge.setAttribute("x", "47"); badge.setAttribute("y", "46"); }
+  const el = svg("svg", { viewBox: "0 0 72 72", width: "72", height: "72", class: "hexnode", "aria-hidden": "true", "data-icon": kind },
+    st === "current" ? svg("polygon", { points: "36,1 67,19 67,53 36,71 5,53 5,19", class: "hex-ring" }) : null,
+    svg("polygon", { points: "36,5 63,20.5 63,51.5 36,67 9,51.5 9,20.5", class: "hex-body" }),
+    svg("circle", { cx: "36", cy: "5", r: "2.8", class: "hex-pad" }), svg("circle", { cx: "36", cy: "67", r: "2.8", class: "hex-pad" }),
+    inner, badge,
+  );
+  return el;
 }
 
 // ---------- 吉祥物“小码”：折角记录卡（暖白主体、墨蓝括号眼睛、铜橙折角、短脚） ----------
@@ -245,7 +287,7 @@ function renderPath() {
         const st = lessonStatus(l);
         const offset = [0, 1, 2, 1, 0, -1][i % 6];
         const node = button(
-          h("span", { class: "node-face", "aria-hidden": "true" }, icon(st === "done" ? "check" : st === "locked" ? "lock" : l.review ? "trophy" : "star", { size: 28, fill: st === "current" && !l.review })),
+          h("span", { class: "node-face", "aria-hidden": "true" }, hexNode(st, !!l.review)),
           () => openLessonSheet(l), `node ${st}${l.review ? " review" : ""}`,
           { "aria-label": `${l.title}（${st === "done" ? "已完成" : st === "current" ? "当前关卡" : "未解锁"}）`, "data-lesson": l.id },
         );
@@ -256,6 +298,7 @@ function renderPath() {
     );
   });
   appEl.replaceChildren(
+    circuit("full"),
     statsBar(),
     h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, units),
     tabBar("path"),
@@ -313,6 +356,37 @@ function toggleRow(label, sub, key, { disabled = false } = {}) {
   return h("div", { class: "toggle-row" }, h("div", {}, h("b", { text: label }), h("small", { text: sub })), sw);
 }
 
+// 声音与振动自测：真机上点试听，并显示诊断信息，方便确认声音和振动到底有没有
+function selfTest() {
+  const diag = h("pre", { class: "diag", "aria-label": "诊断信息" });
+  const showDiag = (extra = "") => {
+    const d = feel.diagnostics();
+    diag.textContent = [
+      `版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}`,
+      `运行方式：${standalone ? "主屏幕 App" : "浏览器"}`,
+      `音效开关：${d.soundPref ? "开" : "关"}`,
+      `AudioContext：${d.audioState}${d.sampleRate ? `（${d.sampleRate} Hz）` : ""}`,
+      `音频会话：${d.audioSession}`,
+      `已播放 ${d.played} 次，被丢弃 ${d.dropped} 次`,
+      `网页振动接口：${d.vibrate ? "有" : "没有"}`,
+      `最近错误：${d.lastError || "无"}`,
+      extra,
+    ].filter(Boolean).join("\n");
+  };
+  showDiag();
+  return h("div", { class: "selftest" },
+    h("div", { class: "selftest-btns" },
+      button("试听音效", () => { feel.preview().then((ok) => showDiag(ok ? "试听：已播放答对音（听不到就看上面的状态）" : "试听：没有播放成功")); showDiag("试听：请求中…"); }, "btn3d wide", { "data-selftest": "sound" }),
+      button("试振动", () => {
+        let r = "没有网页振动接口，这个按钮不会振动";
+        if (feel.hapticsSupported()) { try { r = navigator.vibrate(12) ? "已请求 12ms 振动" : "振动请求被浏览器拒绝"; } catch { r = "振动请求出错"; } }
+        showDiag("试振动：" + r);
+      }, "btn3d wide", { "data-selftest": "haptic" }),
+    ),
+    diag,
+  );
+}
+
 function renderMe() {
   currentRun = null;
   let confirmBox = null;
@@ -340,7 +414,8 @@ function renderMe() {
       ),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
-      toggleRow("振动", feel.hapticsSupported() ? "点“检查”时轻振一下" : "这台设备的浏览器不支持网页振动（iPhone 都是这样）", "haptics", { disabled: !feel.hapticsSupported() }),
+      toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，下面可以自测", "haptics"),
+      selfTest(),
       h("h3", { text: "规则" }),
       h("ul", { class: "rules" },
         h("li", { text: `答对一题 +${XP_CORRECT} XP，完成一关再 +${XP_FINISH} XP；复习每题 +${XP_REVIEW} XP。` }),
@@ -394,12 +469,15 @@ function confirmExit(run) {
 function renderIntro(run) {
   const l = run.lesson;
   appEl.replaceChildren(
+    circuit("full"),
     lessonHeader(run),
     h("main", { class: "lesson" },
       h("div", { class: "intro-screen" }, codeBlock(l.introCode, "phone")),
-      h("div", { class: "intro-concept", text: (run.review ? "复习 · " : "") + l.concept }),
-      h("h1", { class: "intro-title", text: l.title }),
-      h("p", { class: "intro-story", text: l.story }),
+      h("div", { class: "intro-panel" },
+        h("div", { class: "intro-concept", text: (run.review ? "复习 · " : "") + l.concept }),
+        h("h1", { class: "intro-title", text: l.title }),
+        h("p", { class: "intro-story", text: l.story }),
+      ),
     ),
     h("footer", { class: "lessonfoot" }, h("span", { class: "mascot-slot" }, mascot(56)), button("继续", () => renderExercise(run), "btn3d primary grow")),
   );
@@ -432,6 +510,7 @@ function renderExercise(run) {
   }, "mascot-btn", { "aria-label": "让小码给个提示" });
 
   appEl.replaceChildren(
+    circuit("edge"),
     lessonHeader(run),
     h("main", { class: "lesson" },
       ex.tip ? h("p", { class: "tip-line" }, h("b", { text: "提示 " }), ex.tip) : null,

@@ -73,7 +73,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .tab.on { color: var(--g-primary); }
 .ios-browser .tabbar { padding-bottom: 70px; }
 
-/* 关卡地图：单元横幅 + 折页卡片节点 */
+/* 关卡地图：单元横幅 + 六边形电路节点 */
 .pathview { padding: 16px 16px 40px; }
 .unit { margin-bottom: 28px; }
 .unit-banner { background: var(--g-primary); color: var(--g-on-primary); border-radius: 12px; padding: 14px 16px; }
@@ -83,22 +83,37 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .unit.locked .unit-banner { background: var(--g-locked); color: var(--g-muted); }
 .path { list-style: none; padding: 18px 0 0; margin: 0; display: flex; flex-direction: column; align-items: center; gap: 18px; }
 .path-item { position: relative; display: flex; flex-direction: column; align-items: center; transform: translateX(calc(var(--off) * 44px)); }
-.node { position: relative; width: 68px; height: 68px; border-radius: 14px; border: none; color: var(--g-on-primary);
-  background: var(--g-primary); box-shadow: 0 3px 0 color-mix(in srgb, var(--g-fg) 22%, transparent); display: flex; align-items: center; justify-content: center; }
-.node::after { content: ""; position: absolute; top: 0; right: 0; width: 20px; height: 20px; border-top-right-radius: 14px; border-bottom-left-radius: 6px;
-  background: linear-gradient(225deg, var(--g-bg) 50%, var(--g-copper) 50%); }
-.node:active { transform: translateY(2px); }
-.node.locked { background: var(--g-locked); color: var(--g-muted); }
-.node.locked::after { background: linear-gradient(225deg, var(--g-bg) 50%, var(--g-line) 50%); }
-.node.done { background: var(--g-ok); color: var(--g-on-ok); }
-.node.review { background: var(--g-copper); color: var(--g-on-copper); }
-.node.review.locked { background: var(--g-locked); color: var(--g-muted); }
-.node.review.done { background: var(--g-ok); color: var(--g-on-ok); }
-.node.current { outline: 3px solid color-mix(in srgb, var(--g-copper) 55%, transparent); outline-offset: 4px; animation: pulse 1.8s ease-in-out infinite; }
-@keyframes pulse { 50% { outline-offset: 8px; } }
+.node { width: 76px; height: 76px; border: none; background: none; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--g-muted); }
+.node:active { transform: scale(.97); }
 .node-face { display: inline-flex; }
-.node-label { font-size: 13px; font-weight: 700; color: var(--g-muted); margin-top: 10px; }
+.hexnode { overflow: visible; }
+.hex-body { fill: var(--g-card); stroke: var(--g-line); stroke-width: 3; stroke-linejoin: round; }
+.hex-pad { fill: var(--g-line); }
+.hex-ico { color: inherit; }
+.hex-badge { color: var(--g-muted); }
+.node.locked .hex-body { fill: var(--g-locked); }
+.node.done { color: var(--g-ok); }
+.node.done .hex-body { stroke: var(--g-ok); }
+.node.done .hex-pad { fill: var(--g-ok); }
+.node.current { color: var(--g-primary); }
+.node.current .hex-body { stroke: var(--g-primary); stroke-width: 4; }
+.node.current .hex-pad { fill: var(--g-primary); }
+.hex-ring { fill: none; stroke: var(--g-primary); stroke-width: 2; stroke-linejoin: round; opacity: .35; animation: ring 2.4s ease-in-out infinite; }
+@keyframes ring { 50% { opacity: .1; } }
+.node-label { font-size: 13px; font-weight: 700; color: var(--g-muted); margin-top: 6px; background: var(--g-bg); padding: 1px 8px; border-radius: 8px; }
 .bubble { background: var(--g-card); border: 1.5px solid var(--g-line); color: var(--g-copper); font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 10px; margin-bottom: 8px; }
+
+/* 流动电路背景：固定在最底层，不拦截点击和滚动；内容区都用不透明面板盖住它 */
+.circuit-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#app > :not(.circuit-bg) { position: relative; z-index: 1; }
+.circuit-bg .trace { fill: none; stroke: var(--g-line); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+.circuit-bg .pad { fill: none; stroke: var(--g-line); stroke-width: 1.5; }
+.circuit-bg .pulse { fill: none; stroke: var(--g-copper); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 95; stroke-dashoffset: 5; opacity: .85;
+  animation: flow 10s linear infinite; }
+.circuit-bg.edge .trace { opacity: .7; }
+@keyframes flow { from { stroke-dashoffset: 5; } to { stroke-dashoffset: -95; } }
+.bg-paused .circuit-bg .pulse, .bg-paused .hex-ring { animation-play-state: paused; }
+.statsbar, .tabbar { background: var(--g-bg); }
 
 /* 关卡弹窗 */
 .lsheet { padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
@@ -140,6 +155,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 
 .intro-screen { background: var(--g-code-bg); border-radius: 12px; padding: 22px 16px; display: flex; justify-content: center; margin: 8px 0 18px; }
 .intro-screen .codeblock.phone { border: 6px solid #3A5266; border-radius: 22px; max-width: 280px; width: 100%; transform: rotate(-4deg); background: #0B1820; }
+.intro-panel { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 14px 16px; }
 .intro-concept { font-size: 13px; font-weight: 700; color: var(--g-copper); }
 .intro-title { font-size: 30px; margin: 4px 0 8px; }
 .intro-story { font-size: 18px !important; line-height: 1.7 !important; }
@@ -222,11 +238,16 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .heart-msg { color: var(--g-bad); font-weight: 700; }
 .finish .btn3d { margin-top: auto; }
 
+.selftest-btns { display: flex; gap: 10px; }
+.selftest-btns .btn3d { margin-top: 8px; }
+.diag { margin: 10px 0 0; padding: 10px 12px; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; font: 12px/1.7 ui-monospace, Menlo, monospace; white-space: pre-wrap; color: var(--g-muted); }
+
 .sheet { background: var(--g-bg); }
 .notice { background: var(--g-card); border-left: 3px solid var(--g-copper); color: var(--g-fg); }
 
 /* 系统开启“减少动态效果”：取消位移、抖动、缩放、淡入和脉冲，直接显示完整结果 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  .circuit-bg .pulse { display: none; }
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .node:active { transform: none; }
 }

@@ -419,6 +419,127 @@ try {
   }
   check("配色对比度：主按钮文字浅色 ≈ 8.8、深色 ≈ 9.4", Math.abs(ratio(light["on-primary"], light.primary) - 8.77) < 0.2 && Math.abs(ratio(dark["on-primary"], dark.primary) - 9.4) < 0.3);
 
+
+  // ---------- 第二轮：iPhone 音频解锁、试听按钮、六边形节点、流动电路背景 ----------
+  const opaque = (page2, sel) => page2.evaluate((q) => [...document.querySelectorAll(q)].every((el) => /^rgb\(/.test(getComputedStyle(el).backgroundColor)), sel);
+
+  // 六边形电路节点
+  await page.evaluate(() => window.__app.renderPath());
+  const want = { U1L1: "check", U1L2: "play" };
+  const icons = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".node")].map((n) => [n.dataset.lesson, n.querySelector(".hexnode").dataset.icon + "|" + n.className])));
+  check("节点：6 个六边形节点，每个都是 6 个顶点", (await page.locator(".node .hex-body").count()) === 6 && (await page.evaluate(() => [...document.querySelectorAll(".hex-body")].every((p) => p.getAttribute("points").trim().split(/\s+/).length === 6))));
+  check("节点：已完成对勾、当前播放、未解锁锁、复习关回转箭头", icons.U1L1.startsWith("check|") && icons.U1L2.startsWith("play|") && icons.U1L3.startsWith("lock|") && icons.U1L6.startsWith("review|"), JSON.stringify(icons));
+  check("节点：没有折角、厚底座、立体圆盘", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const c = getComputedStyle(n); return getComputedStyle(n, "::after").content === "none" && c.boxShadow === "none" && c.backgroundColor === "rgba(0, 0, 0, 0)" && c.borderRadius === "0px"; })));
+  check("节点：点击区域不小于 44px，仍带文字标签和关卡编号", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const r = n.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; }) && document.querySelectorAll(".node-label").length === 6 && document.querySelectorAll("[data-lesson]").length === 6));
+  check("节点：未解锁的复习关带小锁角标", (await page.locator('[data-lesson="U1L6"] .hex-badge').count()) === 1);
+  // 复习关成为当前关时显示回转箭头
+  await page.evaluate(() => { const s = window.__app.getState(); for (const k of ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5"]) s.done[k] = true; window.__app.renderPath(); });
+  check("节点：复习关解锁后仍是回转箭头，并带当前关描边", (await page.locator('[data-lesson="U1L6"]').getAttribute("class")).includes("current") && (await page.locator('[data-lesson="U1L6"] .hexnode').getAttribute("data-icon")) === "review" && (await page.locator('[data-lesson="U1L6"] .hex-ring').count()) === 1);
+  await page.evaluate(() => { const s = window.__app.getState(); s.done = { U1L1: true }; window.__app.renderPath(); });
+
+  // 电路背景
+  await page.evaluate(() => window.__app.renderPath());
+  check("电路：地图页有稀疏电路背景", (await page.locator(".circuit-bg.full").count()) === 1 && (await page.locator(".circuit-bg .trace").count()) <= 8);
+  const cb = await page.evaluate(() => {
+    const g = document.querySelector(".circuit-bg"); const c = getComputedStyle(g);
+    const pulses = [...document.querySelectorAll(".circuit-bg .pulse")].map((p) => ({ n: getComputedStyle(p).animationName, d: parseFloat(getComputedStyle(p).animationDuration) }));
+    let hit = false;
+    for (let y = 10; y < innerHeight; y += 47) for (let x = 5; x < innerWidth; x += 31) if (document.elementsFromPoint(x, y)[0]?.closest(".circuit-bg")) hit = true;
+    return { pe: c.pointerEvents, pos: c.position, pulses, hit };
+  });
+  check("电路：只有少量光点，每次流动 8–12 秒", cb.pulses.length >= 2 && cb.pulses.length <= 4 && cb.pulses.every((p) => p.n === "flow" && p.d >= 8 && p.d <= 12), JSON.stringify(cb.pulses));
+  check("电路：不拦截点击和滚动（pointer-events: none，任何位置的最上层都不是电路）", cb.pe === "none" && cb.pos === "fixed" && !cb.hit);
+  await page.evaluate(() => { Object.defineProperty(document, "hidden", { value: true, configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
+  check("电路：切到后台时暂停动画", await page.evaluate(() => document.documentElement.classList.contains("bg-paused") && getComputedStyle(document.querySelector(".circuit-bg .pulse")).animationPlayState === "paused"));
+  await page.evaluate(() => { Object.defineProperty(document, "hidden", { value: false, configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
+  check("电路：回到前台恢复动画", await page.evaluate(() => !document.documentElement.classList.contains("bg-paused")));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  check("电路：减少动态效果时光点隐藏、线条静止", await page.evaluate(() => [...document.querySelectorAll(".circuit-bg .pulse")].every((p) => getComputedStyle(p).display === "none") && getComputedStyle(document.querySelector(".hex-ring") || document.body).animationName === "none"));
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.locator(".node.current").tap(); await page.locator(".overlay .btn3d.primary").tap();
+  check("电路：关卡开场页有电路，正文在不透明面板上", (await page.locator(".circuit-bg.full").count()) === 1 && await opaque(page, ".intro-panel, .intro-screen"));
+  await tapBtn("继续"); await page.waitForSelector("[data-check]");
+  const edgeHit = await page.evaluate(() => { let hit = false; for (let y = 10; y < innerHeight; y += 47) for (let x = 3; x < innerWidth; x += 29) if (document.elementsFromPoint(x, y)[0]?.closest(".circuit-bg")) hit = true; return hit; });
+  check("电路：答题页只有边缘电路，题目、选项和代码都在不透明面板上", (await page.locator(".circuit-bg.edge").count()) === 1 && (await page.locator(".circuit-bg .pulse").count()) <= 2 && await opaque(page, ".codeblock, .choice, .order-mine, .slot") && !edgeHit);
+  // 电路不挡滚动：做题页内容区仍可滚动
+  check("电路：内容区的滚动不受影响", await page.evaluate(() => { const m = document.querySelector(".lesson"); m.scrollTop = 5; return getComputedStyle(m).overflowY === "auto"; }));
+  await page.getByRole("button", { name: "退出本关" }).tap(); await tapBtn("退出");
+
+  // iPhone 式音频解锁：假 AudioContext 只在 touchend / click / keydown 里 resume 才会 running（pointerdown 不算）
+  const fakeAudio = () => {
+    window.__ac = { created: 0, osc: 0, resumeEvents: [], inst: null };
+    window.AudioContext = class {
+      constructor() { this.state = "suspended"; this.currentTime = 0; this.sampleRate = 48000; this.destination = {}; window.__ac.created++; window.__ac.inst = this; }
+      resume() { const t = window.event?.type; window.__ac.resumeEvents.push(t); if (["touchend", "click", "keydown"].includes(t)) this.state = "running"; return Promise.resolve(); }
+      suspend() { this.state = "suspended"; return Promise.resolve(); }
+      createGain() { return { gain: { value: 1, setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect(n) { return n; } }; }
+      createOscillator() { window.__ac.osc++; return { type: "", frequency: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect(n) { return n; }, start() {}, stop() {} }; }
+      createBuffer() { return {}; } createBufferSource() { return { connect() {}, start() {} }; }
+    };
+  };
+  const pi = await ctx.newPage();
+  const ierrs = []; pi.on("pageerror", (e) => ierrs.push(e.message));
+  await pi.addInitScript(fakeAudio);
+  await pi.goto(BASE); await pi.waitForSelector(".statsbar, .onboard");
+  await pi.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.hearts = 5; window.__app.persist(); window.__app.renderPath(); });
+  await pi.locator(".node.current").tap();
+  check("音频解锁：第一次触摸（touchend / click）就让 AudioContext 进入 running", (await pi.evaluate(() => window.__ac.inst?.state)) === "running", JSON.stringify(await pi.evaluate(() => window.__ac.resumeEvents)));
+  await pi.locator(".overlay .btn3d.primary").tap(); await pi.getByRole("button", { name: "继续", exact: true }).tap(); await pi.waitForSelector("[data-check]");
+  const o0 = await pi.evaluate(() => window.__ac.osc);
+  await pi.locator(".choice").first().tap();
+  check("音频解锁：点选题目时真的合成了声音（振荡器被创建）", (await pi.evaluate(() => window.__ac.osc)) > o0);
+  const o1 = await pi.evaluate(() => window.__ac.osc);
+  await pi.locator("[data-check]").tap(); await pi.waitForSelector(".feedbar"); await pi.waitForTimeout(100);
+  check("音频解锁：120ms 后的结果音在 running 状态下播放（至少两个音）", (await pi.evaluate(() => window.__ac.osc)) - o1 >= 2);
+  // 试听按钮
+  await pi.locator("[data-continue]").tap(); await pi.getByRole("button", { name: "退出本关" }).tap(); await pi.getByRole("button", { name: "退出", exact: true }).tap();
+  await pi.getByRole("button", { name: "我的" }).tap();
+  const o2 = await pi.evaluate(() => window.__ac.osc);
+  await pi.locator('[data-selftest="sound"]').tap(); await pi.waitForTimeout(150);
+  const diagTxt = await pi.locator(".diag").innerText();
+  check("试听按钮：点击后播放答对音（两个音），诊断里显示 AudioContext 状态和播放次数", (await pi.evaluate(() => window.__ac.osc)) - o2 >= 2 && /AudioContext：running/.test(diagTxt) && /已播放 [1-9]/.test(diagTxt) && /已播放答对音/.test(diagTxt), diagTxt.replace(/\n/g, " | "));
+  check("诊断：显示版本、运行方式、振动接口、最近错误", /版本：/.test(diagTxt) && /运行方式：/.test(diagTxt) && /网页振动接口：/.test(diagTxt) && /最近错误：/.test(diagTxt));
+  // 关闭音效后：普通点选没有声音，试听仍然能响
+  await pi.locator('[data-pref="sound"]').tap();
+  const o3 = await pi.evaluate(() => window.__ac.osc);
+  await pi.getByRole("button", { name: "学习", exact: true }).tap(); await pi.locator(".node.current").tap(); await pi.locator(".overlay .btn3d.primary").tap(); await pi.getByRole("button", { name: "继续", exact: true }).tap(); await pi.waitForSelector("[data-check]");
+  await pi.locator(".choice").first().tap(); await pi.waitForTimeout(100);
+  check("音效开关关闭后：点选不再出声", (await pi.evaluate(() => window.__ac.osc)) === o3);
+  await pi.getByRole("button", { name: "退出本关" }).tap(); await pi.getByRole("button", { name: "退出", exact: true }).tap();
+  await pi.getByRole("button", { name: "我的" }).tap();
+  await pi.locator('[data-selftest="sound"]').tap(); await pi.waitForTimeout(150);
+  check("音效开关关闭后：试听按钮仍然能播放（用来区分“关了”和“坏了”）", (await pi.evaluate(() => window.__ac.osc)) - o3 >= 2);
+  check("音频：整个过程没有脚本错误", ierrs.length === 0, ierrs.join("|"));
+  await pi.close();
+  // 假 AudioContext 只在 pointerdown 里 resume 成功时（对应第一版的错误做法）会一直 suspended——确认现在的代码不依赖 pointerdown
+  const pj = await ctx.newPage();
+  await pj.addInitScript(fakeAudio);
+  await pj.goto(BASE); await pj.waitForSelector(".statsbar, .onboard");
+  await pj.evaluate(() => { document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
+  check("音频：仅有 pointerdown 时不会误认为已解锁（修复前的状态）", (await pj.evaluate(() => window.__ac.inst?.state)) === "suspended");
+  await pj.evaluate(() => { document.dispatchEvent(new Event("touchend", { bubbles: true })); });
+  check("音频：随后的 touchend 能解锁", (await pj.evaluate(() => window.__ac.inst?.state)) === "running");
+  await pj.close();
+  // 振动自测按钮：没有接口时不报错，有接口时请求一次 12ms
+  const pk = await ctx.newPage();
+  await pk.addInitScript(() => { window.__vib = []; navigator.vibrate = (n) => { window.__vib.push(n); return true; }; });
+  await pk.goto(BASE); await pk.waitForSelector(".statsbar, .onboard");
+  await pk.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+  await pk.getByRole("button", { name: "我的" }).tap();
+  await pk.locator('[data-selftest="haptic"]').tap();
+  check("试振动按钮：有接口时请求一次 12ms，并显示结果", JSON.stringify(await pk.evaluate(() => window.__vib)) === "[12]" && /已请求 12ms 振动/.test(await pk.locator(".diag").innerText()));
+  check("振动开关：始终可以点（不再因为接口检测而被禁用）", await pk.locator('[data-pref="haptics"]').isEnabled());
+  await pk.close();
+  const pm = await ctx.newPage();
+  await pm.addInitScript(() => { Object.defineProperty(navigator, "vibrate", { value: undefined, configurable: true }); });
+  await pm.goto(BASE); await pm.waitForSelector(".statsbar, .onboard");
+  await pm.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+  await pm.getByRole("button", { name: "我的" }).tap();
+  await pm.locator('[data-selftest="haptic"]').tap();
+  check("试振动按钮：没有接口时说明情况，不报错；振动开关仍可点", /没有网页振动接口/.test(await pm.locator(".diag").innerText()) && (await pm.locator('[data-pref="haptics"]').isEnabled()));
+  check("文案：不再写“iPhone 都是这样/一定没有振动”", !/iPhone 都是这样|一定没有振动/.test(await pm.locator("#app").innerText()));
+  await pm.close();
+
   // 宽度
   for (const w of [320, 360, 390, 430]) {
     await page.setViewportSize({ width: w, height: 800 });
