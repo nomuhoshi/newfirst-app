@@ -7,6 +7,7 @@
   --g-ok: #176B59; --g-on-ok: #FFFFFF; --g-ok-bg: #E3F1EC;
   --g-bad: #A43C32; --g-bad-bg: #F8E4E0;
   --g-locked: #E4E0D6;
+  --g-trace: #C5CDD2; /* 电路线：低对比度，不盖过课程节点 */
   --g-code-bg: #172B3A; --g-code-fg: #EAF0F3; --g-code-dim: #8FA3B0;
   --g-tk-str: #F3BA87; --g-tk-num: #9CC4E4; --g-tk-fn: #8ED7B8; --g-tk-op: #D5DEE4;
   --g-chip: #243D50; --g-chip-fg: #F3BA87;
@@ -22,6 +23,7 @@
     --g-ok: #8ED7B8; --g-on-ok: #0E2A22; --g-ok-bg: #17382F;
     --g-bad: #FFB3A3; --g-bad-bg: #3F2421;
     --g-locked: #243845;
+    --g-trace: #2F4A5B;
     --g-code-bg: #0B1820; --g-code-fg: #EAF0F3; --g-code-dim: #7C93A1;
     --g-chip: #1F3646; --g-chip-fg: #F3BA87;
     --fn: #243845;
@@ -106,11 +108,10 @@ body { background: var(--g-bg); color: var(--g-fg); }
 /* 流动电路背景：固定在最底层，不拦截点击和滚动；内容区都用不透明面板盖住它 */
 .circuit-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 #app > :not(.circuit-bg) { position: relative; z-index: 1; }
-.circuit-bg .trace { fill: none; stroke: var(--g-line); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
-.circuit-bg .pad { fill: none; stroke: var(--g-line); stroke-width: 1.5; }
+.circuit-bg .trace { fill: none; stroke: var(--g-trace); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.circuit-bg .pad { fill: var(--g-bg); stroke: var(--g-trace); stroke-width: 1.6; }
 .circuit-bg .pulse { fill: none; stroke: var(--g-copper); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 95; stroke-dashoffset: 5; opacity: .85;
   animation: flow 10s linear infinite; }
-.circuit-bg.edge .trace { opacity: .7; }
 @keyframes flow { from { stroke-dashoffset: 5; } to { stroke-dashoffset: -95; } }
 .bg-paused .circuit-bg .pulse, .bg-paused .hex-ring { animation-play-state: paused; }
 .statsbar, .tabbar { background: var(--g-bg); }

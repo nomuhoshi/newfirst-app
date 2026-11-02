@@ -80,24 +80,37 @@ function icon(name, { size = 22, fill = false, cls = "" } = {}) {
 
 // ---------- 流动电路背景：稀疏的线 + 少量缓慢移动的光点（8–12 秒一次） ----------
 // 纯装饰：不拦截点击和滚动；减少动态效果时光点隐藏、线条静止；切到后台时暂停动画。
-// 每条线：[路径, 终点x, 终点y]；光点沿同一条路径走：[路径索引, 秒数, 延迟]
+// 每条线：{ d: 路径（可含分支），pulse: 光点走的那一段，pads: 焊点 }。
+// 第一屏 7 条路径从上、左、右三个方向进入，其中 4 条带分支；全部留在两侧和上下边缘，中间给文字和节点留空。
 const CIRCUITS = {
   full: {
-    lines: [["M0 120H60L80 140V300L100 320H170", 170, 320], ["M390 220H330L310 240V420L290 440H230", 230, 440], ["M0 520H40L60 540V700L80 720H140", 140, 720],
-      ["M390 640H350L330 660V780", 330, 780], ["M120 0V60L140 80H200", 200, 80], ["M270 844V790L250 770H190", 190, 770]],
-    pulses: [[0, 10, 0], [1, 12, -4], [2, 9, -2], [5, 11, -7]],
+    lines: [
+      { d: "M0 100H44L64 120V250M64 176H98", pulse: "M0 100H44L64 120V250", pads: [[64, 250], [98, 176], [64, 176]] },
+      { d: "M118 56V92L134 108H168", pulse: "M118 56V92L134 108H168", pads: [[168, 108]] },
+      { d: "M390 148H352L338 162V332M338 248H306", pulse: "M390 148H352L338 162V332", pads: [[338, 332], [306, 248], [338, 248]] },
+      { d: "M0 430H34L54 450V566M54 510H86", pulse: "M0 430H34L54 450V566", pads: [[54, 566], [86, 510], [54, 510]] },
+      { d: "M390 520H358L342 536V684L326 700H298", pulse: "M390 520H358L342 536V684L326 700H298", pads: [[298, 700]] },
+      { d: "M0 744H64L84 724V690", pulse: "M0 744H64L84 724V690", pads: [[84, 690]] },
+      { d: "M290 56V84L306 100H330", pulse: "M290 56V84L306 100H330", pads: [[330, 100]] },
+    ],
+    pulses: [[0, 10, 0], [2, 12, -4], [3, 9, -2], [4, 11, -7]],
   },
   edge: {
-    lines: [["M6 0V220L12 226V500", 12, 500], ["M384 100V380L378 386V700", 378, 700], ["M6 620V844", 6, 844], ["M384 760V844", 384, 844]],
+    lines: [
+      { d: "M6 0V220L12 226V500", pulse: "M6 0V220L12 226V500", pads: [[12, 500]] },
+      { d: "M384 100V380L378 386V700", pulse: "M384 100V380L378 386V700", pads: [[378, 700]] },
+      { d: "M6 620V844", pulse: "M6 620V844", pads: [[6, 844]] },
+      { d: "M384 760V844", pulse: "M384 760V844", pads: [[384, 844]] },
+    ],
     pulses: [[0, 11, 0], [1, 9, -5]],
   },
 };
 function circuit(variant = "full") {
   const c = CIRCUITS[variant];
   return svg("svg", { class: "circuit-bg " + variant, viewBox: "0 0 390 844", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true", focusable: "false" },
-    ...c.lines.map(([d]) => svg("path", { d, class: "trace" })),
-    ...c.lines.map(([, x, y]) => svg("circle", { cx: String(x), cy: String(y), r: "3.5", class: "pad" })),
-    ...c.pulses.map(([i, dur, delay]) => svg("path", { d: c.lines[i][0], class: "pulse", pathLength: "100", style: `animation-duration:${dur}s;animation-delay:${delay}s` })),
+    ...c.lines.map((l) => svg("path", { d: l.d, class: "trace" })),
+    ...c.lines.flatMap((l) => l.pads.map(([x, y]) => svg("circle", { cx: String(x), cy: String(y), r: "3.5", class: "pad" }))),
+    ...c.pulses.map(([i, dur, delay]) => svg("path", { d: c.lines[i].pulse, class: "pulse", pathLength: "100", style: `animation-duration:${dur}s;animation-delay:${delay}s` })),
   );
 }
 document.addEventListener("visibilitychange", () => document.documentElement.classList.toggle("bg-paused", document.hidden));

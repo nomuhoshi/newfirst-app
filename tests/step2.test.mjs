@@ -417,6 +417,7 @@ try {
     const bad = pairs.filter(([a, b]) => ratio(pal[a], pal[b]) < 4.5).map(([a, b]) => `${a}/${b}=${ratio(pal[a], pal[b]).toFixed(2)}`);
     check(`配色对比度：${name}主要文字组合都 ≥ 4.5:1`, bad.length === 0, bad.join(" "));
   }
+  for (const [name, pal] of [["浅色", light], ["深色", dark]]) { const r = ratio(pal.trace, pal.bg); check(`电路线：${name}对比度低但可见（1.3–2.6:1，不盖过节点）`, r >= 1.3 && r <= 2.6, r.toFixed(2)); }
   check("配色对比度：主按钮文字浅色 ≈ 8.8、深色 ≈ 9.4", Math.abs(ratio(light["on-primary"], light.primary) - 8.77) < 0.2 && Math.abs(ratio(dark["on-primary"], dark.primary) - 9.4) < 0.3);
 
 
@@ -440,6 +441,23 @@ try {
   // 电路背景
   await page.evaluate(() => window.__app.renderPath());
   check("电路：地图页有稀疏电路背景", (await page.locator(".circuit-bg.full").count()) === 1 && (await page.locator(".circuit-bg .trace").count()) <= 8);
+  const dense = await page.evaluate(() => {
+    const traces = [...document.querySelectorAll(".circuit-bg.full .trace")];
+    const sides = new Set(); let branches = 0; let centerHit = 0; let outside = 0;
+    for (const t of traces) {
+      const d = t.getAttribute("d"); const m = d.match(/^M(-?[\d.]+) (-?[\d.]+)/);
+      const x = +m[1], y = +m[2];
+      if (x <= 0) sides.add("左"); else if (x >= 390) sides.add("右"); else if (y <= 60) sides.add("上"); else sides.add("下");
+      if ((d.match(/M/g) || []).length > 1) branches++;
+      const len = t.getTotalLength();
+      for (let i = 0; i <= 80; i++) { const p = t.getPointAtLength((len * i) / 80); if (p.x > 140 && p.x < 260 && p.y > 150 && p.y < 720) centerHit++; if (p.x < -1 || p.x > 391 || p.y < -1 || p.y > 845) outside++; }
+    }
+    return { n: traces.length, sides: [...sides], branches, pads: document.querySelectorAll(".circuit-bg.full .pad").length, pulses: document.querySelectorAll(".circuit-bg.full .pulse").length, centerHit, outside };
+  });
+  check("电路：第一屏有 5–7 条独立路径，从至少 3 个方向进入", dense.n >= 5 && dense.n <= 7 && dense.sides.length >= 3, JSON.stringify(dense));
+  check("电路：有分支和焊点（至少 3 条带分支，焊点不少于 8 个，不密集）", dense.branches >= 3 && dense.pads >= 8 && dense.pads <= 16, JSON.stringify(dense));
+  check("电路：3–4 个缓慢光点", dense.pulses >= 3 && dense.pulses <= 4);
+  check("电路：中间区域（文字和节点所在）留空，路径都在屏幕内", dense.centerHit === 0 && dense.outside === 0, JSON.stringify(dense));
   const cb = await page.evaluate(() => {
     const g = document.querySelector(".circuit-bg"); const c = getComputedStyle(g);
     const pulses = [...document.querySelectorAll(".circuit-bg .pulse")].map((p) => ({ n: getComputedStyle(p).animationName, d: parseFloat(getComputedStyle(p).animationDuration) }));
