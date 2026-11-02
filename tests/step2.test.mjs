@@ -7,6 +7,8 @@ import { freshState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_M
 
 const css = readFileSync(new URL("../src/game.css", import.meta.url), "utf8");
 const unit = JSON.parse(readFileSync(new URL("../content/unit1.json", import.meta.url)));
+const unit2 = JSON.parse(readFileSync(new URL("../content/unit2.json", import.meta.url)));
+const words = JSON.parse(readFileSync(new URL("../content/words.json", import.meta.url)));
 const course = JSON.parse(readFileSync(new URL("../content/course.json", import.meta.url)));
 const PORT = 4319;
 const BASE = `http://localhost:${PORT}/`;
@@ -21,10 +23,25 @@ function check(name, ok, detail = "") {
 
 // ---------- 内容结构 ----------
 const L = unit.lessons;
-const allEx = L.flatMap((l) => l.exercises.map((e) => ({ ...e, lesson: l.id })));
+const L2 = unit2.lessons;
+// 全部关卡（第 1、2 单元）的题目；下面的通用内容检查对两个单元一起做
+const allEx = [...L, ...L2].flatMap((l) => l.exercises.map((e) => ({ ...e, lesson: l.id })));
 check("内容：第 1 单元 6 关，最后一关是单元复习", L.length === 6 && L.at(-1).review === true);
 check("内容：每关 3–5 道题，都有故事开场和示例代码", L.every((l) => l.exercises.length >= 3 && l.exercises.length <= 5 && l.story && l.introCode));
-check("内容：关卡 id 不重复，且课程路线只有第 1 单元可用", new Set(L.map((l) => l.id)).size === L.length && course.units.filter((u) => u.available).length === 1);
+check("内容：关卡 id 不重复，且课程路线只有第 1、2 单元可用，第 3–5 单元仍是“即将推出”", new Set([...L, ...L2].map((l) => l.id)).size === L.length + L2.length && course.units.filter((u) => u.available).map((u) => u.id).join() === "U1,U2" && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U3,U4,U5");
+{
+  const t = (l) => l.exercises.map((e) => e.type).join();
+  check("第 2 单元：5 关、每关 4 题、共 20 题，最后一关是单元复习", L2.length === 5 && L2.every((l) => l.exercises.length === 4) && L2.flatMap((l) => l.exercises).length === 20 && L2.at(-1).review === true && L2.slice(0, 4).every((l) => !l.review));
+  check("第 2 单元：关卡 id 和标题按规格，课程文件指向 unit2.json", L2.map((l) => l.id).join() === "U2L1,U2L2,U2L3,U2L4,U2L5" && L2.map((l) => l.title).join() === "保存饮品名,拼出菜单文字,名字有多长,空格也算一个,菜单标签" && course.units[1].file === "unit2.json");
+  check("第 2 单元：题型分布（第 1–4 关：预测×2、填空、排序；第 5 关：预测、填空、排序、预测）", L2.slice(0, 4).every((l) => [...l.exercises.map((e) => e.type)].sort().join() === "fill,order,predict,predict") && t(L2[4]) === "predict,fill,order,predict");
+  const codeOf = (e) => e.code || e.lines.join("\n");
+  const all2 = L2.flatMap((l) => l.exercises).map(codeOf).join("\n") + L2.map((l) => l.introCode).join("\n");
+  check("第 2 单元：不出现还没教的东西（索引、切片、str()、格式化字符串、换行转义、input()、类型名）", !/\[|\]|\bstr\(|\bf"|\\n|\binput\(|\btype\(|\bint\(|\bfloat\(/.test(all2), all2.match(/\[|\]|\bstr\(|\bf"|\\n|\binput\(|\btype\(|\bint\(|\bfloat\(/)?.[0]);
+  check("第 2 单元：不含 emoji / 组合字符（len 只数普通中英文和数字）", !/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u200D\uFE0F\u0300-\u036F]/u.test(JSON.stringify(unit2)));
+  check("第 2 单元：所有关卡都有故事、概念和示例代码", L2.every((l) => l.story && l.concept && l.introCode));
+  check("第 2 单元：len 在第 3 关第一次出现，+ 拼接字符串在第 2 关第一次出现，不早于讲解", (() => { const first = (re) => L2.find((l) => re.test([l.introCode, ...l.exercises.map((e) => e.code || e.lines.join("\n"))].join("\n")))?.id; return first(/len\(/) === "U2L3" && first(/"\s*\+\s*"|\w\s\+\s"|"\s\+\s\w/) === "U2L2"; })());
+  check("词义卡：新增 string 和 len（带美式音标和来源），没有加入 str", words.string?.ipa === "/strɪŋ/" && words.len?.full === "length" && words.len?.ipa === "/leŋθ/" && words.string?.source && words.len?.source && !("str" in words) && words.print?.ipa === "/prɪnt/");
+}
 check("内容：全部是点选题（选输出 / 填词块 / 排顺序）", allEx.every((e) => ["predict", "fill", "order"].includes(e.type)));
 check("内容：每道选输出题恰好一个正确选项，每个选项都有解释", allEx.filter((e) => e.type === "predict").every((e) => e.options.filter((o) => o.correct).length === 1 && e.options.every((o) => o.why)));
 check("内容：填空题的答案都在词块里，错误词块都有解释", allEx.filter((e) => e.type === "fill").every((e) => e.answer.every((a) => e.tokens.includes(a)) && e.tokens.filter((t) => !e.answer.includes(t)).every((t) => e.why[t])));
@@ -141,7 +158,7 @@ try {
   check("开场第 3 屏：说明卡住可以点小码", /卡住了就点我/.test(await text()));
   await tapBtn("开始学习");
   check("关卡地图：显示单元、XP、红心、连续天数", /奶茶店点单屏/.test(await text()) && (await page.locator(".statsbar").innerText()).includes("5"));
-  check("关卡地图：第 1 关是当前关，其余锁住", (await page.locator(".node.current").count()) === 1 && (await page.locator(".node.locked").count()) === 5);
+  check("关卡地图：第 1 关是当前关，其余锁住（地图上共 11 关：第 1 单元 6 关 + 第 2 单元 5 关）", (await page.locator(".node.current").count()) === 1 && (await page.locator('[data-lesson="U1L1"]').getAttribute("class")).includes("current") && (await page.locator(".node.locked").count()) === 10);
   check("关卡地图：后面的单元显示即将推出", /即将推出/.test(await text()));
   await page.locator('[data-lesson="U1L3"]').tap();
   await page.waitForSelector(".overlay");
@@ -428,10 +445,10 @@ try {
   await page.evaluate(() => window.__app.renderPath());
   const want = { U1L1: "check", U1L2: "play" };
   const icons = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".node")].map((n) => [n.dataset.lesson, n.querySelector(".hexnode").dataset.icon + "|" + n.className])));
-  check("节点：6 个六边形节点，每个都是 6 个顶点", (await page.locator(".node .hex-body").count()) === 6 && (await page.evaluate(() => [...document.querySelectorAll(".hex-body")].every((p) => p.getAttribute("points").trim().split(/\s+/).length === 6))));
+  check("节点：11 个六边形节点（两个单元），每个都是 6 个顶点", (await page.locator(".node .hex-body").count()) === 11 && (await page.evaluate(() => [...document.querySelectorAll(".hex-body")].every((p) => p.getAttribute("points").trim().split(/\s+/).length === 6))));
   check("节点：已完成对勾、当前播放、未解锁锁、复习关回转箭头", icons.U1L1.startsWith("check|") && icons.U1L2.startsWith("play|") && icons.U1L3.startsWith("lock|") && icons.U1L6.startsWith("review|"), JSON.stringify(icons));
   check("节点：没有折角、厚底座、立体圆盘", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const c = getComputedStyle(n); return getComputedStyle(n, "::after").content === "none" && c.boxShadow === "none" && c.backgroundColor === "rgba(0, 0, 0, 0)" && c.borderRadius === "0px"; })));
-  check("节点：点击区域不小于 44px，仍带文字标签和关卡编号", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const r = n.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; }) && document.querySelectorAll(".node-label").length === 6 && document.querySelectorAll("[data-lesson]").length === 6));
+  check("节点：点击区域不小于 44px，仍带文字标签和关卡编号", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const r = n.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; }) && document.querySelectorAll(".node-label").length === 11 && document.querySelectorAll("[data-lesson]").length === 11));
   check("节点：未解锁的复习关带小锁角标", (await page.locator('[data-lesson="U1L6"] .hex-badge').count()) === 1);
   // 复习关成为当前关时显示回转箭头
   await page.evaluate(() => { const s = window.__app.getState(); for (const k of ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5"]) s.done[k] = true; window.__app.renderPath(); });
@@ -698,6 +715,73 @@ try {
     check("按键音效：检查后有答对/答错音，且仍是 D", (await pk2.evaluate(() => window.__app.feel.log.some((n) => n === "correct" || n === "wrong"))) && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "D");
     check("按键音效：没有脚本错误", kerrs.length === 0, kerrs.join("|"));
     await pk2.close();
+  }
+
+  // ---------- 第 2 单元：解锁、通关、保存 ----------
+  {
+    const pu = await ctx.newPage();
+    const uerrs = []; pu.on("pageerror", (e) => uerrs.push(e.message));
+    await pu.goto(BASE); await pu.waitForSelector(".statsbar, .onboard");
+    const seed = (done, extra = {}) => pu.evaluate(([d, x]) => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, done: Object.fromEntries(d.map((k) => [k, true])), prefs: { ...s.prefs, sound: false } }, x); localStorage.setItem("suipian.progress", JSON.stringify(s)); }, [done, extra]);
+    const U1 = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"];
+    const cls = (id) => pu.locator(`[data-lesson="${id}"]`).getAttribute("class");
+    // 1) 第 1 单元只完成 5 关：第 2 单元全部锁着
+    await seed(U1.slice(0, 5)); await pu.reload(); await pu.waitForSelector(".statsbar");
+    check("第 2 单元：第 1 单元没通关时，U2L1 是锁定状态", (await cls("U2L1")).includes("locked") && (await cls("U1L6")).includes("current"));
+    await pu.locator('[data-lesson="U2L1"]').tap();
+    check("第 2 单元：点锁定的 U2L1 提示先完成前面的关卡", /先完成前面的关卡/.test(await pu.locator(".overlay").innerText()));
+    await pu.getByRole("button", { name: "知道了", exact: true }).tap();
+    // 2) 已完成第 1 单元的旧用户（带 XP、连续天数）：刷新后自动看到 U2L1 为当前关，进度不清空
+    await seed(U1, { xp: 330, streak: 3, lastDay: "2026-11-01", lessonsCompleted: 6 }); await pu.reload(); await pu.waitForSelector(".statsbar");
+    const mapText = await pu.locator("#app").innerText();
+    check("第 2 单元：第 1 单元通关后，U2L1 自动成为当前关，其余 4 关锁定", (await cls("U2L1")).includes("current") && ["U2L2", "U2L3", "U2L4", "U2L5"].every(async () => true) && (await Promise.all(["U2L2", "U2L3", "U2L4", "U2L5"].map(cls))).every((c) => c.includes("locked")));
+    check("第 2 单元：旧记录不清空（XP、连续天数、第 1 单元完成状态都在）", await pu.evaluate(() => { const s = window.__app.getState(); return s.xp === 330 && s.streak === 3 && ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"].every((k) => s.done[k]); }));
+    check("地图：第 2 单元标题“文字与长度”，第 1 单元显示“已完成”，第 3–5 单元显示“即将推出”", /文字与长度/.test(mapText) && /第 1 单元 · 已完成/.test(mapText) && !/第 2 单元 · 已完成/.test(mapText) && (mapText.match(/即将推出/g) || []).length === 3 && !/第 2 单元 · 即将推出/.test(mapText));
+    // 3) 通关 5 关：每关 4 题全对，XP = 4×10 + 10，逐关解锁
+    const startL = async (id) => { await pu.locator(`[data-lesson="${id}"]`).tap(); await pu.locator(".overlay .btn3d.primary").tap(); await pu.waitForSelector(".intro-title"); };
+    const playU = async (wrongFirst = 0) => {
+      await pu.getByRole("button", { name: "继续", exact: true }).tap();
+      let wrongs = wrongFirst, n = 0;
+      while (await pu.locator("[data-check]").count()) {
+        const e = await pu.evaluate(() => window.__app.currentEx); const correct = wrongs-- <= 0;
+        if (e.type === "predict") await pu.locator(".choice").nth(e.options.findIndex((o) => !!o.correct === correct)).tap();
+        else if (e.type === "fill") { const toks = correct ? e.answer : [e.tokens.find((t) => !e.answer.includes(t) && !(e.initial || []).includes(t)) ?? e.tokens.find((t) => !e.answer.includes(t))]; for (const t of toks) await pu.locator(`[data-token=${JSON.stringify(t)}]`).tap(); }
+        else for (const k of correct ? e.answers[0] : [...e.answers[0]].reverse()) await pu.locator(`.order-bank [data-line="${k}"]`).first().tap();
+        await pu.locator("[data-check]").tap(); await pu.waitForSelector(".feedbar");
+        await pu.locator("[data-continue]").tap();
+        if (++n > 30) throw new Error("第 2 单元做题循环过多");
+      }
+    };
+    let xp0 = 330;
+    for (const [i, id] of ["U2L1", "U2L2", "U2L3", "U2L4", "U2L5"].entries()) {
+      await startL(id);
+      check(`第 2 单元：${id} 的开场介绍显示标题和示例代码`, (await pu.locator(".intro-title").innerText()) === L2[i].title && (await pu.locator(".intro-screen").innerText()).replace(/\s|\d+(?=\D)/g, "").length > 5);
+      await playU(id === "U2L3" ? 1 : 0); // U2L3 故意答错一次：红心 -1，错题回炉后仍能通关
+      await pu.waitForSelector(".finish");
+      const s = await pu.evaluate(() => window.__app.getState());
+      const wrongExtra = id === "U2L3" ? 1 : 0;
+      check(`第 2 单元：${id} 通关，完成状态已保存，XP 按 4×10+10 增加`, s.done[id] === true && s.xp - xp0 === 50 && s.hearts === 5 - wrongExtra, `xp+${s.xp - xp0} hearts=${s.hearts}`);
+      xp0 = s.xp;
+      await pu.locator("[data-continue]").tap(); await pu.waitForSelector(".pathview");
+      if (i < 4) check(`第 2 单元：${id} 通关后下一关成为当前关`, (await cls(id)).includes("done") && (await cls(L2[i + 1].id)).includes("current"));
+      if (id === "U2L3") await pu.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); });
+    }
+    const doneText = await pu.locator("#app").innerText();
+    check("第 2 单元：全部通关后显示“已完成”，第 3 单元仍是“即将推出”", /第 2 单元 · 已完成/.test(doneText) && (doneText.match(/即将推出/g) || []).length === 3 && /第 3 单元 · 即将推出/.test(doneText));
+    await pu.reload(); await pu.waitForSelector(".statsbar");
+    const afterReload = await pu.evaluate(() => window.__app.getState());
+    check("第 2 单元：刷新后 5 关完成状态和 XP 仍在", ["U2L1", "U2L2", "U2L3", "U2L4", "U2L5"].every((k) => afterReload.done[k]) && afterReload.xp === xp0 && /第 2 单元 · 已完成/.test(await pu.locator("#app").innerText()));
+    // 4) 复习已完成的关卡
+    await pu.locator('[data-lesson="U2L5"]').tap();
+    check("第 2 单元：已完成的 U2L5 可以复习（不扣红心）", /复习（不扣红心/.test(await pu.locator(".overlay").innerText()));
+    await pu.getByRole("button", { name: "关闭", exact: true }).tap();
+    // 5) 小屏幕上代码块和选项不横向溢出
+    await pu.setViewportSize({ width: 320, height: 640 });
+    await seed(U1); await pu.reload(); await pu.waitForSelector(".statsbar");
+    await seed([...U1, "U2L1", "U2L2", "U2L3"]); await pu.reload(); await pu.waitForSelector(".statsbar"); await startL("U2L4"); await pu.getByRole("button", { name: "继续", exact: true }).tap(); await pu.waitForSelector("[data-check]");
+    check("第 2 单元：320px 宽度下做题页没有横向溢出", !(await pu.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
+    check("第 2 单元：整个过程没有脚本错误", uerrs.length === 0, uerrs.join("|"));
+    await pu.close();
   }
 
   // 宽度

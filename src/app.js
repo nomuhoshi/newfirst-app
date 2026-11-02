@@ -7,6 +7,7 @@ import "./app.css";
 import "./game.css";
 import course from "../content/course.json";
 import unit1 from "../content/unit1.json";
+import unit2 from "../content/unit2.json";
 import words from "../content/words.json";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
@@ -16,7 +17,7 @@ import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
 
-const UNITS = { U1: unit1 };
+const UNITS = { U1: unit1, U2: unit2 };
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;
@@ -319,8 +320,9 @@ function renderPath() {
         h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元 · 即将推出` }), h("h2", { text: u.title }), h("p", { text: u.subtitle })));
     }
     const lessons = UNITS[u.id].lessons;
-    return h("section", { class: "unit" },
-      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元` }), h("h2", { text: u.title }), h("p", { text: u.subtitle })),
+    const unitDone = lessons.every((x) => state.done[x.id]);
+    return h("section", { class: "unit" + (unitDone ? " complete" : "") },
+      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元${unitDone ? " · 已完成" : ""}` }), h("h2", { text: u.title }), h("p", { text: u.subtitle })),
       h("ol", { class: "path" }, lessons.map((l, i) => {
         const st = lessonStatus(l);
         const offset = [0, 1, 2, 1, 0, -1][i % 6];

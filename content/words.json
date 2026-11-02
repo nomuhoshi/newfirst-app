@@ -8,5 +8,25 @@
     "example": "print(\"你好\")",
     "note": "不是缩写，就是普通英文单词 print。",
     "source": "https://dictionary.cambridge.org/dictionary/english/print"
+  },
+  "string": {
+    "word": "string",
+    "full": "string",
+    "ipa": "/strɪŋ/",
+    "meaning": "字符串；一串文字字符",
+    "python": "Python 里的一段文字，要放在英文引号里，例如 \"珍珠奶茶\"。",
+    "example": "drink = \"珍珠奶茶\"",
+    "note": "不是缩写，就是普通英文单词 string（本意是「线、一串」）。",
+    "source": "https://dictionary.cambridge.org/dictionary/english/string"
+  },
+  "len": {
+    "word": "len",
+    "full": "length",
+    "ipa": "/leŋθ/",
+    "meaning": "长度",
+    "python": "len(...) 返回括号里文字的字符个数。",
+    "example": "len(\"珍珠奶茶\")",
+    "note": "len 是完整单词 length 的缩写。",
+    "source": "https://dictionary.cambridge.org/dictionary/english/length"
   }
 }

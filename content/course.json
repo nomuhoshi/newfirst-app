@@ -12,7 +12,8 @@
       "id": "U2",
       "title": "文字与长度",
       "subtitle": "字符串、len",
-      "available": false
+      "file": "unit2.json",
+      "available": true
     },
     {
       "id": "U3",

@@ -1,0 +1,509 @@
+{
+  "id": "U2",
+  "title": "文字与长度",
+  "subtitle": "字符串、len",
+  "lessons": [
+    {
+      "id": "U2L1",
+      "title": "保存饮品名",
+      "concept": "字符串",
+      "story": "菜单上要显示饮品的名字。一段文字在 Python 里叫「字符串」，可以存进变量，和数字一样。",
+      "introCode": "drink = \"珍珠奶茶\"\nprint(drink)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "drink = \"珍珠奶茶\"\nprint(drink)",
+          "options": [
+            {
+              "text": "珍珠奶茶",
+              "correct": true,
+              "why": "drink 里存着字符串「珍珠奶茶」，print(drink) 显示变量里存的内容。"
+            },
+            {
+              "text": "drink",
+              "correct": false,
+              "why": "print(drink) 里 drink 没有加引号，它是变量名，显示的是它存的值。"
+            },
+            {
+              "text": "\"珍珠奶茶\"",
+              "correct": false,
+              "why": "引号只是告诉 Python「这是文字」，引号本身不会显示出来。"
+            }
+          ],
+          "tip": "文字叫字符串，值要放在英文引号里；变量名不加引号。"
+        },
+        {
+          "type": "fill",
+          "prompt": "把饮品名存进变量 drink，屏幕要显示：芋泥奶茶",
+          "code": "drink = {0}\nprint(drink)",
+          "tokens": [
+            "\"芋泥奶茶\"",
+            "芋泥奶茶",
+            "\"drink\""
+          ],
+          "answer": [
+            "\"芋泥奶茶\""
+          ],
+          "expected": "芋泥奶茶",
+          "why": {
+            "芋泥奶茶": "文字没加引号，Python 会把它当成变量名去找，找不到就出错。",
+            "\"drink\"": "这样存进去的是文字 drink，屏幕会显示 drink，不是芋泥奶茶。"
+          },
+          "hint": "文字（字符串）要放在英文引号里。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(15)\nprint(\"15\")",
+          "options": [
+            {
+              "text": "15\n15",
+              "correct": true,
+              "why": "两行看起来一样：引号不会显示出来。但没加引号的 15 是数字，加了引号的 \"15\" 是文字，Python 把它们当成不同的东西。"
+            },
+            {
+              "text": "15\n\"15\"",
+              "correct": false,
+              "why": "引号只是标记「这是文字」，不会显示出来。"
+            },
+            {
+              "text": "15",
+              "correct": false,
+              "why": "有两个 print，每个 print 单独显示一行，所以是两行。"
+            }
+          ],
+          "tip": "数字不加引号；加了引号的 15 是文字，不是数字。屏幕上看起来一样，下一关就能看出区别。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，让屏幕先显示珍珠奶茶，再显示芋泥奶茶",
+          "lines": [
+            "drink = \"珍珠奶茶\"",
+            "print(drink)",
+            "drink = \"芋泥奶茶\"",
+            "print(drink)"
+          ],
+          "shuffled": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "珍珠奶茶\n芋泥奶茶",
+          "hint": "先存珍珠奶茶并显示，再换成芋泥奶茶并显示。"
+        }
+      ]
+    },
+    {
+      "id": "U2L2",
+      "title": "拼出菜单文字",
+      "concept": "字符串拼接",
+      "story": "菜单要把「口味」和「奶茶」拼成完整的名字。文字也可以用 + 连起来。",
+      "introCode": "drink = \"芋泥\"\nprint(drink + \"奶茶\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "drink = \"芋泥\"\nprint(drink + \"奶茶\")",
+          "options": [
+            {
+              "text": "芋泥奶茶",
+              "correct": true,
+              "why": "+ 把两段文字直接连在一起：芋泥 + 奶茶 = 芋泥奶茶。"
+            },
+            {
+              "text": "芋泥 奶茶",
+              "correct": false,
+              "why": "+ 不会自动加空格。想要空格，得自己写在字符串里。"
+            },
+            {
+              "text": "drink奶茶",
+              "correct": false,
+              "why": "drink 没有加引号，是变量，显示的是它存的「芋泥」，不是 drink 这个词。"
+            }
+          ],
+          "tip": "文字用 + 是「拼起来」，不会自动加空格。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(\"15\" + \"5\")",
+          "options": [
+            {
+              "text": "155",
+              "correct": true,
+              "why": "\"15\" 和 \"5\" 加了引号，是文字。文字用 + 是连在一起，不是加法。"
+            },
+            {
+              "text": "20",
+              "correct": false,
+              "why": "只有没加引号的数字才会相加：15 + 5 才是 20。"
+            },
+            {
+              "text": "15 5",
+              "correct": false,
+              "why": "+ 不会自动加空格，两段文字直接连在一起。"
+            }
+          ],
+          "tip": "数字用 + 是加法，文字用 + 是拼接。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：黑糖 珍珠（中间有一个空格）",
+          "code": "print(\"黑糖\" + {0} + \"珍珠\")",
+          "tokens": [
+            "\" \"",
+            "\"\"",
+            "\"空格\""
+          ],
+          "answer": [
+            "\" \""
+          ],
+          "expected": "黑糖 珍珠",
+          "why": {
+            "\"\"": "引号里什么都没有，等于没有加空格，会显示「黑糖珍珠」。",
+            "\"空格\"": "这样拼进去的是「空格」两个字，会显示「黑糖空格珍珠」。"
+          },
+          "hint": "空格也是一个字符，要写在引号里。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，让屏幕显示：草莓奶茶",
+          "lines": [
+            "flavor = \"草莓\"",
+            "name = \"奶茶\"",
+            "drink = flavor + name",
+            "print(drink)"
+          ],
+          "shuffled": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              1,
+              0,
+              2,
+              3
+            ]
+          ],
+          "expected": "草莓奶茶",
+          "hint": "变量要先存好文字，才能拿来拼；拼好之后再显示。"
+        }
+      ]
+    },
+    {
+      "id": "U2L3",
+      "title": "名字有多长",
+      "concept": "len 长度",
+      "story": "标签纸的宽度有限，要先知道名字有几个字。Python 用 len 来数，它来自英文单词 length（长度）。",
+      "introCode": "print(len(\"珍珠奶茶\"))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(len(\"珍珠奶茶\"))",
+          "options": [
+            {
+              "text": "4",
+              "correct": true,
+              "why": "len 数的是字符的个数：珍、珠、奶、茶，一共 4 个。"
+            },
+            {
+              "text": "珍珠奶茶",
+              "correct": false,
+              "why": "len 返回的是个数（一个数字），不是文字本身。"
+            },
+            {
+              "text": "6",
+              "correct": false,
+              "why": "引号只是标记，不算在长度里。"
+            }
+          ],
+          "tip": "len(...) 数括号里的字符有几个。引号不计入。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(len(\"latte\"))",
+          "options": [
+            {
+              "text": "5",
+              "correct": true,
+              "why": "l、a、t、t、e，每个英文字母算一个字符。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "len 数的是字符，不是单词；latte 虽然是一个单词，但有 5 个字母。"
+            },
+            {
+              "text": "7",
+              "correct": false,
+              "why": "引号不算在长度里。"
+            }
+          ],
+          "tip": "每个汉字、每个字母、每个数字都算一个字符。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示「抹茶拿铁」有几个字",
+          "code": "print({0}(\"抹茶拿铁\"))",
+          "tokens": [
+            "len",
+            "length",
+            "Len"
+          ],
+          "answer": [
+            "len"
+          ],
+          "expected": "4",
+          "why": {
+            "length": "Python 里的函数名是缩写 len，不是完整的 length，写 length 会出错。",
+            "Len": "大小写不同就是不同的名字，Python 里是小写 len，写 Len 会出错。"
+          },
+          "hint": "名字是 len，全小写。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，让屏幕显示：新品、2、柠檬茶、3",
+          "lines": [
+            "print(\"新品\")",
+            "print(len(\"新品\"))",
+            "print(\"柠檬茶\")",
+            "print(len(\"柠檬茶\"))"
+          ],
+          "shuffled": [
+            3,
+            0,
+            2,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "新品\n2\n柠檬茶\n3",
+          "hint": "屏幕上从上往下显示，就把要先显示的行放在上面。"
+        }
+      ]
+    },
+    {
+      "id": "U2L4",
+      "title": "空格也算一个",
+      "concept": "len 数什么",
+      "story": "标签上有空格、数字和标点吗？它们也都算一个字符。len 也可以数变量里存的文字。",
+      "introCode": "name = \"milk tea\"\nprint(len(name))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "name = \"milk tea\"\nprint(len(name))",
+          "options": [
+            {
+              "text": "8",
+              "correct": true,
+              "why": "milk 4 个字母 + 1 个空格 + tea 3 个字母 = 8。空格也算一个字符。"
+            },
+            {
+              "text": "7",
+              "correct": false,
+              "why": "中间的空格也算一个字符，要数进去。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "len 数的是字符，不是单词的个数。"
+            }
+          ],
+          "tip": "len(name) 数的是变量 name 里存的文字。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "print(len(\"第1杯！\"))",
+          "options": [
+            {
+              "text": "4",
+              "correct": true,
+              "why": "第、1、杯、！ 各算一个字符：数字字符和标点也算。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "感叹号 ！也是一个字符，也要数进去。"
+            },
+            {
+              "text": "6",
+              "correct": false,
+              "why": "引号只是标记，不算在长度里。"
+            }
+          ],
+          "tip": "数字字符、标点、空格都算一个字符。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示 3。哪一个能做到？",
+          "code": "print(len({0}))",
+          "tokens": [
+            "\"15杯\"",
+            "\"15 杯\"",
+            "15"
+          ],
+          "answer": [
+            "\"15杯\""
+          ],
+          "expected": "3",
+          "why": {
+            "\"15 杯\"": "中间有一个空格，空格也算一个字符，长度是 4。",
+            "15": "没有引号的 15 是数字，len 只能数文字，会出错。"
+          },
+          "hint": "引号里的每个字符都算一个：1、5、杯。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，让屏幕先显示 milk tea，再显示它的长度",
+          "lines": [
+            "name = \"milk tea\"",
+            "print(name)",
+            "print(len(name))"
+          ],
+          "shuffled": [
+            2,
+            0,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected": "milk tea\n8",
+          "hint": "变量要先存好文字，才能显示和数长度。"
+        }
+      ]
+    },
+    {
+      "id": "U2L5",
+      "title": "菜单标签",
+      "concept": "单元复习",
+      "review": true,
+      "story": "最后一关：把学过的连起来，做一张菜单标签。",
+      "introCode": "label = \"新品：\"\nlabel = label + \"芋泥奶茶\"\nprint(label)\nprint(len(label))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "label = \"新品：\"\nprint(label + \"芋泥奶茶\")",
+          "options": [
+            {
+              "text": "新品：芋泥奶茶",
+              "correct": true,
+              "why": "label 里存着「新品：」，+ 把它和「芋泥奶茶」连在一起再显示。"
+            },
+            {
+              "text": "新品： 芋泥奶茶",
+              "correct": false,
+              "why": "+ 不会自动加空格。"
+            },
+            {
+              "text": "新品：",
+              "correct": false,
+              "why": "print 里是 label + \"芋泥奶茶\"，拼好之后一起显示，不是只显示 label。"
+            }
+          ]
+        },
+        {
+          "type": "fill",
+          "prompt": "标签要显示长度 7。补全程序。",
+          "code": "label = \"新品：\"\nlabel = {0} + \"芋泥奶茶\"\nprint(len(label))",
+          "tokens": [
+            "label",
+            "\"label\"",
+            "\"\""
+          ],
+          "answer": [
+            "label"
+          ],
+          "expected": "7",
+          "why": {
+            "\"label\"": "加了引号，拼的是文字 label（5 个字符），长度是 9，不是 7。",
+            "\"\"": "引号里什么都没有，原来的「新品：」就丢了，长度只剩 4。"
+          },
+          "hint": "要把变量里原来的文字接上去，变量名不加引号。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，让屏幕显示：新品：芋泥奶茶，然后是它的长度 7",
+          "lines": [
+            "label = \"新品：\"",
+            "label = label + \"芋泥奶茶\"",
+            "print(label)",
+            "print(len(label))"
+          ],
+          "shuffled": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "新品：芋泥奶茶\n7",
+          "hint": "先存「新品：」，再接上芋泥奶茶，最后先显示文字、再显示长度。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "size = \"大杯\"\ndrink = \"珍珠奶茶\"\nlabel = drink + \" \" + size\nprint(label)\nprint(len(label))",
+          "options": [
+            {
+              "text": "珍珠奶茶 大杯\n7",
+              "correct": true,
+              "why": "引号里的空格被拼进去，显示时有空格；长度是 4 + 1 + 2 = 7。"
+            },
+            {
+              "text": "珍珠奶茶 大杯\n6",
+              "correct": false,
+              "why": "空格也算一个字符，长度是 4 + 1 + 2 = 7。"
+            },
+            {
+              "text": "珍珠奶茶大杯\n7",
+              "correct": false,
+              "why": "拼接时中间写了一个 \" \"，所以显示的文字里有空格。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
