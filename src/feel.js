@@ -10,7 +10,9 @@
 //   3. 播放时如果还没 running，先 resume，成功后（300ms 内）再播；
 //   4. 状态变化会记录下来，显示在“我的”页的诊断里。
 
-const prefs = { sound: true, haptics: true };
+import { DEFAULT_STYLE, KEY_SOUNDS, renderEvent, EVENTS } from "./keysounds.js";
+
+const prefs = { sound: true, haptics: true, soundStyle: DEFAULT_STYLE };
 export const log = []; // 给自动测试和诊断看：实际请求过哪些音效 / 振动
 const note = (n) => { log.push(n); if (log.length > 200) log.shift(); };
 export const stats = { played: 0, dropped: 0, resumed: 0, unlocks: 0, lastError: "", history: [] };
@@ -23,6 +25,7 @@ export const hapticsSupported = () => typeof navigator !== "undefined" && typeof
 export function setPrefs(p) {
   prefs.sound = p?.sound !== false;
   prefs.haptics = p?.haptics !== false;
+  prefs.soundStyle = KEY_SOUNDS.some((k) => k.id === p?.soundStyle) ? p.soundStyle : DEFAULT_STYLE;
 }
 
 let ctx = null;
@@ -62,43 +65,30 @@ export function unlock() {
   } catch (e) { stats.lastError = "解锁失败：" + (e?.message || e); }
 }
 
-function tone(freq, t0, dur, { type = "sine", gain = 0.12, slideTo } = {}) {
-  const o = ctx.createOscillator();
-  const g = ctx.createGain();
-  o.type = type;
-  o.frequency.setValueAtTime(freq, t0);
-  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.008);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  o.connect(g).connect(master);
-  o.start(t0);
-  o.stop(t0 + dur + 0.03);
-}
-
-// 每种音效：[总时长 ms, 播放函数]（音量比第一版整体调高约 2.5 倍）
-const SOUNDS = {
-  select: [35, (t) => tone(660, t, 0.04, { type: "triangle", gain: 0.2 })],                       // 轻“嗒”
-  place:  [60, (t) => tone(330, t, 0.07, { type: "triangle", gain: 0.3, slideTo: 300 })],           // 稍清楚的“笃”
-  undo:   [50, (t) => tone(420, t, 0.06, { type: "triangle", gain: 0.2, slideTo: 300 })],           // 轻“咔”
-  correct: [180, (t) => { tone(523.25, t, 0.1, { gain: 0.32 }); tone(783.99, t + 0.09, 0.1, { gain: 0.32 }); }], // 柔和上行两音
-  wrong:  [160, (t) => { tone(311.13, t, 0.09, { type: "triangle", gain: 0.26 }); tone(233.08, t + 0.08, 0.09, { type: "triangle", gain: 0.26 }); }], // 更轻的下降两音
-  finish: [420, (t) => { [523.25, 659.25, 783.99].forEach((f, i) => tone(f, t + i * 0.14, 0.15, { gain: 0.3 })); }], // 温和三音
-};
-
+// ---- 声音：当前按键风格（默认 J）的六种变化，由 keysounds.js 合成 ----
+const SOUND_MS = { select: 40, place: 55, undo: 40, correct: 140, wrong: 150, finish: 280 }; // 名义时长，用来计算同时发声数
 const lastAt = {};
-let voices = 0;
-function sound(c, name) {
-  const [dur, fn] = SOUNDS[name];
-  voices++;
-  setTimeout(() => { voices = Math.max(0, voices - 1); }, dur + 40);
-  fn(c.currentTime + 0.005);
+let active = []; // 正在发声的声音：{ gain, until }
+export const activeCount = () => active.filter((v) => v.until > performance.now()).length;
+
+// 画一个声音；同时最多 3 个，多出来的旧声音快速淡出（不会无限叠加）
+function sound(c, name, style = prefs.soundStyle) {
+  const nowMs = performance.now();
+  active = active.filter((v) => v.until > nowMs);
+  while (active.length >= 3) {
+    const old = active.shift();
+    try { old.gain.gain.cancelScheduledValues?.(c.currentTime); old.gain.gain.setValueAtTime?.(old.gain.gain.value ?? 1, c.currentTime); old.gain.gain.linearRampToValueAtTime?.(0.0001, c.currentTime + 0.01); } catch { /* 忽略 */ }
+  }
+  const voice = c.createGain();
+  voice.connect(master);
+  const ms = renderEvent(c, voice, style, name, c.currentTime + 0.005);
+  active.push({ gain: voice, until: nowMs + Math.max(ms, SOUND_MS[name] || 0) + 20 });
   stats.played++;
 }
 
 // force：试听按钮用，忽略开关和节流
 export function play(name, { force = false } = {}) {
-  if ((!prefs.sound && !force) || !SOUNDS[name]) return Promise.resolve(false);
+  if ((!prefs.sound && !force) || !EVENTS[name]) return Promise.resolve(false);
   note(name);
   try {
     const nowMs = performance.now();
@@ -107,7 +97,6 @@ export function play(name, { force = false } = {}) {
     const c = getCtx();
     if (!c) { stats.dropped++; return Promise.resolve(false); }
     if (c.state === "running") {
-      if (!force && voices >= 4) { stats.dropped++; return Promise.resolve(false); }
       sound(c, name);
       return Promise.resolve(true);
     }
@@ -120,7 +109,20 @@ export function play(name, { force = false } = {}) {
   } catch (e) { stats.lastError = "播放失败：" + (e?.message || e); return Promise.resolve(false); }
 }
 
-// 给其他模块（按键音效实验室）用：在用户操作里取得共享的音频环境和总音量节点
+// “我的”页选音效：用指定风格试听一个声音（必须在点击里调用）。返回 { ok, state }
+export function playStyle(style, event = "select") {
+  unlock();
+  const c = getCtx();
+  if (!c || !KEY_SOUNDS.some((k) => k.id === style) || !EVENTS[event]) return { ok: false, state: c ? c.state : "不可用" };
+  note(`${style}:${event}`);
+  try {
+    sound(c, event, style); // 即使还没 running 也排进去：iOS 上同一个点击里的 resume 通常随后生效
+    return { ok: c.state === "running", state: c.state };
+  } catch (e) { stats.lastError = "试听失败：" + (e?.message || e); return { ok: false, state: c.state }; }
+}
+export const currentStyle = () => prefs.soundStyle;
+
+// 给其他模块用：在用户操作里取得共享的音频环境和总音量节点
 export function audioContext() { unlock(); return getCtx(); }
 export function masterNode() { return master; }
 
@@ -148,6 +150,7 @@ export function diagnostics() {
     audioSession: (() => { try { return navigator.audioSession ? navigator.audioSession.type : "无"; } catch { return "无"; } })(),
     vibrate: hapticsSupported(),
     soundPref: prefs.sound,
+    soundStyle: prefs.soundStyle,
     hapticsPref: prefs.haptics,
     ...stats,
     history: stats.history.join(" "),

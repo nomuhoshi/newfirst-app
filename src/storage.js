@@ -20,7 +20,7 @@ export function freshState() {
     lessonsCompleted: 0,  // 完成关卡的总次数（含复习）
     installTipClosed: false,
     lastActive: 0,
-    prefs: { sound: true, haptics: true, keySound: null }, // keySound：在“我的”页选中的按键音效 A–J； 音效、振动开关（旧 v3 记录没有这一项，加载时补上默认值）
+    prefs: { sound: true, haptics: true, soundStyle: "J" }, // 音效、振动开关；soundStyle：按键音效风格 A–J，默认 J（旧 v3 记录没有这些项，加载时补上默认值）
   };
 }
 
@@ -50,6 +50,8 @@ export function loadState() {
   // 旧的 v3 记录只补新增的偏好，学习进度原样保留
   const base = freshState();
   const prefs = { ...base.prefs, ...(data.prefs && typeof data.prefs === "object" ? data.prefs : {}) };
+  if (!/^[A-J]$/.test(prefs.soundStyle)) prefs.soundStyle = "J";
+  delete prefs.keySound; // 试听阶段的旧字段，不再使用
   return { state: { ...base, ...data, prefs }, notice: null };
 }
 

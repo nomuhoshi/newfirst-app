@@ -1,7 +1,9 @@
-// 按键音效选择实验室：十个原创的“矮轴机械键盘”方向音效（A–J），全部用 Web Audio 合成，不下载、不复制任何品牌录音。
-// 每个 40–100 毫秒；每个都带一个 trim 增益，让十个声音的响度接近（tests 用 OfflineAudioContext 实测）。
-// 暂时只在“我的”页试听和选择，不接进答题流程；选定后再做“点选、放入、撤销、答对、答错、过关”的同系列变化。
-import * as feel from "./feel.js";
+// 按键音效：十个原创的“矮轴机械键盘”风格（A–J），全部用 Web Audio 合成，不下载、不复制任何品牌录音。
+// 默认风格是 J（极简 Tap），其余九个留给用户在“我的”页自己选。
+// 每个风格的“按下”声音约 40–100 毫秒，带 trim 增益让十个风格响度接近；
+// 游戏里的六种声音（点选、放入、撤销、答对、答错、过关）都是同一风格的变化：按键声换音高、叠几下。
+// 这个文件不依赖 feel.js（feel.js 引用它来播放），tests 用 OfflineAudioContext 实测时长和响度。
+export const DEFAULT_STYLE = "J";
 
 export const KEY_SOUNDS = [
   { id: "A", name: "清脆矮轴", desc: "短促、干净、轻微触底声" },
@@ -17,6 +19,7 @@ export const KEY_SOUNDS = [
 ];
 
 // ---- 构件 ----
+let PITCH = 1; // 渲染某一下按键时的音高倍数（同系列变化用）
 let noiseBuf = null;
 function noise(ctx) {
   if (noiseBuf && noiseBuf.sampleRate === ctx.sampleRate) return noiseBuf;
@@ -31,7 +34,7 @@ function noise(ctx) {
 // 带通噪声短脉冲：键帽“嗒”的一下
 function click(ctx, out, t, { freq, q = 1, dur = 0.012, gain = 0.5, type = "bandpass" }) {
   const src = ctx.createBufferSource(); src.buffer = noise(ctx);
-  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq * PITCH; f.Q.value = q;
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.0008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   src.connect(f); f.connect(g); g.connect(out);
@@ -41,7 +44,7 @@ function click(ctx, out, t, { freq, q = 1, dur = 0.012, gain = 0.5, type = "band
 // 音调下滑：外壳共鸣的“笃”
 function thock(ctx, out, t, { from, to, dur = 0.05, gain = 0.3, type = "sine" }) {
   const o = ctx.createOscillator(); o.type = type;
-  o.frequency.setValueAtTime(from, t); o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  o.frequency.setValueAtTime(from * PITCH, t); o.frequency.exponentialRampToValueAtTime(to * PITCH, t + dur);
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.01);
@@ -49,7 +52,7 @@ function thock(ctx, out, t, { from, to, dur = 0.05, gain = 0.3, type = "sine" })
 }
 // 高频短“叮”：金属 / 陶瓷
 function ping(ctx, out, t, { freq, dur = 0.05, gain = 0.1 }) {
-  const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = freq;
+  const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = freq * PITCH;
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.001); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.01);
@@ -71,45 +74,42 @@ const DEFS = {
 };
 export const TRIMS = Object.fromEntries(Object.entries(DEFS).map(([k, v]) => [k, v.trim]));
 
-// 把一个音效画进任意 AudioContext（真实的或离线的）；返回时长（毫秒）
-export function renderKey(ctx, dest, id, t0) {
+// 把某风格的“一下按键”画进任意 AudioContext（真实的或离线的）；返回结束时间（秒，相对 t0）
+function renderTap(ctx, dest, id, t0, pitch, gain) {
   const g = ctx.createGain();
-  g.gain.value = DEFS[id].trim;
+  g.gain.value = DEFS[id].trim * gain;
   g.connect(dest);
-  const end = DEFS[id].run(ctx, g, t0);
-  return Math.round((end - t0) * 1000);
+  PITCH = pitch;
+  try { return DEFS[id].run(ctx, g, t0) - t0; } finally { PITCH = 1; }
+}
+export function renderKey(ctx, dest, id, t0) { return Math.round(renderTap(ctx, dest, id, t0, 1, 1) * 1000); }
+
+// 游戏里的六种声音：同一风格的变化。每一项是若干下按键：[相对时间 s, 音高倍数, 音量倍数]
+export const EVENTS = {
+  select:  [[0, 1.0, 1.0]],                                    // 点选：就是这个风格的“一下”
+  place:   [[0, 0.82, 1.1]],                                   // 放入：低一点、厚一点
+  undo:    [[0, 1.25, 0.9]],                                   // 撤销：高一点、轻一点
+  correct: [[0, 1.0, 0.9], [0.075, 1.5, 1.0]],                 // 答对：两下，向上
+  wrong:   [[0, 0.8, 0.9], [0.085, 0.6, 0.9]],                 // 答错：两下，向下、更低沉
+  finish:  [[0, 1.0, 0.8], [0.09, 1.25, 0.9], [0.18, 1.5, 1.0]], // 过关：三下，一级一级向上
+};
+export function renderEvent(ctx, dest, id, event, t0) {
+  let end = 0;
+  for (const [off, pitch, gain] of EVENTS[event]) end = Math.max(end, off + renderTap(ctx, dest, id, t0 + off, pitch, gain));
+  return Math.round(end * 1000);
 }
 
-// 实测响度：离线渲染，返回 { ms 时长, peak 峰值, rms 前 120ms 的均方根 }
-export async function measureKey(id) {
+// 实测：离线渲染，返回 { ms 名义时长, audibleMs 可听时长, peak 峰值, rms 整个声音的能量除以固定 100ms 窗口再开方 }
+export async function measureKey(id, event = "select") {
   const sr = 44100;
-  const oc = new OfflineAudioContext(1, Math.floor(sr * 0.2), sr);
-  const ms = renderKey(oc, oc.destination, id, 0);
+  const oc = new OfflineAudioContext(1, Math.floor(sr * 0.6), sr);
+  const ms = renderEvent(oc, oc.destination, id, event, 0);
   const buf = await oc.startRendering();
   const d = buf.getChannelData(0);
-  let peak = 0, sum = 0; const n = Math.floor(sr * 0.12);
-  for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; if (i < n) sum += d[i] * d[i]; }
-  // 有效时长：能量衰减到峰值 -40dB 以下的最后一个采样
+  let peak = 0;
+  for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
   let last = 0; for (let i = d.length - 1; i >= 0; i--) if (Math.abs(d[i]) > peak * 0.01) { last = i; break; }
-  return { ms, audibleMs: Math.round((last / sr) * 1000), peak, rms: Math.sqrt(sum / n) };
+  // 响度：整个声音的能量除以固定的 100ms 窗口（短声音不会因为“平均到静音上”而显得更轻）
+  let sum = 0; for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
+  return { ms, audibleMs: Math.round((last / sr) * 1000), peak, rms: Math.sqrt(sum / (0.1 * sr)) };
 }
-
-// ---- 真实播放：限制同时发声数量，连点不会无限叠加 ----
-const active = [];
-export function playKey(id) {
-  const c = feel.audioContext();
-  const master = feel.masterNode();
-  if (!c || !master || !DEFS[id]) return { ok: false, state: c ? c.state : "无" };
-  try { if (c.state !== "running") c.resume().catch(() => {}); } catch { /* 忽略 */ }
-  const now = c.currentTime;
-  while (active.length && active[0].end < now) active.shift();
-  while (active.length >= 3) { const old = active.shift(); try { old.gain.gain.setTargetAtTime(0, now, 0.004); } catch { /* 忽略 */ } }
-  const voice = c.createGain();
-  voice.connect(master);
-  const ms = renderKey(c, voice, id, now + 0.005);
-  active.push({ gain: voice, end: now + ms / 1000 + 0.05 });
-  return { ok: true, state: c.state, ms };
-}
-
-// 给自动测试用：当前还在发声的数量
-export const activeCount = () => { const now = feel.audioContext()?.currentTime ?? 0; return active.filter((a) => a.end >= now).length; };

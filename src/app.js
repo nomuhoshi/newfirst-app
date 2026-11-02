@@ -11,7 +11,7 @@ import words from "../content/words.json";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
-import { KEY_SOUNDS, playKey } from "./keysounds.js";
+import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
@@ -521,27 +521,30 @@ function hapticLab() {
   );
 }
 
-// 按键音效选择实验室：A–J 十个“矮轴机械键盘”方向的短音效，点一下试听，点中的会高亮并保存在本机。
-// 暂时只在这里试听，不接进答题流程；选定后再做同系列的“点选、放入、撤销、答对、答错、过关”。
+// 按键音效设置：A–J 十个“矮轴机械键盘”风格。J（极简 Tap）是默认，点其他字母试听并换成它。
+// 选中的风格用在答题里的全部声音：点选、放入、撤销、答对、答错、过关。
 function keyLab() {
   const status = h("p", { class: "muted small keylab-status", role: "status" });
-  const showSel = () => { const k = KEY_SOUNDS.find((x) => x.id === state.prefs.keySound); status.textContent = k ? `已选：${k.id} ${k.name}` : "还没有选择：点一下试听，满意的会高亮并保存。"; };
+  const cur = () => KEY_SOUNDS.some((k) => k.id === state.prefs.soundStyle) ? state.prefs.soundStyle : DEFAULT_STYLE;
+  const showSel = () => { const k = KEY_SOUNDS.find((x) => x.id === cur()); status.textContent = `当前按键音效：${k.id} ${k.name}${k.id === DEFAULT_STYLE ? "（默认）" : ""}`; };
   const btns = KEY_SOUNDS.map((k) => {
-    const b = h("button", { type: "button", class: "keybtn" + (state.prefs.keySound === k.id ? " sel" : ""), "data-keysound": k.id, "aria-pressed": String(state.prefs.keySound === k.id) },
-      h("b", { text: k.id }), h("span", { text: k.name }), h("small", { text: k.desc }));
+    const on0 = cur() === k.id;
+    const b = h("button", { type: "button", class: "keybtn" + (on0 ? " sel" : ""), "data-keysound": k.id, "aria-pressed": String(on0) },
+      h("b", { text: k.id }), h("span", { text: k.name + (k.id === DEFAULT_STYLE ? "（默认）" : "") }), h("small", { text: k.desc }));
     b.addEventListener("click", () => {
-      const r = playKey(k.id);
-      state.prefs.keySound = k.id; persist();
+      state.prefs.soundStyle = k.id; feel.setPrefs(state.prefs); persist();
+      const r = feel.playStyle(k.id, "select"); // 声音关闭时也让你听一下，方便挑选
       btns.forEach((x) => { const on = x === b; x.classList.toggle("sel", on); x.setAttribute("aria-pressed", String(on)); });
       showSel();
       if (!r.ok) status.textContent += "（这次没有发出声音：" + (r.state || "音频环境不可用") + "）";
+      else if (!state.prefs.sound) status.textContent += "（上面的“音效”开关是关的，答题时不会响）";
     });
     return b;
   });
   showSel();
   return h("div", { class: "keylab" },
-    h("h3", { text: "按键音效选择" }),
-    h("p", { class: "muted small", text: "十个原创的矮轴键盘方向音效，每个约 40–100 毫秒。点一下试听，点中的会高亮并保存；可以连续点。选好后告诉我字母。" }),
+    h("h3", { text: "按键音效" }),
+    h("p", { class: "muted small", text: "十个原创的矮轴键盘风格，默认 J。点一下试听并选用，答题时的点选、放入、撤销、答对、答错、过关都用同一个风格。" }),
     h("div", { class: "keygrid" }, btns),
     status,
   );

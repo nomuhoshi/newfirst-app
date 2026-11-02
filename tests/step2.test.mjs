@@ -503,9 +503,11 @@ try {
       constructor() { this.state = "suspended"; this.currentTime = 0; this.sampleRate = 48000; this.destination = {}; window.__ac.created++; window.__ac.inst = this; }
       resume() { const t = window.event?.type; window.__ac.resumeEvents.push(t); if (["touchend", "click", "keydown"].includes(t)) this.state = "running"; return Promise.resolve(); }
       suspend() { this.state = "suspended"; return Promise.resolve(); }
-      createGain() { return { gain: { value: 1, setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect(n) { return n; } }; }
+      createGain() { return { gain: { value: 1, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {}, cancelScheduledValues() {} }, connect(n) { return n; } }; }
+      createBiquadFilter() { return { type: "", frequency: { value: 0 }, Q: { value: 0 }, connect(n) { return n; } }; }
       createOscillator() { window.__ac.osc++; return { type: "", frequency: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect(n) { return n; }, start() {}, stop() {} }; }
-      createBuffer() { return {}; } createBufferSource() { return { connect() {}, start() {} }; }
+      createBuffer(ch, len, sr) { const d = new Float32Array(len || 1); return { sampleRate: sr, length: len, getChannelData() { return d; } }; }
+      createBufferSource() { window.__ac.src = (window.__ac.src || 0) + 1; return { connect(n) { return n; }, start() {}, stop() {} }; }
     };
   };
   const pi = await ctx.newPage();
@@ -643,35 +645,58 @@ try {
   }
 
 
-  // ---------- 按键音效选择实验室（A–J） ----------
+  // ---------- 按键音效：J 默认，A–J 可选，选中的风格用在答题里 ----------
   {
+    const EVS = ["select", "place", "undo", "correct", "wrong", "finish"];
     const pk2 = await ctx.newPage();
     const kerrs = []; pk2.on("pageerror", (e) => kerrs.push(e.message));
+    await pk2.addInitScript(fakeAudio);
     await pk2.goto(BASE); await pk2.waitForSelector(".statsbar, .onboard");
-    await pk2.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.prefs.keySound = null; window.__app.setState(s); window.__app.persist(); window.__app.renderPath(); });
+    // 旧 v3 记录（没有 soundStyle，带着试听阶段的 keySound）：默认 J，学习进度保留
+    await pk2.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.xp = 77; delete s.prefs.soundStyle; s.prefs.keySound = "B"; s.prefs.sound = true; localStorage.setItem("suipian.progress", JSON.stringify(s)); });
+    await pk2.reload(); await pk2.waitForSelector(".statsbar");
+    check("按键音效：旧记录没有这一项时默认 J，进度保留，旧试听字段被丢弃", await pk2.evaluate(() => { const s = window.__app.getState(); return s.prefs.soundStyle === "J" && s.xp === 77 && !("keySound" in s.prefs); }));
     await pk2.getByRole("button", { name: "我的" }).tap();
-    check("音效实验室：A–J 十个试听按钮，各带名称和一句描述", (await pk2.locator("[data-keysound]").count()) === 10 && (await pk2.evaluate(() => [...document.querySelectorAll("[data-keysound]")].map((b) => b.dataset.keysound).join(""))) === "ABCDEFGHIJ" && (await pk2.locator(".keybtn small").count()) === 10);
-    const meas = await pk2.evaluate(async () => { const k = await window.__app.keysounds(); const out = {}; for (const { id } of k.KEY_SOUNDS) out[id] = await k.measureKey(id); return out; });
+    check("按键音效：A–J 十个按钮，J 高亮并标“默认”，状态写明当前是 J", (await pk2.locator("[data-keysound]").count()) === 10 && (await pk2.evaluate(() => [...document.querySelectorAll("[data-keysound]")].map((b) => b.dataset.keysound).join(""))) === "ABCDEFGHIJ" && (await pk2.locator('[data-keysound="J"]').getAttribute("aria-pressed")) === "true" && (await pk2.locator(".keybtn.sel").count()) === 1 && /当前按键音效：J 极简 Tap（默认）/.test(await pk2.locator(".keylab-status").innerText()));
+    // 实测每个风格的六种声音
+    const meas = await pk2.evaluate(async (evs) => { const k = await window.__app.keysounds(); const out = {}; for (const { id } of k.KEY_SOUNDS) { out[id] = {}; for (const e of evs) out[id][e] = await k.measureKey(id, e); } return out; }, EVS);
     const ids = Object.keys(meas);
-    check("音效实验室：每个音效约 40–100 毫秒", ids.every((i) => meas[i].ms >= 40 && meas[i].ms <= 100), ids.map((i) => `${i}${meas[i].ms}`).join(" "));
-    const dbs = ids.map((i) => 20 * Math.log10(meas[i].rms));
-    check("音效实验室：十个音效响度接近（RMS 差距 ≤ 2dB），峰值不削波", Math.max(...dbs) - Math.min(...dbs) <= 2 && ids.every((i) => meas[i].peak < 0.9), `${(Math.max(...dbs) - Math.min(...dbs)).toFixed(2)}dB`);
-    check("音效实验室：十个音效互不相同（响度包络或时长不全相同）", new Set(ids.map((i) => `${meas[i].ms}-${meas[i].peak.toFixed(3)}`)).size === 10);
+    check("按键音效：十个风格的“点选”都是 40–100 毫秒", ids.every((i) => meas[i].select.ms >= 40 && meas[i].select.ms <= 100), ids.map((i) => `${i}${meas[i].select.ms}`).join(" "));
+    check("按键音效：60 种声音都有声、有限、不削波", ids.every((i) => EVS.every((e) => meas[i][e].rms > 0.005 && Number.isFinite(meas[i][e].rms) && meas[i][e].peak > 0.05 && meas[i][e].peak < 0.95)), ids.flatMap((i) => EVS.filter((e) => !(meas[i][e].rms > 0.005 && meas[i][e].peak < 0.95)).map((e) => `${i}.${e}:${meas[i][e].peak.toFixed(2)}`)).join(" "));
+    const spread = (e) => { const d = ids.map((i) => 20 * Math.log10(meas[i][e].rms)); return Math.max(...d) - Math.min(...d); };
+    check("按键音效：同一种声音在十个风格之间响度接近（点选 ≤ 1dB，其余 ≤ 2.5dB）", spread("select") <= 1 && EVS.every((e) => spread(e) <= 2.5), EVS.map((e) => `${e}${spread(e).toFixed(1)}`).join(" "));
+    const within = ids.every((i) => { const d = ["select", "place", "undo"].map((e) => 20 * Math.log10(meas[i][e].rms)); return Math.max(...d) - Math.min(...d) <= 3; });
+    check("按键音效：同一风格里点选、放入、撤销响度接近（≤ 3dB），像同一把键盘", within);
+    check("按键音效：答对、答错、过关比点选长，过关最长", ids.every((i) => meas[i].correct.ms > meas[i].select.ms && meas[i].wrong.ms > meas[i].select.ms && meas[i].finish.ms > meas[i].correct.ms), ids.map((i) => `${i}:${meas[i].select.ms}/${meas[i].correct.ms}/${meas[i].finish.ms}`).join(" "));
+    check("按键音效：十个风格互不相同", new Set(ids.map((i) => `${meas[i].select.ms}-${meas[i].select.peak.toFixed(3)}`)).size === 10);
+    // 选 B：高亮、保存、立刻用于游戏
     await pk2.locator('[data-keysound="B"]').tap();
-    check("音效实验室：点 B 后高亮并保存到本机", (await pk2.locator('[data-keysound="B"]').getAttribute("aria-pressed")) === "true" && (await pk2.locator(".keybtn.sel").count()) === 1 && (await pk2.evaluate(() => window.__app.getState().prefs.keySound)) === "B" && /已选：B 奶油矮轴/.test(await pk2.locator(".keylab-status").innerText()));
-    await pk2.locator('[data-keysound="J"]').tap();
-    check("音效实验室：再点 J，高亮换到 J，B 取消", (await pk2.locator(".keybtn.sel").count()) === 1 && (await pk2.locator('[data-keysound="J"]').getAttribute("aria-pressed")) === "true" && (await pk2.locator('[data-keysound="B"]').getAttribute("aria-pressed")) === "false");
-    const burst = await pk2.evaluate(async () => {
-      const k = await window.__app.keysounds(); const b = document.querySelector('[data-keysound="A"]'); let maxActive = 0;
-      for (let i = 0; i < 60; i++) { b.dispatchEvent(new MouseEvent("click", { bubbles: true })); maxActive = Math.max(maxActive, k.activeCount()); }
-      return maxActive;
-    });
-    check("音效实验室：连续快速点击 60 次，同时发声不超过 3 个（不会无限叠加）", burst <= 3, `max=${burst}`);
+    check("按键音效：点 B 后高亮、保存到本机，feel 也换成 B", (await pk2.locator('[data-keysound="B"]').getAttribute("aria-pressed")) === "true" && (await pk2.locator(".keybtn.sel").count()) === 1 && (await pk2.evaluate(() => window.__app.getState().prefs.soundStyle)) === "B" && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "B" && /当前按键音效：B 奶油矮轴/.test(await pk2.locator(".keylab-status").innerText()) && !/默认/.test(await pk2.locator(".keylab-status").innerText()));
+    // 答题时用的是当前风格：把 renderEvent 记下来看用的是哪个风格
+    await pk2.evaluate(() => { window.__styleLog = []; const f = window.__app.feel; const orig = f.playStyle; window.__origPlay = f.play; });
+    const st0 = await pk2.evaluate(() => window.__ac.src || 0);
+    await pk2.evaluate(() => window.__app.feel.play("select"));
+    const st1 = await pk2.evaluate(() => window.__ac.src || 0);
+    check("按键音效：答题声音（feel.play）真的用风格合成（噪声“嗒”+“笃”），不再是旧的纯音", st1 > st0);
+    const burst = await pk2.evaluate(() => { const f = window.__app.feel; let m = 0; for (let i = 0; i < 80; i++) { f.playStyle("A", "finish"); m = Math.max(m, f.activeCount()); } return m; });
+    check("按键音效：连续快速触发 80 次“过关”，同时发声不超过 3 个", burst <= 3, `max=${burst}`);
+    await pk2.locator('[data-keysound="A"]').tap();
     await pk2.reload(); await pk2.waitForSelector(".statsbar");
     await pk2.getByRole("button", { name: "我的" }).tap();
-    check("音效实验室：刷新后选择仍在（A 是最后一次点的）", (await pk2.evaluate(() => window.__app.getState().prefs.keySound)) === "A" && (await pk2.locator('[data-keysound="A"]').getAttribute("aria-pressed")) === "true");
-    check("音效实验室：只是试听，不接进答题流程（答题用的音效引擎没有被替换）", await pk2.evaluate(() => !window.__app.feel.log.some((n) => /^[A-J]$/.test(n))));
-    check("音效实验室：没有脚本错误", kerrs.length === 0, kerrs.join("|"));
+    check("按键音效：刷新后选择仍在（A 是最后一次点的）", (await pk2.evaluate(() => window.__app.getState().prefs.soundStyle)) === "A" && (await pk2.locator('[data-keysound="A"]').getAttribute("aria-pressed")) === "true" && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "A");
+    // 坏数据：不认识的风格回到 J
+    await pk2.evaluate(() => { const s = JSON.parse(localStorage.getItem("suipian.progress")); s.prefs.soundStyle = "Z"; localStorage.setItem("suipian.progress", JSON.stringify(s)); });
+    await pk2.reload(); await pk2.waitForSelector(".statsbar");
+    check("按键音效：存档里的风格不认识时回到 J", (await pk2.evaluate(() => window.__app.getState().prefs.soundStyle)) === "J" && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "J");
+    // 在关卡里：选 D 后做一题，点选/检查都用 D（日志里是 select/correct 等事件名），流程不变
+    await pk2.evaluate(() => { const s = window.__app.getState(); s.prefs.soundStyle = "D"; s.prefs.sound = true; s.hearts = 5; window.__app.setState(s); window.__app.persist(); window.__app.renderPath(); });
+    await pk2.locator(".node.current").tap(); await pk2.locator(".overlay .btn3d.primary").tap(); await pk2.getByRole("button", { name: "继续", exact: true }).tap(); await pk2.waitForSelector("[data-check]");
+    const a0 = await pk2.evaluate(() => window.__ac.osc);
+    await pk2.locator(".choice").first().tap();
+    check("按键音效：关卡里选 D，点选发出声音且 AudioContext 在 running", (await pk2.evaluate(() => window.__ac.osc)) > a0 && (await pk2.evaluate(() => window.__ac.inst.state)) === "running");
+    await pk2.locator("[data-check]").tap(); await pk2.waitForSelector(".feedbar");
+    check("按键音效：检查后有答对/答错音，且仍是 D", (await pk2.evaluate(() => window.__app.feel.log.some((n) => n === "correct" || n === "wrong"))) && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "D");
+    check("按键音效：没有脚本错误", kerrs.length === 0, kerrs.join("|"));
     await pk2.close();
   }
 
