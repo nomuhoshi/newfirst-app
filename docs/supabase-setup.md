@@ -9,10 +9,8 @@
 2. New project：名称随意（如 suipian）；区域选 **Tokyo (ap-northeast-1)** 或 Singapore；数据库密码用密码管理器生成并保存好（**不要发给任何人**）。
 3. 等 1–2 分钟项目就绪。
 
-## 2. 建表和权限（1 分钟）
-1. 左边菜单 SQL Editor → New query。
-2. 把仓库里的 `supabase/schema.sql` 全部粘贴进去，点 Run。看到 Success 即可。（可重复运行。）
-3. 如果你还想先做访问实测：再粘贴 `supabase/access-test.sql` 运行，并在 Authentication → Sign In / Providers 里打开 Anonymous sign-ins。
+## 2. 建表和权限（⚠️ 暂不要运行：脚本正在审查，审查通过后我再给你运行步骤）
+`supabase/schema.sql` 已按 GPT 的审查意见改成"**表只读，写入只能走受控函数**"（`create_progress` / `save_progress` 带版本检查 / `delete_my_account`）。已在真实 PostgreSQL 16 上（用模拟的 Supabase 角色）验证，**尚未在真实 Supabase 上验证**。你现在可以先做第 1 步（建项目）并把项目网址和公开密钥发给我，**先不要运行 schema.sql**。
 
 ## 3. 打开邮箱验证码登录
 1. Authentication → Sign In / Providers → Email：打开 Enable Email provider。
@@ -26,9 +24,12 @@
 - 因此：**需要一个域名**（先检查你是否已经有；新买要先核实首年价和续费价）。**在你明确同意之前我不会让你买任何东西。**
 - 在没有域名的阶段，开发和测试用"自己的团队成员邮箱"登录即可（Supabase 自带发信足够），学习功能不受影响（本机优先）。
 
+## 4b. （可选）访问实测
+只有要做访问实测页时才需要：粘贴 `supabase/access-test.sql` 运行，并在 Authentication → Sign In / Providers 里打开 Anonymous sign-ins。**邮箱登录本身不需要匿名登录，默认配置不要打开它。**
+
 ## 5. 验证账号隔离（开发完成后做一次）
 1. Authentication → Users 里手动添加两个测试用户 A、B（或用两个邮箱各登录一次）。
-2. 用 A 登录并保存进度；用 B 登录后确认 B **看不到** A 的进度（我会提供测试页按钮，显示"读到几行"，应为 0 或 1）。
+2. 用 A 登录并保存进度；用 B 登录后确认 B **看不到** A 的进度（我会提供测试页按钮，显示"读到几行"，应为 0 或 1）。SQL 层的自动检查在 `supabase/tests/isolation.sql`（会回滚，不留数据）和 `concurrency.sh`。
 3. 在 SQL Editor 里不要用 service_role 去查来判断隔离（那会绕过权限，结果不代表用户看到的）。
 
 ## 6. 发给我
