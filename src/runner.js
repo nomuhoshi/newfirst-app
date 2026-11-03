@@ -25,13 +25,13 @@ export class Runner {
   }
 
   // 统一清理“当前运行”，任何结束路径都走这里，避免旧计时器误杀新线程
-  #clearRun() {
+  _clearRun() {
     if (this.current) clearTimeout(this.current.timer);
     this.current = null;
   }
 
   boot() {
-    this.#clearRun();
+    this._clearRun();
     clearTimeout(this.loadTimer);
     if (this.worker) this.worker.terminate();
     this.state = "loading";
@@ -43,26 +43,26 @@ export class Runner {
       // 有些环境（例如部分内置浏览器）不允许创建模块工作线程：不能让整个页面因此白屏，只让“运行结果”提示失败
       this.worker = null;
       this.state = "loadError";
-      this.onStatus("loadError", { msg: (e && e.message) || "无法创建 Python 工作线程" });
+      this.onStatus("loadError", { msg: (e && e.message) || "无法创建 Python 工作线程", kind: "noWorker" });
       return;
     }
     this.worker = w;
     this.loadTimer = setTimeout(() => {
       if (this.worker === w && this.state === "loading") this.onStatus("slowLoad");
     }, LIMITS.loadMs);
-    w.onmessage = (e) => this.#onMessage(w, e.data);
+    w.onmessage = (e) => this._onMessage(w, e.data);
     w.onerror = (e) => {
       if (this.worker !== w) return;
       e.preventDefault?.();
       clearTimeout(this.loadTimer);
-      this.#clearRun();
+      this._clearRun();
       this.state = "loadError";
       this.onStatus("loadError", { msg: (e && e.message) || "工作线程出错" });
     };
     w.postMessage({ type: "init", indexURL: this.indexURL });
   }
 
-  #onMessage(w, m) {
+  _onMessage(w, m) {
     if (w !== this.worker) return; // 已被终止的旧线程，忽略
     if (m.type === "ready") {
       clearTimeout(this.loadTimer);
@@ -78,12 +78,12 @@ export class Runner {
       // 第二层保护：按 UTF-8 字节和行数再检查一次
       c.bytes += utf8.encode(m.text).length;
       c.lines += (m.text.match(/\n/g) || []).length;
-      if (c.bytes > LIMITS.maxBytes + 4 || c.lines > LIMITS.maxLines) { this.#abort("outputLimit"); return; }
+      if (c.bytes > LIMITS.maxBytes + 4 || c.lines > LIMITS.maxLines) { this._abort("outputLimit"); return; }
       this.onOutput(m.text);
     } else if (m.type === "done") {
       const c = this.current;
       if (!c || m.id !== c.id) return;
-      this.#clearRun();
+      this._clearRun();
       this.state = "ready";
       if (m.limitHit) this.onStatus("outputLimitStopped");
       else this.onStatus("done", { error: m.error, hadOutput: c.bytes > 0, files: m.files || null });
@@ -100,7 +100,7 @@ export class Runner {
       id, worker: w, bytes: 0, lines: 0,
       timer: setTimeout(() => {
         // 只在“还是同一次运行、同一个线程”时才超时终止
-        if (this.current && this.current.id === id && this.worker === w) this.#abort("timeout");
+        if (this.current && this.current.id === id && this.worker === w) this._abort("timeout");
       }, LIMITS.runMs),
     };
     this.onStatus("running");
@@ -124,12 +124,12 @@ export class Runner {
   }
 
   stop() {
-    if (this.state === "running") this.#abort("stopped");
+    if (this.state === "running") this._abort("stopped");
   }
 
   // 终止线程是唯一能可靠停住 Python 死循环的方法；之后重新加载
-  #abort(reason) {
-    this.#clearRun();
+  _abort(reason) {
+    this._clearRun();
     this.onStatus(reason);
     this.boot();
   }
