@@ -1,7 +1,7 @@
 // 随机练习（SPEC §0.3）：题池只含已通关关卡、单元/关卡多选、每轮 5/10/20 题和题池不够的情况、
 // 以及一整轮（含答错和重练）前后主线学习数据（XP、红心、连续天数、解锁/完成记录）完全不变。
 // 前半部分直接测纯函数（src/practice.js），后半部分用 dist/ 的真实构建产物在桌面 Chromium 里模拟手机。
-// 运行：npm run build && node tests/step5.test.mjs
+// 运行：npm run build && node tests/step6.test.mjs
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
