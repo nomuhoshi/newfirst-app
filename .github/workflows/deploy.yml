@@ -56,6 +56,16 @@ jobs:
       - name: 手机模拟测试（${{ matrix.browser }}）
         id: mobile
         run: npm run test:mobile -- ${{ matrix.browser }}
+        env:
+          SHOTS_DIR: ${{ github.workspace }}/shots
+      - name: 上传代码题页面截图（供人工视觉检查）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screens-${{ matrix.browser }}
+          path: shots
+          if-no-files-found: ignore
+          retention-days: 7
       - name: 报告环境失败
         if: failure() && steps.install.outcome == 'failure'
         run: echo "::error title=环境失败::${{ matrix.browser }} 安装失败，这不是测试通过" && exit 1

@@ -11,6 +11,10 @@ const PORT = 4341, BASE = `http://localhost:${PORT}/`;
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm" };
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
 const results = [];
+import { mkdirSync } from "node:fs";
+const SHOTS = process.env.SHOTS_DIR || "";
+if (SHOTS) mkdirSync(SHOTS, { recursive: true });
+const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${process.env.MOBILE_BROWSER || "chromium"}-${name}.png`, fullPage: false }); };
 const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); console.log(`${ok ? "✅" : "❌"} ${name}${detail ? "  — " + detail : ""}`); };
 
 const srv = createServer((req, resp) => {
@@ -75,6 +79,7 @@ try {
   { // 页面结构 + 运行（不计分）+ 答对
     const { ctx, page, errors } = await open();
     await start(page, [W("T-W1"), W("T-W2")]);
+    await shot(page, "01-write-task");
     const t = await page.locator("#app").innerText();
     check("题面：显示给定变量和公开例子，不显示隐藏测试的期望", /price、cups/.test(t) && /总价 60/.test(t) && !/总价 0\b/.test(t.replace(/总价 60/g, "")), t.slice(0, 160));
     check("内置键盘在页面底部，编辑器可见", (await page.locator("#keyboard .kb-key").count()) > 20 && (await page.locator(".cm-editor").isVisible()));
@@ -116,6 +121,7 @@ try {
     await page.locator("[data-check]").tap();
     await page.waitForSelector(".feedbar.bad", { timeout: 60000 });
     const after = await stat(page);
+    await shot(page, "03-wrong-answer");
     check("答错：红心 -1，XP 不变", after.hearts === before.hearts - 1 && after.xp === before.xp, JSON.stringify([before, after]));
     const r = await results$(page);
     check("答错：公开组给出期望 / 你的输出 / 第一处不同", /期望输出/.test(r) && /你的输出/.test(r) && /总价 11/.test(r) && /第 1 行不同/.test(r), r.slice(0, 200));
@@ -262,6 +268,7 @@ try {
     const d = page.locator("[data-worked]");
     check("示范：默认折叠，标明不是本题答案", (await d.count()) === 1 && !(await d.evaluate((e) => e.open)) && /不是本题的答案/.test(await d.locator("summary").innerText()));
     await d.locator("summary").tap();
+    await shot(page, "02-worked-open");
     check("示范：展开后有代码、输出、讲解", /n \* 3/.test(await d.innerText()) && /乘法用/.test(await d.innerText()));
     check("示范：不含本题参考答案", !/price \* cups/.test(await d.innerText()));
     await ctx.close();
@@ -278,11 +285,13 @@ try {
     await page.locator("[data-check]").tap();
     await page.waitForFunction(() => window.__app.currentArea.isVariation(), null, { timeout: 60000 });
     check("原题通过：不结算（无反馈条，XP 和红心不变），进入变化题", (await page.locator(".feedbar").count()) === 0 && JSON.stringify(await stat(page)) === JSON.stringify(before));
+    await shot(page, "05-variation-entered");
     check("变化题：显示变化提示和新的题面，编辑器是变化题起始代码", /变化题/.test(await page.locator("[data-variation]").innerText()) && /满 5 杯减 10/.test(await page.locator("[data-variation]").innerText()) && (await page.evaluate(() => window.__app.currentArea.code())).startsWith("# cups"));
     // 用父题答案做变化题：不通过，不扣红心
     await setCode(page, GOOD);
     await page.locator("[data-check]").tap();
     await waitJudged(page, 60000);
+    await shot(page, "06-variation-failed");
     const r = await results$(page);
     check("变化题没通过：不扣红心、不加 XP、没有反馈条", JSON.stringify(await stat(page)) === JSON.stringify(before) && (await page.locator(".feedbar").count()) === 0 && /不扣红心/.test(r), r.slice(0, 120));
     // 重新加载页面后仍在变化题（阶段已保存）
@@ -295,6 +304,7 @@ try {
     await page.locator("[data-check]").tap();
     await page.locator("[data-check]").tap().catch(() => {});
     await page.waitForSelector(".feedbar.ok", { timeout: 60000 });
+    await shot(page, "07-variation-passed");
     const after = await stat(page);
     check("变化题通过：只结算一次，XP +10，红心不变", after.xp === before.xp + 10 && after.hearts === before.hearts, JSON.stringify([before, after]));
     const left = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("suipian.draft.")));
