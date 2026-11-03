@@ -9,7 +9,7 @@ export function statusText(s) {
   if (st === "need-login") return "登录已过期，需要重新登录才能同步（进度还在这台设备上）";
   if (st === "conflict") return "这个账号在别处被覆盖过，需要选择保留哪一份";
   if (st === "error") return "同步失败：" + (s.message || "请稍后再试");
-  return "";
+  return "已登录，正在准备同步…";
 }
 const ERR = {
   network: "网络连不上，请检查网络后重试。",
@@ -22,8 +22,9 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
   const statusEls = new Set();
   function refreshStatus() {
     const s = sync.status();
-    for (const el of [...statusEls]) { if (!el.isConnected) { statusEls.delete(el); continue; } el.textContent = statusText(s); el.dataset.status = s.status || ""; }
+    for (const el of [...statusEls]) { if (el.__shown && !el.isConnected) { statusEls.delete(el); continue; } paint(el, s); }
   }
+  function paint(el, s) { el.textContent = statusText(s); el.dataset.status = s.status || ""; if (el.isConnected) el.__shown = true; }
 
   // ---------- 登录弹窗 ----------
   function openLogin({ reason = "" } = {}) {
@@ -163,7 +164,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const r = await sync.deleteAccount();
         if (r.ok) { onSwitchedOut(); showToast("账号已删除。"); } else showToast(errorText(r));
       }, true), "btn3d danger-ghost wide", { "data-delete-account": "" }));
-    refreshStatus();
+    paint(st, sync.status());
     return card;
   }
 
@@ -174,7 +175,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     if (!acc) return button("登录 / 注册：换设备也能接着学", () => openLogin(), "acct-link", { "data-login-link": "" });
     const st = h("span", { class: "acct-mini", "data-sync-mini": "" }); statusEls.add(st);
     const row = h("div", { class: "acct-row-mini" }, h("span", { text: acc.email || "已登录" }), st);
-    refreshStatus();
+    paint(st, sync.status());
     return row;
   }
 
