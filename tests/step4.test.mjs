@@ -99,6 +99,18 @@ try {
     check("不能创建 Python 工作线程：能走到关卡地图", (await page.locator(".pathview").count()) === 1, (await page.locator("#app").innerText()).slice(0, 60));
     await ctx.close();
   }
+  { // 访问测试页：未配置 Supabase 时只测网站文件，并明确说明
+    const { ctx, page, errors } = await open();
+    await page.goto(BASE + "access-test.html", { waitUntil: "domcontentloaded" });
+    await page.locator("#go").click();
+    await page.waitForSelector("#done:not([hidden])", { timeout: 30000 });
+    const rep = await page.locator("#report").inputValue();
+    check("访问测试页：网站文件逐项给出结果（首页、图标、主程序都通过）", /通过 网站文件 index\.html/.test(rep) && /通过 网站文件 icon-192\.png/.test(rep) && /通过 主程序 assets\//.test(rep), rep.split("\n").filter((l) => /^(通过|失败)/.test(l)).join(" | ").slice(0, 200));
+    check("访问测试页：Supabase 未配置时明确写出，不假装通过", /跳过 Supabase 未配置/.test(rep) && !/通过 Supabase/.test(rep));
+    check("访问测试页：结果里有时区、浏览器和是否在微信里", /时区：/.test(rep) && /浏览器：/.test(rep) && /在微信\/QQ 里打开：否/.test(rep));
+    check("访问测试页：没有脚本错误", errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
 } finally {
   await browser.close();
   srv.closeAllConnections(); srv.close();
