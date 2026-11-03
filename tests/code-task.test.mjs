@@ -368,6 +368,7 @@ try {
       await shot(page, `v-${tag}-1-task`);
       await page.locator("[data-worked] summary").tap();
       await shot(page, `v-${tag}-2-worked-open`);
+      await page.locator("[data-back-to-edit]").tap(); // 示例展开时盖住答题区；先点“返回编辑”
       await setCode(page, "print(1");
       await shot(page, `v-${tag}-3-editing`);
       { const bb = await page.locator(".ct-editor").boundingBox(); const vh = viewport.height; const kbTop = await page.evaluate(() => document.querySelector("#keyboard")?.getBoundingClientRect().top ?? innerHeight);

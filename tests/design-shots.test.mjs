@@ -115,11 +115,34 @@ try {
       const b0 = await edBox();
       if (portraitPhone || tag.startsWith("ipad")) check(`${tag} 代码题：键盘打开时编辑器至少露出 6 行（≥150px 实际可见）`, b0.h >= 150, JSON.stringify(b0));
       else check(`${tag} 代码题：横屏键盘打开时编辑器至少露出 70px`, b0.h >= 70, JSON.stringify(b0));
+      // 工具条在编辑器上方、不压在代码上；运行按钮在可见区内且真能点到
+      check(`${tag} 代码题：工具条不压在编辑器上，运行按钮可点击`, await page.evaluate(() => { const t = document.querySelector(".ct-toolbar").getBoundingClientRect(), e = document.querySelector(".ct-editor").getBoundingClientRect(), r = document.querySelector("[data-run]"), rr = r.getBoundingClientRect(), l = document.querySelector(".lesson-code").getBoundingClientRect(); const hit = document.elementFromPoint(rr.x + rr.width / 2, rr.y + rr.height / 2); return t.bottom <= e.top + 1 && rr.height >= 44 && rr.top >= l.top - 1 && rr.bottom <= l.bottom + 1 && (hit === r || r.contains(hit)); }));
+      // 展开示例：盖住答题区，有明确的“返回编辑”，返回后代码和光标不变
+      await setCode(page, "x = 1\ny = 22");
+      await page.evaluate(() => { const v = window.__app.currentArea.view; v.focus(); v.dispatch({ selection: { anchor: 5 } }); });
       await page.locator("[data-worked] summary").tap(); await page.waitForTimeout(200);
       await S(page, "5-code-worked-open");
+      const backOk = await page.evaluate(() => { const b = document.querySelector("[data-back-to-edit]"), r = b.getBoundingClientRect(), l = document.querySelector(".lesson-code").getBoundingClientRect(); const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return r.height >= 44 && r.top >= l.top - 1 && r.bottom <= l.bottom + 1 && (hit === b || b.contains(hit)); });
+      check(`${tag} 代码题：展开示例后“返回编辑”按钮可见、可点击`, backOk);
+      await page.locator("[data-back-to-edit]").tap(); await page.waitForTimeout(150);
+      const after = await page.evaluate(() => { const v = window.__app.currentArea.view; return { code: v.state.doc.toString(), pos: v.state.selection.main.head, open: document.querySelector("[data-worked]").open }; });
+      check(`${tag} 代码题：返回编辑后示例收起，代码和光标位置保留`, !after.open && after.code === "x = 1\ny = 22" && after.pos === 5, JSON.stringify(after));
       const b1 = await edBox();
-      if (portraitPhone || tag.startsWith("ipad")) check(`${tag} 代码题：展开示例后编辑器仍完整可见（≥150px）`, b1.h >= 150, JSON.stringify(b1));
-      await setCode(page, 'price = 15\ncups = 4\ntotal = price - cups\nprint("总价", total)');
+      if (portraitPhone || tag.startsWith("ipad")) check(`${tag} 代码题：返回编辑后编辑器仍至少可见 150px`, b1.h >= 150, JSON.stringify(b1));
+      // 长代码：光标在最后一行时，光标和最后一行必须在无遮挡区域内（不只是编辑器外框）
+      await setCode(page, Array.from({ length: 26 }, (_, i) => `line_${i + 1} = ${i + 1}`).join("\n"));
+      await page.locator('.ct-kb [data-key="x"]').tap(); await page.waitForTimeout(250);
+      const cur = await page.evaluate(() => {
+        const c = document.querySelector(".cm-cursor"); if (!c) return { ok: false, why: "no cursor" };
+        const r = c.getBoundingClientRect(), l = document.querySelector(".lesson-code").getBoundingClientRect(), e = document.querySelector(".ct-editor").getBoundingClientRect();
+        const k = document.querySelector("#keyboard"), kt = k && !k.hidden ? k.getBoundingClientRect().top : innerHeight;
+        const hit = document.elementFromPoint(r.x + 1, r.y + r.height / 2);
+        const inside = r.top >= Math.max(l.top, e.top) - 1 && r.bottom <= Math.min(l.bottom, e.bottom, kt) + 1;
+        const last = [...document.querySelectorAll(".cm-line")].at(-1).getBoundingClientRect();
+        const lastHit = document.elementFromPoint(last.x + 20, last.y + last.height / 2);
+        return { ok: inside && !!hit && !!document.querySelector(".ct-editor").contains(hit) && document.querySelector(".ct-editor").contains(lastHit), r: [r.top, r.bottom], vis: [Math.max(l.top, e.top), Math.min(l.bottom, e.bottom, kt)] };
+      });
+      check(`${tag} 代码题：光标在末行时光标与最后一行无遮挡`, cur.ok, JSON.stringify(cur));
       await S(page, "6-code-editing");
       check(`${tag} 代码题：没有横向滚动`, await noHScroll(page));
       if (tag === "portrait-light" || tag === "portrait-dark") {

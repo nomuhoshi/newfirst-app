@@ -12,6 +12,6 @@ export default defineConfig({
     rollupOptions: { input: { main: "index.html", lab: "lab.html" } },
   },
   worker: { format: "es" },
-  plugins: [swPlugin({ version: BUILD })],
-  define: { __BUILD__: JSON.stringify(BUILD) },
+  plugins: [swPlugin({ version: BUILD, prefix: process.env.SW_PREFIX || "suipian-" })],
+  define: { __BUILD__: JSON.stringify(BUILD), __PREVIEW__: JSON.stringify(process.env.PREVIEW_LABEL || "") },
 });

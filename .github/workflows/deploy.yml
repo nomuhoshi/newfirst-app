@@ -96,3 +96,29 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+  # 设计预览构建：只给本仓库的 design/* PR 用。把构建产物推到分支 preview-dist-design-v2（供拷进独立的预览仓库），不部署任何站点。
+  # 缓存名前缀与正式站不同（suipian-preview-v2-），预览不会删除或污染正式站的离线缓存。
+  preview-build:
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'design/') && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 构建预览（带“设计预览”标记和独立缓存名）
+        run: npm run build
+        env:
+          SW_PREFIX: suipian-preview-v2-
+          PREVIEW_LABEL: 设计预览
+      - name: 推到 preview-dist-design-v2 分支
+        run: |
+          cd dist
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.event.pull_request.head.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "preview build for ${{ github.event.pull_request.head.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist:preview-dist-design-v2

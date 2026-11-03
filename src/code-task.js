@@ -87,7 +87,8 @@ export function createCodeArea(ex, ctx) {
       h("summary", { text: "先看一个例子（不是本题的答案）" }),
       h("pre", { class: "ct-worked-code", text: w.code }),
       w.output != null ? h("pre", { class: "ct-worked-out", text: "输出：\n" + w.output }) : null,
-      w.explain ? h("p", { class: "ct-worked-explain", text: w.explain }) : null);
+      w.explain ? h("p", { class: "ct-worked-explain", text: w.explain }) : null,
+      h("button", { type: "button", class: "ct-btn run ct-back", "data-back-to-edit": "", onclick: (e) => { const d = e.currentTarget.closest("details"); if (d) d.open = false; view?.focus?.(); } }, "返回编辑"));
   }
   function buildPrompt() {
     samples = (cur.tests || []).filter((t) => !t.hidden);
@@ -95,13 +96,14 @@ export function createCodeArea(ex, ctx) {
     cur.isVariation ? h("div", { class: "ct-variation", role: "note", "data-variation": "" }, h("b", { text: "变化题" }), h("p", { text: "原题已经通过。再做一道有变化的题：不多加 XP，答错也不扣红心。" }), h("p", { class: "ct-vprompt", text: cur.prompt })) : null,
     workedNode(),
     cur.given?.length ? h("p", { class: "ct-given" }, "已经准备好的变量：", h("code", { text: cur.given.join("、") })) : null,
-    samples.length ? h("div", { class: "ct-samples", role: "list", "aria-label": "例子" }, samples.map((t, i) => h("div", { class: "ct-sample", role: "listitem" },
-      h("b", { text: `例 ${i + 1}${t.name ? " · " + t.name : ""}` }),
-      fmtData(t.data) ? h("div", { text: "给定：" + fmtData(t.data) }) : null,
-      t.call ? h("div", { text: "调用：" + fmtCall(t.call) }) : null,
-      t.stdin != null ? h("div", { text: "输入：" + (Array.isArray(t.stdin) ? t.stdin.join(" ⏎ ") : String(t.stdin).replace(/\n$/, "").replace(/\n/g, " ⏎ ")) }) : null,
-      t.call ? h("div", { text: "应该返回：" + JSON.stringify(t.expectedReturn) }) : h("pre", { class: "ct-exp", text: "应该输出：\n" + (t.expected ?? "") }),
-    ))) : null,
+    samples.length ? h("div", { class: "ct-samples", role: "list", "aria-label": "例子" }, samples.map((t, i) => {
+      const input = [fmtData(t.data) ? "给定 " + fmtData(t.data) : "", t.call ? "调用 " + fmtCall(t.call) : "", t.stdin != null ? "输入 " + (Array.isArray(t.stdin) ? t.stdin.join(" ⏎ ") : String(t.stdin).replace(/\n$/, "").replace(/\n/g, " ⏎ ")) : ""].filter(Boolean).join("；");
+      const out = t.call ? "应该返回 " + JSON.stringify(t.expectedReturn) : "应该输出 " + String(t.expected ?? "").replace(/\n$/, "").replace(/\n/g, " ⏎ ");
+      return h("div", { class: "ct-sample", role: "listitem" },
+        h("b", { text: `例 ${i + 1}${t.name ? " · " + t.name : ""}` }),
+        h("span", { class: "ct-in", text: input || "（无输入）" }),
+        h("span", { class: "ct-want", text: out }));
+    })) : null,
     ];
   }
   const promptNode = h("div", { class: "ct-prompt" }, buildPrompt());
@@ -139,8 +141,9 @@ export function createCodeArea(ex, ctx) {
   const resetBtn = mkBtn("重新开始", () => confirmReset(), "ct-btn ghost", { "data-reset": "" });
   const statusLine = h("div", { class: "ct-status", role: "status" });
   const results = h("div", { class: "ct-results", "aria-live": "polite", "data-results": "" });
-  const toolbar = h("div", { class: "ct-toolbar" }, runBtn, resetBtn, toggleKbBtn);
-  const root = h("div", { class: "ct-root", "data-code-task": ex.id || "" }, promptNode, editorHost, toolbar, h("div", { class: "ct-meta" }, saveNote), statusLine, results);
+  const toolbar = h("div", { class: "ct-toolbar" }, h("span", { class: "ct-file", text: cur.entry || "main.py" }), resetBtn, toggleKbBtn, runBtn);
+  const card = h("div", { class: "ct-card" }, toolbar, editorHost);
+  const root = h("div", { class: "ct-root", "data-code-task": ex.id || "" }, promptNode, card, h("div", { class: "ct-meta" }, saveNote), statusLine, results);
   applyKb();
 
   function pyStatus() {
@@ -343,8 +346,17 @@ export function createCodeArea(ex, ctx) {
       const i = lastResult?.cases?.findIndex((c) => !c.ok) ?? -1;
       if (i < 0) return "";
       const c = lastResult.cases[i];
-      return mistakeFor(c, cur.tests[i]) || c.message || "";
+      const why = mistakeFor(c, cur.tests[i]);
+      if (why) return why;
+      // 没有预设讲解时，直接给出第一个没通过的例子是怎么回事（隐藏测试不泄露期望值）
+      const where = c.hidden ? "有一组隐藏测试没通过" : `「${c.name || "第 " + (i + 1) + " 组"}」没通过`;
+      let detail = "";
+      if (c.kind === "error" && c.error) detail = describeError(c.error).split("\n")[0];
+      else if (!c.hidden && c.expected !== undefined) detail = diffNote(c.expected, c.stdout) || c.message || "";
+      else detail = c.message || "";
+      return detail ? `${where}：${detail}` : where;
     },
+    afterFeedback() { results.scrollIntoView?.({ block: "start" }); },
     code: getCode,
     setCode: (t) => setDoc(view, t, t.length),
     viewedSolution: () => viewed,

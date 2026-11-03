@@ -29,22 +29,32 @@ h1, h2, h3 { letter-spacing: .2px; }
 .unit.locked .unit-banner { background: none; color: var(--g-muted); opacity: .75; }
 .unit.locked .unit-banner h2 { color: var(--g-muted); }
 
-.path { position: relative; align-items: stretch; gap: 10px; padding: 12px 0 0; }
-.path::before { content: ""; position: absolute; left: 36px; top: 12px; bottom: 0; width: 2px; background: var(--g-trace); }
-.path-item { transform: none; display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
-  background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: var(--v2-r); padding: 8px 12px 8px 8px; min-height: 72px; box-sizing: border-box; }
-.path-item > .node { grid-column: 1; grid-row: 1; width: 56px; height: 56px; }
-.path-item > .node-label { grid-column: 2; grid-row: 1; margin: 0; background: none; padding: 0; border-radius: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.path { position: relative; align-items: stretch; gap: 2px; padding: 8px 0 0; }
+.path::before { content: ""; position: absolute; left: 36px; top: 8px; bottom: 0; width: 2px; background: var(--g-trace); }
+.path-item { transform: none; display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; column-gap: 6px;
+  background: none; border: none; border-radius: 18px; padding: 4px 10px 4px 0; min-height: 52px; box-sizing: border-box; }
+.path-item > .node { grid-column: 1; grid-row: 1; justify-self: center; width: 44px; height: 44px; }
+.path-item > .node-label { grid-column: 2; grid-row: 1; margin: 0; background: none; padding: 0; border-radius: 0; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .path-item > .bubble { grid-column: 3; grid-row: 1; margin: 0; align-self: center; }
-.node-label b { font-size: 16px; font-weight: 800; color: var(--g-fg); line-height: 1.3; }
+.hexnode { width: 100%; height: 100%; }
+.node-label b { font-size: 15px; font-weight: 700; color: var(--g-fg); line-height: 1.3; }
 .node-label small { font-size: 12px; font-weight: 700; color: var(--g-muted); }
-.hexnode { width: 56px; height: 56px; }
-.path-item.current { border: 2px solid var(--g-primary); box-shadow: var(--v2-shadow); padding: 7.5px 11.5px 7.5px 7.5px; }
-.path-item.current .node-label small { color: var(--g-copper); }
+/* 已完成：安静，只留一个绿色对勾和关名 */
+.path-item.done .node-label b { color: var(--g-muted); font-weight: 600; }
 .path-item.done .node-label small { color: var(--g-ok); }
-.path-item.locked { background: transparent; border-style: dashed; }
-.path-item.locked .node-label b { color: var(--g-muted); font-weight: 700; }
-.bubble { background: var(--g-primary); color: var(--g-on-primary); border: none; border-radius: 999px; padding: 8px 16px; font-size: 14px; font-weight: 800; min-height: 36px; display: inline-flex; align-items: center; }
+/* 未解锁：更淡，不抢视线 */
+.path-item.locked { opacity: .55; }
+.path-item.locked .node-label b { font-weight: 600; }
+/* 当前关：整张地图的焦点——深色“芯片”卡片 + 大号开始按钮 */
+.path-item.current { background: var(--g-code-bg); color: var(--g-code-fg); border: 1.5px solid var(--g-copper); box-shadow: var(--v2-shadow); margin: 10px 0; padding: 14px 14px 14px 0; min-height: 92px; }
+.path-item.current > .node { width: 60px; height: 60px; color: var(--g-tk-str); }
+.path-item.current .hex-body { fill: var(--g-chip); stroke: var(--g-tk-str); }
+.path-item.current .hex-pad { fill: var(--g-tk-str); }
+.path-item.current .hex-ring { stroke: var(--g-tk-str); }
+.path-item.current .node-label b { font-size: 19px; font-weight: 800; color: var(--g-code-fg); }
+.path-item.current .node-label small { color: var(--g-tk-str); font-size: 12px; }
+.bubble { background: var(--g-copper); color: var(--g-on-copper); border: none; border-radius: 999px; padding: 10px 20px; font-size: 16px; font-weight: 800; min-height: 44px; display: inline-flex; align-items: center; }
+.preview-tag { margin: 0 auto 0 0; font-size: 11px; font-weight: 800; letter-spacing: .5px; color: var(--g-copper); border: 1.5px solid var(--g-copper); border-radius: 999px; padding: 2px 8px; }
 .practice-entry { border-radius: var(--v2-r); }
 
 /* ---------- 做题页 ---------- */
@@ -77,29 +87,37 @@ h1, h2, h3 { letter-spacing: .2px; }
 .lesson-code > .q { font-size: 18px; margin: 4px 0 8px; flex: none; }
 .lesson-code .ct-root { flex: none; gap: 8px; }
 .lesson-code .ct-prompt { display: flex; flex-direction: column; gap: 8px; max-height: 20dvh; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
-.lesson-code .ct-given { font-size: 14px; color: var(--g-muted); }
+.lesson-code { position: relative; }
+.lesson-code .ct-given { font-size: 14px; color: var(--g-muted); margin: 0; }
 .lesson-code .ct-given code { background: var(--g-code-bg); color: var(--g-code-fg); border-radius: 6px; padding: 1px 7px; font-size: 13px; }
-.lesson-code .ct-samples { gap: 6px; }
-.lesson-code .ct-sample { background: transparent; border: none; border-left: 3px solid var(--g-line); border-radius: 0; padding: 2px 0 2px 10px; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; font-size: 13px; line-height: 1.5; }
-.lesson-code .ct-sample b { grid-row: 1 / span 2; align-self: center; }
-.lesson-code .ct-sample b { margin: 0; font-size: 12px; }
+.lesson-code .ct-samples { gap: 4px; }
+.lesson-code .ct-sample { background: none; border: none; border-left: 3px solid var(--g-line); border-radius: 0; padding: 2px 0 2px 10px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; font-size: 13px; line-height: 1.5; }
+.lesson-code .ct-sample b { margin: 0; font-size: 12px; color: var(--g-muted); }
+.lesson-code .ct-want { font-weight: 700; color: var(--g-primary); }
+.lesson-code .ct-want::before { content: "→ "; color: var(--g-muted); font-weight: 400; }
+/* 示例/示范：默认只有一行入口；展开时盖住整个答题区，顶部是内容，底部固定一个“返回编辑”，代码和光标原样保留 */
 .lesson-code .ct-worked { margin: 0; padding: 0 12px; border-radius: 12px; background: var(--g-card); border: 1.5px solid var(--g-line); }
 .lesson-code .ct-worked summary { min-height: 40px; font-size: 14px; color: var(--g-primary); }
-.lesson-code .ct-worked[open] { max-height: none; overflow: visible; padding-bottom: 8px; }
+.lesson-code .ct-worked[open] { position: absolute; inset: 0; z-index: 6; margin: 0; border: none; border-radius: 0; background: var(--g-bg); overflow: auto; max-height: none; padding: 8px 18px 12px; overscroll-behavior: contain; }
+.lesson-code .ct-worked[open] summary { font-size: 16px; font-weight: 800; }
+.lesson-code .ct-worked:not([open]) .ct-back { display: none; }
+.lesson-code .ct-back { position: sticky; bottom: 8px; width: 100%; margin-top: 12px; }
 .lesson-code .ct-variation { margin: 0; border-radius: 12px; padding: 8px 12px; }
 .lesson-code .ct-variation p { font-size: 14px; }
-.lesson-code .ct-editor { flex: 1 1 auto; min-height: 156px; max-height: none; border-radius: var(--v2-r); background: var(--g-code-bg); border-color: var(--g-code-bg); }
+/* 代码卡：标题栏（文件名 + 操作）在上，编辑器在下；标题栏占自己的位置，不压在代码上 */
+.lesson-code .ct-card { background: var(--g-code-bg); border-radius: var(--v2-r); overflow: hidden; display: flex; flex-direction: column; }
+.lesson-code .ct-toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; padding: 4px 8px 4px 14px; border-bottom: 1px solid rgba(255, 255, 255, .1); }
+.lesson-code .ct-file { flex: 1; font: 13px ui-monospace, Menlo, monospace; color: var(--g-code-dim); }
+.lesson-code .ct-btn { min-height: 44px; border-radius: 10px; padding: 0 12px; font-size: 14px; background: transparent; border-color: transparent; color: var(--g-code-dim); }
+.lesson-code .ct-btn.run { background: var(--g-copper); color: var(--g-on-copper); border-color: var(--g-copper); font-size: 15px; font-weight: 800; padding: 0 18px; }
+.lesson-code .ct-editor { flex: 1 1 auto; min-height: 156px; max-height: 36dvh; border: none; border-radius: 0; background: transparent; }
 .lesson-code .ct-editor .cm-editor { font-size: 16px; background: transparent; color: var(--g-code-fg); }
-.lesson-code .ct-editor .cm-content, .ct-editor .cm-line { color: var(--g-code-fg); caret-color: var(--g-copper); }
-.lesson-code .ct-editor .cm-gutters { color: var(--g-code-dim); }
-.lesson-code .ct-editor .cm-editor.cm-focused { outline: 2px solid var(--g-copper); }
-.lesson-code .ct-toolbar { gap: 8px; flex-wrap: nowrap; position: sticky; bottom: 0; z-index: 2; background: var(--g-bg); padding: 4px 0 2px; }
-.lesson-code .ct-btn { min-height: 44px; border-radius: 12px; padding: 0 14px; }
-.lesson-code .ct-btn.run { flex: 1; }
-.lesson-code .ct-btn.ghost { background: transparent; border-color: transparent; }
-.lesson-code .ct-meta, .ct-status { font-size: 12px; }
-.lesson-code .ct-results { border-radius: 14px; }
-
+.lesson-code .ct-editor .cm-content, .lesson-code .ct-editor .cm-line { color: var(--g-code-fg); caret-color: var(--g-tk-str); }
+.lesson-code .ct-editor .cm-gutters { color: var(--g-code-dim); background: transparent; }
+.lesson-code .ct-editor .cm-editor.cm-focused { outline: none; }
+.lesson-code .ct-card:focus-within { box-shadow: 0 0 0 2px var(--g-copper); }
+.lesson-code .ct-meta, .lesson-code .ct-status { font-size: 12px; }
+.lesson-code .ct-results { border-radius: 14px; scroll-margin-top: 8px; }
 @media (min-width: 700px) and (orientation: portrait) { .lesson-code .ct-prompt { max-height: 34dvh; } }
 
 /* ---------- 通关页：一个面板，按钮固定在底部 ---------- */
@@ -137,7 +155,7 @@ h1, h2, h3 { letter-spacing: .2px; }
   .lesson-code { overflow: auto; }
   .lesson-code > .q { font-size: 15px; margin: 0 0 4px; }
   .lesson-code .ct-prompt { max-height: none; grid-column: 1; grid-row: 1 / span 6; }
-  .lesson-code .ct-editor { min-height: 72px; }
+  .lesson-code .ct-editor { min-height: 72px; max-height: none; }
   .lesson-code .ct-root { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); column-gap: 14px; align-items: start; }
   .lesson-code .ct-root > :not(.ct-prompt) { grid-column: 2; }
   #keyboard.ct-kb { display: grid; grid-template-columns: minmax(0, 1fr) 190px; column-gap: 8px; padding: 2px 6px calc(2px + env(safe-area-inset-bottom)); }

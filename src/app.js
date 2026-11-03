@@ -385,6 +385,7 @@ function statsBar() {
   return h("header", { class: "statsbar" },
     h("span", { class: "stat streak", "aria-label": `连续 ${currentStreak(state)} 天` }, icon("flame", { size: 20 }), String(currentStreak(state))),
     h("span", { class: "stat xp", "aria-label": `经验值 ${state.xp}` }, icon("bolt", { size: 20 }), String(state.xp)),
+    typeof __PREVIEW__ !== "undefined" && __PREVIEW__ ? h("span", { class: "preview-tag", text: __PREVIEW__ }) : null,
     hearts,
   );
 }
@@ -873,6 +874,7 @@ function renderExercise(run) {
       area.mark();
       feel.play(ok ? "correct" : "wrong");
       appEl.querySelector(".lessonfoot").replaceWith(fb);
+      area.afterFeedback?.(); // 代码题：反馈条出现后把运行结果滚到可见处
       // ---- 240 ms：红心 / 统计更新 ----
       setTimeout(() => {
         if (!fb.isConnected) return;
