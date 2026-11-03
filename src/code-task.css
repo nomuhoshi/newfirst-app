@@ -52,7 +52,8 @@
 
 /* 矮屏横屏：压缩底栏与内置键盘，让编辑器留在可视区 */
 @media (orientation: landscape) and (max-height: 500px) {
-  .lessonfoot { padding-top: 6px; padding-bottom: 6px; }
+  .lessonfoot, .ios-browser .lessonfoot { padding-top: 6px; padding-bottom: 6px; }
+  .ios-browser .ct-kb { padding-bottom: 24px; }
   .lessonfoot .mascot-btn { min-width: 44px; min-height: 44px; }
   .lessonfoot .mascot-btn svg { width: 40px; height: 40px; }
   .ct-kb .kb-key { height: 34px; }
