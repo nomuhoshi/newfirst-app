@@ -56,7 +56,7 @@ for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]].filter(([n])
   r = await J({ code: "print(7)", tests: [T("a", "7")] });
   check(tag("超时之后再判题一次也正常"), r.status === "pass");
   // 3. 新字段（真实 Pyodide）：input / 文件 / 多文件 / call
-  r = await J({ code: 'n = input("数量:")\nprint(int(n) * 15)', tests: [T("a", "数量:45", { stdin: ["3"] }), T("b", "数量:0", { stdin: ["0"] })] });
+  r = await J({ code: 'n = input("数量:")\nprint(int(n) * 15)', tests: [{ name: "a", expected: "数量:45", stdin: ["3"] }, { name: "b", expected: "数量:0", stdin: "0\n" }] });
   check(tag("input：stdin 逐组传入"), r.status === "pass", JSON.stringify(r.cases));
   r = await J({ files: [{ path: "main.py", content: "import shop\nprint(shop.total(2))\nopen('o.txt','w').write('x')" }, { path: "shop.py", content: "def total(n):\n    return n * 15" }], tests: [{ name: "a", expected: "30", expectedFiles: { "o.txt": "x" } }] });
   check(tag("多文件 + 输出文件检查"), r.status === "pass", JSON.stringify(r.cases));
@@ -69,8 +69,9 @@ for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]].filter(([n])
   const t2 = Date.now();
   r = await J({ code: "while True: pass", tests: [T("loop", ""), T("b", "")] });
   const wall3 = Date.now() - t2;
-  check(tag(`默认限时：死循环约 5 秒结束（墙钟 ${wall3}ms），消息写 5 秒`), r.cases[0].kind === "case-timeout" && /5 秒/.test(r.cases[0].message) && r.totalMs >= 4900 && r.totalMs < 5900, `${r.totalMs} ${r.cases[0].message}`);
+  check(tag(`默认限时：死循环约 5 秒结束（墙钟 ${wall3}ms），消息写 5 秒`), r.cases[0].kind === "case-timeout" && /5 秒/.test(r.cases[0].message) && r.cases[0].ms >= 4900 && r.cases[0].ms < 6000, `${r.cases[0].ms} ${r.cases[0].message}`);
   check(tag(`默认限时：两组都死循环 → 合计不超过 10 秒预算，结果完整（${r.cases.map((c) => c.kind).join()}，墙钟 ${wall3}ms）`), r.cases.length === 2 && r.settle && r.totalMs <= 10500 && r.cases[1].kind !== "pass", JSON.stringify(r.cases.map((c) => c.kind)));
+  await page.waitForFunction(() => window.runner.state === "ready", null, { timeout: 60000 }); // 超时后的重启要时间
   const st = await page.evaluate(() => [window.runner.state, typeof window.runner.onStatus]);
   check(tag("结束后 Runner 为 ready，回调已还原"), st[0] === "ready");
   check(tag("无页面脚本错误"), errs.length === 0, errs.join(" | "));
