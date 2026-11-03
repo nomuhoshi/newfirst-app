@@ -2,8 +2,10 @@
 // 不测试 VoiceOver。运行：npm run build && npm run test:webkit
 // 只覆盖四件事：①普通关、复习关、开场介绍的主按钮可达且真实点击成功；②随机练习入口与当前关互不遮挡；
 // ③弹窗焦点进入、循环、关闭后返回；④Python Worker 故障后仍能继续学习。
-// 依赖还没合并到当前分支的功能组（按源码里的功能标记判断）会显示“未运行（依赖 #N）”，并计入“未运行”，不会算作通过。
-// 浏览器无法启动 → 打印“环境失败”并以退出码 2 结束（不是跳过、不是通过）。
+// 所有组都必须运行，不再按源码标记跳过：依赖的功能（#7/#12/#13/#14）不在当前分支 → 该组直接失败。
+// 依赖还没合并时，请在集成分支 test/webkit-integration 上看完整结果。
+// 同一套测试跑 WebKit 和 Chromium 两个内核：MOBILE_BROWSER=webkit|chromium（默认 webkit）。
+// 浏览器无法启动 / 没装 → 打印“环境失败”并以退出码 2 结束（不是跳过、不是通过）；功能缺失是测试失败（退出码 1）。
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname, resolve, dirname } from "node:path";
@@ -14,23 +16,23 @@ const DIST = join(ROOT, "dist");
 const PORT = 4361, BASE = `http://localhost:${PORT}/`;
 const src = (f) => readFileSync(join(ROOT, "src", f), "utf8");
 const APP = src("app.js"), CSS = src("game.css");
-// 功能标记：在源码里能找到 → 该组运行
+// 功能标记：只用来在失败时说明缺了哪个依赖 PR，不再用来跳过
 const HAS = {
-  landscape: /\.finish,\s*\.onboard\s*\{[^}]*overflow-y:\s*auto/.test(CSS), // #13
-  practice: /practice-entry-wrap/.test(APP),                                // #12
-  sheetFocus: /function focusables/.test(APP),                               // #14
-  workerTimeout: /pythonUnavailableText/.test(APP),                          // #7
+  landscape: [/\.finish,\s*\.onboard\s*\{[^}]*overflow-y:\s*auto/.test(CSS), "#13 横屏修复"],
+  practice: [/practice-entry-wrap/.test(APP), "#12 随机练习"],
+  sheetFocus: [/function focusables/.test(APP), "#14 弹窗焦点"],
+  workerTimeout: [/pythonUnavailableText/.test(APP), "#7 Worker 超时处理"],
 };
-// 诊断用：WEBKIT_FORCE_ALL=1 时不看功能标记，全部运行（用来在旧代码上确认测试确实能抓到问题）
-if (process.env.WEBKIT_FORCE_ALL === "1") for (const k of Object.keys(HAS)) HAS[k] = true;
-
+const ENGINE = process.env.MOBILE_BROWSER || "webkit";
+if (!["webkit", "chromium"].includes(ENGINE)) { console.log(`环境失败：未知 MOBILE_BROWSER=${ENGINE}`); process.exit(2); }
+const NAME = ENGINE === "webkit" ? "WebKit" : "Chromium";
 let playwright;
 try { playwright = await import("playwright"); } catch (e) { console.log(`环境失败：无法加载 playwright（${e.message}）`); process.exit(2); }
 if (!existsSync(join(DIST, "index.html"))) { console.log("环境失败：没有 dist/，请先 npm run build"); process.exit(2); }
-const { webkit, devices } = playwright;
+const { devices } = playwright;
 let browser;
-try { browser = await webkit.launch(); }
-catch (e) { console.log(`环境失败：WebKit 无法启动（${String(e.message).split("\n")[0]}）。请运行 npx playwright install --with-deps webkit`); process.exit(2); }
+try { browser = await playwright[ENGINE].launch(); }
+catch (e) { console.log(`环境失败：${NAME} 无法启动（${String(e.message).split("\n")[0]}）。请运行 npx playwright install --with-deps ${ENGINE}`); if (process.env.GITHUB_ACTIONS) console.log(`::error title=环境失败::${NAME} 无法启动`); process.exit(2); }
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm", ".zip": "application/zip", ".svg": "image/svg+xml", ".wav": "audio/wav" };
 const srv = createServer((q, s) => { const u = new URL(q.url, BASE); let p = join(DIST, decodeURIComponent(u.pathname)); if (u.pathname.endsWith("/")) p = join(p, "index.html");
@@ -40,7 +42,7 @@ await new Promise((r) => srv.listen(PORT, r));
 
 const results = [];
 const check = (group, name, ok, detail = "") => { results.push({ group, name, status: ok ? "PASS" : "FAIL" }); console.log(`${ok ? "✅" : "❌"} [${group}] ${name}${detail ? "  — " + detail : ""}`); };
-const notRun = (group, why) => { results.push({ group, name: "整组", status: "NOT-RUN" }); console.log(`⏸️  [${group}] 未运行：${why}`); };
+const need = (group, key) => { const [ok, pr] = HAS[key]; if (!ok) check(group, `依赖功能存在（${pr}）`, false, `当前分支缺少 ${pr}，本组按失败计（完整结果见集成分支 test/webkit-integration）`); };
 
 const NOW = Date.UTC(2026, 10, 3, 3, 0, 0);
 const L = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6", "U2L1", "U2L2", "U2L3", "U2L4", "U2L5"];
@@ -116,7 +118,7 @@ try {
   // ① 主按钮
   for (const p of PROFILES) {
     const G = "主按钮 " + p.tag;
-    if (p.landscape && !HAS.landscape) { notRun(G, "依赖 #13 横屏修复（.finish/.onboard 可滚动）尚未在本分支"); continue; }
+    if (p.landscape) need(G, "landscape");
     await guard(G, async () => {
     const { ctx, page, errors } = await open({ ...p, st: state([], { onboarded: false }) });
     let ok = true, why = "";
@@ -130,8 +132,8 @@ try {
     });
   }
   // ② 随机练习入口与当前关
-  if (!HAS.practice) notRun("练习入口/当前关", "依赖 #12 随机练习尚未在本分支");
-  else for (const vp of [{ width: 734, height: 343 }, { width: 568, height: 320 }, { width: 393, height: 659 }]) for (const n of [1, 8]) {
+  need("练习入口/当前关", "practice");
+  for (const vp of [{ width: 734, height: 343 }, { width: 667, height: 375 }, { width: 568, height: 320 }, { width: 393, height: 659 }]) for (const n of [1, 8]) {
     const G = `练习入口/当前关 ${vp.width}x${vp.height}`;
     await guard(G, async () => {
     const { ctx, page } = await open({ device: "iPhone 15", viewport: vp, st: state(L.slice(0, n)) });
@@ -141,13 +143,34 @@ try {
       const out = []; for (const [k, e] of [["气泡", node.parentElement.querySelector(".bubble")], ["节点", node], ["关名", node.parentElement.querySelector(".node-label")]]) { if (!e) continue; const r = e.getBoundingClientRect(); if (r.top < ent.bottom - 0.5) out.push(`${k}被入口挡住`); if (!hit(e)) out.push(`${k}中心被盖住`); }
       if (!hit(view.querySelector("[data-practice-entry]"))) out.push("入口被盖住"); return out; });
     check(G, `通关 ${n} 关：入口与当前关（气泡/节点/关名）互不遮挡`, bad.length === 0, bad.join("；"));
-    await page.locator(".node.current").click();
-    check(G, `通关 ${n} 关：真实点击当前关打开弹窗`, await page.waitForSelector(".overlay", { timeout: 3000 }).then(() => true, () => false));
+    // #12 + #14 组合：真实点击，不看高度
+    let v = await reachAndClick(page, page.locator("[data-practice-entry]"));
+    const setupOpen = v.ok && await page.waitForSelector("[data-practice-start]", { timeout: 3000 }).then(() => true, () => false);
+    check(G, `通关 ${n} 关：真实点击随机练习入口打开设置`, setupOpen, v.rect);
+    if (setupOpen) {
+      if (HAS.sheetFocus[0]) {
+        check(G, `通关 ${n} 关：练习设置打开后焦点在弹层内`, await page.evaluate(() => !!document.activeElement?.closest(".overlay, .sheet, [role=dialog]")));
+        await page.keyboard.press("Escape");
+        check(G, `通关 ${n} 关：Esc 关闭练习设置，焦点回到入口`, await page.waitForFunction(() => document.activeElement?.hasAttribute("data-practice-entry"), null, { timeout: 3000 }).then(() => true, () => false));
+      } else { need(G, "sheetFocus"); await page.keyboard.press("Escape"); }
+      await page.waitForSelector("[data-practice-start]", { state: "detached", timeout: 3000 }).catch(() => {});
+    }
+    for (const [k, sel] of [["气泡", ".node.current ~ .bubble, .bubble"], ["节点", ".node.current"]]) {
+      if (k === "气泡" && !(await page.locator(".bubble").count())) continue;
+      v = await reachAndClick(page, page.locator(sel).first());
+      const opened = v.ok && await page.waitForSelector(".overlay .btn3d.primary", { timeout: 3000 }).then(() => true, () => false);
+      check(G, `通关 ${n} 关：真实点击当前关${k}打开弹窗`, opened, v.rect);
+      if (!opened) continue;
+      if (k === "节点") {
+        v = await reachAndClick(page, page.locator(".overlay .btn3d.primary"));
+        check(G, `通关 ${n} 关：弹窗主按钮可达并真实点击，进入关卡`, v.ok && await page.waitForSelector("[data-check], .lesson, .card", { timeout: 4000 }).then(() => true, () => false), v.rect);
+      } else { await page.keyboard.press("Escape"); await page.waitForSelector(".overlay", { state: "detached", timeout: 3000 }).catch(() => {}); }
+    }
     });
   }
   // ③ 弹窗焦点
-  if (!HAS.sheetFocus) notRun("弹窗焦点", "依赖 #14 弹窗焦点修复尚未在本分支");
-  else await guard("弹窗焦点", async () => { const G = "弹窗焦点";
+  need("弹窗焦点", "sheetFocus");
+  await guard("弹窗焦点", async () => { const G = "弹窗焦点";
     const { ctx, page, errors } = await open({ device: "iPhone 15", viewport: { width: 820, height: 1180 }, st: state() });
     const inside = () => page.evaluate(() => !!document.querySelector(".overlay")?.contains(document.activeElement));
     await page.locator('[data-lesson="U1L1"]').focus(); await page.keyboard.press("Enter"); await page.waitForSelector(".overlay");
@@ -158,8 +181,8 @@ try {
     check(G, "Esc 关闭，焦点回到打开它的关卡按钮", (await page.locator(".overlay").count()) === 0 && await page.evaluate(() => document.activeElement?.dataset?.lesson === "U1L1"));
     check(G, "无脚本错误", errors.length === 0, errors.join(" | ")); });
   // ④ Worker 故障
-  if (!HAS.workerTimeout) notRun("Worker 故障", "依赖 #7 Worker 超时处理尚未在本分支");
-  else for (const [kind, init] of [["创建失败", () => { window.Worker = function () { throw new Error("Worker blocked"); }; }], ["创建后不响应", () => { window.Worker = function () { this.postMessage = () => {}; this.terminate = () => {}; }; }]]) {
+  need("Worker 故障", "workerTimeout");
+  for (const [kind, init] of [["创建失败", () => { window.Worker = function () { throw new Error("Worker blocked"); }; }], ["创建后不响应", () => { window.Worker = function () { this.postMessage = () => {}; this.terminate = () => {}; }; }]]) {
     const G = "Worker " + kind;
     await guard(G, async () => {
     const { ctx, page, errors } = await open({ device: "iPhone 15", st: state(), init, clock: true });
@@ -177,6 +200,5 @@ try {
   check("运行", "测试脚本异常", false, String(e.message).split("\n")[0]);
 } finally { await browser.close(); srv.close(); }
 const c = (s) => results.filter((r) => r.status === s).length;
-console.log(`\nWebKit 模拟：通过 ${c("PASS")}，失败 ${c("FAIL")}，未运行的组 ${c("NOT-RUN")}（未运行 ≠ 通过）`);
-if (process.env.GITHUB_ACTIONS && c("NOT-RUN")) console.log(`::warning title=WebKit 未运行的组::${results.filter((r) => r.status === "NOT-RUN").map((r) => r.group).join("、")}`);
+console.log(`\n${NAME} 手机模拟：通过 ${c("PASS")}，失败 ${c("FAIL")}`);
 process.exit(c("FAIL") ? 1 : 0);

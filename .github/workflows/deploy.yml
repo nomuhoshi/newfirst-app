@@ -33,10 +33,15 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
-  webkit:
-    # Safari 内核（WebKit）手机模拟测试，和上面的 Chromium 测试分开报告。是模拟，不等于 iOS 真机 / 微信 / iPad。
-    # 浏览器装不上或起不来：安装步骤失败，或测试打印“环境失败”并以退出码 2 结束 —— 都显示为失败，不会当作通过。
-    # 暂不作为部署前提（deploy 只依赖 build），是否改为必需由项目主人 / GPT 决定。
+  mobile:
+    # 手机模拟测试：WebKit（Safari 内核）和 Chromium 两个内核都必须通过，PR 必跑，也是部署前提。
+    # 是 Playwright 模拟，不等于 iOS 真机 / 微信 / iPad；不测 VoiceOver。
+    # 依赖功能缺失 → 测试失败；浏览器装不上或起不来 → “环境失败”（同样是失败，不会当作通过）。不使用 continue-on-error。
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [webkit, chromium]
+    name: mobile (${{ matrix.browser }})
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,13 +50,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: 安装 WebKit 和系统依赖
-        run: npx playwright install --with-deps webkit
+      - name: 安装浏览器和系统依赖
+        id: install
+        run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: npm run build
-      - name: WebKit 测试
-        run: npm run test:webkit
+      - name: 手机模拟测试（${{ matrix.browser }}）
+        id: mobile
+        run: npm run test:mobile -- ${{ matrix.browser }}
+      - name: 报告环境失败
+        if: failure() && steps.install.outcome == 'failure'
+        run: echo "::error title=环境失败::${{ matrix.browser }} 安装失败，这不是测试通过" && exit 1
   deploy:
-    needs: build
+    needs: [build, mobile]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
