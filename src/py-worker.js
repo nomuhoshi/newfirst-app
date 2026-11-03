@@ -6,10 +6,12 @@
 // - 最多每 50 毫秒向主线程发一次输出（总量已被上限封顶，所以单条消息不会太大）
 
 import { LIMITS } from "./py-worker-limits.js";
+import { PY_TASK_HELPER } from "./py-task.js";
 
 let pyodide = null;
 let runPy = null;      // Python 里定义的 _run 函数
 let flushPy = null;    // Python 里定义的 _flush 函数
+let taskPy = null;     // Python 里定义的 _run_task 函数（判题 / 带 input、文件的运行）
 
 // 每次运行的输出状态
 let run = null;        // { id, bytes, lines, limitHit, pending: Uint8Array[] , lastSend }
@@ -117,6 +119,8 @@ onmessage = async (e) => {
       pyodide.setStdout({ write });
       pyodide.setStderr({ write });
       pyodide.runPython(PY_HELPER);
+      pyodide.runPython(PY_TASK_HELPER);
+      taskPy = pyodide.globals.get("_run_task");
       runPy = pyodide.globals.get("_run");
       flushPy = pyodide.globals.get("_flush");
       postMessage({ type: "ready", ms: Math.round(performance.now() - t0) });
@@ -130,10 +134,26 @@ onmessage = async (e) => {
     let err = null;
     let data = null;
     let res = null;
+    let files = null;
     try {
-      data = m.data ? pyodide.toPy(m.data) : null;
-      res = data ? runPy(m.code, data) : runPy(m.code);
-      if (res) err = res.toJs({ dict_converter: Object.fromEntries });
+      if (m.task) {
+        // 任务运行：每次都是全新的变量空间和虚拟文件系统（见 py-task.js）
+        const t = { ...m.task, id: m.id };
+        // code 是“入口文件”的简写：files 里没有入口文件时，用 code 补上（code 为空串则不补）
+        t.files = { ...(t.files || {}) };
+        const entry = t.entry || "main.py";
+        if (typeof m.code === "string" && m.code !== "" && !(entry in t.files)) t.files[entry] = m.code;
+        if (m.data) t.data = m.data;
+        data = pyodide.toPy(t);
+        res = taskPy(data);
+        const r = res.toJs({ dict_converter: Object.fromEntries });
+        err = r.error || null;
+        files = r.files || null;
+      } else {
+        data = m.data ? pyodide.toPy(m.data) : null;
+        res = data ? runPy(m.code, data) : runPy(m.code);
+        if (res) err = res.toJs({ dict_converter: Object.fromEntries });
+      }
     } catch (x) {
       err = { kind: "InternalError", line: null, msg: String((x && x.message) || x).slice(0, LIMITS.maxErrorChars) };
     } finally {
@@ -143,7 +163,7 @@ onmessage = async (e) => {
     }
     const limitHit = run.limitHit;
     send(true);
-    postMessage({ type: "done", id: m.id, error: limitHit ? null : err, limitHit });
+    postMessage({ type: "done", id: m.id, error: limitHit ? null : err, limitHit, files: limitHit ? null : files });
     run = null;
   }
 };

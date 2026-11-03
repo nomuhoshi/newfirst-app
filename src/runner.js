@@ -86,12 +86,12 @@ export class Runner {
       this.#clearRun();
       this.state = "ready";
       if (m.limitHit) this.onStatus("outputLimitStopped");
-      else this.onStatus("done", { error: m.error, hadOutput: c.bytes > 0 });
+      else this.onStatus("done", { error: m.error, hadOutput: c.bytes > 0, files: m.files || null });
     }
   }
 
   // 返回 false 表示现在不能运行（还在加载或已经在运行）
-  run(code, data = null) {
+  run(code, data = null, task = null) {
     if (this.state !== "ready") return false;
     const id = ++this.runId;
     const w = this.worker;
@@ -104,7 +104,7 @@ export class Runner {
       }, LIMITS.runMs),
     };
     this.onStatus("running");
-    w.postMessage({ type: "run", id, code, data });
+    w.postMessage({ type: "run", id, code, data, task });
     return true;
   }
 
