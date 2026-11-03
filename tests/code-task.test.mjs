@@ -360,9 +360,6 @@ try {
       await shot(page, `v-${tag}-2-worked-open`);
       await setCode(page, "print(1");
       await shot(page, `v-${tag}-3-editing`);
-      await page.locator("[data-check]").tap();
-      await waitJudged(page, 60000);
-      await shot(page, `v-${tag}-4-syntax-error-result`);
       await setCode(page, "while True:\n    pass\n");
       await page.locator("[data-check]").tap();
       await waitJudged(page, 90000);
@@ -381,6 +378,15 @@ try {
       await page.waitForSelector(".feedbar.ok", { timeout: 60000 });
       await shot(page, `v-${tag}-9-result-pass`);
       await ctx.close();
+      { // 答错（语法错误）的结果页：单独一页，因为答错会结算并换成反馈条
+        const w = await open({ viewport, colorScheme });
+        await start(w.page, [W("T-S2")]);
+        await setCode(w.page, "print(1");
+        await w.page.locator("[data-check]").tap();
+        await w.page.waitForSelector(".feedbar.bad", { timeout: 60000 });
+        await shot(w.page, `v-${tag}-4-wrong-result`);
+        await w.ctx.close();
+      }
     }
   }
 

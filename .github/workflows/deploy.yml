@@ -33,6 +33,8 @@ jobs:
         with:
           path: dist
   mobile:
+    permissions:
+      contents: write
     # 手机模拟测试：WebKit（Safari 内核）和 Chromium 两个内核都必须通过，PR 必跑，也是部署前提。
     # 是 Playwright 模拟，不等于 iOS 真机 / 微信 / iPad；不测 VoiceOver。
     # 依赖功能缺失 → 测试失败；浏览器装不上或起不来 → “环境失败”（同样是失败，不会当作通过）。不使用 continue-on-error。
@@ -58,7 +60,7 @@ jobs:
         run: npm run test:mobile -- ${{ matrix.browser }}
         env:
           SHOTS_DIR: ${{ github.workspace }}/shots
-      - name: 上传代码题页面截图（供人工视觉检查）
+      - name: 上传代码题页面截图（产物，7 天）
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -66,6 +68,14 @@ jobs:
           path: shots
           if-no-files-found: ignore
           retention-days: 7
+      - name: 把截图推到 ci-screenshots-${{ matrix.browser }} 分支（仅本仓库的 PR；只供查看，可随时删除）
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('shots/*.png') != ''
+        run: |
+          cd shots
+          git init -q -b shots && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.event.pull_request.head.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "screenshots for ${{ github.event.pull_request.head.sha }} (${{ matrix.browser }})"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" shots:ci-screenshots-${{ matrix.browser }}
       - name: 报告环境失败
         if: failure() && steps.install.outcome == 'failure'
         run: echo "::error title=环境失败::${{ matrix.browser }} 安装失败，这不是测试通过" && exit 1
