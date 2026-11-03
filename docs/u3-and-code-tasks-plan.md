@@ -20,10 +20,10 @@
   "given": ["total", "is_vip"],
   "starter": "# total 和 is_vip 已经准备好了\n",
   "tests": [
-    { "name": "普通顾客满 100", "vars": { "total": 120, "is_vip": false }, "expected": "应付 100" },
-    { "name": "会员满 100",     "vars": { "total": 120, "is_vip": true },  "expected": "应付 95" },
-    { "name": "会员不满 100",   "vars": { "total": 80,  "is_vip": true },  "expected": "应付 75" },
-    { "name": "刚好 100",       "vars": { "total": 100, "is_vip": false }, "expected": "应付 80", "hidden": false }
+    { "name": "普通顾客满 100", "data": { "total": 120, "is_vip": false }, "expected": "应付 100" },
+    { "name": "会员满 100",     "data": { "total": 120, "is_vip": true },  "expected": "应付 95" },
+    { "name": "会员不满 100",   "data": { "total": 80,  "is_vip": true },  "expected": "应付 75" },
+    { "name": "刚好 100",       "data": { "total": 100, "is_vip": false }, "expected": "应付 80", "hidden": false }
   ],
   "reference": "if total >= 100:\n    total = total - 20\nif is_vip:\n    total = total - 5\nprint(\"应付\", total)",
   "alternatives": ["t = total\nif t >= 100:\n    t -= 20\nif is_vip:\n    t -= 5\nprint(f\"应付 {t}\")"],
@@ -31,13 +31,13 @@
     { "match": { "test": "刚好 100", "got": "应付 100" }, "why": "满 100 包括 100 本身，要用 >=，不是 >。" }
   ],
   "hints": ["知识点：if 可以连着写两个，互不影响。", "思路：先处理满减，再单独判断会员。"],
-  "checkMode": "stdout"
+  "checkMode": "output"
 }
 ```
 - `modify` 多一个 `code`（初始程序，能运行但结果错或报错），其余同 `write`。
 - `checkMode`：`stdout`（比较输出，默认）或 `call`（U7 起调用函数，`tests[].call` 如 `"price(3)"`）。`call` 模式比较**返回值的语义**（JSON 形式的期望值与实际值按类型和值比较，如 `[1, 2]` 与 `[1,2]` 相同、`1` 与 `1.0` 按题目声明的规则），**不比较 repr 文本**。U3 只实现 `stdout`。
 - 题目加 `version`（整数），改题时 +1，草稿按版本区分（§3.9）。
-- `vars` 只允许 JSON 能表示的值（数字、字符串、布尔、列表、对象），由判题器转成 Python 字面量。
+- `data`（注入的变量）只允许 JSON 能表示的值（数字、字符串、布尔、列表、对象），由判题器转成 Python 字面量。
 - `mistakes`：按“哪组测试、得到什么输出 / 什么错误类型”匹配的针对性解释；匹配不到时显示通用解释 + 实际输出与期望的差异。
 - `hints` 两级；第三级“参考解法”取 `reference`，打开后按 SPEC §4.2 标“已查看解答”。
 
@@ -45,7 +45,7 @@
 
 ## 3. 判题
 1. **按测试数据判输出，不比对代码**：任何写法只要每组输出一致都算对 → 自然接受多种合理解。
-2. **每组测试单独运行（隔离）**：每组测试在**新的全局作用域**里先赋值 `vars` 再执行学生代码，worker 里用 `exec(code, fresh_globals)`。注意：新全局作用域**只隔离变量**；已导入的模块、随机数状态、文件等不会因此重置，判题器需按题目需要另外重置（重新设定随机种子、清理/重建虚拟文件、必要时从 `sys.modules` 移除学生模块），每组输入都重新构建运行环境。
+2. **每组测试单独运行（隔离）**：每组测试在**新的全局作用域**里先赋值 `data` 再执行学生代码，worker 里用 `exec(code, fresh_globals)`。注意：新全局作用域**只隔离变量**；已导入的模块、随机数状态、文件等不会因此重置，判题器需按题目需要另外重置（重新设定随机种子、清理/重建虚拟文件、必要时从 `sys.modules` 移除学生模块），每组输入都重新构建运行环境。
 3. **至少两组**，且至少一组公开、显示在题面。项目 / 毕业作品允许加 `hidden` 测试，但**只覆盖题面已写明的规则和边界**；失败时给出有帮助的分类（例如“边界值不对”“没有处理某种情况”“输出格式不对”）和测试名，不显示期望值。隐藏测试的定位是**学习检查，不是防作弊**。
 4. **比较规则**（SPEC §4.2）：只统一换行符和末尾一个换行；行内空格、标点、大小写都要一致。数字题尽量整数；需要小数的题题干写明显示精度。
 5. **不做“按字面量判断写死”**（已取消）：改为用多组不同输入和边界测试让只对一组数据成立的程序自然不通过。静态分析（如“代码里没有用到给定变量”）只作为提示建议，不影响判定。
@@ -55,7 +55,7 @@
 9. **草稿保存（现在只存本机）**：键 = 游客 ID 或账号 ID + 题目 ID + 题目版本（如 `suipian.draft.<ownerId>.<exerciseId>.v<version>`），独立于 v3 进度，不改进度格式；输入后 500 ms 防抖保存；运行、看提示、切后台、超时重启都不清空；保存失败时显示可见提示（当前会话继续可用）；界面写明“代码暂存于此设备”。“重新开始”二次确认后恢复 `starter`/`code`。看过参考解法的状态和草稿一起保存。
    - 云端阶段（以后）：冲突时两份都保留让用户选；会员到期后草稿仍可导出。
 10. **文件读写题（U10 起）**：每组测试之间文件互相隔离（每组从干净的虚拟文件系统开始）；同一组测试内允许先写后读；学生的长期作品存储与判题用的临时文件分开。
-11. **判题接口**（U3 只实现 stdout 模式）：`judge({ code, tests, checkMode, limits }) → { status: "pass" | "fail" | "unavailable" | "internal-error", cases: [{ name, hidden, ok, kind: "ok" | "wrong-output" | "error" | "timeout-case" | "timeout-total" | "output-limit", expected?, actual?, error? }], totalMs }`。`unavailable` / `internal-error` 表示加载、Worker 或判题器自身失败，不算作答。
+11. **判题接口**（U3 只实现 output 模式，checkMode: "output"；字段与 PR #18 `src/judge.js` 一致）：`judge({ code, tests: [{ name, hidden?, data?, expected }], checkMode, compare?, limits }) → { status: "pass" | "fail" | "unavailable" | "internal-error", attempt, settle, retry, cases: [{ name, hidden, ok, kind: "pass" | "wrong-output" | "error" | "case-timeout" | "total-timeout" | "output-limit" | "unavailable" | "internal" | "cancelled", ms, message, expected?, stdout?, error? }], totalMs }`。`unavailable` / `internal-error` 表示加载、Worker 或判题器自身失败，不算作答（attempt=false、settle=false），保留代码并提示重试。隐藏用例失败不返回 expected / stdout。
 
 ## 4. 手机编辑器（iPhone 键盘）
 - 复用 lab.html 已验证的 CodeMirror 编辑器 + 内置编程键盘（`src/editor.js`、`src/keyboard.js`），按 SPEC §4.1 规则：Tab=4 空格、Enter 续缩进、冒号后自动加一级、括号引号配对、Undo ≥20 步。
@@ -93,7 +93,7 @@
 | # | 内容 | 依赖 |
 |---|---|---|
 | 1 | 本文档 + 课程大纲 + 定价（本 PR，只有文档） | — |
-| 2 | 判题核心：worker 支持“多组 vars + 新作用域”运行、比较规则、超时 / 不可用状态；纯逻辑 + 单元测试，不接界面 | §5 决定前可做 |
+| 2 | 判题核心：worker 支持“多组 data + 新作用域”运行、比较规则、超时 / 不可用状态；纯逻辑 + 单元测试，不接界面 | §5 决定前可做 |
 | 3 | 内容验证脚本：write/modify 字段校验 + 参考解 / 备选解 / 原始代码真实运行（CI） | 2 |
 | 4 | 题目界面：modify/write 页面、编辑器接入、测试结果展示、草稿保存；用 1 道示例题 | 2；需 §5 决定 |
 | 5 | U3 内容：`scripts/make-unit3.py` 生成 `content/unit3.json`，8 关；`course.json` 打开 U3 | 3、4 |
