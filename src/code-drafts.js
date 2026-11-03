@@ -29,12 +29,12 @@ export function loadDraft(storage, owner, ex) {
     if (raw == null) return null;
     const d = JSON.parse(raw);
     if (!d || d.v !== 1 || typeof d.code !== "string") return null;
-    return { code: d.code, viewed: !!d.viewed };
+    return { code: d.code, viewed: !!d.viewed, phase: d.phase === "variation" ? "variation" : "original" };
   } catch { return null; }
 }
 
-export function saveDraft(storage, owner, ex, { code, viewed }) {
-  try { storage.setItem(draftKey(owner, ex), JSON.stringify({ v: 1, code, viewed: !!viewed, at: Date.now() })); return true; }
+export function saveDraft(storage, owner, ex, { code, viewed, phase }) {
+  try { storage.setItem(draftKey(owner, ex), JSON.stringify({ v: 1, code, viewed: !!viewed, phase: phase === "variation" ? "variation" : "original", at: Date.now() })); return true; }
   catch { return false; }
 }
 

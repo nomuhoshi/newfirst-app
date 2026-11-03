@@ -109,6 +109,12 @@ def _run(src, data=None):
         _flush()                 # 没有换行的输出（如 print("a", end="")）也要刷出来
 `;
 
+// 离线等原因导致 Pyodide 内部的 Promise 被拒绝（WebKit 会报成 Unhandled Promise Rejection）：这里接住，加载阶段按加载失败处理
+self.addEventListener("unhandledrejection", (ev) => {
+  ev.preventDefault?.();
+  if (!pyodide) postMessage({ type: "loadError", msg: String((ev.reason && ev.reason.message) || ev.reason || "加载失败").slice(0, LIMITS.maxErrorChars) });
+});
+
 onmessage = async (e) => {
   const m = e.data;
   if (m.type === "init") {

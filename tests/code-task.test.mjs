@@ -30,6 +30,16 @@ const W = (id, over = {}) => ({
   hints: ["提示一：用乘法", "提示二：print 里用逗号分开"], reference: 'print("总价", price * cups)',
   mistakes: [{ match: { test: "4 杯", got: "总价 11" }, why: "这里要用乘法 *，不是减法。" }], ...over,
 });
+// 带示范和变化题的题：变化 = 价格改成 20，且满 5 杯再减 10（父题 reference 过不了变化题的测试）
+const VAR_GOOD = 'total = 20 * cups\nif cups >= 5:\n    total = total - 10\nprint("总价", total)', VAR_BAD = 'print("总价", 20 * cups)';
+const VARI = (id, over = {}) => W(id, {
+  worked: { code: "n = 2\nprint(n * 3)", output: "6", explain: "乘法用 *。" },
+  requiresVariationAfterSolution: true,
+  variation: { id: id + "-V1", prompt: "单价 20 元，满 5 杯减 10 元。输出：总价 <金额>", starter: "# cups 已准备好\n", tests: [
+    { name: "3 杯", data: { cups: 3 }, expected: "总价 60" }, { name: "6 杯", data: { cups: 6 }, expected: "总价 110" }, { name: "5 杯", data: { cups: 5 }, expected: "总价 90", hidden: true }],
+    hints: ["先算 20 * cups", "再判断 cups >= 5"], solution: VAR_GOOD },
+  ...over,
+});
 const LESSON = (exs, id = "TESTCODE") => ({ id, title: "代码题测试", concept: "测试", story: "测试", introCode: "print(1)", exercises: exs });
 const GOOD = 'print("总价", price * cups)', BAD = 'print("总价", price - cups)';
 
@@ -215,7 +225,7 @@ try {
 
   { // 提示：两级提示 + 参考解法需要确认（题目带 variant 才提供）
     const { ctx, page } = await open();
-    await start(page, [W("T-W1", { variant: { id: "T-W1-V", prompt: "变化题", tests: [] } })]);
+    await start(page, [VARI("T-W1")]);
     await page.locator(".mascot-btn").tap();
     check("提示 1", /提示一/.test(await page.locator(".overlay .hint-text").innerText()));
     await page.locator(".overlay").getByRole("button", { name: "好的" }).tap();
@@ -239,6 +249,90 @@ try {
     const r = await results$(page);
     check("Python 不可用：不算作答，不扣红心，没有反馈条，代码保留", /Python 还没准备好/.test(r) && /不算作答/.test(r) && JSON.stringify(await stat(page)) === JSON.stringify(before) && (await page.locator(".feedbar").count()) === 0 && (await page.evaluate(() => window.__app.currentArea.code())) === GOOD, r.slice(0, 160));
     check("Python 不可用：状态行显示原因和“重试加载”", (await page.locator("[data-retry-python]").count()) === 1);
+    await ctx.close();
+  }
+
+
+  { // 示范（折叠）：只讲概念，不是本题答案
+    const { ctx, page } = await open();
+    await start(page, [VARI("T-V0")]);
+    const d = page.locator("[data-worked]");
+    check("示范：默认折叠，标明不是本题答案", (await d.count()) === 1 && !(await d.evaluate((e) => e.open)) && /不是本题的答案/.test(await d.locator("summary").innerText()));
+    await d.locator("summary").tap();
+    check("示范：展开后有代码、输出、讲解", /n \* 3/.test(await d.innerText()) && /乘法用/.test(await d.innerText()));
+    check("示范：不含本题参考答案", !/price \* cups/.test(await d.innerText()));
+    await ctx.close();
+  }
+
+  { // 看过参考解法 → 原题通过不结算 → 变化题 → 通过才结算一次
+    const { ctx, page, errors } = await open();
+    await start(page, [VARI("T-V1")]);
+    for (let i = 0; i < 3; i++) { await page.locator(".mascot-btn").tap(); if (i < 2) await page.locator(".overlay").getByRole("button", { name: "好的" }).tap(); }
+    await page.locator(".overlay").getByRole("button", { name: "看参考解法" }).tap();
+    await page.locator(".overlay").getByRole("button", { name: "好的" }).tap();
+    const before = await stat(page);
+    await setCode(page, GOOD);
+    await page.locator("[data-check]").tap();
+    await page.waitForFunction(() => window.__app.currentArea.isVariation(), null, { timeout: 60000 });
+    check("原题通过：不结算（无反馈条，XP 和红心不变），进入变化题", (await page.locator(".feedbar").count()) === 0 && JSON.stringify(await stat(page)) === JSON.stringify(before));
+    check("变化题：显示变化提示和新的题面，编辑器是变化题起始代码", /变化题/.test(await page.locator("[data-variation]").innerText()) && /满 5 杯减 10/.test(await page.locator("[data-variation]").innerText()) && (await page.evaluate(() => window.__app.currentArea.code())).startsWith("# cups"));
+    // 用父题答案做变化题：不通过，不扣红心
+    await setCode(page, GOOD);
+    await page.locator("[data-check]").tap();
+    await waitJudged(page, 60000);
+    const r = await results$(page);
+    check("变化题没通过：不扣红心、不加 XP、没有反馈条", JSON.stringify(await stat(page)) === JSON.stringify(before) && (await page.locator(".feedbar").count()) === 0 && /不扣红心/.test(r), r.slice(0, 120));
+    // 重新加载页面后仍在变化题（阶段已保存）
+    await setCode(page, VAR_BAD);
+    await page.waitForTimeout(700);
+    const draftKeys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("suipian.draft.")));
+    check("草稿：原题（含阶段）和变化题各存一份", draftKeys.some((k) => /T-V1\.v1$/.test(k)) && draftKeys.some((k) => /T-V1-V1\.v1$/.test(k)), draftKeys.join(","));
+    // 变化题通过：结算一次
+    await setCode(page, VAR_GOOD);
+    await page.locator("[data-check]").tap();
+    await page.locator("[data-check]").tap().catch(() => {});
+    await page.waitForSelector(".feedbar.ok", { timeout: 60000 });
+    const after = await stat(page);
+    check("变化题通过：只结算一次，XP +10，红心不变", after.xp === before.xp + 10 && after.hearts === before.hearts, JSON.stringify([before, after]));
+    const left = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("suipian.draft.")));
+    check("结算后两份草稿都清掉", left.length === 0, left.join(","));
+    check("没有脚本错误", errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
+
+  { // 变化阶段刷新后恢复：回到同一道题仍是变化题
+    const { ctx, page } = await open();
+    await start(page, [VARI("T-V2")]);
+    for (let i = 0; i < 3; i++) { await page.locator(".mascot-btn").tap(); if (i < 2) await page.locator(".overlay").getByRole("button", { name: "好的" }).tap(); }
+    await page.locator(".overlay").getByRole("button", { name: "看参考解法" }).tap();
+    await page.locator(".overlay").getByRole("button", { name: "好的" }).tap();
+    await setCode(page, GOOD);
+    await page.locator("[data-check]").tap();
+    await page.waitForFunction(() => window.__app.currentArea.isVariation(), null, { timeout: 60000 });
+    await setCode(page, "print(1)");
+    await page.waitForTimeout(700);
+    await page.evaluate(() => window.__app.currentArea.destroy());
+    await page.evaluate(([l]) => window.__app.startLesson(l, { review: false }), [LESSON([VARI("T-V2")])]);
+    await page.getByRole("button", { name: "继续", exact: true }).tap();
+    await page.waitForSelector("[data-code-task]");
+    check("重新进入：仍在变化题，变化题草稿恢复", (await page.evaluate(() => window.__app.currentArea.isVariation())) && (await page.evaluate(() => window.__app.currentArea.code())) === "print(1)");
+    await ctx.close();
+  }
+
+  { // 变化题里的保护性结果（超时）不算作答
+    const { ctx, page } = await open();
+    await start(page, [VARI("T-V3")]);
+    for (let i = 0; i < 3; i++) { await page.locator(".mascot-btn").tap(); if (i < 2) await page.locator(".overlay").getByRole("button", { name: "好的" }).tap(); }
+    await page.locator(".overlay").getByRole("button", { name: "看参考解法" }).tap();
+    await page.locator(".overlay").getByRole("button", { name: "好的" }).tap();
+    await setCode(page, GOOD);
+    await page.locator("[data-check]").tap();
+    await page.waitForFunction(() => window.__app.currentArea.isVariation(), null, { timeout: 60000 });
+    const before = await stat(page);
+    await setCode(page, "while True:\n    pass\n");
+    await page.locator("[data-check]").tap();
+    await waitJudged(page, 90000);
+    check("变化题超时：不算作答，不扣红心，没有反馈条", JSON.stringify(await stat(page)) === JSON.stringify(before) && (await page.locator(".feedbar").count()) === 0 && /不算作答|太长/.test(await results$(page)));
     await ctx.close();
   }
 
