@@ -132,6 +132,9 @@ lessons = [
   ]},
 ]
 
+import sys as _s; _s.path.insert(0, str(pathlib.Path(__file__).parent)); from codetasks import TASKS
+for _l in lessons:  # 有内容的代码题挂到 pending[0].task；题目页（#19）接上前仍不开放
+    if _l["id"] in TASKS: _l["pending"][0]["task"] = TASKS[_l["id"]]
 unit = {"id": "U5", "title": "列表与序列", "subtitle": "列表、下标、append、切片", "lessons": lessons}
 p = pathlib.Path(__file__).resolve().parent.parent / "content/unit5.json"
 p.write_text(json.dumps(unit, ensure_ascii=False, indent=2) + "\n")

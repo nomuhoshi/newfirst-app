@@ -201,7 +201,135 @@
           "type": "modify",
           "replaces": 4,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：把取第一单的 cups[1] 改成 cups[0]，把取最后一单的 cups[len(cups)]（IndexError）改成 cups[-1]"
+          "plan": "改一改：把取第一单的 cups[1] 改成 cups[0]，把取最后一单的 cups[len(cups)]（IndexError）改成 cups[-1]",
+          "task": {
+            "id": "U5L2-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "显示第一单和最后一单的杯数。这段程序取错了第一单，最后一单还会报错 IndexError。请改正。",
+            "given": [
+              "cups"
+            ],
+            "checkMode": "output",
+            "code": "print(\"第一单\", cups[1])\nprint(\"最后一单\", cups[len(cups)])\n",
+            "tests": [
+              {
+                "name": "3 单",
+                "data": {
+                  "cups": [
+                    2,
+                    5,
+                    1
+                  ]
+                },
+                "expected": "第一单 2\n最后一单 1"
+              },
+              {
+                "name": "2 单",
+                "data": {
+                  "cups": [
+                    4,
+                    9
+                  ]
+                },
+                "expected": "第一单 4\n最后一单 9"
+              },
+              {
+                "name": "只有 1 单",
+                "data": {
+                  "cups": [
+                    7
+                  ]
+                },
+                "expected": "第一单 7\n最后一单 7",
+                "hidden": true
+              },
+              {
+                "name": "4 单",
+                "data": {
+                  "cups": [
+                    3,
+                    8,
+                    6,
+                    5
+                  ]
+                },
+                "expected": "第一单 3\n最后一单 5",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "下标从 0 开始；有 len(cups) 个元素时，最大的下标是多少？",
+              "第一单写 cups[0]，最后一单写 cups[-1]（或 cups[len(cups) - 1]）。"
+            ],
+            "reference": "print(\"第一单\", cups[0])\nprint(\"最后一单\", cups[-1])\n",
+            "worked": {
+              "code": "cups = [2, 5, 1]\nprint(cups[0])\nprint(cups[-1])",
+              "output": "2\n1",
+              "explain": "本关第 1、2 题：第一个是 [0]，最后一个是 [-1]。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U5L2-M1-V1",
+              "prompt": "显示第二单和倒数第二单的杯数。",
+              "starter": "# cups 已经准备好（至少 2 单）\n",
+              "tests": [
+                {
+                  "name": "3 单",
+                  "data": {
+                    "cups": [
+                      2,
+                      5,
+                      1
+                    ]
+                  },
+                  "expected": "第二单 5\n倒数第二单 5"
+                },
+                {
+                  "name": "4 单",
+                  "data": {
+                    "cups": [
+                      4,
+                      9,
+                      6,
+                      3
+                    ]
+                  },
+                  "expected": "第二单 9\n倒数第二单 6"
+                },
+                {
+                  "name": "2 单",
+                  "data": {
+                    "cups": [
+                      1,
+                      8
+                    ]
+                  },
+                  "expected": "第二单 8\n倒数第二单 1",
+                  "hidden": true
+                },
+                {
+                  "name": "5 单",
+                  "data": {
+                    "cups": [
+                      5,
+                      4,
+                      3,
+                      2,
+                      1
+                    ]
+                  },
+                  "expected": "第二单 4\n倒数第二单 2",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "第二个的下标是 1；倒数第二个用负下标。",
+                "print(\"第二单\", cups[1]) / print(\"倒数第二单\", cups[-2])。"
+              ],
+              "solution": "print(\"第二单\", cups[1])\nprint(\"倒数第二单\", cups[-2])\n"
+            }
+          }
         }
       ]
     },
@@ -307,7 +435,140 @@
           "type": "modify",
           "replaces": 4,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：把 cups = cups.append(3)（cups 变成 None）改成 cups.append(3)"
+          "plan": "改一改：把 cups = cups.append(3)（cups 变成 None）改成 cups.append(3)",
+          "task": {
+            "id": "U5L3-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "把 add 杯加到清单末尾，再显示清单。这段程序显示的是 None。请改正。",
+            "given": [
+              "cups",
+              "add"
+            ],
+            "checkMode": "output",
+            "code": "cups = cups.append(add)\nprint(cups)\n",
+            "tests": [
+              {
+                "name": "加 3 杯",
+                "data": {
+                  "cups": [
+                    2,
+                    5
+                  ],
+                  "add": 3
+                },
+                "expected": "[2, 5, 3]"
+              },
+              {
+                "name": "空清单",
+                "data": {
+                  "cups": [],
+                  "add": 1
+                },
+                "expected": "[1]"
+              },
+              {
+                "name": "加重复的",
+                "data": {
+                  "cups": [
+                    4
+                  ],
+                  "add": 4
+                },
+                "expected": "[4, 4]",
+                "hidden": true
+              },
+              {
+                "name": "加到 3 单后",
+                "data": {
+                  "cups": [
+                    1,
+                    2,
+                    3
+                  ],
+                  "add": 9
+                },
+                "expected": "[1, 2, 3, 9]",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "append 直接改原列表，它本身得到的是什么？",
+              "去掉 cups = ，只写 cups.append(add)。"
+            ],
+            "reference": "cups.append(add)\nprint(cups)\n",
+            "worked": {
+              "code": "cups = [2, 5]\ncups.append(1)\ncups.remove(5)\nprint(cups)",
+              "output": "[2, 1]",
+              "explain": "本关第 4 题：append、remove 直接改原列表，不用再赋值。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U5L3-M1-V1",
+              "prompt": "退掉 drop 杯那单，再把（现在的）第一单改成 first 杯，显示清单。",
+              "starter": "# cups、drop、first 已经准备好\n",
+              "tests": [
+                {
+                  "name": "退 2 杯",
+                  "data": {
+                    "cups": [
+                      2,
+                      5,
+                      1
+                    ],
+                    "drop": 2,
+                    "first": 8
+                  },
+                  "expected": "[8, 1]"
+                },
+                {
+                  "name": "有重复",
+                  "data": {
+                    "cups": [
+                      3,
+                      3,
+                      6
+                    ],
+                    "drop": 3,
+                    "first": 4
+                  },
+                  "expected": "[4, 6]"
+                },
+                {
+                  "name": "退最后一单",
+                  "data": {
+                    "cups": [
+                      5,
+                      7
+                    ],
+                    "drop": 7,
+                    "first": 1
+                  },
+                  "expected": "[1]",
+                  "hidden": true
+                },
+                {
+                  "name": "退中间",
+                  "data": {
+                    "cups": [
+                      1,
+                      2,
+                      3
+                    ],
+                    "drop": 2,
+                    "first": 9
+                  },
+                  "expected": "[9, 3]",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "remove 按值删（只删第一个）；删完再按下标改。",
+                "cups.remove(drop) / cups[0] = first / print(cups)。"
+              ],
+              "solution": "cups.remove(drop)\ncups[0] = first\nprint(cups)\n"
+            }
+          }
         }
       ]
     },

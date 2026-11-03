@@ -47,6 +47,14 @@ V = {
    "tests": [T("4 单", {"n": 4}, "总杯数 14"), T("1 单", {"n": 1}, "总杯数 3"), T("2 单", {"n": 2}, "总杯数 8", True), T("0 单", {"n": 0}, "总杯数 0", True)],
    "hints": ["和父题一样的结构，换成每单 3 杯、第 2 单多 2 杯。", "total = 0 / for i in range(1, n + 1): total = total + 3 / if i == 2: total = total + 2。"],
    "solution": "total = 0\nfor i in range(1, n + 1):\n    total = total + 3\n    if i == 2:\n        total = total + 2\nprint(\"总杯数\", total)\n"},
+ "U5L2-M1": {"prompt": "显示第二单和倒数第二单的杯数。", "starter": "# cups 已经准备好（至少 2 单）\n",
+   "tests": [T("3 单", {"cups": [2, 5, 1]}, "第二单 5\n倒数第二单 5"), T("4 单", {"cups": [4, 9, 6, 3]}, "第二单 9\n倒数第二单 6"), T("2 单", {"cups": [1, 8]}, "第二单 8\n倒数第二单 1", True), T("5 单", {"cups": [5, 4, 3, 2, 1]}, "第二单 4\n倒数第二单 2", True)],
+   "hints": ["第二个的下标是 1；倒数第二个用负下标。", "print(\"第二单\", cups[1]) / print(\"倒数第二单\", cups[-2])。"],
+   "solution": "print(\"第二单\", cups[1])\nprint(\"倒数第二单\", cups[-2])\n"},
+ "U5L3-M1": {"prompt": "退掉 drop 杯那单，再把（现在的）第一单改成 first 杯，显示清单。", "starter": "# cups、drop、first 已经准备好\n",
+   "tests": [T("退 2 杯", {"cups": [2, 5, 1], "drop": 2, "first": 8}, "[8, 1]"), T("有重复", {"cups": [3, 3, 6], "drop": 3, "first": 4}, "[4, 6]"), T("退最后一单", {"cups": [5, 7], "drop": 7, "first": 1}, "[1]", True), T("退中间", {"cups": [1, 2, 3], "drop": 2, "first": 9}, "[9, 3]", True)],
+   "hints": ["remove 按值删（只删第一个）；删完再按下标改。", "cups.remove(drop) / cups[0] = first / print(cups)。"],
+   "solution": "cups.remove(drop)\ncups[0] = first\nprint(cups)\n"},
 }
 def attach(tasks):
     for t in tasks.values():
