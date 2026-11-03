@@ -65,3 +65,10 @@
 }
 /* 竖屏：展开的示例最多占约三分之一屏，内部滚动，避免把编辑器挤出去 */
 .ct-worked[open] { max-height: 34dvh; overflow: auto; overscroll-behavior: contain; }
+/* 矮屏横屏：题面在左，编辑器与操作在右，编辑器一进入页面就在键盘上方可见 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .ct-root { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); column-gap: 14px; align-items: start; }
+  .ct-root > .ct-prompt { grid-column: 1; grid-row: 1 / span 6; }
+  .ct-root > :not(.ct-prompt) { grid-column: 2; }
+  .ct-worked[open] { max-height: none; }
+}
