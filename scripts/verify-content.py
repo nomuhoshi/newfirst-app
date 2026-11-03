@@ -32,7 +32,7 @@ def run(code):
 # 已知问题：在别的 PR 里修，单独列出，不算通过也不让本脚本失败。修好合并后从这里删掉。
 KNOWN = {"U1L5-Q4": "干扰项 60 本身就能输出正确结果，PR #16 修复"}
 known_hits = []
-checked, skipped, fails = 0, [], []
+checked, skipped, fails, pending = 0, [], [], []
 def ok(cond, where, msg):
     global checked; checked += 1
     if not cond:
@@ -49,6 +49,11 @@ for u in course["units"]:
     if not u.get("file"): continue
     unit = json.loads((ROOT / "content" / u["file"]).read_text())
     for l in unit["lessons"]:
+        for pt in l.get("pending", []): pending.append(f"{l['id']}（{pt['type']}）：{pt['plan']}")
+        for pt in l.get("pending", []):
+            for ti, t in enumerate(pt.get("tests", []), 1):  # 参考答案先用真实 Python 跑通，留给代码题运行器
+                pre = "".join(f"{k} = {v!r}\n" for k, v in t["data"].items())
+                out, err = run(pre + pt["reference"]); ok(err is None and out == t["stdout"], f"{l['id']}-pending-T{ti}", f"参考答案得到 {out!r}/{err}，期望 {t['stdout']!r}")
         for qi, ex in enumerate(l["exercises"], 1):
             w = f"{l['id']}-Q{qi}({ex['type']})"
             if ex["type"] == "predict":
@@ -93,7 +98,8 @@ for u in course["units"]:
                 skipped.append(f"{w}：题型 {ex['type']} 本脚本不验证")
 
 for s in skipped: print("⏭️ ", s)
+for s in pending: print("🔒 待代码题运行器，未开放、未验证：", s)
 for f in known_hits: print("⚠️ ", f)
 for f in fails: print("❌", f)
-print(f"\n真实运行 {runs} 次（单次上限 {RUN_S} 秒）；检查 {checked} 项，跳过 {len(skipped)} 项，已知问题 {len(known_hits)} 项，失败 {len(fails)} 项")
+print(f"\n真实运行 {runs} 次（单次上限 {RUN_S} 秒）；检查 {checked} 项，跳过 {len(skipped)} 项，已知问题 {len(known_hits)} 项，待代码题运行器 {len(pending)} 项，失败 {len(fails)} 项")
 sys.exit(1 if fails else 0)
