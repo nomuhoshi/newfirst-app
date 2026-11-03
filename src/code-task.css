@@ -39,7 +39,7 @@
 /* 内置键盘贴在页面底部（样式沿用 style.css 里的 #keyboard），不随内容滚动 */
 .ct-kb { flex: 0 0 auto; }
 .ios-browser .ct-kb { padding-bottom: 76px; }
-@media (orientation: landscape) and (max-height: 500px) { .ct-editor { max-height: 30dvh; min-height: 80px; } .ct-cmp { grid-template-columns: 1fr; } }
+@media (orientation: landscape) and (max-height: 500px) { .ct-cmp { grid-template-columns: 1fr; } }
 
 /* 示范（折叠）与变化题提示 */
 .ct-worked { margin: 8px 0; border: 1.5px solid var(--g-line); border-radius: 12px; padding: 4px 12px 8px; background: var(--g-card); color: var(--g-fg); }
@@ -49,26 +49,3 @@
 .ct-variation { margin: 8px 0; border: 2px solid var(--g-primary); border-radius: 12px; padding: 8px 12px; background: var(--g-card); color: var(--g-fg); }
 .ct-variation p { margin: 4px 0; }
 .ct-vprompt { font-weight: 700; }
-
-/* 矮屏横屏：压缩底栏与内置键盘，让编辑器留在可视区 */
-@media (orientation: landscape) and (max-height: 500px) {
-  .lessonfoot, .ios-browser .lessonfoot { padding-top: 6px; padding-bottom: 6px; }
-  .ios-browser #keyboard.ct-kb { padding-bottom: 20px; }
-  .lessonfoot .mascot-btn { min-width: 44px; min-height: 44px; }
-  .lessonfoot .mascot-btn svg { width: 40px; height: 40px; }
-  .ct-kb .kb-key { height: 30px; }
-  .ct-kb .kb-actions .kb-key { height: 30px; }
-  .ct-kb .kb-row { margin: 1px 0; gap: 3px; }
-  .lessonfoot .btn3d { min-height: 44px; }
-  .ct-kb { padding-top: 2px; padding-bottom: 2px; }
-  .ct-worked summary { min-height: 36px; }
-}
-/* 竖屏：展开的示例最多占约三分之一屏，内部滚动，避免把编辑器挤出去 */
-.ct-worked[open] { max-height: 34dvh; overflow: auto; overscroll-behavior: contain; }
-/* 矮屏横屏：题面在左，编辑器与操作在右，编辑器一进入页面就在键盘上方可见 */
-@media (orientation: landscape) and (max-height: 500px) {
-  .ct-root { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); column-gap: 14px; align-items: start; }
-  .ct-root > .ct-prompt { grid-column: 1; grid-row: 1 / span 6; }
-  .ct-root > :not(.ct-prompt) { grid-column: 2; }
-  .ct-worked[open] { max-height: none; }
-}

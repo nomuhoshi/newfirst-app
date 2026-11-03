@@ -5,6 +5,7 @@
 import "./style.css";
 import "./app.css";
 import "./game.css";
+import "./design-v2.css";
 import course from "../content/course.json";
 import unit1 from "../content/unit1.json";
 import unit2 from "../content/unit2.json";
@@ -407,7 +408,10 @@ function renderPath() {
     const lessons = UNITS[u.id].lessons;
     const unitDone = lessons.every((x) => state.done[x.id]);
     return h("section", { class: "unit" + (unitDone ? " complete" : "") },
-      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元${unitDone ? " · 已完成" : ""}` }), h("h2", { text: u.title }), h("p", { text: u.subtitle })),
+      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元${unitDone ? " · 已完成" : ""}` }), h("h2", { text: u.title }), h("p", { text: u.subtitle }),
+        h("div", { class: "unit-prog", role: "img", "aria-label": `已完成 ${lessons.filter((x) => state.done[x.id]).length} / ${lessons.length} 关` },
+          h("div", { class: "unit-prog-bar" }, h("i", { style: `width:${Math.round(100 * lessons.filter((x) => state.done[x.id]).length / lessons.length)}%` })),
+          h("span", { text: `${lessons.filter((x) => state.done[x.id]).length} / ${lessons.length}` }))),
       h("ol", { class: "path" }, lessons.map((l, i) => {
         const st = lessonStatus(l);
         const offset = [0, 1, 2, 1, 0, -1][i % 6];
@@ -416,9 +420,9 @@ function renderPath() {
           () => openLessonSheet(l), `node ${st}${l.review ? " review" : ""}`,
           { "aria-label": `${l.title}（${st === "done" ? "已完成" : st === "current" ? "当前关卡" : "未解锁"}）`, "data-lesson": l.id },
         );
-        return h("li", { class: "path-item", style: `--off:${offset}` },
+        return h("li", { class: "path-item " + st + (l.review ? " review" : ""), style: `--off:${offset}` },
           st === "current" ? h("div", { class: "bubble", "aria-hidden": "true", onclick: () => openLessonSheet(l), text: i === 0 && !state.done[l.id] && state.xp === 0 ? "从这里开始" : "开始" }) : null,
-          node, h("div", { class: "node-label", text: l.title }));
+          node, h("div", { class: "node-label" }, h("b", { text: l.title }), h("small", { text: (l.review ? "复习关 · " : "") + (st === "done" ? "已完成" : st === "current" ? "当前关卡" : "未解锁") })));
       })),
     );
   });
@@ -791,7 +795,7 @@ function renderExercise(run) {
   appEl.replaceChildren(
     circuit("edge"),
     lessonHeader(run),
-    h("main", { class: "lesson" },
+    h("main", { class: "lesson" + (isCode ? " lesson-code" : "") },
       ex.tip ? h("p", { class: "tip-line" }, h("b", { text: "提示 " }), ex.tip) : null,
       h("h2", { class: "q", text: ex.prompt }),
       area.node,
@@ -1012,6 +1016,7 @@ function renderFinish(run) {
   currentRun = null;
   feel.play("finish"); // 连续天数增加也复用这一个声音，不叠播
   const accuracy = Math.round((run.total / (run.total + run.mistakes)) * 100);
+  const nextLesson = firstUndone();
   appEl.replaceChildren(
     h("main", { class: "finish" },
       mascot(120, "celebrate"),
@@ -1022,6 +1027,7 @@ function renderFinish(run) {
         h("div", { class: "fs" }, h("small", { text: "正确率" }), h("b", { text: `${accuracy}%` })),
         h("div", { class: "fs" }, h("small", { text: "连续天数" }), h("b", {}, icon("flame", { size: 20 }), String(currentStreak(state)))),
       ),
+      nextLesson ? h("p", { class: "next-line" }, h("small", { text: "下一关" }), h("b", { text: nextLesson.title })) : null,
       newDay ? h("p", { class: "streak-msg", text: currentStreak(state) > 1 ? `连续学习 ${currentStreak(state)} 天，保持住！` : "今天的学习完成了，明天再来续上连续天数！" }) : null,
       heartMsg ? h("p", { class: "heart-msg", text: heartMsg }) : null,
       button("继续", () => { feel.haptic(); renderPath(); }, "btn3d primary wide", { "data-continue": "" }),
@@ -1223,7 +1229,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { startLesson, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { renderExercise, allLessons, startLesson, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;

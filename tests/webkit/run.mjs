@@ -8,7 +8,7 @@ for (const b of list) {
   const r = spawnSync(process.execPath, [T], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b } });
   let code = r.status ?? 2;
   // 判题核心和代码题答题页：同一个内核再各跑一遍（编辑、草稿恢复、保护性停止、看解法→变化题、只结算一次）
-  for (const extra of ["../judge-browser.test.mjs", "../code-task.test.mjs"]) {
+  for (const extra of ["../judge-browser.test.mjs", "../code-task.test.mjs", "../design-shots.test.mjs"]) {
     const x = spawnSync(process.execPath, [fileURLToPath(new URL(extra, import.meta.url))], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b, JUDGE_BROWSERS: b } });
     code = Math.max(code, x.status ?? 2);
   }
