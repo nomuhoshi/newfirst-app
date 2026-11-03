@@ -316,9 +316,10 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .practice-finish { overflow-y: auto; min-height: 0; justify-content: flex-start; overscroll-behavior: contain; }
 .practice-finish > :first-child { margin-top: auto; }
 .practice-finish > :last-child { margin-bottom: auto; }
-/* 矮屏（iPhone 横屏）：地图会自动滚到当前关，放在顶部的“随机练习”入口会被滚出屏幕。矮屏时让入口吸顶并缩成一行，始终能看到。 */
+/* 地图会自动滚到当前关，放在顶部的“随机练习”入口会被滚出屏幕（竖屏有进度时也会）：入口吸顶，始终能看到。矮屏（iPhone 横屏）再缩成一行。 */
+.practice-entry-wrap { position: sticky; top: 0; z-index: 5; background: var(--g-bg); padding: 6px 0; margin: -6px 0 12px; }
 @media (max-height: 500px) {
-  .practice-entry-wrap { position: sticky; top: 0; z-index: 5; background: var(--g-bg); margin: 0 0 8px; padding: 6px 0; }
+  .practice-entry-wrap { margin: 0 0 8px; }
   .practice-entry { min-height: 40px; padding: 4px 12px; }
   .practice-entry-text { flex-direction: row; gap: 8px; align-items: baseline; }
   .practice-empty { margin: 2px 0 0; }
