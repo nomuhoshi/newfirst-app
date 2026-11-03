@@ -100,6 +100,8 @@ h1, h2, h3 { letter-spacing: .2px; }
 .lesson-code .ct-meta, .ct-status { font-size: 12px; }
 .lesson-code .ct-results { border-radius: 14px; }
 
+@media (min-width: 700px) and (orientation: portrait) { .lesson-code .ct-prompt { max-height: 34dvh; } }
+
 /* ---------- 通关页：一个面板，按钮固定在底部 ---------- */
 .finish { padding: 20px 20px calc(18px + env(safe-area-inset-bottom)); gap: 4px; }
 .finish > :first-child { margin-top: 6dvh; }
