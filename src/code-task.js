@@ -247,7 +247,7 @@ export function createCodeArea(ex, ctx) {
     const d = loadDraft(storage, owner, vspec);
     const t = d ? d.code : initial;
     initialized = false; setDoc(view, t, t.length); initialized = true;
-    promptNode.replaceChildren(...buildPrompt());
+    promptNode.replaceChildren(...buildPrompt().filter((n) => n != null));
     hintLevel = 0; lastResult = null;
     say("原题通过了 ✓", ["因为看过参考解法，还要再做一道有变化的题才算完成。下面是变化题：不多加 XP，没做对也不扣红心。"], "ok");
     saver.schedule();

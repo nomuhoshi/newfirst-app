@@ -286,6 +286,7 @@ try {
     await page.waitForFunction(() => window.__app.currentArea.isVariation(), null, { timeout: 60000 });
     check("原题通过：不结算（无反馈条，XP 和红心不变），进入变化题", (await page.locator(".feedbar").count()) === 0 && JSON.stringify(await stat(page)) === JSON.stringify(before));
     await shot(page, "05-variation-entered");
+    check("变化题：题面区没有多余的 \"null\" 文字", !/(^|\n)null(\n|$)/.test(await page.locator(".ct-prompt").innerText()));
     check("变化题：显示变化提示和新的题面，编辑器是变化题起始代码", /变化题/.test(await page.locator("[data-variation]").innerText()) && /满 5 杯减 10/.test(await page.locator("[data-variation]").innerText()) && (await page.evaluate(() => window.__app.currentArea.code())).startsWith("# cups"));
     // 用父题答案做变化题：不通过，不扣红心
     await setCode(page, GOOD);
