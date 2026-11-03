@@ -108,6 +108,21 @@ export class Runner {
     return true;
   }
 
+  // 等到可以运行：返回 "ready"；加载失败返回 "loadError"；超过 capMs 仍没好返回 "never-ready"。
+  // 只读状态，不改变任何计分或红心逻辑。
+  whenReady(capMs = LIMITS.loadMs) {
+    return new Promise((resolve) => {
+      const t0 = Date.now();
+      const tick = () => {
+        if (this.state === "ready") return resolve("ready");
+        if (this.state === "loadError") return resolve("loadError");
+        if (Date.now() - t0 >= capMs) return resolve("never-ready");
+        setTimeout(tick, 20);
+      };
+      tick();
+    });
+  }
+
   stop() {
     if (this.state === "running") this._abort("stopped");
   }
