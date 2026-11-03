@@ -8,7 +8,7 @@
 // 3. 联网时优先取新版：先请求网络，成功就更新缓存；失败（离线、服务器错误）或网络超过 4 秒没响应，才读缓存。
 // 4. 缓存名带版本号。新版激活时删除所有旧的 suipian- 缓存，并立刻接管页面。
 const VERSION = "__VERSION__";
-const PREFIX = "suipian-";
+const PREFIX = "suipian-preview-";
 const CACHE = PREFIX + VERSION;
 const PRECACHE = __PRECACHE__;
 const SLOW_MS = 4000;          // 网络超过这个时间没响应，就先用缓存

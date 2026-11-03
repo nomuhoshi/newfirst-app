@@ -12,9 +12,10 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
   <link rel="icon" href="./icon-192.png" />
-  <title>碎片编程</title>
+  <title>[测试预览] 碎片编程</title>
 </head>
 <body>
+  <div id="preview-banner" style="position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:99999;background:#d32f2f;color:#fff;font:bold 11px/1 sans-serif;padding:3px 8px;border-radius:0 0 6px 6px;pointer-events:none;opacity:.85;padding-top:max(3px,env(safe-area-inset-top))">测试预览 · 非正式版 · 进度独立保存</div>
   <div id="app"></div>
   <!-- 兜底提示：用最老的语法写、不依赖主程序。主程序没能显示内容（网络、浏览器太旧、微信内置浏览器等）时，说明原因并给“重新加载”按钮；正常加载时不会出现。 -->
   <script>

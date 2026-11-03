@@ -1,7 +1,7 @@
 // 本机记录：只存在这台设备的浏览器里（localStorage），不上传任何地方。
 // 读写都包在 try/catch 里：无痕模式、存储被禁用时不能让页面白屏。
 
-const KEY = "suipian.progress";
+const KEY = "preview.suipian.progress";
 export const DATA_VERSION = 3;
 
 export const HEARTS_MAX = 5;

@@ -6,7 +6,7 @@ import swPlugin from "./scripts/vite-sw-plugin.mjs";
 // 构建时间同时是应用版本号和离线缓存版本号：显示在“我的”页，方便确认手机上打开的是不是最新版本。
 const BUILD = new Date().toISOString();
 export default defineConfig({
-  base: "./",
+  base: "/newfirst-app-preview/",
   build: {
     target: "es2020",
     rollupOptions: { input: { main: "index.html", lab: "lab.html" } },

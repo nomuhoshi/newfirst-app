@@ -1199,7 +1199,7 @@ let swReg = null;
 async function refreshSwInfo() {
   if (!("serviceWorker" in navigator)) { swInfo.status = "此浏览器不支持"; return swInfo; }
   try {
-    swInfo.caches = typeof caches !== "undefined" ? (await caches.keys()).filter((k) => k.startsWith("suipian-")) : [];
+    swInfo.caches = typeof caches !== "undefined" ? (await caches.keys()).filter((k) => k.startsWith("suipian-preview-")) : [];
     swInfo.status = navigator.serviceWorker.controller ? "已启用（断网后可打开地图和课程）" : (swReg ? "正在安装，刷新一次后生效" : "未启用");
   } catch { swInfo.status = "读取失败"; }
   return swInfo;
