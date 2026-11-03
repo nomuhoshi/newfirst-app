@@ -55,7 +55,7 @@
 9. **草稿保存（现在只存本机）**：键 = 游客 ID 或账号 ID + 题目 ID + 题目版本（如 `suipian.draft.<ownerId>.<exerciseId>.v<version>`），独立于 v3 进度，不改进度格式；输入后 500 ms 防抖保存；运行、看提示、切后台、超时重启都不清空；保存失败时显示可见提示（当前会话继续可用）；界面写明“代码暂存于此设备”。“重新开始”二次确认后恢复 `starter`/`code`。看过参考解法的状态和草稿一起保存。
    - 云端阶段（以后）：冲突时两份都保留让用户选；会员到期后草稿仍可导出。
 10. **文件读写题（U10 起）**：每组测试之间文件互相隔离（每组从干净的虚拟文件系统开始）；同一组测试内允许先写后读；学生的长期作品存储与判题用的临时文件分开。
-11. **判题接口**（U3 只实现 output 模式，checkMode: "output"；字段与 PR #18 `src/judge.js` 一致）：`judge({ code, tests: [{ name, hidden?, data?, expected }], checkMode, compare?, limits }) → { status: "pass" | "fail" | "unavailable" | "internal-error", attempt, settle, retry, cases: [{ name, hidden, ok, kind: "pass" | "wrong-output" | "error" | "case-timeout" | "total-timeout" | "output-limit" | "unavailable" | "internal" | "cancelled", ms, message, expected?, stdout?, error? }], totalMs }`。`unavailable` / `internal-error` 表示加载、Worker 或判题器自身失败，不算作答（attempt=false、settle=false），保留代码并提示重试。隐藏用例失败不返回 expected / stdout。
+11. **判题接口**（U3 只实现 output 模式，checkMode: "output"；字段与 PR #18 `src/judge.js` 一致）：`judge({ code, tests: [{ name, hidden?, data?, expected }], checkMode, compare?, limits }) → { status: "pass" | "fail" | "timeout" | "cancelled" | "unavailable" | "internal-error", attempt, settle, retry, cases: [{ name, hidden, ok, kind: "pass" | "wrong-output" | "error" | "case-timeout" | "total-timeout" | "output-limit" | "unavailable" | "internal" | "cancelled", ms, message, expected?, stdout?, error? }], totalMs }`。`timeout`（单组或总时间超时）/ `cancelled`（被取消）都不算作答（attempt=false、settle=false）、不扣红心，见 §5；`unavailable` / `internal-error` 表示加载、Worker 或判题器自身失败，不算作答（attempt=false、settle=false），保留代码并提示重试。隐藏用例失败不返回 expected / stdout。
 
 ## 4. 手机编辑器（iPhone 键盘）
 - 复用 lab.html 已验证的 CodeMirror 编辑器 + 内置编程键盘（`src/editor.js`、`src/keyboard.js`），按 SPEC §4.1 规则：Tab=4 空格、Enter 续缩进、冒号后自动加一级、括号引号配对、Undo ≥20 步。
@@ -72,7 +72,9 @@
 | 点“运行” | 只是试一试：不计分、**不扣红心** |
 | 点“检查”之前 | 界面提示“检查会判对错”（运行不会） |
 | “检查”通过 | 按现有规则正常给奖励（答对 +10 XP 等），同一题只结算一次（去重，连点不重复） |
-| “检查”未通过（代码报错、输出不对、死循环超时） | 判为答错：**扣 1 红心**，放到本关最后（项目主人已批准） |
+| “检查”未通过（代码报错、输出不对） | 判为答错：**扣 1 红心**，放到本关最后（项目主人已批准） |
+| 超时（单组或总时间，可能是死循环） | 判题返回 status `"timeout"`：**不算作答**（attempt=false）、不结算（settle=false）、**不扣红心**、不加分；终止并重启 worker，代码保留，提示检查 while 条件后重试。题目本身不限时，超时只用来防卡死（2026-11-03 GPT 决定，对应 Claude 判题 929d34f） |
+| 取消（离开页面、重新检查等） | 判题返回 status `"cancelled"`：不算作答、不结算、不扣红心 |
 | Python 加载失败、Worker 创建失败或无响应（环境失败）、判题器内部错误 | 不算作答：**不扣红心**、不加分，提示重试 |
 | 看过参考解法 | 标记“已查看解答”；出现一道**变化题**：条件、阈值或输出要求有真实变化（不是只换变量名或顺序）；完成变化题后**只结算原题奖励一次**，不额外加 XP；变化题未通过**不额外扣红心**（项目主人已批准）；“已查看”状态和草稿一起保存 |
 | 复习关里的 write/modify | 复习规则：不扣心，每题 +5 XP |
@@ -108,4 +110,4 @@
 
 ## 9. 已定 / 待定
 已定（2026-11-03）：U3 8 关取代 §0.5；U4L8 用 range + 变量，列表留到 U5；草稿先存本机（§3.9）；毕业作品可加隐藏测试（§3.3）；取消字面量防写死（§3.5）。
-已批准（2026-11-03，项目主人）：§5 扣红心条款——只有答错扣红心；检查未通过（代码报错、输出不对、死循环）= 答错，扣 1 红心；运行、环境失败、判题器内部错误不扣红心；看过解答后的变化题未通过不额外扣红心。
+已批准（2026-11-03，项目主人）：§5 扣红心条款——只有答错扣红心；检查未通过（代码报错、输出不对）= 答错，扣 1 红心；超时（status "timeout"）、取消（status "cancelled"）不算作答、不扣红心（2026-11-03 GPT 修订）；运行、环境失败、判题器内部错误不扣红心；看过解答后的变化题未通过不额外扣红心。
