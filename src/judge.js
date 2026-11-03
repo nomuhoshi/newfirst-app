@@ -12,8 +12,11 @@
 //   limits     { caseMs = 5000, totalMs = 10000, readyCapMs = 30000 }
 //
 // Result = {
-//   status:  "pass" | "fail" | "unavailable" | "internal-error",
-//   attempt: boolean,   // 只有 pass / fail 才算作答；unavailable / internal-error 不算作答
+//   status:  "pass" | "fail" | "timeout" | "unavailable" | "cancelled" | "internal-error",
+//            timeout   = 运行时间超过环境保护时限（单组 5 秒 / 整次 10 秒）。题目本身不设时限，所以这**不算答错、不扣红心**，
+//                        和 unavailable 一样不算作答、不结算、保留代码、提示重试。遇到第一个超时就停止，不再跑后面的组。
+//            cancelled = 调用方取消（AbortSignal）。不算作答、不结算、不重试提示（retry=false）。
+//   attempt: boolean,   // 只有 pass / fail 才算作答；timeout / unavailable / cancelled / internal-error 不算作答
 //   settle:  boolean,   // 只有完整跑完（每组都有结果）的 pass / fail 才可以结算；其他一律不结算
 //   retry:   boolean,   // 不算作答时为 true：保留代码，提示重试
 //   cases:   [{ name, hidden, ok, kind, ms, message, expected?, stdout?, error? }],
@@ -61,8 +64,8 @@ export function messageFor(kind, L = JUDGE_LIMITS) {
     [KIND.WRONG_FILE]: "输出文件的内容和期望不一致，或者文件没有生成",
     [KIND.WRONG_RETURN]: "函数的返回值和期望不一致",
     [KIND.ERROR]: "程序运行出错",
-    [KIND.CASE_TIMEOUT]: `这一组测试运行超过 ${sec(L.caseMs)}，可能有死循环`,
-    [KIND.TOTAL_TIMEOUT]: `全部测试合计超过 ${sec(L.totalMs)}，后面的测试没有运行`,
+    [KIND.CASE_TIMEOUT]: `这一组测试运行超过 ${sec(L.caseMs)}，已停止（可能有死循环）。这次不算作答，不扣红心，代码已保留，改好后再检查`,
+    [KIND.TOTAL_TIMEOUT]: `全部测试合计超过 ${sec(L.totalMs)}，已停止（程序可能太慢或有死循环）。这次不算作答，不扣红心，代码已保留，改好后再检查`,
     [KIND.OUTPUT_LIMIT]: "输出太多，已停止",
     [KIND.UNAVAILABLE]: "Python 环境暂时不可用，这次不算作答，代码已保留，请重试",
     [KIND.INTERNAL]: "判题出了内部问题，这次不算作答，代码已保留，请重试",
@@ -148,7 +151,7 @@ export async function judge({ code, files, entry, tests, checkMode = "output", c
   const L = { ...JUDGE_LIMITS, ...limits };
   let used = 0; // 学生代码执行时间合计
   const notAttempt = (status, kind, base, cases) => ({
-    status, attempt: false, settle: false, retry: true, totalMs: Math.round(used),
+    status, attempt: false, settle: false, retry: status !== "cancelled", totalMs: Math.round(used),
     cases: [...cases, { ...base, ok: false, kind, ms: 0, message: messageFor(kind, L) }],
   });
   const none = { name: "", hidden: false };
@@ -157,16 +160,13 @@ export async function judge({ code, files, entry, tests, checkMode = "output", c
     return notAttempt("internal-error", KIND.INTERNAL, none, []);
 
   const cases = [];
-  let budgetHit = false;
+  // 超时只是环境保护：不算作答、不结算、不扣红心；第一次超时就停（后面的组不再跑）
+  const timedOut = (done, c) => ({ status: "timeout", attempt: false, settle: false, retry: true, totalMs: Math.round(used), cases: [...done, c] });
   for (const t of tests) {
     const base = { name: t.name, hidden: !!t.hidden };
-    if (signal?.aborted) return notAttempt("unavailable", KIND.CANCELLED, base, []);
+    if (signal?.aborted) return notAttempt("cancelled", KIND.CANCELLED, base, []);
     const remaining = L.totalMs - used;
-    if (budgetHit || remaining <= 0) {
-      budgetHit = true;
-      cases.push({ ...base, ok: false, kind: KIND.TOTAL_TIMEOUT, ms: 0, message: messageFor(KIND.TOTAL_TIMEOUT, L) });
-      continue;
-    }
+    if (remaining <= 0) return timedOut(cases, { ...base, ok: false, kind: KIND.TOTAL_TIMEOUT, ms: 0, message: messageFor(KIND.TOTAL_TIMEOUT, L) });
     const byTotal = remaining < L.caseMs;
     const timeoutMs = Math.max(1, Math.min(L.caseMs, remaining));
     let r;
@@ -181,14 +181,14 @@ export async function judge({ code, files, entry, tests, checkMode = "output", c
       });
     } catch (e) {
       // 中途环境失败：前面已通过的组也不算数（不完整的结果不结算）
-      if (e && e.cancelled) return notAttempt("unavailable", KIND.CANCELLED, base, []);
+      if (e && e.cancelled) return notAttempt("cancelled", KIND.CANCELLED, base, []);
       if (e && e.unavailable) return notAttempt("unavailable", KIND.UNAVAILABLE, base, []);
       return notAttempt("internal-error", KIND.INTERNAL, base, []);
     }
     const ms = typeof r.ms === "number" ? r.ms : now() - c0;
     used += r.timedOut ? Math.max(ms, timeoutMs) : ms;
     let kind, actualReturn = "", badFiles = [];
-    if (r.timedOut) { kind = byTotal ? KIND.TOTAL_TIMEOUT : KIND.CASE_TIMEOUT; if (byTotal) budgetHit = true; }
+    if (r.timedOut) kind = byTotal ? KIND.TOTAL_TIMEOUT : KIND.CASE_TIMEOUT;
     else if (r.limitHit) kind = KIND.OUTPUT_LIMIT;
     else if (r.error && r.error.kind === "InternalError") return notAttempt("internal-error", KIND.INTERNAL, base, []);
     else if (r.error) kind = KIND.ERROR;
@@ -217,6 +217,7 @@ export async function judge({ code, files, entry, tests, checkMode = "output", c
         if (kind === KIND.WRONG_FILE) c.files = badFiles.map((p) => ({ path: p, expected: t.expectedFiles[p], actual: typeof r.files?.[p] === "string" ? r.files[p] : null }));
       }
     }
+    if (kind === KIND.CASE_TIMEOUT || kind === KIND.TOTAL_TIMEOUT) return timedOut(cases, c);
     cases.push(c);
   }
   const pass = cases.every((c) => c.ok);

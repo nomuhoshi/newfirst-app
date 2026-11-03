@@ -51,8 +51,11 @@ for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]].filter(([n])
   const t1 = Date.now();
   r = await J({ code: "if n == 0:\n    while True: pass\nprint(n)", tests: [T("loop", "0", { n: 0 }), T("b", "1", { n: 1 }), T("c", "2", { n: 2 })], limits: { caseMs: 1500, totalMs: 10000 } });
   const wall2 = Date.now() - t1;
-  check(tag("死循环 → case-timeout；重启后后面两组照常 pass"), r.cases.map((c) => c.kind).join() === "case-timeout,pass,pass" && r.status === "fail" && r.settle, JSON.stringify(r.cases.map((c) => c.kind)));
-  check(tag(`超时重启的加载时间不计入（墙钟 ${wall2}ms，totalMs ${r.totalMs}ms）`), r.totalMs < 2500 && wall2 > r.totalMs + 300, `${wall2} ${r.totalMs}`);
+  check(tag("死循环 → status=timeout、case-timeout，立即停止（只有这一组），不算作答、不结算"), r.status === "timeout" && r.cases.map((c) => c.kind).join() === "case-timeout" && !r.attempt && !r.settle && r.retry, JSON.stringify(r.cases.map((c) => c.kind)));
+  const t1b = Date.now();
+  r = await J({ code: "print(n)", tests: [T("b", "1", { n: 1 }), T("c", "2", { n: 2 })] });
+  const wall2b = Date.now() - t1b;
+  check(tag(`超时重启之后再判题：照常 pass（不误报 unavailable），重启加载不计入（墙钟 ${wall2b}ms，totalMs ${r.totalMs}ms）`), r.status === "pass" && r.settle && r.totalMs < 2500 && wall2b >= r.totalMs, `${wall2b} ${r.totalMs} ${r.status}`);
   r = await J({ code: "print(7)", tests: [T("a", "7")] });
   check(tag("超时之后再判题一次也正常"), r.status === "pass");
   // 3. 新字段（真实 Pyodide）：input / 文件 / 多文件 / call
@@ -70,7 +73,7 @@ for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]].filter(([n])
   r = await J({ code: "while True: pass", tests: [T("loop", ""), T("b", "")] });
   const wall3 = Date.now() - t2;
   check(tag(`默认限时：死循环约 5 秒结束（墙钟 ${wall3}ms），消息写 5 秒`), r.cases[0].kind === "case-timeout" && /5 秒/.test(r.cases[0].message) && r.cases[0].ms >= 4900 && r.cases[0].ms < 6000, `${r.cases[0].ms} ${r.cases[0].message}`);
-  check(tag(`默认限时：两组都死循环 → 合计不超过 10 秒预算，结果完整（${r.cases.map((c) => c.kind).join()}，墙钟 ${wall3}ms）`), r.cases.length === 2 && r.settle && r.totalMs <= 10500 && r.cases[1].kind !== "pass", JSON.stringify(r.cases.map((c) => c.kind)));
+  check(tag(`默认限时：两组都死循环 → 遇到第一组超时就停止（status=${r.status}，只跑了 ${r.cases.length} 组，墙钟 ${wall3}ms），不算作答`), r.status === "timeout" && r.cases.length === 1 && !r.attempt && wall3 < 9000, JSON.stringify(r.cases.map((c) => c.kind)));
   await page.waitForFunction(() => window.runner.state === "ready", null, { timeout: 60000 }); // 超时后的重启要时间
   const st = await page.evaluate(() => [window.runner.state, typeof window.runner.onStatus]);
   check(tag("结束后 Runner 为 ready，回调已还原"), st[0] === "ready");

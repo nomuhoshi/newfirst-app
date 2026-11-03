@@ -67,15 +67,16 @@ check("未知 compare 值：internal-error", r.status === "internal-error");
 // 时限：用小数字测逻辑（同样的分支，真实默认是 5s/10s）
 let t = Date.now();
 r = await judge({ code: "while True: pass", tests: [T("a", "")], limits: { caseMs: 500, totalMs: 2000 } }, pyExec);
-check("死循环：单组超时 kind=case-timeout，消息说 5 秒", r.cases[0].kind === KIND.CASE_TIMEOUT && r.cases[0].message.includes("0.5 秒") && Date.now() - t < 1800, JSON.stringify(r));
+check("死循环：单组超时 kind=case-timeout，消息说 0.5 秒（跟着 limits 变）", r.cases[0].kind === KIND.CASE_TIMEOUT && r.cases[0].message.includes("0.5 秒") && Date.now() - t < 1800, JSON.stringify(r));
+check("新规则：超时只是环境保护 → status=timeout，不算作答、不结算、不扣红心（attempt/settle=false，retry=true，提示写明不扣红心）", r.status === "timeout" && !r.attempt && !r.settle && r.retry && /不扣红心/.test(r.cases[0].message), JSON.stringify(r));
 
 pyExec.calls = 0; t = Date.now();
 r = await judge({ code: "import time\ntime.sleep(0.4)\nprint('ok')", tests: [T("a", "ok"), T("b", "ok"), T("c", "ok"), T("d", "ok")], limits: { caseMs: 500, totalMs: 1000 } }, pyExec);
 const kinds = r.cases.map((c) => c.kind);
-check("总时限：超过后剩余用例 kind=total-timeout，消息说 10 秒、与单组超时不同", kinds[0] === "pass" && kinds[1] === "pass" && kinds.slice(2).every((k) => k === KIND.TOTAL_TIMEOUT) && r.cases[3].message.includes("1 秒") && messageFor(KIND.TOTAL_TIMEOUT) !== messageFor(KIND.CASE_TIMEOUT) && messageFor(KIND.CASE_TIMEOUT).includes("5 秒") && messageFor(KIND.TOTAL_TIMEOUT).includes("10 秒"), kinds.join(","));
+check("总时限：用完预算的那一组 kind=total-timeout 并立即停止（不再跑后面的组），消息说 1 秒、与单组超时不同", kinds.join() === "pass,pass,total-timeout" && r.cases[2].message.includes("1 秒") && messageFor(KIND.TOTAL_TIMEOUT) !== messageFor(KIND.CASE_TIMEOUT) && messageFor(KIND.CASE_TIMEOUT).includes("5 秒") && messageFor(KIND.TOTAL_TIMEOUT).includes("10 秒"), kinds.join(","));
 check("总时限后不再调用执行器（最多 3 次）", pyExec.calls <= 3, String(pyExec.calls));
 check("每组 ms 和 totalMs 只算执行时间", r.cases[0].ms >= 300 && r.totalMs >= 800);
-check("总时限：整体耗时受控", Date.now() - t < 1700 && r.status === "fail", String(Date.now() - t));
+check("总时限：整体耗时受控，status=timeout（不算答错）", Date.now() - t < 1700 && r.status === "timeout" && !r.attempt && !r.settle, String(Date.now() - t));
 
 r = await judge({ code: good, tests: t1 }, { exec: async () => { throw { unavailable: true }; } });
 check("Python 不可用：status=unavailable（不算对错）", r.status === "unavailable" && !r.attempt && !r.settle && r.retry && r.cases[0].message.includes("代码已保留"));
@@ -113,7 +114,9 @@ let k = 0;
 fr = fakeRunner((r, code) => { if (k++ === 0) return; /* 第 1 组死循环 */ r.onOutput("ok\n"); r.state = "ready"; r.onStatus("done", {}); }, { loadMs: 300 });
 h = appHandler(fr);
 r = await judge({ code: "x", tests: [T("a", "ok"), T("b", "ok"), T("c", "ok")], limits: { caseMs: 100, totalMs: 250 } }, makeRunnerExecutor(fr));
-check("适配器：超时 stop() 重启后下一组照常跑（不误报 unavailable），重启加载不计时", r.status === "fail" && r.cases.map((c) => c.kind).join() === "case-timeout,pass,pass" && fr.stopped === 1 && r.totalMs < 250, JSON.stringify(r.cases.map((c) => c.kind)) + " " + r.totalMs);
+check("适配器：第一组超时 → status=timeout 立即停止，stop() 一次", r.status === "timeout" && r.cases.map((c) => c.kind).join() === "case-timeout" && fr.stopped === 1 && r.totalMs < 250, JSON.stringify(r.cases.map((c) => c.kind)) + " " + r.totalMs);
+r = await judge({ code: "x", tests: [T("a", "ok"), T("b", "ok")] }, makeRunnerExecutor(fr));
+check("适配器：超时重启之后再判题照常通过（不误报 unavailable），重启加载不计时", r.status === "pass" && r.settle, JSON.stringify(r.cases.map((c) => c.kind)));
 check("适配器：超时后回调已还原，界面收到重启的 loading/ready", fr.onStatus === h && fr.appStatus.includes("loading") && fr.appStatus.includes("ready"));
 // 加载失败 → 自动 boot 重试一次；再失败 → unavailable；之后恢复
 let ok = false;
@@ -137,7 +140,7 @@ check("适配器：run() 同步抛错 → internal-error，回调还原", r.stat
 fr = fakeRunner(() => {}); h = appHandler(fr);
 const ac = new AbortController(); setTimeout(() => ac.abort(), 50);
 r = await judge({ code: good, tests: t1, limits: { caseMs: 2000 } }, makeRunnerExecutor(fr), { signal: ac.signal });
-check("适配器：取消 → 不算作答，stop() 一次，回调还原", r.status === "unavailable" && r.cases[0].kind === KIND.CANCELLED && !r.settle && fr.stopped === 1 && fr.onStatus === h);
+check("适配器：取消 → status=cancelled，不算作答、不结算、retry=false，stop() 一次，回调还原", r.status === "cancelled" && r.cases[0].kind === KIND.CANCELLED && !r.attempt && !r.settle && !r.retry && fr.stopped === 1 && fr.onStatus === h);
 fr = fakeRunner((r) => { r.state = "ready"; r.onStatus("outputLimitStopped"); });
 r = await judge({ code: good, tests: t1 }, makeRunnerExecutor(fr));
 check("适配器：输出超限 → output-limit", r.cases[0].kind === KIND.OUTPUT_LIMIT);
