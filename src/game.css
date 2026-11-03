@@ -273,3 +273,31 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .out.offline { color: var(--g-muted); }
 .py-retry { margin-top: 8px; }
 .no-haptics small { display: block; }
+
+/* ---------- 随机练习 ---------- */
+.practice-entry-wrap { margin: 0 0 18px; }
+.practice-entry { display: flex; align-items: center; justify-content: center; margin-top: 0; background: var(--g-card); border-color: var(--g-line); color: var(--g-fg); }
+.practice-entry-text { display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.practice-entry-text small { font-size: 13px; font-weight: 500; color: var(--g-muted); }
+.practice-empty { text-align: center; margin: 6px 0 0; }
+.practice-setup { padding: 16px 16px 40px; max-width: 640px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+.practice-setup h1 { margin: 4px 0 6px; }
+.practice-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.practice-links { display: flex; gap: 12px; }
+.practice-unit { margin: 8px 0 14px; }
+.practice-lessons, .practice-sizes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pchip { min-height: 44px; padding: 6px 14px; border-radius: 10px; border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); font-size: 15px; font-weight: 600; text-align: left; }
+.pchip.sel { border-color: var(--g-primary); background: var(--g-primary); color: var(--g-on-primary); }
+.pchip.part { border-color: var(--g-primary); }
+.unit-chip { width: 100%; }
+.unit-chip > span { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.unit-chip small { font-weight: 500; opacity: .85; }
+.pchip.size { min-width: 72px; text-align: center; }
+.practice-info { margin: 14px 0 0; font-weight: 600; }
+.practice-tag { font-size: 14px; font-weight: 700; color: var(--g-muted); }
+.practice-wrong { width: 100%; max-width: 560px; text-align: left; }
+.practice-wrong ul { padding-left: 18px; margin: 4px 0; }
+.practice-wrong li { margin: 6px 0; }
+.practice-wrong small { display: block; color: var(--g-muted); }
+.practice-finish .btn3d { margin-top: 10px; }
+@media (orientation: landscape) and (min-width: 700px) { .practice-unit { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: start; } .practice-lessons { margin-top: 0; } }
