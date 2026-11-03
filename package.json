@@ -9,6 +9,7 @@
     "build": "npm run copy-pyodide && vite build",
     "preview": "vite preview --host",
     "test": "node tests/step1.test.mjs && node tests/step2.test.mjs && node tests/step3.test.mjs && node tests/step4.test.mjs",
+    "test:webkit": "node tests/webkit/webkit.test.mjs",
     "test:setup": "playwright install chromium"
   },
   "dependencies": {
