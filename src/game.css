@@ -301,3 +301,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .practice-wrong small { display: block; color: var(--g-muted); }
 .practice-finish .btn3d { margin-top: 10px; }
 @media (orientation: landscape) and (min-width: 700px) { .practice-unit { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: start; } .practice-lessons { margin-top: 0; } }
+/* 结算内容比关卡结算多（错题列表 + 两个按钮），矮屏（iPhone 横屏）要能滚动，不能把按钮挤出屏幕 */
+.practice-finish { overflow-y: auto; min-height: 0; justify-content: flex-start; overscroll-behavior: contain; }
+.practice-finish > :first-child { margin-top: auto; }
+.practice-finish > :last-child { margin-bottom: auto; }
