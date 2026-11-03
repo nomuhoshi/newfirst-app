@@ -52,7 +52,7 @@ def _t_make_input(lines):
         return q.pop(0)
     return _input
 
-def _run_task(opts):
+def _run_task(opts, data=None):
     uid = str(opts.get("id", 0))
     root = os.path.join(_TASK_BASE, uid)
     old_cwd = os.getcwd()
@@ -79,8 +79,8 @@ def _run_task(opts):
         importlib.invalidate_caches()
         random.seed(opts.get("seed", 0))
         ns = {"__name__": "__main__", "__file__": ep, "input": _t_make_input(_t_lines(opts.get("stdin")))}
-        if opts.get("data") is not None:
-            ns.update(opts["data"])
+        if data is not None:
+            ns.update(data)
         try:
             exec(compile(src, ep, "exec"), ns)
         except SyntaxError as e:

@@ -22,6 +22,8 @@ try {
   check("真实 Pyodide：输入用完 → EOFError", r.error?.kind === "EOFError", JSON.stringify(r.error));
   r = await T("input()", {});
   check("真实 Pyodide：没给 stdin → 明确报错", /没有输入数据/.test(r.error?.msg || ""), JSON.stringify(r.error));
+  r = await T('print("null 参数")', { stdin: null, files: { "x.txt": "a" }, read: [], entry: "main.py" });
+  check("真实 Pyodide：任务参数里的 null（如 stdin: null）等于没给，不会炸成 JsNull", r.stdout === "null 参数\n" && !r.error, JSON.stringify(r));
   r = await T("print(price * cups)", {}, { price: 15, cups: 4 });
   check("真实 Pyodide：任务运行也能注入 data", r.stdout === "60\n", JSON.stringify(r));
 

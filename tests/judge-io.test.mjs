@@ -18,7 +18,7 @@ exec(open(sys.argv[1], encoding="utf-8").read())
 opts = json.loads(sys.stdin.read())
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
-    r = _run_task(opts)
+    r = _run_task(opts, opts.get("data"))
 print(json.dumps({"stdout": buf.getvalue(), "error": r["error"], "files": r["files"]}, ensure_ascii=False))
 `);
 let seq = 0;

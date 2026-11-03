@@ -19,7 +19,7 @@ out = []
 for opts in runs:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        r = _run_task(opts)
+        r = _run_task(opts, opts.get("data"))
     out.append({"stdout": buf.getvalue(), "error": r["error"], "files": r["files"], "cwd": os.getcwd(), "path0": sys.path[0], "leftover": os.path.exists("/tmp/_suipian_task/" + str(opts.get("id", 0)))})
 print(json.dumps(out, ensure_ascii=False))
 `;

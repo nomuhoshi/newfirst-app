@@ -135,17 +135,19 @@ onmessage = async (e) => {
     let data = null;
     let res = null;
     let files = null;
+    let opts = null;
     try {
       if (m.task) {
         // 任务运行：每次都是全新的变量空间和虚拟文件系统（见 py-task.js）
-        const t = { ...m.task, id: m.id };
+        // 注意：Pyodide 把 JS 的 null 转成 JsNull（不是 None），所以任务参数里的 null 一律去掉（等于“没给”）；data 单独传
+        const t = JSON.parse(JSON.stringify({ ...m.task, id: m.id }, (k, v) => (v === null ? undefined : v)));
         // code 是“入口文件”的简写：files 里没有入口文件时，用 code 补上（code 为空串则不补）
         t.files = { ...(t.files || {}) };
         const entry = t.entry || "main.py";
         if (typeof m.code === "string" && m.code !== "" && !(entry in t.files)) t.files[entry] = m.code;
-        if (m.data) t.data = m.data;
-        data = pyodide.toPy(t);
-        res = taskPy(data);
+        opts = pyodide.toPy(t);
+        data = m.data ? pyodide.toPy(m.data) : null;
+        res = data ? taskPy(opts, data) : taskPy(opts);
         const r = res.toJs({ dict_converter: Object.fromEntries });
         err = r.error || null;
         // Python 的 None 转到 JS 是 undefined：统一成 null（文件不存在）
@@ -160,6 +162,7 @@ onmessage = async (e) => {
     } finally {
       if (res) res.destroy();
       if (data) data.destroy();
+      if (opts) opts.destroy();
       try { flushPy(); } catch { /* 已在上限时停止 */ }
     }
     const limitHit = run.limitHit;
