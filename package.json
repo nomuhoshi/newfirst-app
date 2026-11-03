@@ -10,7 +10,8 @@
     "preview": "vite preview --host",
     "test": "node tests/step1.test.mjs && node tests/step2.test.mjs && node tests/step3.test.mjs && node tests/step4.test.mjs && node tests/step6.test.mjs && node tests/step7.test.mjs && node tests/a11y-sheet.test.mjs && node tests/judge.test.mjs && node tests/py-task.test.mjs && node tests/judge-io.test.mjs && node tests/task-browser.test.mjs && node tests/judge-browser.test.mjs && node tests/code-task.test.mjs",
     "test:setup": "playwright install chromium",
-    "test:judge-browser": "npm run copy-pyodide && node tests/judge-browser.test.mjs"
+    "test:judge-browser": "npm run copy-pyodide && node tests/judge-browser.test.mjs",
+    "test:mobile": "node tests/webkit/run.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.4",

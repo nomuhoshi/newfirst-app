@@ -417,7 +417,7 @@ function renderPath() {
           { "aria-label": `${l.title}（${st === "done" ? "已完成" : st === "current" ? "当前关卡" : "未解锁"}）`, "data-lesson": l.id },
         );
         return h("li", { class: "path-item", style: `--off:${offset}` },
-          st === "current" ? h("div", { class: "bubble", text: i === 0 && !state.done[l.id] && state.xp === 0 ? "从这里开始" : "开始" }) : null,
+          st === "current" ? h("div", { class: "bubble", "aria-hidden": "true", onclick: () => openLessonSheet(l), text: i === 0 && !state.done[l.id] && state.xp === 0 ? "从这里开始" : "开始" }) : null,
           node, h("div", { class: "node-label", text: l.title }));
       })),
     );
