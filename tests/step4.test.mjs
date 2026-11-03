@@ -125,8 +125,9 @@ try {
     const t = await page.locator(".outpanel pre").innerText();
     check("Worker 失败：“运行中…”在几秒内结束，写明环境不允许启动 Python 线程", /不允许启动 Python 运行线程/.test(t), t.slice(0, 60));
     check("Worker 失败：有“重试”按钮", (await page.locator("[data-retry-python]").count()) === 1);
-    const cont = page.locator(".feedbar").getByRole("button", { name: "继续", exact: true });
-    check("Worker 失败：“继续”按钮可点", await cont.count() === 1 && await cont.isEnabled());
+    const cont = page.locator("[data-continue]");
+    await page.waitForFunction(() => { const b = document.querySelector("[data-continue]"); return b && !b.disabled; }, null, { timeout: 3000 }).catch(() => {});
+    check("Worker 失败：“继续”按钮可点", (await cont.count()) === 1 && (await cont.isEnabled()));
     await page.locator("[data-retry-python]").tap();
     await page.waitForFunction(() => { const t = document.querySelector(".outpanel pre")?.textContent; return t && !/运行中/.test(t); }, null, { timeout: 8000 });
     check("Worker 失败：点“重试”后仍然会结束，不会卡在“运行中…”", /不允许启动 Python 运行线程/.test(await page.locator(".outpanel pre").innerText()));
