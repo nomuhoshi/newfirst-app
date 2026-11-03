@@ -16,6 +16,7 @@ import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
+import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2 };
 const XP_CORRECT = 10;
@@ -384,12 +385,25 @@ function renderPath() {
   appEl.replaceChildren(
     circuit("full"),
     statsBar(),
-    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, units),
+    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, practiceEntry(), units),
     tabBar("path"),
   );
   notice = null;
-  // 当前关卡滚到可见
-  appEl.querySelector(".node.current")?.scrollIntoView({ block: "center" });
+  scrollToCurrent();
+}
+
+// 当前关卡（含上方“开始”气泡和下方关名）滚到可见：可见区域要扣掉吸顶的“随机练习”入口，不能被它挡住
+function scrollToCurrent() {
+  const view = appEl.querySelector(".pathview"), node = view?.querySelector(".node.current");
+  if (!node) return;
+  const parts = [node, node.parentElement?.querySelector(".bubble"), node.parentElement?.querySelector(".node-label")].filter(Boolean);
+  const vr = view.getBoundingClientRect();
+  const entry = view.querySelector(".practice-entry-wrap");
+  const top0 = entry ? Math.max(vr.top, entry.getBoundingClientRect().bottom) : vr.top; // 入口下沿以下才算可见
+  const gTop = Math.min(...parts.map((e) => e.getBoundingClientRect().top)), gBot = Math.max(...parts.map((e) => e.getBoundingClientRect().bottom));
+  const room = vr.bottom - top0, gh = gBot - gTop;
+  const want = gh >= room ? top0 + 4 : top0 + (room - gh) / 2; // 放不下就贴着入口下沿
+  view.scrollTop += gTop - want;
 }
 
 function openLessonSheet(l) {
@@ -948,6 +962,190 @@ function renderFinish(run) {
   );
 }
 
+// ---------- 随机练习（SPEC §0.3）：只用已通关关卡的原题；无奖励，不改变主线学习数据 ----------
+// 本轮结果只在内存里（currentPractice），不写本机记录：不加 XP、不扣也不恢复红心、不计连续天数、不推进解锁。
+let currentPractice = null;
+const availableUnits = () => course.units.filter((u) => u.available).map((u) => ({ id: u.id, title: u.title, lessons: UNITS[u.id].lessons }));
+
+function practiceEntry() {
+  const any = clearedScope(availableUnits(), state.done).length > 0;
+  const b = button(h("span", { class: "practice-entry-text" }, h("b", { text: "随机练习" }), h("small", { text: "无奖励，自由练习" })),
+    () => renderPracticeSetup(), "btn3d practice-entry wide", { "data-practice-entry": "" });
+  b.disabled = !any;
+  return h("div", { class: "practice-entry-wrap" }, b, any ? null : h("p", { class: "muted small practice-empty", "data-practice-empty": "", text: "完成第一关后可开始刷题" }));
+}
+
+function renderPracticeSetup(prev) {
+  currentRun = null; currentPractice = null;
+  const scope = clearedScope(availableUnits(), state.done);
+  if (!scope.length) {
+    appEl.replaceChildren(circuit("full"), statsBar(), h("main", { class: "view practice-setup" },
+      mascot(96, "companion"), h("h1", { text: "还不能刷题哦" }),
+      h("p", { "data-practice-empty": "", text: "随机练习只用你已经通关的关卡出题。完成第一关后可开始刷题，先去闯一关吧！" }),
+      button("回到地图", renderPath, "btn3d primary wide")), tabBar("path"));
+    return;
+  }
+  const selected = new Set(prev?.selected || scope.flatMap((u) => u.lessons.map((l) => l.id)));
+  let size = prev?.size || DEFAULT_ROUND;
+  const info = h("p", { class: "practice-info", role: "status", "data-practice-info": "" });
+  const startBtn = button("开始练习", () => {
+    const pool = buildPool(availableUnits(), state.done, selected);
+    if (!pool.length) return;
+    startPractice(pool, size, { selected: [...selected], size });
+  }, "btn3d primary wide", { "data-practice-start": "" });
+  const units = h("div", { class: "practice-units" });
+  const sizeRow = h("div", { class: "practice-sizes", role: "group", "aria-label": "每轮题数" });
+  const refresh = () => {
+    const n = buildPool(availableUnits(), state.done, selected).length;
+    const actual = Math.min(size, n);
+    startBtn.disabled = n === 0;
+    info.textContent = n === 0 ? "请至少选一个关卡。" : actual < size ? `已选范围只有 ${n} 道题，不够 ${size} 道，本轮用全部 ${actual} 道。` : `本轮 ${actual} 道题（已选范围共 ${n} 道）。`;
+    units.replaceChildren(...scope.map((u) => {
+      const ids = u.lessons.map((l) => l.id);
+      const all = ids.every((id) => selected.has(id)); const some = ids.some((id) => selected.has(id));
+      const ub = button(h("span", {}, h("b", { text: u.title }), h("small", { text: `已通关 ${ids.length} 关` })), () => {
+        if (all) ids.forEach((id) => selected.delete(id)); else ids.forEach((id) => selected.add(id));
+        feel.play("select"); refresh();
+      }, "pchip unit-chip" + (all ? " sel" : some ? " part" : ""), { "aria-pressed": String(all), "data-practice-unit": u.id });
+      return h("div", { class: "practice-unit" }, ub, h("div", { class: "practice-lessons" }, u.lessons.map((l) => button(l.title, () => {
+        if (selected.has(l.id)) selected.delete(l.id); else selected.add(l.id);
+        feel.play("select"); refresh();
+      }, "pchip" + (selected.has(l.id) ? " sel" : ""), { "aria-pressed": String(selected.has(l.id)), "data-practice-lesson": l.id }))));
+    }));
+    sizeRow.replaceChildren(...ROUND_SIZES.map((k) => button(`${k} 题`, () => { size = k; feel.play("select"); refresh(); },
+      "pchip size" + (k === size ? " sel" : ""), { "aria-pressed": String(k === size), "data-practice-size": String(k) })));
+  };
+  const allBtn = button("全部已学", () => { scope.forEach((u) => u.lessons.forEach((l) => selected.add(l.id))); refresh(); }, "link small", { "data-practice-all": "" });
+  const noneBtn = button("取消全部", () => { selected.clear(); refresh(); }, "link small", { "data-practice-none": "" });
+  refresh();
+  appEl.replaceChildren(circuit("full"), statsBar(), h("main", { class: "view practice-setup" },
+    h("h1", { text: "随机练习" }),
+    h("p", { class: "muted", text: "无奖励，自由练习：只从已通关的关卡出题，不加 XP、不扣红心、不计连续天数，也不影响解锁。" }),
+    h("div", { class: "practice-head" }, h("h3", { text: "范围" }), h("span", { class: "practice-links" }, allBtn, noneBtn)),
+    units,
+    h("h3", { text: "每轮题数" }), sizeRow,
+    info, startBtn,
+    button("回到地图", renderPath, "btn3d ghost wide"),
+  ), tabBar("path"));
+}
+
+function startPractice(pool, size, setup) {
+  const round = drawRound(pool, size);
+  currentPractice = {
+    setup, requested: round.requested, total: round.actual,
+    items: round.items.map((p) => ({ ...p, ex: shuffleExercise(p.ex) })),
+    queue: round.items.map((_, i) => ({ i, retry: false })),
+    results: round.items.map(() => ({ first: null, retry: null })), // first / retry：true 答对，false 答错，null 没做
+    answered: 0,
+  };
+  renderPracticeExercise(currentPractice);
+}
+
+function practiceHeader(pr) {
+  const pct = Math.round((pr.answered / Math.max(1, pr.total + pr.results.filter((r) => r.first === false).length)) * 100);
+  return h("header", { class: "lessonbar" },
+    button(icon("close", { size: 24 }), () => confirmPracticeExit(pr), "icon-btn ghost", { "aria-label": "退出练习" }),
+    h("div", { class: "progress", role: "progressbar", "aria-valuenow": String(pct), "aria-valuemin": "0", "aria-valuemax": "100" }, h("div", { class: "progress-fill", style: `width:${Math.max(4, pct)}%` })),
+    h("span", { class: "stat practice-tag", title: "随机练习无奖励" }, "练习"),
+  );
+}
+
+function confirmPracticeExit(pr) {
+  sheet((close) => [h("div", { class: "lsheet" },
+    h("h2", { text: "要退出练习吗？" }),
+    h("p", { text: "本轮练习位置不保存。随机练习不影响 XP、红心、连续天数和解锁。" }),
+    button("继续练习", close, "btn3d primary wide"),
+    button("退出", () => { close(); if (currentPractice === pr) currentPractice = null; renderPath(); }, "btn3d danger-ghost wide", { "data-practice-quit": "" }),
+  )]);
+}
+
+function renderPracticeExercise(pr) {
+  if (currentPractice !== pr) return;
+  if (pr.queue.length === 0) return renderPracticeFinish(pr);
+  const { i, retry } = pr.queue[0];
+  const item = pr.items[i];
+  const ex = item.ex;
+  window.__app.currentEx = ex; // 给自动测试用（已打乱的版本）
+  window.__app.currentPracticeItem = { id: item.id, retry };
+  let submitted = false;
+  const outPanel = h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
+  const checkBtn = button("检查", () => check(), "btn3d primary grow", { "data-check": "" });
+  checkBtn.disabled = true;
+  const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
+  const area = ex.type === "predict" ? predictArea(ex, onChange) : ex.type === "fill" ? fillArea(ex, onChange) : orderArea(ex, onChange);
+  appEl.replaceChildren(
+    circuit("edge"),
+    practiceHeader(pr),
+    h("main", { class: "lesson" },
+      h("p", { class: "tip-line practice-src" }, h("b", { text: retry ? "重练 " : "随机练习 " }), lessonTitle(item.lessonId)),
+      ex.tip ? h("p", { class: "tip-line" }, h("b", { text: "提示 " }), ex.tip) : null,
+      h("h2", { class: "q", text: ex.prompt }),
+      area.node,
+      outPanel,
+    ),
+    h("footer", { class: "lessonfoot" }, h("span", { class: "mascot-slot" }, mascot(56, "think")), checkBtn),
+  );
+  function check() {
+    if (submitted || checkBtn.disabled) return; // 连点只算一次
+    submitted = true;
+    checkBtn.disabled = true;
+    checkBtn.textContent = "检查中";
+    area.lock();
+    feel.haptic();
+    const ok = area.isCorrect();
+    const reduce = feel.reducedMotion();
+    // 只记在内存里；不碰 state（XP、红心、连续天数、解锁全部不变）
+    if (retry) pr.results[i].retry = ok; else pr.results[i].first = ok;
+    pr.answered++;
+    pr.queue.shift();
+    if (!ok && !retry) pr.queue.push({ i, retry: true }); // 答错：本轮末尾重练一次
+    const reason = ok ? area.why() : area.whyWrong();
+    showRun(outPanel, ex.type === "predict" ? ex.code : area.code());
+    let continued = false;
+    const contBtn = button("继续", () => { if (continued) return; continued = true; renderPracticeExercise(pr); }, "btn3d " + (ok ? "primary" : "danger") + " wide", { "data-continue": "" });
+    contBtn.disabled = true;
+    const fb = h("div", { class: "feedbar " + (ok ? "ok" : "bad"), role: "status" },
+      h("div", { class: "fb-head" }, icon(ok ? "check" : "cross", { size: 26, cls: "fb-ico" }), h("b", { text: ok ? "答对了！" : "不对哦" })),
+      reason ? h("p", { text: reason }) : null,
+      !ok && retry ? h("p", { class: "fb-answer" }, "解答：", h("code", { text: correctAnswerText(ex) })) : null,
+      !ok && !retry ? h("p", { class: "fb-retry", text: "这道题会在本轮最后再练一次。" }) : null,
+      contBtn,
+    );
+    setTimeout(() => {
+      if (!checkBtn.isConnected) return;
+      area.mark();
+      feel.play(ok ? "correct" : "wrong");
+      appEl.querySelector(".lessonfoot").replaceWith(fb);
+      setTimeout(() => { if (fb.isConnected) contBtn.disabled = false; }, reduce ? 0 : CONTINUE_MS - REVEAL_MS);
+    }, REVEAL_MS);
+  }
+}
+
+function lessonTitle(id) { const l = allLessons().find((x) => x.id === id); return l ? l.title : id; }
+
+function renderPracticeFinish(pr) {
+  const firstOk = pr.results.filter((r) => r.first === true).length;
+  const wrong = pr.items.map((it, k) => ({ it, r: pr.results[k] })).filter((x) => x.r.first === false);
+  const retryOk = wrong.filter((x) => x.r.retry === true).length;
+  feel.play("finish");
+  const setup = pr.setup;
+  currentPractice = null;
+  appEl.replaceChildren(h("main", { class: "finish practice-finish" },
+    mascot(110, wrong.length ? "companion" : "celebrate"),
+    h("h1", { text: "练习完成" }),
+    pr.total < pr.requested ? h("p", { class: "muted", text: `题目不够 ${pr.requested} 道，本轮用了全部 ${pr.total} 道。` }) : null,
+    h("div", { class: "finish-stats" },
+      h("div", { class: "fs" }, h("small", { text: "首次答对" }), h("b", { "data-practice-first": "", text: `${firstOk}/${pr.total}` })),
+      h("div", { class: "fs" }, h("small", { text: "重练答对" }), h("b", { "data-practice-retry": "", text: `${retryOk}/${wrong.length}` })),
+    ),
+    wrong.length ? h("div", { class: "practice-wrong" }, h("h3", { text: "错题" }), h("ul", {}, wrong.map((x) =>
+      h("li", {}, h("span", { text: `${lessonTitle(x.it.lessonId)}：${x.it.ex.prompt}` }), h("small", { text: x.r.retry ? "重练答对" : "重练仍错，已看解答" }))))) : null,
+    h("p", { class: "muted small", text: "随机练习不加 XP、不扣红心、不计连续天数。" }),
+    button("再来一轮", () => renderPracticeSetup(setup), "btn3d primary wide", { "data-practice-again": "" }),
+    button("回到地图", () => { feel.haptic(); renderPath(); }, "btn3d ghost wide", { "data-continue": "" }),
+  ));
+}
+
 // iPhone 弹出系统键盘时，按实际可视高度排版
 const vv = window.visualViewport;
 if (vv) {
@@ -958,7 +1156,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
+window.__app = { LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;
