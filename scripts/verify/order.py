@@ -1,4 +1,5 @@
 # 排序题（order）：每个 answers 都得到 expected；所有排列都跑一遍（≤ 8 行），能得到 expected 的排列都必须在 answers 里。
+# 任何排列都不能卡死（超时）。
 # 题目带 equivCases（变量 → 值的若干组）时：把行里的 “变量 = 值” 换成每组的值，可接受排列在每组下都必须和标准答案输出一样
 # ——只接受真正等价的排列，不接受“这次数字碰巧对上”的排列。
 import itertools, re
@@ -30,6 +31,7 @@ def check(items):
             if text in seen or text in accepted_text: continue
             seen.add(text)
             out, err = run(text)
+            c.ok(err != "Timeout", w, f"排列 {list(p)} 会卡死（超时），题目要避免")
             c.ok(not (err is None and out == ex["expected"]) or bool(ex.get("equivCases")) and any(
                 run("\n".join(with_case(lines, cs)[k] for k in p)) != run("\n".join(with_case(lines, cs)[k] for k in acc[0])) for cs in ex["equivCases"]),
                 w, f"排列 {list(p)} 也能得到期望输出，但会被判错（加进 answers）")

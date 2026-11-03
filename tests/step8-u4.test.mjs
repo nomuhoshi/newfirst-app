@@ -1,4 +1,4 @@
-// 第 4 单元第一部分（U4L1–U4L4）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
+// 第 4 单元（U4L1–U4L8）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
 // 运行：npm run build && node tests/step8-u3.test.mjs [chromium|webkit]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -27,7 +27,7 @@ const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 
-check("U1–U3 通关后 U4L1 是当前关，U4L2–L4 锁定", await page.evaluate(() => document.querySelector('[data-lesson="U4L1"]')?.classList.contains("current") && ["U4L2", "U4L3", "U4L4"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
+check("U1–U3 通关后 U4L1 是当前关，U4L2–L8 锁定", await page.evaluate(() => document.querySelector('[data-lesson="U4L1"]')?.classList.contains("current") && ["U4L2", "U4L3", "U4L4", "U4L5", "U4L6", "U4L7", "U4L8"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
 check("第 5 单元仍显示即将推出", (await page.locator(".unit.locked").count()) === 1);
 
 async function answer(ex, right) {
@@ -35,7 +35,7 @@ async function answer(ex, right) {
     const i = right ? ex.options.findIndex((o) => o.correct) : ex.options.findIndex((o) => !o.correct);
     await page.locator(".choice").nth(i).click();
   } else if (ex.type === "fill") {
-    const toks = right ? ex.answer : [ex.tokens.find((t) => t !== ex.answer[0])];
+    const toks = right ? ex.answer : ex.answer.map((a, i) => (i === 0 ? ex.tokens.find((t) => t !== a) : a)); // 答错：每个空都填，第一个空换成错误词块
     for (const t of toks) await page.locator(`.kchip.tok[data-token="${t.replace(/"/g, '\\"')}"]`).click();
   } else {
     const seq = right ? ex.answers[0] : [...ex.answers[0]].reverse();

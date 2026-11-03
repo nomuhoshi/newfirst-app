@@ -25,7 +25,7 @@
     {
       "id": "U4",
       "title": "循环",
-      "subtitle": "for、range、累加",
+      "subtitle": "for、range、while、break",
       "available": true,
       "file": "unit4.json"
     },
