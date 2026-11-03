@@ -276,3 +276,11 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .outpanel .out.offline { color: #C9D6DC; }
 .py-retry { margin-top: 8px; }
 .no-haptics small { display: block; }
+
+/* 矮屏（iPhone 横屏）：开场介绍和结算页内容比屏幕高时可以滑动，底部按钮不会被挤出屏幕（#app 是 overflow:hidden）。
+   内容不超出时仍然居中：用第一个/最后一个子元素的 auto 外边距代替 justify-content:center（后者超出时会把顶部也裁掉）。 */
+.finish, .onboard { overflow-y: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.finish { justify-content: flex-start; }
+.finish > :first-child { margin-top: auto; }
+.finish > :last-child { margin-bottom: auto; }
+.onboard-mid { flex: 1 0 auto; }
