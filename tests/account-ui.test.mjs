@@ -146,6 +146,7 @@ try {
   await E.page.locator("[data-code]").fill("000000"); await E.page.locator("[data-verify]").tap();
   await E.page.waitForFunction(() => /验证码不对/.test(document.querySelector("[data-login-msg]")?.textContent || ""));
   await E.shot("7-wrong-code");
+  check("验证码错误/过期：提示里写明“已过期”，并且还能点“重新发送”", /已过期/.test(await E.page.locator("[data-login-msg]").innerText()) && (await E.page.locator("[data-resend]").count()) === 1);
   check("验证码错误：提示重试，没有登录、没有创建云端数据", (await E.page.evaluate(() => window.__app.sync.account())) === null && !S.users.has("e@example.com"));
 
   const G = await device("G-phone", { guest: { version: 3, onboarded: true, xp: 40, hearts: 5, heartsAt: Date.now(), streak: 1, lastDay: "2026-11-03", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: false, lastActive: 0, prefs: { sound: true, haptics: true, soundStyle: "J" } } });
