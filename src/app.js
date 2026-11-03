@@ -10,6 +10,7 @@ import unit1 from "../content/unit1.json";
 import unit2 from "../content/unit2.json";
 import unit3 from "../content/unit3.json";
 import unit4 from "../content/unit4.json";
+import unit5 from "../content/unit5.json";
 import words from "../content/words.json";
 import { Runner } from "./runner.js";
 import { describeError } from "./errors.js";
@@ -19,7 +20,7 @@ import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
 
-const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4 };
+const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;

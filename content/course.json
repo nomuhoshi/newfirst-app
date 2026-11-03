@@ -31,8 +31,15 @@
     },
     {
       "id": "U5",
-      "title": "列表与数据",
-      "subtitle": "list、sum、len",
+      "title": "列表与序列",
+      "subtitle": "列表、下标、append、切片",
+      "available": true,
+      "file": "unit5.json"
+    },
+    {
+      "id": "U6",
+      "title": "字典与集合",
+      "subtitle": "dict、set",
       "available": false
     }
   ]
