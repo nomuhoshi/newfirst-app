@@ -2,7 +2,7 @@
 // 用 dist/ 里的真实构建产物。桌面 Chromium 模拟，不能代替微信里的 iPhone 真机。
 // 运行：npm run build && node tests/step4.test.mjs
 import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { chromium } from "playwright";
 
@@ -109,6 +109,86 @@ try {
     check("访问测试页：Supabase 未配置时明确写出，不假装通过", /跳过 Supabase 未配置/.test(rep) && !/通过 Supabase/.test(rep));
     check("访问测试页：结果里有时区、浏览器和是否在微信里", /时区：/.test(rep) && /浏览器：/.test(rep) && /在微信\/QQ 里打开：否/.test(rep));
     check("访问测试页：没有脚本错误", errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
+  { // 构建产物的语法：应用自己的脚本不使用 es2020 之后才有的语法（启发式检查，不能代替旧版 iOS 真机；Pyodide 是预编译文件，不检查）
+    const files = [];
+    const walk = (d) => { for (const f of readdirSync(d, { withFileTypes: true })) { const p = join(d, f.name); if (f.isDirectory()) { if (f.name !== "pyodide") walk(p); } else if (/\.m?js$/.test(f.name)) files.push(p); } };
+    walk(DIST);
+    const rules = [
+      ["类私有成员（this.#x）", /\bthis\.#[A-Za-z_$]/],
+      ["类静态初始化块（static {）", /\bstatic\s*\{/],
+      ["逻辑赋值（??= ||= &&=）", /(\?\?|\|\||&&)=[^=]/],
+      ["顶层 await", /^\s*await\s/m],
+    ];
+    const bad = [];
+    for (const f of files) { const txt = readFileSync(f, "utf8"); for (const [n, re] of rules) if (re.test(txt)) bad.push(`${f.slice(DIST.length + 1)}：${n}`); }
+    check(`构建产物（${files.length} 个脚本，含 Worker 和 sw.js）没有 es2020 之后的语法`, files.length > 3 && bad.length === 0, bad.join(" | "));
+  }
+
+  { // Python 不可用时的提示：区分离线 / 缺少功能 / 不能创建线程 / 原因未确认
+    const hasText = async (page) => page.evaluate(() => window.__app.pythonUnavailableText());
+    { // 原因未确认：Python 资源加载失败，但网络在线
+      const { ctx, page } = await open({ route: (pg) => pg.route(/\/pyodide\//, (r) => r.abort()) });
+      await page.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 20000 });
+      const t = await hasText(page);
+      check("Python 加载失败（在线、原因未确认）：不一律说成要联网，写明“原因未确认”并附诊断信息", /原因未确认/.test(t) && /诊断：/.test(t) && !/Python运行功能需要联网后加载/.test(t) && /iOS 16\.6/.test(t), t.replace(/\n/g, " / ").slice(0, 200));
+      await ctx.close();
+    }
+    { // 不能创建 Python 线程
+      const { ctx, page } = await open({ init: () => { window.Worker = function () { throw new Error("SecurityError: 模拟"); }; } });
+      await page.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 5000 });
+      const t = await hasText(page);
+      check("不能创建 Python 线程：明确说是环境不允许，并建议在浏览器打开", /不允许启动 Python 运行线程/.test(t) && /在浏览器打开/.test(t) && !/Python运行功能需要联网后加载/.test(t), t.slice(0, 80));
+      await ctx.close();
+    }
+    { // 浏览器缺少 WebAssembly
+      const { ctx, page } = await open({ init: () => { window.WebAssembly = undefined; } });
+      const t = await hasText(page);
+      check("浏览器没有 WebAssembly：明确写出缺少什么，不说成网络问题", /缺少：WebAssembly/.test(t) && !/Python运行功能需要联网后加载/.test(t), t.slice(0, 80));
+      await ctx.close();
+    }
+    { // 离线
+      const { ctx, page } = await open();
+      await page.waitForTimeout(500);
+      await ctx.setOffline(true);
+      const t = await hasText(page);
+      check("离线：仍然写“你现在离线。Python运行功能需要联网后加载”", /^你现在离线。Python运行功能需要联网后加载/.test(t), t.slice(0, 60));
+      await ctx.close();
+    }
+  }
+
+  { // 离线提示文字在深色输出面板上的对比度
+    const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+    const rgb = (str) => str.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+    for (const scheme of ["light", "dark"]) {
+      const { ctx, page } = await open();
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+      await page.evaluate(() => { document.body.insertAdjacentHTML("beforeend", '<details class="outpanel" open id="t-panel"><summary>运行结果</summary><pre class="out offline" id="t-pre">你现在离线。</pre></details>'); });
+      const c = await page.evaluate(() => { const cs = getComputedStyle(document.getElementById("t-pre")); return { color: cs.color, bg: cs.backgroundColor }; });
+      const r = ratio(rgb(c.color), rgb(c.bg));
+      check(`离线提示文字对比度 ≥ 4.5（${scheme === "light" ? "浅色" : "深色"}主题）`, r >= 4.5, `${c.color} on ${c.bg} = ${r.toFixed(1)}:1`);
+      await ctx.close();
+    }
+  }
+
+  { // iPhone Safari 浏览器模式下的底栏留白：竖屏保留 70px，手机横屏缩小
+    const { ctx, page } = await open();
+    await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+    await page.waitForSelector(".tabbar");
+    const pad = () => page.evaluate(() => getComputedStyle(document.querySelector(".tabbar")).paddingBottom);
+    const cls = await page.evaluate(() => document.documentElement.classList.contains("ios-browser"));
+    const portrait = await pad();
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForTimeout(200);
+    const landscape = await pad();
+    check("iPhone Safari 浏览器模式：竖屏底栏留白仍是 70px", cls && portrait === "70px", `class=${cls} 竖屏=${portrait}`);
+    check("iPhone Safari 浏览器模式：手机横屏底栏留白缩小（≤ 30px），仍不为 0", parseFloat(landscape) <= 30 && parseFloat(landscape) >= 20, `横屏=${landscape}`);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(200);
+    check("横屏回到竖屏后，底栏留白恢复 70px", (await pad()) === "70px");
     await ctx.close();
   }
 } finally {

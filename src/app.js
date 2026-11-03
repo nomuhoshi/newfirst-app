@@ -223,8 +223,9 @@ const swInfo = { status: "未启用", caches: [] }; // 给“我的”页诊断�
 // ---------- Python 运行（显示“运行结果”用） ----------
 const appEl = document.getElementById("app");
 const listeners = new Set();
+let lastLoadError = null; // 最近一次 Python 加载失败的信息（用来在“运行结果”面板里说清楚原因，不一律说成网络问题）
 const runner = new Runner({
-  onStatus(s, info) { for (const l of [...listeners]) l.status?.(s, info); },
+  onStatus(s, info) { if (s === "loadError") lastLoadError = info || {}; for (const l of [...listeners]) l.status?.(s, info); },
   onOutput(t) { for (const l of [...listeners]) l.output?.(t); },
 });
 function runForOutput(code) {
@@ -252,6 +253,20 @@ function runForOutput(code) {
   });
 }
 
+// Python 运行不了时，如实说明原因：离线 / 已确认浏览器缺少必需功能 / 不能创建 Python 线程 / 其他（原因未确认，附诊断信息）。
+function pythonUnavailableText() {
+  const tail = "选择、填空、排序的判分不受影响。";
+  if (navigator.onLine === false) return "你现在离线。Python运行功能需要联网后加载，联网后点“重试”。" + tail;
+  const missing = [];
+  if (typeof WebAssembly === "undefined") missing.push("WebAssembly");
+  if (typeof Worker === "undefined") missing.push("后台线程（Worker）");
+  if (missing.length) return `这个浏览器不支持运行 Python 需要的功能（缺少：${missing.join("、")}）。可以升级系统或浏览器，或换成 Safari / Chrome 打开。` + tail;
+  if (lastLoadError?.kind === "noWorker") return "这个环境不允许启动 Python 运行线程（可能是浏览器版本较旧，或应用内置浏览器的限制）。可以点右上角“···”选“在浏览器打开”，或换成 Safari / Chrome。" + tail;
+  const os = (navigator.userAgent.match(/(?:iPhone )?OS (\d+[_.]\d+)/) || [])[1];
+  const diag = `诊断：${String(lastLoadError?.msg || "无错误信息").slice(0, 120)}；在线：${navigator.onLine ? "是" : "否"}${os ? "；iOS " + os.replace("_", ".") : ""}${/MicroMessenger|QQ\//i.test(navigator.userAgent) ? "；微信/QQ 内" : ""}`;
+  return "Python 运行环境没有加载成功，原因未确认（可能是网络、浏览器版本，或应用内置浏览器的限制）。联网后点“重试”；仍然不行，请把下面的诊断信息发给开发者。" + tail + "\n" + diag;
+}
+
 // 在“运行结果”面板里显示真实运行结果。Python 加载不了（比如离线）时如实说明并给“重试”，不显示任何预设输出。
 function showRun(panel, code) {
   const pre = panel.querySelector("pre");
@@ -262,7 +277,7 @@ function showRun(panel, code) {
   runForOutput(code).then((r) => {
     if (!pre.isConnected) return;
     if (!r) {
-      pre.textContent = (navigator.onLine === false ? "你现在离线。" : "Python 运行环境没有加载成功。") + "Python运行功能需要联网后加载，联网后点“重试”。选择、填空、排序的判分不受影响。";
+      pre.textContent = pythonUnavailableText();
       pre.className = "out offline";
       panel.append(button("重试", () => showRun(panel, code), "btn small py-retry", { "data-retry-python": "" }));
       return;
@@ -935,7 +950,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
+window.__app = { pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;
