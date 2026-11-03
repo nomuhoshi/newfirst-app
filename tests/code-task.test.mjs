@@ -50,8 +50,8 @@ const VARI = (id, over = {}) => W(id, {
 const LESSON = (exs, id = "TESTCODE") => ({ id, title: "代码题测试", concept: "测试", story: "测试", introCode: "print(1)", exercises: exs });
 const GOOD = 'print("总价", price * cups)', BAD = 'print("总价", price - cups)';
 
-async function open({ init = null, storageSeed = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
+async function open({ init = null, storageSeed = null, viewport = { width: 390, height: 844 }, colorScheme = "light" } = {}) {
+  const ctx = await browser.newContext({ viewport, colorScheme, userAgent: UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
   if (init) await ctx.addInitScript(init);
   const page = await ctx.newPage();
   const errors = [];
@@ -347,6 +347,41 @@ try {
     await waitJudged(page, 90000);
     check("变化题超时：不算作答，不扣红心，没有反馈条", JSON.stringify(await stat(page)) === JSON.stringify(before) && (await page.locator(".feedbar").count()) === 0 && /不算作答|太长/.test(await results$(page)));
     await ctx.close();
+  }
+
+
+  if (SHOTS) { // 视觉检查：竖屏 / 横屏 × 浅色 / 深色，依次截取各个状态（只在 CI 上传截图时运行，不做断言）
+    const configs = [["portrait-light", { width: 390, height: 844 }, "light"], ["portrait-dark", { width: 390, height: 844 }, "dark"], ["landscape-light", { width: 844, height: 390 }, "light"], ["landscape-dark", { width: 844, height: 390 }, "dark"]];
+    for (const [tag, viewport, colorScheme] of configs) {
+      const { ctx, page } = await open({ viewport, colorScheme });
+      await start(page, [VARI("T-S1")]);
+      await shot(page, `v-${tag}-1-task`);
+      await page.locator("[data-worked] summary").tap();
+      await shot(page, `v-${tag}-2-worked-open`);
+      await setCode(page, "print(1");
+      await shot(page, `v-${tag}-3-editing`);
+      await page.locator("[data-check]").tap();
+      await waitJudged(page, 60000);
+      await shot(page, `v-${tag}-4-syntax-error-result`);
+      await setCode(page, "while True:\n    pass\n");
+      await page.locator("[data-check]").tap();
+      await waitJudged(page, 90000);
+      await shot(page, `v-${tag}-5-protection-stop`);
+      for (let i = 0; i < 3; i++) { await page.locator(".mascot-btn").tap(); if (i < 2) await page.locator(".overlay").getByRole("button", { name: "好的" }).tap(); }
+      await shot(page, `v-${tag}-6-solution-confirm`);
+      await page.locator(".overlay").getByRole("button", { name: "看参考解法" }).tap();
+      await shot(page, `v-${tag}-7-solution`);
+      await page.locator(".overlay").getByRole("button", { name: "好的" }).tap();
+      await setCode(page, GOOD);
+      await page.locator("[data-check]").tap();
+      await page.waitForFunction(() => window.__app.currentArea.isVariation(), null, { timeout: 60000 });
+      await shot(page, `v-${tag}-8-variation`);
+      await setCode(page, VAR_GOOD);
+      await page.locator("[data-check]").tap();
+      await page.waitForSelector(".feedbar.ok", { timeout: 60000 });
+      await shot(page, `v-${tag}-9-result-pass`);
+      await ctx.close();
+    }
   }
 
   { // 改代码题（modify）：从给定的错误代码开始
