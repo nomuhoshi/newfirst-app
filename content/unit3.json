@@ -1,7 +1,7 @@
 {
   "id": "U3",
   "title": "比较与判断",
-  "subtitle": "比较、True/False、if",
+  "subtitle": "比较、if/else/elif、and/or/not",
   "lessons": [
     {
       "id": "U3L1",
@@ -380,6 +380,514 @@
             }
           ],
           "tip": "if 下面所有缩进相同的行，都属于这个 if。"
+        }
+      ]
+    },
+    {
+      "id": "U3L5",
+      "title": "不满就提示差多少",
+      "concept": "else 二选一",
+      "story": "if 条件不成立时，可以用 else 做另一件事：两条路只走一条。else 后面不写条件，直接写英文冒号；else 下面要做的事同样缩进 4 格。",
+      "introCode": "total = 80\nif total >= 100:\n    print(\"满减 20 元\")\nelse:\n    print(\"还差\", 100 - total, \"元\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 80\nif total >= 100:\n    print(\"满减 20 元\")\nelse:\n    print(\"还差\", 100 - total, \"元\")",
+          "options": [
+            {
+              "text": "还差 20 元",
+              "correct": true,
+              "why": "80 >= 100 不成立，跳过 if 里的行，走 else 那条路。"
+            },
+            {
+              "text": "满减 20 元\n还差 20 元",
+              "correct": false,
+              "why": "if 和 else 只会走一条，不会两边都执行。"
+            },
+            {
+              "text": "满减 20 元",
+              "correct": false,
+              "why": "条件不成立，if 里的行不执行。"
+            }
+          ],
+          "tip": "if 成立走 if，不成立走 else，只走一条。"
+        },
+        {
+          "type": "fill",
+          "prompt": "补全 else 这一行。顾客只买了 1 杯，屏幕要显示：不送券",
+          "code": "cups = 1\nif cups >= 3:\n    print(\"送券\")\nelse{0}\n    print(\"不送券\")",
+          "tokens": [
+            ":",
+            " cups < 3:",
+            "："
+          ],
+          "answer": [
+            ":"
+          ],
+          "expected": "不送券",
+          "why": {
+            " cups < 3:": "else 后面不写条件：if 不成立的情况全都归 else。写了条件会报语法错误。",
+            "：": "这是中文冒号，Python 只认英文冒号 :。"
+          },
+          "hint": "else 后面直接写英文冒号，不写条件。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：会员显示会员价，不是会员显示原价。屏幕显示：会员价",
+          "lines": [
+            "is_vip = True",
+            "if is_vip:",
+            "    print(\"会员价\")",
+            "else:",
+            "    print(\"原价\")"
+          ],
+          "shuffled": [
+            3,
+            4,
+            1,
+            0,
+            2
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4
+            ]
+          ],
+          "expected": "会员价",
+          "hint": "先存好 is_vip；if 下面紧跟它缩进的行，再写 else 和它缩进的行。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 150\nif total >= 100:\n    print(\"满减 20 元\")\nelse:\n    print(\"不满减\")\nprint(\"谢谢光临\")",
+          "options": [
+            {
+              "text": "满减 20 元\n谢谢光临",
+              "correct": true,
+              "why": "走 if 这条路；最后一行没有缩进，不属于 else，一定执行。"
+            },
+            {
+              "text": "满减 20 元",
+              "correct": false,
+              "why": "print(\"谢谢光临\") 没缩进，不属于 else，照常执行。"
+            },
+            {
+              "text": "满减 20 元\n不满减\n谢谢光临",
+              "correct": false,
+              "why": "else 里缩进的行只有条件不成立时才执行。"
+            }
+          ],
+          "tip": "看缩进：缩进的行属于上面的 if 或 else，没缩进的行谁都不属于。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改：把 else 写成 else total < 100: 的程序改正确"
+        }
+      ]
+    },
+    {
+      "id": "U3L6",
+      "title": "满多少减多少",
+      "concept": "elif 多分支和 if 套 if",
+      "story": "有好几档优惠时，用 elif（意思是“否则如果”）。Python 从上往下检查，遇到第一个成立的条件就执行它，后面的都跳过。所以要把更严格的条件（比如 >= 100）放在前面。if 里面还可以再写 if，里面那层要再缩进 4 格。",
+      "introCode": "total = 120\nif total >= 100:\n    print(\"减 20\")\nelif total >= 50:\n    print(\"减 5\")\nelse:\n    print(\"不减\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 120\nif total >= 100:\n    print(\"减 20\")\nelif total >= 50:\n    print(\"减 5\")\nelse:\n    print(\"不减\")",
+          "options": [
+            {
+              "text": "减 20",
+              "correct": true,
+              "why": "120 >= 100 成立，执行第一档；后面的 elif 和 else 都跳过。"
+            },
+            {
+              "text": "减 20\n减 5",
+              "correct": false,
+              "why": "120 也 >= 50，但前面已经有成立的条件，elif 不再检查。只走一条。"
+            },
+            {
+              "text": "减 5",
+              "correct": false,
+              "why": "从上往下检查，第一个条件已经成立。"
+            }
+          ],
+          "tip": "if / elif / else 从上往下，只执行第一个成立的。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：60 元满 50，屏幕显示：减 5",
+          "lines": [
+            "total = 60",
+            "if total >= 100:",
+            "    print(\"减 20\")",
+            "elif total >= 50:",
+            "    print(\"减 5\")"
+          ],
+          "shuffled": [
+            4,
+            3,
+            0,
+            2,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4
+            ]
+          ],
+          "expected": "减 5",
+          "hint": "先存总价；if 在前，elif 在后，每个条件下面紧跟缩进的那行。"
+        },
+        {
+          "type": "fill",
+          "prompt": "规则：满 100 减 20，满 50 减 5。顾客买了 60 元，补全两个数字，让屏幕显示：减 5",
+          "code": "total = 60\nif total >= {0}:\n    print(\"减 20\")\nelif total >= {1}:\n    print(\"减 5\")",
+          "tokens": [
+            "100",
+            "50"
+          ],
+          "answer": [
+            "100",
+            "50"
+          ],
+          "expected": "减 5",
+          "why": {
+            "50": "如果先检查 >= 50，60 元会先命中“减 20”那一档。严格的条件要放前面。"
+          },
+          "hint": "从上往下只走第一个成立的：门槛高的放前面。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 120\nis_vip = False\nif total >= 100:\n    if is_vip:\n        print(\"减 25\")\n    else:\n        print(\"减 20\")\nelse:\n    print(\"不减\")",
+          "options": [
+            {
+              "text": "减 20",
+              "correct": true,
+              "why": "外层：120 >= 100 成立，进入里面；里层：不是会员，走里面的 else。"
+            },
+            {
+              "text": "减 25",
+              "correct": false,
+              "why": "is_vip 是 False，里层的 if 不成立。"
+            },
+            {
+              "text": "不减",
+              "correct": false,
+              "why": "外层条件成立，最外面的 else 不执行。"
+            }
+          ],
+          "tip": "if 套 if：先看外层，成立了再看里层。缩进越深，层越里面。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改：把 >=50 写在 >=100 前面的程序改对"
+        }
+      ]
+    },
+    {
+      "id": "U3L7",
+      "title": "会员或满额送赠品",
+      "concept": "and / or / not",
+      "story": "把几个条件组合起来：and 是“两个都成立才成立”；or 是“有一个成立就成立”；not 把 True 变 False、False 变 True。每个比较都要写完整：cups > 3 and cups < 10，不能写成 cups > 3 and < 10。",
+      "introCode": "total = 120\nis_vip = False\nprint(total >= 100 and is_vip)\nprint(total >= 100 or is_vip)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 120\nis_vip = False\nprint(total >= 100 and is_vip)\nprint(total >= 100 or is_vip)",
+          "options": [
+            {
+              "text": "False\nTrue",
+              "correct": true,
+              "why": "and 要两个都成立，is_vip 是 False，所以 False；or 有一个成立就行，所以 True。"
+            },
+            {
+              "text": "True\nTrue",
+              "correct": false,
+              "why": "and 要求两个条件都成立，is_vip 是 False。"
+            },
+            {
+              "text": "False\nFalse",
+              "correct": false,
+              "why": "or 只要一个成立：120 >= 100 成立。"
+            }
+          ],
+          "tip": "and：都要；or：有一个就行。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "is_vip = True\nprint(not is_vip)",
+          "options": [
+            {
+              "text": "False",
+              "correct": true,
+              "why": "not 把 True 变成 False。"
+            },
+            {
+              "text": "True",
+              "correct": false,
+              "why": "not 会反过来：True 变 False。"
+            },
+            {
+              "text": "not True",
+              "correct": false,
+              "why": "not 会被计算，显示的是结果，不是这段文字。"
+            }
+          ],
+          "tip": "not 读作“不是”。"
+        },
+        {
+          "type": "fill",
+          "prompt": "杯数在 3 到 10 之间（不含两端）才显示 True。补全条件。",
+          "code": "cups = 5\nprint(cups > 3 and {0} 10)",
+          "tokens": [
+            "cups <",
+            "<",
+            "cups >"
+          ],
+          "answer": [
+            "cups <"
+          ],
+          "expected": "True",
+          "why": {
+            "<": "and 两边要各是完整的比较，不能省掉 cups。会报语法错误。",
+            "cups >": "5 > 10 不成立，结果是 False。"
+          },
+          "hint": "and 后面也要写完整：变量、符号、数字。"
+        },
+        {
+          "type": "fill",
+          "prompt": "会员或者满 100 元，都能拿赠品。顾客不是会员但买了 120 元，屏幕要显示：有赠品",
+          "code": "is_vip = False\ntotal = 120\nif is_vip {0} total >= 100:\n    print(\"有赠品\")\nelse:\n    print(\"没有赠品\")",
+          "tokens": [
+            "or",
+            "and"
+          ],
+          "answer": [
+            "or"
+          ],
+          "expected": "有赠品",
+          "why": {
+            "and": "and 要两个都成立；这位顾客不是会员，结果是没有赠品。“或者”要用 or。"
+          },
+          "hint": "“有一个成立就行”用哪个词？"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改：把 cups > 3 and < 10 改成完整条件"
+        }
+      ]
+    },
+    {
+      "id": "U3L8",
+      "title": "项目：折扣检查",
+      "concept": "单元项目：组合 if、and/or、边界值",
+      "story": "单元项目：做一个折扣检查器。规则：满 100 元（正好 100 也算）减 20；会员再减 5。程序用 pay 记住应付金额，一步步减。",
+      "introCode": "total = 120\nis_vip = True\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 100\nis_vip = False\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
+          "options": [
+            {
+              "text": "应付 80",
+              "correct": true,
+              "why": "正好 100：>= 包含相等，减 20；不是会员，不再减。"
+            },
+            {
+              "text": "应付 100",
+              "correct": false,
+              "why": ">= 100 包含正好 100，所以要减。"
+            },
+            {
+              "text": "应付 75",
+              "correct": false,
+              "why": "is_vip 是 False，会员那一步不执行。"
+            }
+          ],
+          "tip": "边界值：正好 100 算不算，看用的是 > 还是 >=。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：会员正好买 100 元，算出要付多少。屏幕显示：应付 75",
+          "lines": [
+            "pay = 100",
+            "if pay >= 100:",
+            "    pay = pay - 20",
+            "is_vip = True",
+            "if is_vip:",
+            "    pay = pay - 5",
+            "print(\"应付\", pay)"
+          ],
+          "shuffled": [
+            6,
+            4,
+            5,
+            2,
+            3,
+            0,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            [
+              0,
+              1,
+              5,
+              3,
+              4,
+              2,
+              6
+            ],
+            [
+              0,
+              3,
+              1,
+              2,
+              4,
+              5,
+              6
+            ],
+            [
+              0,
+              3,
+              1,
+              5,
+              4,
+              2,
+              6
+            ],
+            [
+              3,
+              0,
+              1,
+              2,
+              4,
+              5,
+              6
+            ],
+            [
+              3,
+              0,
+              1,
+              5,
+              4,
+              2,
+              6
+            ]
+          ],
+          "expected": "应付 75",
+          "hint": "先满减再判断会员：如果先减会员的 5 元，100 就变成 95，不满 100 了。每个 if 下面紧跟它缩进的那行。"
+        },
+        {
+          "type": "fill",
+          "prompt": "满 200 减 50，满 100 减 20（只减一档）。顾客买了 150 元，补全两个数字，屏幕要显示：应付 130",
+          "code": "total = 150\npay = total\nif total >= {0}:\n    pay = pay - 50\nelif total >= {1}:\n    pay = pay - 20\nprint(\"应付\", pay)",
+          "tokens": [
+            "200",
+            "100"
+          ],
+          "answer": [
+            "200",
+            "100"
+          ],
+          "expected": "应付 130",
+          "why": {
+            "100": "门槛顺序反了：150 元会先命中“减 50”那一档（150 >= 100），多减了钱。门槛高的要放前面。"
+          },
+          "hint": "elif 从上往下只走一个：门槛高的放前面。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 80\nis_vip = True\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
+          "options": [
+            {
+              "text": "应付 75",
+              "correct": true,
+              "why": "80 不满 100，不减 20；是会员，减 5。两个 if 是分开的，各自判断。"
+            },
+            {
+              "text": "应付 55",
+              "correct": false,
+              "why": "80 < 100，满减那步不执行。"
+            },
+            {
+              "text": "应付 80",
+              "correct": false,
+              "why": "两个 if 各自独立：第一个不成立，第二个仍会检查。"
+            }
+          ],
+          "tip": "两个分开的 if 都会检查；if/elif 才是只走一个。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "write",
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "写一写：已给 total、is_vip，输出 应付 <金额>。测试：(120, False)→应付 100；(120, True)→应付 95；(80, True)→应付 75；(100, False)→应付 80",
+          "reference": "pay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
+          "tests": [
+            {
+              "data": {
+                "total": 120,
+                "is_vip": false
+              },
+              "stdout": "应付 100"
+            },
+            {
+              "data": {
+                "total": 120,
+                "is_vip": true
+              },
+              "stdout": "应付 95"
+            },
+            {
+              "data": {
+                "total": 80,
+                "is_vip": true
+              },
+              "stdout": "应付 75"
+            },
+            {
+              "data": {
+                "total": 100,
+                "is_vip": false
+              },
+              "stdout": "应付 80"
+            }
+          ]
         }
       ]
     }
