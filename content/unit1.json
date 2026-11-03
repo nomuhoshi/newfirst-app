@@ -449,11 +449,11 @@
         },
         {
           "type": "fill",
-          "prompt": "屏幕要显示：总价 60",
+          "prompt": "用单价和杯数两个变量计算总价，补全程序。",
           "code": "price = 15\ncups = 4\nprint(\"总价\", {0})",
           "tokens": [
             "price * cups",
-            "60",
+            "price - cups",
             "price + cups"
           ],
           "answer": [
@@ -461,7 +461,7 @@
           ],
           "expected": "总价 60",
           "why": {
-            "60": "直接写 60 也能显示，但换了杯数就要手改。让程序用 price * cups 自己算。",
+            "price - cups": "单价减杯数，得到 11。",
             "price + cups": "15 + 4 = 19，这是加法。"
           },
           "hint": "总价 = 单价 × 杯数。"
