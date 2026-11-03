@@ -75,7 +75,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           if (busy) return; busy = true; go.disabled = true; say("正在登录…", false);
           const r = await sync.verify(email, c, getState());
           busy = false; go.disabled = false;
-          if (!r.ok) { say(r.kind === "auth" ? "验证码不对或已过期，请检查后重试，或点“重新发送”。" : errorText(r)); return; }
+          if (!r.ok) { say(r.kind === "auth" ? "验证码错误或已过期，请检查后重试，或点“重新发送”。" : errorText(r)); return; }
           if (r.needChoice) { stepChoice(r); return; }
           success(r);
         }, "btn3d primary wide", { "data-verify": "" });

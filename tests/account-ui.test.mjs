@@ -88,6 +88,7 @@ const statusOf = (d) => d.page.evaluate(() => window.__app.sync.status().status)
 try {
   { // 没有云端配置：只显示“暂未开通”
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
+    await ctx.addInitScript(() => { try { localStorage.setItem("suipian.cloudConfig", JSON.stringify({ url: "", anonKey: "" })); } catch {} }); // 本机测试才生效：模拟“没配置”
     const page = await ctx.newPage(); await page.goto(BASE, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.__app && window.__app.sync);
     await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
     await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-account]");
@@ -144,7 +145,7 @@ try {
   const E = await device("E-phone");
   await toMe(E); await E.page.locator("[data-open-login]").tap(); await E.page.locator("[data-email]").fill("e@example.com"); await E.page.locator("[data-send-code]").tap();
   await E.page.locator("[data-code]").fill("000000"); await E.page.locator("[data-verify]").tap();
-  await E.page.waitForFunction(() => /验证码不对/.test(document.querySelector("[data-login-msg]")?.textContent || ""));
+  await E.page.waitForFunction(() => /验证码错误或已过期/.test(document.querySelector("[data-login-msg]")?.textContent || ""));
   await E.shot("7-wrong-code");
   check("验证码错误/过期：提示里写明“已过期”，并且还能点“重新发送”", /已过期/.test(await E.page.locator("[data-login-msg]").innerText()) && (await E.page.locator("[data-resend]").count()) === 1);
   check("验证码错误：提示重试，没有登录、没有创建云端数据", (await E.page.evaluate(() => window.__app.sync.account())) === null && !S.users.has("e@example.com"));
