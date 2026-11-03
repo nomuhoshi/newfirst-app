@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 64" width="360" height="192" role="img" aria-label="体力图标：真空管（亮 / 暗）">
+  <title>体力图标：真空管（左：亮，有体力；右：暗，已耗尽）原创简化轮廓</title>
+  <style>
+    .glass{fill:none;stroke:currentColor;stroke-width:3;stroke-linejoin:round}
+    .base{fill:currentColor}
+    .fil{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+    .on .fil{stroke:#f2a33a}
+    .off .fil{stroke:currentColor;opacity:.35;stroke-dasharray:1 5}
+    .on .glow{fill:#f2a33a;opacity:.22}
+    .off .glow{display:none}
+  </style>
+  <g class="on" color="#2b3a55">
+    <ellipse class="glow" cx="30" cy="26" rx="19" ry="22"/>
+    <path class="glass" d="M30 4C18 4 12 14 12 26c0 8 4 14 8 17v4h20v-4c4-3 8-9 8-17C48 14 42 4 30 4Z"/>
+    <path class="fil" d="M24 44V30l6-8 6 8v14"/>
+    <rect class="base" x="20" y="47" width="20" height="9" rx="2"/>
+    <path d="M24 56v5M30 56v5M36 56v5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <g class="off" color="#2b3a55" transform="translate(60 0)">
+    <path class="glass" d="M30 4C18 4 12 14 12 26c0 8 4 14 8 17v4h20v-4c4-3 8-9 8-17C48 14 42 4 30 4Z"/>
+    <path class="fil" d="M24 44V30l6-8 6 8v14"/>
+    <rect class="base" x="20" y="47" width="20" height="9" rx="2"/>
+    <path d="M24 56v5M30 56v5M36 56v5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>
