@@ -1,13 +1,12 @@
 # 检查与发布（GitHub Pages：Settings → Pages 的 Source 为 GitHub Actions）。
-# - PR 和推送 main：安装 → 构建 → 自动测试。PR 只检查，不部署、不需要部署权限。
+# - 任何 PR（不限 base 分支）和推送 main：安装 → 构建 → 自动测试。PR 只检查，不部署、不需要部署权限。
 # - 只有推送 main（或在 main 上手动运行）且测试通过后，才发布。
 # - PR 的重复运行可以互相取消；main 的运行和部署永远不会被取消。
 name: Test and deploy
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  pull_request:       # 所有 PR 都跑（含 base 不是 main 的叠加 PR）；只有推送 main 才会部署
   workflow_dispatch:
 permissions:
   contents: read

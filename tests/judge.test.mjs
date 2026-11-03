@@ -88,7 +88,7 @@ check("执行器内部异常：status=internal-error，不算作答", r.status =
 r = await judge({ code: good, tests: t1 }, { exec: async () => ({ stdout: "", error: { kind: "InternalError", msg: "x" } }) });
 check("worker 报 InternalError：status=internal-error（不算学生错）", r.status === "internal-error");
 r = await judge({ code: good, tests: t1 }, { exec: async () => ({ stdout: "x", error: null, limitHit: true }) });
-check("输出超限：kind=output-limit", r.cases[0].kind === KIND.OUTPUT_LIMIT && r.status === "fail");
+check("输出超限：kind=output-limit，status=output-limit（不算作答、不结算、不扣红心），提示点明检查循环或打印次数", r.cases[0].kind === KIND.OUTPUT_LIMIT && r.status === "output-limit" && !r.attempt && !r.settle && r.retry && /检查循环或打印次数/.test(r.cases[0].message), JSON.stringify(r));
 r = await judge({ code: good, tests: t1, checkMode: "function" }, pyExec);
 check("非 output 模式：internal-error（本 PR 只支持 U3 输出模式）", r.status === "internal-error");
 r = await judge({ code: good, tests: [] }, pyExec);
@@ -143,7 +143,7 @@ r = await judge({ code: good, tests: t1, limits: { caseMs: 2000 } }, makeRunnerE
 check("适配器：取消 → status=cancelled，不算作答、不结算、retry=false，stop() 一次，回调还原", r.status === "cancelled" && r.cases[0].kind === KIND.CANCELLED && !r.attempt && !r.settle && !r.retry && fr.stopped === 1 && fr.onStatus === h);
 fr = fakeRunner((r) => { r.state = "ready"; r.onStatus("outputLimitStopped"); });
 r = await judge({ code: good, tests: t1 }, makeRunnerExecutor(fr));
-check("适配器：输出超限 → output-limit", r.cases[0].kind === KIND.OUTPUT_LIMIT);
+check("适配器：输出超限 → output-limit，不算作答", r.cases[0].kind === KIND.OUTPUT_LIMIT && r.status === "output-limit" && !r.attempt);
 
 console.log(`\n${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);

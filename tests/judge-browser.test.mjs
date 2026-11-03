@@ -68,6 +68,8 @@ for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]].filter(([n])
   r = await J({ code: "input()", tests: [T("a", "")] });
   check(tag("没有 stdin 却调用 input()：算答错（不是环境问题），提示没有输入数据"), r.status === "fail" && /没有输入数据/.test(r.cases[0].error.msg), JSON.stringify(r.cases));
 
+  r = await J({ code: "for i in range(10**6):\n    print(i)", tests: [T("a", ""), T("b", "")] });
+  check(tag("输出太多（真实 Worker 的 100 行 / 8 KiB 上限）：status=output-limit，不算作答，只跑了第一组"), r.status === "output-limit" && !r.attempt && !r.settle && r.cases.length === 1 && /检查循环或打印次数/.test(r.cases[0].message), JSON.stringify(r.cases.map((c) => c.kind)) + r.status);
   // 4. 默认限时（5 秒 / 10 秒）真实跑一次：死循环 → 约 5 秒后 case-timeout，提示写 5 秒
   const t2 = Date.now();
   r = await J({ code: "while True: pass", tests: [T("loop", ""), T("b", "")] });
