@@ -76,7 +76,7 @@ h1, h2, h3 { letter-spacing: .2px; }
 .lesson-code { display: flex; flex-direction: column; }
 .lesson-code > .q { font-size: 18px; margin: 4px 0 8px; flex: none; }
 .lesson-code .ct-root { flex: none; gap: 8px; }
-.lesson-code .ct-prompt { display: flex; flex-direction: column; gap: 8px; max-height: 24dvh; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.lesson-code .ct-prompt { display: flex; flex-direction: column; gap: 8px; max-height: 20dvh; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
 .lesson-code .ct-given { font-size: 14px; color: var(--g-muted); }
 .lesson-code .ct-given code { background: var(--g-code-bg); color: var(--g-code-fg); border-radius: 6px; padding: 1px 7px; font-size: 13px; }
 .lesson-code .ct-samples { gap: 6px; }
@@ -130,9 +130,10 @@ h1, h2, h3 { letter-spacing: .2px; }
   /* 代码题：左边题面、右边编辑器；内置键盘 = 左侧字母区 + 右侧操作区，所有键 44px 高 */
   .lesson-code { overflow: auto; }
   .lesson-code > .q { font-size: 15px; margin: 0 0 4px; }
-  .ct-prompt { max-height: none; grid-column: 1; grid-row: 1 / span 6; }
-  .ct-editor { min-height: 72px; }
-  .ct-root > .ct-prompt, .ct-root > .ct-editor { }
+  .lesson-code .ct-prompt { max-height: none; grid-column: 1; grid-row: 1 / span 6; }
+  .lesson-code .ct-editor { min-height: 72px; }
+  .lesson-code .ct-root { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); column-gap: 14px; align-items: start; }
+  .lesson-code .ct-root > :not(.ct-prompt) { grid-column: 2; }
   #keyboard.ct-kb { display: grid; grid-template-columns: minmax(0, 1fr) 190px; column-gap: 8px; padding: 2px 6px calc(2px + env(safe-area-inset-bottom)); }
   .ios-browser #keyboard.ct-kb { padding-bottom: 20px; }
   #keyboard.ct-kb[hidden] { display: none; }
