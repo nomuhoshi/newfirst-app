@@ -109,10 +109,16 @@ def _run(src, data=None):
         _flush()                 # 没有换行的输出（如 print("a", end="")）也要刷出来
 `;
 
-// 离线等原因导致 Pyodide 内部的 Promise 被拒绝（WebKit 会报成 Unhandled Promise Rejection）：这里接住，加载阶段按加载失败处理
+// 只接住“Pyodide 加载阶段”的网络类失败（离线、资源取不到）：WebKit 会把它报成 Unhandled Promise Rejection。
+// 其他任何拒绝（包括加载完成之后的）原样放过，不屏蔽；接住的这类也会 console.error 保留诊断信息，并把原文带进加载失败提示。
+const LOAD_PHASE_ERR = /Load failed|Failed to fetch|NetworkError|fetch|Importing a module script failed|Failed to load|wasm|pyodide/i;
 self.addEventListener("unhandledrejection", (ev) => {
+  if (pyodide) return;
+  const msg = String((ev.reason && ev.reason.message) || ev.reason || "");
+  if (!LOAD_PHASE_ERR.test(msg)) return;
   ev.preventDefault?.();
-  if (!pyodide) postMessage({ type: "loadError", msg: String((ev.reason && ev.reason.message) || ev.reason || "加载失败").slice(0, LIMITS.maxErrorChars) });
+  console.error("[py-worker] Pyodide 加载阶段的未处理拒绝：", ev.reason);
+  postMessage({ type: "loadError", msg: msg.slice(0, LIMITS.maxErrorChars) });
 });
 
 onmessage = async (e) => {
