@@ -93,7 +93,7 @@ h1, h2, h3 { letter-spacing: .2px; }
 .lesson-code .ct-editor .cm-content, .ct-editor .cm-line { color: var(--g-code-fg); caret-color: var(--g-copper); }
 .lesson-code .ct-editor .cm-gutters { color: var(--g-code-dim); }
 .lesson-code .ct-editor .cm-editor.cm-focused { outline: 2px solid var(--g-copper); }
-.lesson-code .ct-toolbar { gap: 8px; flex-wrap: nowrap; }
+.lesson-code .ct-toolbar { gap: 8px; flex-wrap: nowrap; position: sticky; bottom: 0; z-index: 2; background: var(--g-bg); padding: 4px 0 2px; }
 .lesson-code .ct-btn { min-height: 44px; border-radius: 12px; padding: 0 14px; }
 .lesson-code .ct-btn.run { flex: 1; }
 .lesson-code .ct-btn.ghost { background: transparent; border-color: transparent; }
@@ -126,8 +126,7 @@ h1, h2, h3 { letter-spacing: .2px; }
   .finish { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; align-content: center; justify-items: center; }
   .finish > :nth-child(-n+3) { grid-column: 1; }
   .finish > :nth-child(n+4) { grid-column: 2; width: 100%; }
-  .finish > :first-child { margin-top: 0; grid-row: 1 / span 3; align-self: end; }
-  .finish h1 { grid-row: 4; }
+  .finish > :first-child { margin-top: 0; }
   .finish .btn3d { margin-top: 8px; }
   .finish-stats { margin: 10px 0 6px; }
   .fs { padding: 8px 4px; }
