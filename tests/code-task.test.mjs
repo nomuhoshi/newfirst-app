@@ -4,7 +4,7 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 
 const DIST = resolve(new URL("../dist", import.meta.url).pathname);
 const PORT = 4341, BASE = `http://localhost:${PORT}/`;
@@ -22,7 +22,10 @@ const srv = createServer((req, resp) => {
   resp.end(readFileSync(p));
 });
 await new Promise((res) => srv.listen(PORT, res));
-const browser = await chromium.launch();
+// MOBILE_BROWSER=webkit|chromium（默认 chromium）；浏览器起不来 → 环境失败，exit 2，不算通过
+const browserType = process.env.MOBILE_BROWSER === "webkit" ? webkit : chromium;
+let browser;
+try { browser = await browserType.launch(); } catch (e) { console.log("环境失败：浏览器启动失败 " + String(e.message).split("\n")[0]); srv.closeAllConnections(); srv.close(); process.exit(2); }
 
 const W = (id, over = {}) => ({
   id, version: 1, type: "write", prompt: "输出：总价 <价格×杯数>", given: ["price", "cups"], starter: "# price 和 cups 已准备好\n", checkMode: "output",
