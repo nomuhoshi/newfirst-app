@@ -36,6 +36,7 @@ const json = (route, status, body) => route.fulfill({ status, headers: { ...CORS
 async function fakeSupabase(ctx) {
   await ctx.route(FAKE + "/**", async (route) => {
     const req = route.request(), u = new URL(req.url());
+    if (ctx.__off) return route.abort("internetdisconnected"); // Chromium 的 setOffline 拦不住 route 接管的请求，这里自己断
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
     const body = req.postData() ? JSON.parse(req.postData()) : {};
     const uid = S.tokens.get((req.headers().authorization || "").replace("Bearer ", ""));
@@ -113,13 +114,13 @@ try {
   await earn(B, "U1L1", 30); await syncNow(B);
   check("B 学习不影响 A 的云端记录", xpIn("a@example.com") === 60 && xpIn("b@example.com") === 30);
 
-  await A.ctx.setOffline(true);
+  await A.ctx.setOffline(true); A.ctx.__off = true;
   await earn(A, "U1L3", 30);
   check("A 离线学习：本机保存，状态是离线/待上传，不报错", (await syncNow(A)) === false && ["offline", "pending"].includes(await statusOf(A)) && (await xpOnPage(A)) === 90);
   await toMe(A); await A.shot("6-me-offline");
   check("离线时我的页显示“离线/等待上传”提示", /离线|等待上传/.test(await A.page.locator("[data-sync-status]").innerText()));
   await earn(A2, "U1L4", 30); await syncNow(A2);
-  await A.ctx.setOffline(false);
+  await A.ctx.setOffline(false); A.ctx.__off = false;
   await syncNow(A); await syncNow(A2); await syncNow(A);
   check("重连后：云端 120 XP（60 + 离线 30 + iPad 30），两台设备都是 120，没有重复加分", xpIn("a@example.com") === 120 && (await xpOnPage(A)) === 120 && (await xpOnPage(A2)) === 120, `${xpIn("a@example.com")}/${await xpOnPage(A)}/${await xpOnPage(A2)}`);
   for (let i = 0; i < 3; i++) { await syncNow(A); await syncNow(A2); }
