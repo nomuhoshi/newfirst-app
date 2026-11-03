@@ -148,12 +148,10 @@ try {
     const setupOpen = v.ok && await page.waitForSelector("[data-practice-start]", { timeout: 3000 }).then(() => true, () => false);
     check(G, `通关 ${n} 关：真实点击随机练习入口打开设置`, setupOpen, v.rect);
     if (setupOpen) {
-      if (HAS.sheetFocus[0]) {
-        check(G, `通关 ${n} 关：练习设置打开后焦点在弹层内`, await page.evaluate(() => !!document.activeElement?.closest(".overlay, .sheet, [role=dialog]")));
-        await page.keyboard.press("Escape");
-        check(G, `通关 ${n} 关：Esc 关闭练习设置，焦点回到入口`, await page.waitForFunction(() => document.activeElement?.hasAttribute("data-practice-entry"), null, { timeout: 3000 }).then(() => true, () => false));
-      } else { need(G, "sheetFocus"); await page.keyboard.press("Escape"); }
-      await page.waitForSelector("[data-practice-start]", { state: "detached", timeout: 3000 }).catch(() => {});
+      // 随机练习设置（#12）是整页，不是弹层：确认没有遮罩，并且底部“学习”标签真实点击后回到地图
+      check(G, `通关 ${n} 关：练习设置是整页（没有弹层遮罩）`, await page.evaluate(() => !document.querySelector(".overlay")));
+      const back = await reachAndClick(page, page.getByRole("button", { name: "学习", exact: true }));
+      check(G, `通关 ${n} 关：真实点击底部“学习”标签回到地图`, back.ok && await page.waitForSelector(".pathview .node.current", { timeout: 3000 }).then(() => true, () => false), back.rect);
     }
     for (const [k, sel] of [["气泡", ".node.current ~ .bubble, .bubble"], ["节点", ".node.current"]]) {
       if (k === "气泡" && !(await page.locator(".bubble").count())) continue;
