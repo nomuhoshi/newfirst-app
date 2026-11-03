@@ -27,7 +27,7 @@ export function newId() {
   for (let i = 0; i < 24; i++) s += Math.floor(Math.random() * 16).toString(16);
   return s;
 }
-export const isId = (x) => typeof x === "string" && ID_RE.test(x);
+export const isId = (x) => typeof x === "string" && ID_RE.test(x) && x !== "__proto__"; // __proto__ 作为对象键会改原型、丢数据
 
 const natural = (n) => (Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0);
 const clone = (x) => JSON.parse(JSON.stringify(x));
