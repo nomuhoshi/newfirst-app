@@ -39,6 +39,7 @@ async function open({ init = null, storageSeed = null } = {}) {
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e.message || e)));
+  page.__errors = errors;
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.__app && window.__app.getState);
   await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
@@ -47,7 +48,10 @@ async function open({ init = null, storageSeed = null } = {}) {
 async function start(page, exs, opts = {}) {
   await page.evaluate(([l, o]) => window.__app.startLesson(l, o), [LESSON(exs, opts.id), { review: !!opts.review }]);
   await page.getByRole("button", { name: "继续", exact: true }).tap();
-  await page.waitForSelector("[data-code-task]");
+  await page.waitForSelector("[data-code-task]", { timeout: 15000 }).catch(async (e) => {
+    console.log("页面脚本错误：", JSON.stringify(page.__errors || []), "\n页面文字：", (await page.locator("#app").innerText()).slice(0, 300));
+    throw e;
+  });
 }
 const stat = (page) => page.evaluate(() => { const s = window.__app.getState(); return { xp: s.xp, hearts: s.hearts }; });
 const setCode = (page, code) => page.evaluate((c) => window.__app.currentArea.setCode(c), code);

@@ -700,7 +700,7 @@ function renderExercise(run) {
   const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
 
   // 各题型的答题区，返回 { node, ready(), lock(), mark(), isCorrect(), why(), whyWrong(), code() }
-  const area = isCode ? createCodeArea(ex, { exec: codeExec, runner, onChange, ui: { sheet, button }, pythonUnavailable: pythonUnavailableText })
+  const area = isCode ? createCodeArea(ex, { exec: codeExec, runner, onChange, ui: { sheet, button }, pythonUnavailable: () => (typeof pythonUnavailableText === "function" ? pythonUnavailableText() : undefined) })
     : ex.type === "predict" ? predictArea(ex, onChange)
     : ex.type === "fill" ? fillArea(ex, onChange)
     : orderArea(ex, onChange);

@@ -125,7 +125,8 @@ export function createCodeArea(ex, ctx) {
     statusLine.textContent = "Python 加载中…（可以先写代码）";
   }
   pyStatus();
-  const tick = setInterval(() => { if (!root.isConnected) { if (tick._seen) clearInterval(tick); return; } tick._seen = true; if (!busy) pyStatus(); }, 600);
+  let seen = false;
+  const tick = setInterval(() => { if (!root.isConnected) { if (seen) clearInterval(tick); return; } seen = true; if (!busy) pyStatus(); }, 600);
 
   function setBusy(b) { busy = b; runBtn.textContent = b ? "停止" : "运行"; ctx.onChange?.(); }
 
