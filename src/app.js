@@ -273,27 +273,48 @@ function showRun(panel, code) {
 }
 
 // ---------- 通用浮层 / 提示 ----------
+// 弹窗里真正能接收键盘焦点的元素：跳过禁用、tabindex=-1、hidden 属性、display:none / visibility:hidden、零尺寸
+const FOCUSABLE = "button, a[href], input, select, textarea, [tabindex]";
+function focusables(root) {
+  return [...root.querySelectorAll(FOCUSABLE)].filter((el) => {
+    if (el.disabled || el.getAttribute("tabindex") === "-1" || el.closest("[hidden]")) return false;
+    if (el.tagName === "INPUT" && el.type === "hidden") return false;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === "hidden" || cs.display === "none") return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0; // 祖先 display:none 时也是 0 尺寸
+  });
+}
 function sheet(content, { onClose, cls = "" } = {}) {
   const opener = document.activeElement;
-  const close = () => { if (!wrap.isConnected) return; wrap.remove(); onClose?.(); if (opener?.isConnected) opener.focus?.({ preventScroll: true }); };
+  const close = () => {
+    if (!wrap.isConnected) return;
+    const hadFocus = wrap.contains(document.activeElement);
+    wrap.remove(); onClose?.();
+    // 打开它的按钮还在就还给它；已被移除（例如重新渲染）时退回到页面主体，不抛错
+    if (opener && opener !== document.body && opener.isConnected && opener.focus) opener.focus({ preventScroll: true });
+    else if (hadFocus && document.activeElement && document.activeElement !== document.body) document.activeElement.blur?.();
+  };
   const openedAt = Date.now();
-  const wrap = h("div", { class: "overlay " + cls, role: "dialog", "aria-modal": "true" }, h("div", { class: "sheet" }, content(close)));
+  const wrap = h("div", { class: "overlay " + cls, role: "dialog", "aria-modal": "true", tabindex: "-1" }, h("div", { class: "sheet" }, content(close)));
   wrap.addEventListener("click", (e) => { if (e.target === wrap && Date.now() - openedAt > 800) close(); });
   // 键盘：Esc 关闭；Tab 在弹窗内循环；打开时焦点移入弹窗（iPad 外接键盘 / 读屏）
   wrap.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); close(); return; }
     if (e.key !== "Tab") return;
-    const f = [...wrap.querySelectorAll("button:not([disabled]), a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])")];
-    if (!f.length) return;
-    const first = f[0], last = f[f.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    const f = focusables(wrap);
+    if (!f.length) { e.preventDefault(); wrap.focus({ preventScroll: true }); return; } // 没有可聚焦的控件：焦点留在弹窗本身
+    // 每次都由这里决定下一个焦点，浏览器自己的 Tab 顺序可能落到零尺寸等“看不见”的按钮上
+    e.preventDefault();
+    const i = f.indexOf(document.activeElement);
+    const next = e.shiftKey ? (i <= 0 ? f[f.length - 1] : f[i - 1]) : (i < 0 || i === f.length - 1 ? f[0] : f[i + 1]);
+    next.focus();
   });
   const title = wrap.querySelector("h2, h1");
-  if (title) { title.id ||= "sheet-title-" + openedAt; wrap.setAttribute("aria-labelledby", title.id); }
+  if (title) { if (!title.id) title.id = "sheet-title-" + openedAt; wrap.setAttribute("aria-labelledby", title.id); }
   document.body.append(wrap);
-  const firstBtn = wrap.querySelector("button:not([disabled])");
-  (firstBtn || wrap).focus?.({ preventScroll: true });
+  const firstBtn = focusables(wrap)[0];
+  (firstBtn || wrap).focus({ preventScroll: true });
   return close;
 }
 let toastTimer;
@@ -950,7 +971,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
+window.__app = { sheet, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;
