@@ -38,7 +38,7 @@ def check(lessons):
             src = k.get("code") if k["type"] == "modify" else k.get("starter")
             res = [_go(src, t) for t in ts]
             hang = any(e == "Timeout" for _, e in res)
-            if w in EXPECT_HANG: c.ok(hang, w + "-起始应超时", "这题教死循环恢复，起始代码应当超时")
+            if w in EXPECT_HANG: c.ok(hang, w + "-起始应超时", "这题教死循环恢复，起始代码应当超时"); c.ok(all(o == "" for o, _ in res), w + "-超时前无输出", "起始代码在循环里输出，可能先触发输出上限而不是超时")
             else: c.ok(not hang, w + "-起始不卡死", "起始代码卡死")
             c.ok(any(e is not None or o.rstrip("\n") != t["expected"] for (o, e), t in zip(res, ts)), w + "-起始不能直接过", "起始代码已经全部通过")
             wk = k.get("worked")

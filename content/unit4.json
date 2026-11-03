@@ -898,46 +898,54 @@
           "type": "modify",
           "replaces": 3,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：给忘记更新变量的 while 加上 n = n + 1（运行会超时：不算作答、不扣红心）",
+          "plan": "改一改：给忘记更新变量的 while 加上 x = x + 1（运行会超时：不算作答、不扣红心）",
           "task": {
             "id": "U4L6-M1",
             "version": 1,
             "type": "modify",
-            "prompt": "要显示 1 到 n，但这段程序停不下来（运行会超时，不算答错、不扣红心）。请改正。",
+            "prompt": "要算 1 + 2 + … + n，但这段程序停不下来（运行会超时，不算答错、不扣红心）。请改正。",
             "given": [
               "n"
             ],
             "checkMode": "output",
-            "code": "x = 1\nwhile x <= n:\n    print(x)\n",
+            "code": "total = 0\nx = 1\nwhile x <= n:\n    total = total + x\nprint(total)\n",
             "tests": [
               {
                 "name": "n = 3",
                 "data": {
                   "n": 3
                 },
-                "expected": "1\n2\n3"
-              },
-              {
-                "name": "n = 1",
-                "data": {
-                  "n": 1
-                },
-                "expected": "1"
+                "expected": "6"
               },
               {
                 "name": "n = 4",
                 "data": {
                   "n": 4
                 },
-                "expected": "1\n2\n3\n4",
+                "expected": "10"
+              },
+              {
+                "name": "n = 1",
+                "data": {
+                  "n": 1
+                },
+                "expected": "1",
+                "hidden": true
+              },
+              {
+                "name": "n = 5",
+                "data": {
+                  "n": 5
+                },
+                "expected": "15",
                 "hidden": true
               }
             ],
             "hints": [
-              "循环里有没有改变 x？条件会不会变成不成立？",
-              "在 print(x) 下面加一行 x = x + 1（缩进 4 格）。"
+              "循环里有没有改变 x？条件 x <= n 会不会变成不成立？",
+              "在 total = total + x 下面加一行 x = x + 1（缩进 4 格）。"
             ],
-            "reference": "x = 1\nwhile x <= n:\n    print(x)\n    x = x + 1\n",
+            "reference": "total = 0\nx = 1\nwhile x <= n:\n    total = total + x\n    x = x + 1\nprint(total)\n",
             "worked": {
               "code": "n = 1\nwhile n <= 3:\n    print(n)\n    n = n + 1",
               "output": "1\n2\n3",
