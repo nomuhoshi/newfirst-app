@@ -11,12 +11,13 @@
 //   days     完成过关卡的全部日期（YYYY-MM-DD，升序，不重复，不截断）
 //   hearts   { n: 红心数, msToNext: 距离下一颗恢复还差多少毫秒（满了是 0） }  —— 只存“相对时间”，不依赖设备时钟
 //   prefs    { sound, haptics, soundStyle }
-//   imported { 游客编号: true }  —— 已经导入过的游客记录，防止重复导入
+//   imported { 游客编号: 指纹 }  —— 已经导入过的游客记录及导入时的内容指纹（旧数据为 true），防止重复导入，并能发现导入后游客又学了新内容
 import { HEARTS_MAX, HEART_REGEN_MS, regenHearts } from "./storage.js";
 
 export const SCHEMA = 1;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const FP_RE = /^[0-9a-f]{8}$/;
 const MAX_STREAK_DAYS = 5000; // 游客记录里的连续天数换算成日期时的上限（防止损坏数据导致超大数组）
 
 export function newId() {
@@ -80,7 +81,7 @@ export function normalizeDoc(raw) {
       soundStyle: /^[A-J]$/.test(raw.prefs.soundStyle) ? raw.prefs.soundStyle : "J",
     };
   }
-  if (raw.imported && typeof raw.imported === "object") for (const k of Object.keys(raw.imported)) if (isId(k) && raw.imported[k]) d.imported[k] = true;
+  if (raw.imported && typeof raw.imported === "object") for (const [k, v] of Object.entries(raw.imported)) if (isId(k) && v) d.imported[k] = typeof v === "string" && FP_RE.test(v) ? v : true;
   return { ok: true, doc: d };
 }
 
@@ -131,6 +132,23 @@ export function mergeDocs(local, remote, opts = {}) {
 }
 
 // ---------- 游客记录（v3）↔ 账号文档 ----------
+// 游客记录“学习内容”的指纹：只看 XP、完成次数、完成的关卡、最后学习日和连续天数（红心计时、设置、开场介绍不算学习内容）。
+export function guestFingerprint(state) {
+  if (!state || typeof state !== "object") return null;
+  const done = Object.keys(state.done ?? {}).filter((k) => state.done[k]).sort();
+  const text = JSON.stringify([natural(state.xp), natural(state.lessonsCompleted), done, state.lastDay ?? null, natural(state.streak)]);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
+// 连续天数换算成日期：lastDay 往前 streak 天（含 lastDay）
+function streakDays(state) {
+  if (!validDay(state?.lastDay) || !Number.isInteger(state.streak) || state.streak < 1) return [];
+  const n = Math.min(state.streak, MAX_STREAK_DAYS), out = [];
+  for (let i = n - 1; i >= 0; i--) out.push(addDays(state.lastDay, -i));
+  return out;
+}
+
 // v3 游客记录 → 账号文档。不修改输入。游客的 XP 和完成次数记在“导入它的这台设备”名下。
 export function guestToDoc(state, { deviceId, guestId, gen = 1, lineage = newId(), now = Date.now() } = {}) {
   if (!isId(deviceId) || !isId(guestId)) return { ok: false, code: "bad-ids", message: "缺少设备编号或游客编号" };
@@ -140,16 +158,13 @@ export function guestToDoc(state, { deviceId, guestId, gen = 1, lineage = newId(
   doc.xp[deviceId] = natural(state.xp);
   doc.runs[deviceId] = natural(state.lessonsCompleted);
   if (state.done && typeof state.done === "object") for (const [k, v] of Object.entries(state.done)) if (v && isId(k)) doc.done[k] = "";
-  if (validDay(state.lastDay) && Number.isInteger(state.streak) && state.streak >= 1) {
-    const n = Math.min(state.streak, MAX_STREAK_DAYS);
-    for (let i = n - 1; i >= 0; i--) doc.days.push(addDays(state.lastDay, -i));
-  }
+  doc.days = streakDays(state);
   const h = { hearts: Math.min(HEARTS_MAX, natural(state.hearts ?? HEARTS_MAX)), heartsAt: Number.isFinite(state.heartsAt) ? state.heartsAt : now };
   const msLeft = regenHearts(h, now);
   doc.hearts = { n: h.hearts, msToNext: h.hearts >= HEARTS_MAX ? 0 : Math.round(msLeft) };
   const p = state.prefs && typeof state.prefs === "object" ? state.prefs : {};
   doc.prefs = { sound: p.sound !== false, haptics: p.haptics !== false, soundStyle: /^[A-J]$/.test(p.soundStyle) ? p.soundStyle : "J" };
-  doc.imported[guestId] = true;
+  doc.imported[guestId] = guestFingerprint(state);
   return { ok: true, doc };
 }
 
@@ -186,25 +201,45 @@ export function syncStateIntoDoc(doc, state, { deviceId, today, now = Date.now()
   const druns = natural(state.lessonsCompleted) - sumRuns(out);
   if (druns > 0) { out.runs[deviceId] = (out.runs[deviceId] ?? 0) + druns; changed.runs = true; }
   for (const [k, v] of Object.entries(state.done ?? {})) if (v && isId(k) && !(k in out.done)) { out.done[k] = validDay(today) ? today : ""; changed.done = true; }
-  if (validDay(state.lastDay) && !out.days.includes(state.lastDay)) { out.days = [...out.days, state.lastDay].sort(); changed.days = true; }
+  // 两次同步之间连续学了多天：按 lastDay + streak 把这几天都补上（只有 lastDay 会丢掉中间的日子）
+  const newDays = streakDays(state).filter((d) => !out.days.includes(d));
+  if (validDay(state.lastDay) && !out.days.includes(state.lastDay) && !newDays.includes(state.lastDay)) newDays.push(state.lastDay);
+  if (newDays.length) { out.days = [...new Set([...out.days, ...newDays])].sort(); changed.days = true; }
   const h = { hearts: Math.min(HEARTS_MAX, natural(state.hearts)), heartsAt: Number.isFinite(state.heartsAt) ? state.heartsAt : now };
   const ms = regenHearts(h, now);
   const hearts = { n: h.hearts, msToNext: h.hearts >= HEARTS_MAX ? 0 : Math.round(ms) };
-  // 红心只在“数量变了”（扣心或恢复）时才算改动；光是时间流逝让“还差多久”变小，不算
-  if (hearts.n !== out.hearts.n) { out.hearts = hearts; changed.hearts = true; }
+  // 红心只在“数量变了”（扣心或恢复）时才算改动（用于冲突时选谁）；但“还差多久”总是更新成当前值，
+  // 否则下次从文档还原时会把恢复倒计时拨回到旧值（等于重置计时）。
+  if (hearts.n !== out.hearts.n) changed.hearts = true;
+  out.hearts = hearts;
   const p = state.prefs ?? {};
   const prefs = { sound: p.sound !== false, haptics: p.haptics !== false, soundStyle: /^[A-J]$/.test(p.soundStyle) ? p.soundStyle : "J" };
   if (JSON.stringify(prefs) !== JSON.stringify(out.prefs)) { out.prefs = prefs; changed.prefs = true; }
   return { doc: out, changed };
 }
 
+// 合并之后必须用合并结果刷新应用里继续计分的状态：否则 state.xp 仍是合并前的本机总数，
+// 下一次 syncStateIntoDoc 计算“本机新挣的 XP”时会被云端多出来的部分抵掉，导致丢 XP。
+export function refreshStateAfterMerge(mergedDoc, state, now = Date.now()) {
+  return docToState(mergedDoc, state, now);
+}
+
 // 用户在“云端已有进度”时明确选择“用这台设备的游客记录覆盖云端”：代数 +1、换新编号。
-// 同一份游客记录（游客编号）只会导入一次：云端文档里已经记着它，就原样返回，不再导入。
-export function replaceWithGuest(guestState, { deviceId, guestId, cloudDoc = null, now = Date.now() }) {
+// 同一份游客记录（游客编号 + 内容指纹都相同）只导入一次。
+// 导入之后游客又学了新内容（指纹变了）：不静默忽略，返回 outcome "guest-changed" 和 choices，让用户选：
+//   "keep-cloud"：保留云端，什么都不改；"replace"：确认后用新的游客快照替换（代数 +1）；取消 = 不调用，两边都保留。不自动累加。
+export function replaceWithGuest(guestState, { deviceId, guestId, cloudDoc = null, now = Date.now(), choice = null }) {
   if (cloudDoc) {
     const c = normalizeDoc(cloudDoc);
     if (!c.ok) return { ok: false, code: c.code, message: c.message };
-    if (c.doc.imported[guestId]) return { ok: true, doc: c.doc, outcome: "already-imported" };
+    const prev = c.doc.imported[guestId];
+    if (prev) {
+      const fp = guestFingerprint(guestState);
+      const same = prev === true ? true : prev === fp; // 旧数据只记了 true，无法比较，按已导入处理
+      if (same) return { ok: true, doc: c.doc, outcome: "already-imported" };
+      if (choice === "keep-cloud") return { ok: true, doc: c.doc, outcome: "kept-cloud" };
+      if (choice !== "replace") return { ok: true, doc: c.doc, outcome: "guest-changed", choices: ["keep-cloud", "replace"], message: "这份游客记录导入后又有新的学习进度，请选择保留云端，或用新的游客记录替换" };
+    }
     const r = guestToDoc(guestState, { deviceId, guestId, gen: c.doc.gen + 1, now });
     return r.ok ? { ok: true, doc: r.doc, outcome: "replaced" } : r;
   }

@@ -51,7 +51,7 @@ const mk = (state, dev = DEV_A, g = GUEST_1, extra = {}) => { const r = guestToD
   check("转换：完成的关卡一个不少", eq(Object.keys(d.done).sort(), ["U1L1", "U1L2", "U1L3"]));
   check("转换：连续 3 天换算成最后一天往前的 3 个日期", eq(d.days, ["2026-10-31", "2026-11-01", "2026-11-02"]));
   check("转换：红心 3 颗，下一颗还差 20 分钟（只存相对时间）", d.hearts.n === 3 && d.hearts.msToNext === HEART_REGEN_MS - 10 * 60 * 1000);
-  check("转换：偏好原样带过去，并记下游客编号（防止重复导入）", d.prefs.soundStyle === "C" && d.prefs.sound === false && d.imported[GUEST_1] === true);
+  check("转换：偏好原样带过去，并记下游客编号（防止重复导入）", d.prefs.soundStyle === "C" && d.prefs.sound === false && /^[0-9a-f]{8}$/.test(d.imported[GUEST_1]));
   check("转换：不修改传入的游客记录", eq(g, before));
 
   const back = docToState(d, g, NOW);
@@ -174,11 +174,11 @@ const base = () => ({ ...emptyDoc({ lineage: "LIN" }) });
   const again = replaceWithGuest(guest(), { deviceId: DEV_A, guestId: GUEST_1, cloudDoc: first.doc, now: NOW });
   check("同一份游客记录再次触发导入（重试）：识别为已导入，原样返回，XP 不变", again.outcome === "already-imported" && docsEquivalent(again.doc, first.doc) && sumXp(again.doc) === 130);
   const twice = replaceWithGuest(guest({ xp: 999 }), { deviceId: DEV_B, guestId: GUEST_1, cloudDoc: first.doc, now: NOW });
-  check("另一台设备带着同一个游客编号再导入：也被拦住", twice.outcome === "already-imported" && sumXp(twice.doc) === 130);
+  check("同一个游客编号但内容变了（XP 999）：不静默忽略也不自动累加，返回 guest-changed 让用户选，云端原样", twice.outcome === "guest-changed" && eq(twice.choices, ["keep-cloud", "replace"]) && sumXp(twice.doc) === 130 && docsEquivalent(twice.doc, first.doc));
   const other = replaceWithGuest(guest({ xp: 40, done: { U1L1: true }, lessonsCompleted: 1 }), { deviceId: DEV_B, guestId: GUEST_2, cloudDoc: first.doc, now: NOW });
   check("云端已有进度时用户选“用本机覆盖”：代数 +1、换新编号，XP 不与云端相加（40，不是 170）", other.outcome === "replaced" && other.doc.gen === 2 && other.doc.lineage !== first.doc.lineage && sumXp(other.doc) === 40);
   check("覆盖之后，旧一代的数据（来自其他设备的 XP 记录）不会合并回来", sumXp(mergeDocs(first.doc, other.doc).doc) === 40 && mergeDocs(other.doc, first.doc).outcome === "local-newer");
-  const again2 = replaceWithGuest(guest({ xp: 40 }), { deviceId: DEV_B, guestId: GUEST_2, cloudDoc: other.doc, now: NOW });
+  const again2 = replaceWithGuest(guest({ xp: 40, done: { U1L1: true }, lessonsCompleted: 1 }), { deviceId: DEV_B, guestId: GUEST_2, cloudDoc: other.doc, now: NOW });
   check("覆盖也只做一次：同一个游客编号再来，已导入", again2.outcome === "already-imported" && again2.doc.gen === 2);
   const badCloud = replaceWithGuest(guest(), { deviceId: DEV_A, guestId: GUEST_1, cloudDoc: { schema: 1 } });
   check("云端文档无效时：不导入，返回错误", badCloud.ok === false);
@@ -266,11 +266,11 @@ const base = () => ({ ...emptyDoc({ lineage: "LIN" }) });
   check("副本来自更新版本：提示而不是误读", loadAccount(st, "userE").code === "schema-newer");
 }
 {
-  const st = fakeStorage(); const d1 = getDeviceId(st), d2 = getDeviceId(st), g1 = getGuestId(st);
+  const st = fakeStorage(); const d1 = getDeviceId(st).id, d2 = getDeviceId(st).id, g1 = getGuestId(st).id;
   check("设备编号、游客编号：生成后稳定不变，格式合法", d1 === d2 && /^[A-Za-z0-9_-]{1,64}$/.test(d1) && /^[A-Za-z0-9_-]{1,64}$/.test(g1) && d1 !== g1);
-  const st2 = fakeStorage(); check("清除浏览器数据（换一份空存储）后：设备编号变了", getDeviceId(st2) !== d1);
+  const st2 = fakeStorage(); check("清除浏览器数据（换一份空存储）后：设备编号变了", getDeviceId(st2).id !== d1);
   const ro = fakeStorage(); ro.failWrites = true;
-  check("存储不可写（无痕模式）：照样拿到编号，不抛错", /^[A-Za-z0-9_-]+$/.test(getDeviceId(ro)));
+  { const r = getDeviceId(ro); check("存储不可写（无痕模式）：明确返回保存失败、不给临时编号、不抛错", r.ok === false && r.code === "save-failed" && r.id === undefined); }
   check("存储不可写：保存账号返回失败，不抛错", saveAccount(ro, "userA", { doc: emptyDoc() }) === false);
 }
 
@@ -291,7 +291,7 @@ const base = () => ({ ...emptyDoc({ lineage: "LIN" }) });
   const allKept = cases.every(([, args]) => { const s = mkSt(); const raw = readGuestRaw(s); const r = clearGuestAfterVerified(s, args); return r === false && readGuestRaw(s) === raw; });
   check(`游客记录清空：${cases.length} 种不满足条件的情况，游客记录全部保留`, allKept);
   const s = mkSt();
-  check("游客记录清空：用户选转存 + 上传成功 + 读回一致，才清空", clearGuestAfterVerified(s, { userChoseTransfer: true, uploadOk: true, uploaded: up, readBack: same }) === true && readGuestRaw(s) === null);
+  check("游客记录清空：用户选转存 + 上传成功 + 读回一致，才清空", clearGuestAfterVerified(s, { userChoseTransfer: true, uploadOk: true, uploaded: up, readBack: same, guestSnapshotRaw: readGuestRaw(s) }) === true && readGuestRaw(s) === null);
   const reordered = { ...clone(up), xp: Object.fromEntries(Object.entries(up.xp).reverse()) };
   check("读回内容一致的判断不受键顺序影响", docsEquivalent(up, reordered));
 
