@@ -119,7 +119,7 @@ try {
       ["类私有成员（this.#x）", /\bthis\.#[A-Za-z_$]/],
       ["类静态初始化块（static {）", /\bstatic\s*\{/],
       ["逻辑赋值（??= ||= &&=）", /(\?\?|\|\||&&)=[^=]/],
-      ["顶层 await", /^\s*await\s/m],
+      ["顶层 await（行首顶格的 await）", /^await\s/m],
     ];
     const bad = [];
     for (const f of files) { const txt = readFileSync(f, "utf8"); for (const [n, re] of rules) if (re.test(txt)) bad.push(`${f.slice(DIST.length + 1)}：${n}`); }
