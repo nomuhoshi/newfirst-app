@@ -24,6 +24,16 @@
 //   结果字段只用 stdout（不用 output）。ms = 这次真正执行的时间（不含加载）。
 //   抛出 { unavailable: true } 表示 Python 环境不可用；抛出 { cancelled: true } 表示被取消。
 //
+// ── 扩展字段（向后兼容，docs/code-task-interface.md）─────────────
+//   files/entry   多文件：files = [{ path, content }]，entry 默认 "main.py"；只给 code 等于 files=[{path:"main.py"}]
+//   tests[].stdin         input() 依次读到的行（字符串或字符串数组）；读完再 input() → EOFError；没给 → 明确的错误
+//   tests[].files         这一组开始前写进虚拟文件系统的文件 { path: content }（学生的同名文件优先）
+//   tests[].expectedFiles 运行后这些文件必须存在且内容一致（同样按 compare 规则比较）{ path: content }
+//   checkMode "call"      调用学生写的函数，比较返回值（不比 repr、不比 print 的输出）：
+//                         tests[] = { name, hidden?, data?, call: { fn, args?, kwargs? }, expectedReturn, tol? }
+//                         比较规则：JSON 形状；元组≡列表；布尔和数字不混；数字按值比较（1 与 1.0 相同），小数用相对误差 tol（默认 1e-9）。
+//   executor.exec 额外收到 { files, entry, stdin, readFiles }；返回值可带 files = { path: 内容 | null }。
+//
 // 比较规则（strict）：统一换行符（\r\n、\r → \n）；两边各允许末尾**一个**换行；
 //   行尾空格、多出来的空行仍然要一致。lenient：额外忽略每行行尾空白和末尾所有空行。
 
@@ -32,6 +42,8 @@ export const JUDGE_LIMITS = { caseMs: 5000, totalMs: 10000, readyCapMs: 30000 };
 export const KIND = {
   PASS: "pass",
   WRONG: "wrong-output",
+  WRONG_FILE: "wrong-file",
+  WRONG_RETURN: "wrong-return",
   ERROR: "error",
   CASE_TIMEOUT: "case-timeout",
   TOTAL_TIMEOUT: "total-timeout",
@@ -46,6 +58,8 @@ export function messageFor(kind, L = JUDGE_LIMITS) {
   return {
     [KIND.PASS]: "通过",
     [KIND.WRONG]: "输出和期望不一致",
+    [KIND.WRONG_FILE]: "输出文件的内容和期望不一致，或者文件没有生成",
+    [KIND.WRONG_RETURN]: "函数的返回值和期望不一致",
     [KIND.ERROR]: "程序运行出错",
     [KIND.CASE_TIMEOUT]: `这一组测试运行超过 ${sec(L.caseMs)}，可能有死循环`,
     [KIND.TOTAL_TIMEOUT]: `全部测试合计超过 ${sec(L.totalMs)}，后面的测试没有运行`,
@@ -66,7 +80,71 @@ export function normalizeOutput(s, compare = "strict") {
 
 const now = () => (globalThis.performance ? performance.now() : Date.now());
 
-export async function judge({ code, tests, checkMode = "output", compare = "strict", limits = {} }, executor, { signal } = {}) {
+// 把 code / files+entry 统一成 { files: {path: content}, entry, code }；不合法返回 null
+function normalizeSources({ code, files, entry }) {
+  if (Array.isArray(files)) {
+    const map = {};
+    for (const f of files) {
+      if (!f || typeof f.path !== "string" || typeof f.content !== "string" || !f.path) return null;
+      map[f.path] = f.content;
+    }
+    const e = entry || "main.py";
+    return e in map ? { files: map, entry: e, code: map[e] } : null;
+  }
+  if (typeof code !== "string") return null;
+  return { files: { "main.py": code }, entry: "main.py", code };
+}
+const isObj = (o) => o && typeof o === "object" && !Array.isArray(o);
+const isStrMap = (o) => isObj(o) && Object.values(o).every((v) => typeof v === "string");
+function validTests(tests, checkMode) {
+  return Array.isArray(tests) && tests.length > 0 && tests.every((t) => isObj(t)
+    && (t.stdin === undefined || typeof t.stdin === "string" || (Array.isArray(t.stdin) && t.stdin.every((x) => typeof x === "string")))
+    && (t.files === undefined || isStrMap(t.files))
+    && (t.expectedFiles === undefined || isStrMap(t.expectedFiles))
+    && (checkMode === "call" ? isObj(t.call) && typeof t.call.fn === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(t.call.fn) && "expectedReturn" in t
+        : typeof t.expected === "string"));
+}
+
+// call 模式：在入口文件末尾附加的判题代码（不改动学生代码的行号）。结果写进 JUDGE_RESULT_FILE。
+export const JUDGE_RESULT_FILE = "__judge_result__.json";
+function callHarness(t) {
+  const payload = JSON.stringify({ fn: t.call.fn, args: t.call.args ?? [], kwargs: t.call.kwargs ?? {}, expected: t.expectedReturn, tol: t.tol ?? 1e-9 });
+  return `
+
+# ---- 判题器附加的代码（不属于学生代码）----
+def _jg_same(a, e, tol):
+    if isinstance(e, bool) or isinstance(a, bool):
+        return isinstance(e, bool) and isinstance(a, bool) and a == e
+    if isinstance(e, (int, float)):
+        if not isinstance(a, (int, float)):
+            return False
+        return abs(a - e) <= tol * max(1.0, abs(e))
+    if isinstance(e, list):
+        return isinstance(a, (list, tuple)) and len(a) == len(e) and all(_jg_same(x, y, tol) for x, y in zip(a, e))
+    if isinstance(e, dict):
+        return isinstance(a, dict) and {str(k): v for k, v in a.items()}.keys() == e.keys() and all(_jg_same(v, e[str(k)], tol) for k, v in a.items())
+    return type(a) is type(e) and a == e
+def _jg_run():
+    import json as _j
+    p = _j.loads(${JSON.stringify(payload)})
+    res = {"ok": False, "missing": False, "actual": ""}
+    f = globals().get(p["fn"])
+    if not callable(f):
+        res["missing"] = True
+    else:
+        a = f(*p["args"], **p["kwargs"])
+        res["ok"] = bool(_jg_same(a, p["expected"], p["tol"]))
+        try:
+            res["actual"] = repr(a)[:200]
+        except BaseException:
+            res["actual"] = "<无法显示>"
+    with open(${JSON.stringify(JUDGE_RESULT_FILE)}, "w", encoding="utf-8") as fh:
+        fh.write(_j.dumps(res, ensure_ascii=False))
+_jg_run()
+`;
+}
+
+export async function judge({ code, files, entry, tests, checkMode = "output", compare = "strict", limits = {} }, executor, { signal } = {}) {
   const L = { ...JUDGE_LIMITS, ...limits };
   let used = 0; // 学生代码执行时间合计
   const notAttempt = (status, kind, base, cases) => ({
@@ -74,7 +152,8 @@ export async function judge({ code, tests, checkMode = "output", compare = "stri
     cases: [...cases, { ...base, ok: false, kind, ms: 0, message: messageFor(kind, L) }],
   });
   const none = { name: "", hidden: false };
-  if (checkMode !== "output" || (compare !== "strict" && compare !== "lenient") || !Array.isArray(tests) || tests.length === 0)
+  const src = normalizeSources({ code, files, entry });
+  if ((checkMode !== "output" && checkMode !== "call") || (compare !== "strict" && compare !== "lenient") || !src || !validTests(tests, checkMode))
     return notAttempt("internal-error", KIND.INTERNAL, none, []);
 
   const cases = [];
@@ -92,8 +171,14 @@ export async function judge({ code, tests, checkMode = "output", compare = "stri
     const timeoutMs = Math.max(1, Math.min(L.caseMs, remaining));
     let r;
     const c0 = now();
+    const runFiles = { ...(t.files || {}), ...src.files };            // 学生的同名文件优先
+    if (checkMode === "call") runFiles[src.entry] = src.files[src.entry] + callHarness(t);
+    const readFiles = [...Object.keys(t.expectedFiles || {}), ...(checkMode === "call" ? [JUDGE_RESULT_FILE] : [])];
     try {
-      r = await executor.exec({ code, data: t.data ?? null, timeoutMs, signal, readyCapMs: L.readyCapMs });
+      r = await executor.exec({
+        code: runFiles[src.entry], files: runFiles, entry: src.entry, data: t.data ?? null, stdin: t.stdin ?? null, readFiles,
+        timeoutMs, signal, readyCapMs: L.readyCapMs,
+      });
     } catch (e) {
       // 中途环境失败：前面已通过的组也不算数（不完整的结果不结算）
       if (e && e.cancelled) return notAttempt("unavailable", KIND.CANCELLED, base, []);
@@ -102,15 +187,36 @@ export async function judge({ code, tests, checkMode = "output", compare = "stri
     }
     const ms = typeof r.ms === "number" ? r.ms : now() - c0;
     used += r.timedOut ? Math.max(ms, timeoutMs) : ms;
-    let kind;
+    let kind, actualReturn = "", badFiles = [];
     if (r.timedOut) { kind = byTotal ? KIND.TOTAL_TIMEOUT : KIND.CASE_TIMEOUT; if (byTotal) budgetHit = true; }
     else if (r.limitHit) kind = KIND.OUTPUT_LIMIT;
     else if (r.error && r.error.kind === "InternalError") return notAttempt("internal-error", KIND.INTERNAL, base, []);
     else if (r.error) kind = KIND.ERROR;
-    else kind = normalizeOutput(r.stdout, compare) === normalizeOutput(t.expected, compare) ? KIND.PASS : KIND.WRONG;
+    else if (checkMode === "call") {
+      let jr = null;
+      try { jr = JSON.parse(r.files?.[JUDGE_RESULT_FILE] ?? "null"); } catch { jr = null; }
+      if (!jr) kind = KIND.ERROR, r = { ...r, error: { kind: "NoResult", line: null, msg: "程序没有走到函数调用就结束了（是不是提前 exit 了？）" } };
+      else if (jr.missing) kind = KIND.ERROR, r = { ...r, error: { kind: "NameError", line: null, msg: `没有找到函数 ${t.call.fn}，请检查函数名` } };
+      else { kind = jr.ok ? KIND.PASS : KIND.WRONG_RETURN; actualReturn = jr.actual; }
+    } else {
+      const outOk = normalizeOutput(r.stdout, compare) === normalizeOutput(t.expected, compare);
+      const bad = Object.entries(t.expectedFiles || {}).filter(([p, e]) => typeof r.files?.[p] !== "string" || normalizeOutput(r.files[p], compare) !== normalizeOutput(e, compare)).map(([p]) => p);
+      kind = !outOk ? KIND.WRONG : bad.length ? KIND.WRONG_FILE : KIND.PASS;
+      badFiles = bad;
+    }
     const c = { ...base, ok: kind === KIND.PASS, kind, ms: Math.round(ms), message: messageFor(kind, L) };
-    if (kind === KIND.ERROR) c.error = r.error;
-    if (!c.hidden && kind !== KIND.PASS) { c.expected = t.expected; c.stdout = r.stdout ?? ""; }
+    if (kind === KIND.ERROR) {
+      c.error = r.error;
+      // call 模式：出错行落在判题器附加的代码里（比如参数个数不对）时，不显示一个学生代码里不存在的行号
+      if (checkMode === "call" && c.error && c.error.line > src.files[src.entry].split("\n").length) c.error = { ...c.error, line: null };
+    }
+    if (!c.hidden && kind !== KIND.PASS && kind !== KIND.ERROR) {
+      if (checkMode === "call") { c.expected = JSON.stringify(t.expectedReturn); c.actualReturn = actualReturn; }
+      else {
+        c.expected = t.expected; c.stdout = r.stdout ?? "";
+        if (kind === KIND.WRONG_FILE) c.files = badFiles.map((p) => ({ path: p, expected: t.expectedFiles[p], actual: typeof r.files?.[p] === "string" ? r.files[p] : null }));
+      }
+    }
     cases.push(c);
   }
   const pass = cases.every((c) => c.ok);
@@ -128,42 +234,50 @@ export function makeRunnerExecutor(runner) {
     const s = await runner.whenReady(capMs);
     if (s !== "ready") throw { unavailable: true, reason: s };
   }
+  let chain = Promise.resolve(); // 一次只跑一个：同时调用会排队，不会互相覆盖回调
+  async function execOne({ code, files, entry, data, stdin, readFiles, timeoutMs, signal, readyCapMs = JUDGE_LIMITS.readyCapMs }) {
+    if (signal?.aborted) throw { cancelled: true };
+    await ensureReady(readyCapMs);
+    if (signal?.aborted) throw { cancelled: true };
+    // 判题一律走任务运行：每组都是全新的变量空间、虚拟文件系统和模块缓存（没给 stdin 时 input() 会明确报错）
+    const task = { files: files || { "main.py": code }, entry: entry || "main.py", stdin: stdin ?? null, read: readFiles || [] };
+    return new Promise((resolve, reject) => {
+      let stdout = "", finished = false, t0 = 0, timer = null;
+      const prevStatus = runner.onStatus, prevOutput = runner.onOutput;
+      const onAbort = () => { finish(() => reject({ cancelled: true })); runner.stop(); };
+      function finish(cb) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        runner.onStatus = prevStatus; runner.onOutput = prevOutput;
+        signal?.removeEventListener?.("abort", onAbort);
+        cb();
+      }
+      const ms = () => (t0 ? now() - t0 : 0);
+      runner.onOutput = (t) => { stdout += t; };
+      runner.onStatus = (s, info) => {
+        if (s === "running") return;
+        if (s === "done") finish(() => resolve({ stdout, error: info?.error ?? null, timedOut: false, limitHit: false, ms: ms(), files: info?.files ?? null }));
+        else if (s === "stopped" || s === "timeout") finish(() => resolve({ stdout, error: null, timedOut: true, limitHit: false, ms: ms() }));
+        else if (s === "outputLimit" || s === "outputLimitStopped") finish(() => resolve({ stdout, error: null, timedOut: false, limitHit: true, ms: ms() }));
+        else if (s === "loadError") finish(() => reject({ unavailable: true }));
+        else prevStatus?.(s, info); // loading / ready / slowLoad 等交还给界面
+      };
+      signal?.addEventListener?.("abort", onAbort);
+      try {
+        t0 = now();
+        if (!runner.run(code, data, task)) return finish(() => reject({ unavailable: true, reason: "not-ready" }));
+        timer = setTimeout(() => { if (!finished) runner.stop(); }, timeoutMs);
+      } catch (e) {
+        finish(() => reject(e instanceof Error ? e : new Error(String(e))));
+      }
+    });
+  }
   return {
-    async exec({ code, data, timeoutMs, signal, readyCapMs = JUDGE_LIMITS.readyCapMs }) {
-      if (signal?.aborted) throw { cancelled: true };
-      await ensureReady(readyCapMs);
-      if (signal?.aborted) throw { cancelled: true };
-      return new Promise((resolve, reject) => {
-        let stdout = "", finished = false, t0 = 0, timer = null;
-        const prevStatus = runner.onStatus, prevOutput = runner.onOutput;
-        const onAbort = () => { finish(() => reject({ cancelled: true })); runner.stop(); };
-        function finish(cb) {
-          if (finished) return;
-          finished = true;
-          clearTimeout(timer);
-          runner.onStatus = prevStatus; runner.onOutput = prevOutput;
-          signal?.removeEventListener?.("abort", onAbort);
-          cb();
-        }
-        const ms = () => (t0 ? now() - t0 : 0);
-        runner.onOutput = (t) => { stdout += t; };
-        runner.onStatus = (s, info) => {
-          if (s === "running") return;
-          if (s === "done") finish(() => resolve({ stdout, error: info?.error ?? null, timedOut: false, limitHit: false, ms: ms() }));
-          else if (s === "stopped" || s === "timeout") finish(() => resolve({ stdout, error: null, timedOut: true, limitHit: false, ms: ms() }));
-          else if (s === "outputLimit" || s === "outputLimitStopped") finish(() => resolve({ stdout, error: null, timedOut: false, limitHit: true, ms: ms() }));
-          else if (s === "loadError") finish(() => reject({ unavailable: true }));
-          else prevStatus?.(s, info); // loading / ready / slowLoad 等交还给界面
-        };
-        signal?.addEventListener?.("abort", onAbort);
-        try {
-          t0 = now();
-          if (!runner.run(code, data)) return finish(() => reject({ unavailable: true, reason: "not-ready" }));
-          timer = setTimeout(() => { if (!finished) runner.stop(); }, timeoutMs);
-        } catch (e) {
-          finish(() => reject(e instanceof Error ? e : new Error(String(e))));
-        }
-      });
+    exec(args) {
+      const p = chain.then(() => execOne(args));
+      chain = p.catch(() => {});
+      return p;
     },
   };
 }

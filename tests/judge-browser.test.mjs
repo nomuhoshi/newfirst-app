@@ -12,7 +12,9 @@ await server.listen();
 const URL = "http://localhost:5199/tests/judge-browser.html";
 const T = (name, expected, data, hidden) => ({ name, expected, data, hidden });
 
-for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]]) {
+// 默认只跑 Chromium（CI 只装了它）；本机或独立的 WebKit job 用 JUDGE_BROWSERS=webkit,chromium
+const BROWSERS = (process.env.JUDGE_BROWSERS || "chromium").split(",").map((x) => x.trim());
+for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]].filter(([n]) => BROWSERS.includes(n.toLowerCase()))) {
   let browser;
   try { browser = await bt.launch(); } catch (e) { console.log(`环境失败：${bn} 启动失败 ${e.message.split("\n")[0]}`); await server.close(); process.exit(2); }
   const page = await browser.newPage();
@@ -53,6 +55,22 @@ for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]]) {
   check(tag(`超时重启的加载时间不计入（墙钟 ${wall2}ms，totalMs ${r.totalMs}ms）`), r.totalMs < 2500 && wall2 > r.totalMs + 300, `${wall2} ${r.totalMs}`);
   r = await J({ code: "print(7)", tests: [T("a", "7")] });
   check(tag("超时之后再判题一次也正常"), r.status === "pass");
+  // 3. 新字段（真实 Pyodide）：input / 文件 / 多文件 / call
+  r = await J({ code: 'n = input("数量:")\nprint(int(n) * 15)', tests: [T("a", "数量:45", { stdin: ["3"] }), T("b", "数量:0", { stdin: ["0"] })] });
+  check(tag("input：stdin 逐组传入"), r.status === "pass", JSON.stringify(r.cases));
+  r = await J({ files: [{ path: "main.py", content: "import shop\nprint(shop.total(2))\nopen('o.txt','w').write('x')" }, { path: "shop.py", content: "def total(n):\n    return n * 15" }], tests: [{ name: "a", expected: "30", expectedFiles: { "o.txt": "x" } }] });
+  check(tag("多文件 + 输出文件检查"), r.status === "pass", JSON.stringify(r.cases));
+  r = await J({ code: "def price(n):\n    return n * 15\n", checkMode: "call", tests: [{ name: "a", call: { fn: "price", args: [3] }, expectedReturn: 45 }, { name: "b", call: { fn: "price", args: [0] }, expectedReturn: 1 }] });
+  check(tag("call 模式：按返回值判"), r.status === "fail" && r.cases[0].ok && r.cases[1].kind === "wrong-return" && r.cases[1].actualReturn === "0", JSON.stringify(r.cases));
+  r = await J({ code: "input()", tests: [T("a", "")] });
+  check(tag("没有 stdin 却调用 input()：算答错（不是环境问题），提示没有输入数据"), r.status === "fail" && /没有输入数据/.test(r.cases[0].error.msg), JSON.stringify(r.cases));
+
+  // 4. 默认限时（5 秒 / 10 秒）真实跑一次：死循环 → 约 5 秒后 case-timeout，提示写 5 秒
+  const t2 = Date.now();
+  r = await J({ code: "while True: pass", tests: [T("loop", ""), T("b", "")] });
+  const wall3 = Date.now() - t2;
+  check(tag(`默认限时：死循环约 5 秒结束（墙钟 ${wall3}ms），消息写 5 秒`), r.cases[0].kind === "case-timeout" && /5 秒/.test(r.cases[0].message) && r.totalMs >= 4900 && r.totalMs < 5900, `${r.totalMs} ${r.cases[0].message}`);
+  check(tag(`默认限时：两组都死循环 → 合计不超过 10 秒预算，结果完整（${r.cases.map((c) => c.kind).join()}，墙钟 ${wall3}ms）`), r.cases.length === 2 && r.settle && r.totalMs <= 10500 && r.cases[1].kind !== "pass", JSON.stringify(r.cases.map((c) => c.kind)));
   const st = await page.evaluate(() => [window.runner.state, typeof window.runner.onStatus]);
   check(tag("结束后 Runner 为 ready，回调已还原"), st[0] === "ready");
   check(tag("无页面脚本错误"), errs.length === 0, errs.join(" | "));
