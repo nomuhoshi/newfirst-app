@@ -274,11 +274,26 @@ function showRun(panel, code) {
 
 // ---------- 通用浮层 / 提示 ----------
 function sheet(content, { onClose, cls = "" } = {}) {
-  const close = () => { wrap.remove(); onClose?.(); };
+  const opener = document.activeElement;
+  const close = () => { if (!wrap.isConnected) return; wrap.remove(); onClose?.(); if (opener?.isConnected) opener.focus?.({ preventScroll: true }); };
   const openedAt = Date.now();
   const wrap = h("div", { class: "overlay " + cls, role: "dialog", "aria-modal": "true" }, h("div", { class: "sheet" }, content(close)));
   wrap.addEventListener("click", (e) => { if (e.target === wrap && Date.now() - openedAt > 800) close(); });
+  // 键盘：Esc 关闭；Tab 在弹窗内循环；打开时焦点移入弹窗（iPad 外接键盘 / 读屏）
+  wrap.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); close(); return; }
+    if (e.key !== "Tab") return;
+    const f = [...wrap.querySelectorAll("button:not([disabled]), a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])")];
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  const title = wrap.querySelector("h2, h1");
+  if (title) { title.id ||= "sheet-title-" + openedAt; wrap.setAttribute("aria-labelledby", title.id); }
   document.body.append(wrap);
+  const firstBtn = wrap.querySelector("button:not([disabled])");
+  (firstBtn || wrap).focus?.({ preventScroll: true });
   return close;
 }
 let toastTimer;
