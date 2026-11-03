@@ -39,8 +39,8 @@
 
 | 观察到的设计 | 解决的问题 | 证据 | 缺点／适用条件 | 对碎片编程的建议 | 实现成本 |
 |---|---|---|---|---|---|
-| 注册前先问 10 屏问卷（学科、动机、需求、声音、年龄、水平、每日目标、时段），一屏一题、大卡片单选、顶部分段进度条 | 让用户先“投入”再注册（承诺一致性），同时收集个性化数据 | 实测：`b3.log` 第 0–16 屏；从点击 CTA 到注册墙 ≈ 50 秒、11 次点击 | 进到注册墙前**零学习内容**；对“只想看看 Python 是什么”的零基础用户是纯摩擦；问卷多为营销分群 | 不照搬。我们现在 3 屏引导后直接进地图，更好；最多加 1 题「你写过代码吗？」用于换文案 | 低 |
-| 注册墙放在“看你的学习计划”之前，文案是 *free profile* | 把注册包装成领取结果，转化率高 | 实测：`wk-iphone-flow2-16.png` | 用户付出 1 分钟后被拦，挫败感强；不注册就无法试第一题 | **明确不采用**：碎片编程保持“无账号可学完第一单元”，账号同步（见 docs/15）只做可选 | — |
+| 注册前先问 10 屏问卷（学科、动机、需求、声音、年龄、水平、每日目标、时段），一屏一题、大卡片单选、顶部分段进度条 | 让用户先“投入”再注册（承诺一致性），同时收集个性化数据（**假设**：其目的是提高注册转化；我们没有任何转化率数据） | 实测：`b3.log` 第 0–16 屏；从点击 CTA 到注册墙 ≈ 50 秒、11 次点击 | 进到注册墙前**零学习内容**；对“只想看看 Python 是什么”的零基础用户是纯摩擦；问卷多为营销分群 | 不照搬。我们现在 3 屏引导后直接进地图；“这比 Brilliant 更好”只是**假设**，没有对比数据，需试玩验证（见 H1）；最多加 1 题「你写过代码吗？」用于换文案 | 低 |
+| 注册墙放在“看你的学习计划”之前，文案是 *free profile* | 把注册包装成领取结果（**假设**：可提高注册转化；无数据，未验证） | 实测：`wk-iphone-flow2-16.png` | 用户付出 1 分钟后被拦，挫败感强；不注册就无法试第一题 | **明确不采用**：碎片编程保持“无账号可学完第一单元”，账号同步（见 docs/15）只做可选 | — |
 | 问卷中出现付费前不提价格；付费说明见帮助中心（试用需填支付信息、到期自动续费） | 把付费决策推迟到投入之后 | 资料分析：help/pricing-and-plans/does-brilliant-offer-any-free-trials | 本次未到达付费页，付费墙具体位置 **未验证** | 不做试用转订阅 | — |
 | 每日目标 10–60 min 选项 | 设定预期、为提醒和连胜铺垫 | 实测：`wk-iphone-flow2-12.png` | 10 分钟起步对碎片场景仍偏长 | 若做目标，用「每天 1 关（约 3 分钟）」这种以关卡计数的目标 | 低 |
 
@@ -113,6 +113,8 @@
 - 到期/取消：保留 Premium 到本计费周期结束，之后回到免费限制（来源：how-do-i-cancel-my-brilliant-premium-subscription）。具体降级后进度表现 **未验证**。
 - URL：https://brilliant.org/help/pricing-and-plans/what-s-the-difference-between-free-and-premium/ 、…/does-brilliant-offer-any-free-trials/ 、…/how-much-does-brilliant-premium-cost/ 、https://brilliant.org/help/using-brilliant/what-can-i-learn-on-brilliant-without-a-premium-subscription/
 
+> 注：本节及全文关于“内容免费 / 无账号试学”的建议**不替代已批准的会员方案**，只作为在该方案内设计免费范围时的参考。
+
 对我们：**适合**——“内容免费、为增值服务付费”（若未来有付费，应是额外题库/项目，而不是限制每日学习量）。**会伤害零基础学习者**——每日关卡上限（打断刚建立的势头）、关卡间广告、需绑卡的试用、注册前不给试学。
 
 ## 9. 无障碍与可靠性
@@ -126,17 +128,33 @@
 | 错误恢复 | `/pricing/` 404 页有“Go home”和数学笑话，友好；题目内 *Start over* 重置 | 实测 `wk-iphone-02pricing.png`；资料分析 |
 | 年龄输入 | 问卷含年龄（kidSAFE 合规用途） | 实测 |
 
-对我们：Pyodide 首次加载大，**离线/弱网是我们可以反超 Brilliant 的点**——已加载过一次后用 Service Worker 缓存 Pyodide 与 content/*.json。
+对我们：离线/弱网可能是差异点，但要分开说：**App 外壳（HTML/CSS/JS、content/*.json）离线可打开，并不证明离线能运行 Python**。完整缓存 Pyodide 需要单独评估：体积（运行时 + 标准库 + 包，首次下载与存储配额）、更新策略（版本升级时缓存失效与回滚）、失败恢复（缓存损坏、配额被系统清理、下载中断时的提示与重试）。在评估完成前，不能宣称“离线可学”。
+
+### 9.1 浏览器文字缩放实测（2026-11-03 JST，WebKit 与 Chromium，iPhone 13 视口）
+
+脚本 `logs/b5.mjs`（复制自 `/workspace/preview-build/b5.mjs`），数据 `brilliant/logs/b5-zoom.log`，截图 `brilliant/zoom-{wk,cr}-{home,course,welcome,help}-{root200,tsa200,zoom200}.png`。三种方式：(a) 根字号 200%（`html{font-size:200%}`，模拟用户默认字号变大）；(b) `text-size-adjust:200%`（模拟移动端文字缩放）；(c) CSS `zoom:2`（近似页面 200% 缩放）。
+
+| 方式 | WebKit | Chromium | 结论 |
+|---|---|---|---|
+| (a) 根字号 200% | 根字号 16→32px，但首页 H1 30px、正文 14px、帮助页 H1 40px **不变**；只有课程页/欢迎页部分按钮与正文（rem 单位）变为 32px | 同 WebKit | 大部分文字用 px 固定，**不跟随用户字号**；只部分组件跟随 |
+| (b) text-size-adjust 200% | 无任何变化（headless WebKit 不响应此属性，**结论不确定**） | 全部文字放大一倍（H1 30→60、帮助 H1 40→80），四页均**无横向溢出**（scrollWidth 保持 390） | Chromium 下排版能正确重排 |
+| (c) CSS zoom 2 | 首页 scrollWidth 420、课程页 498 → **出现横向滚动**；欢迎页、帮助页无溢出 | 在 (b) 基础上叠加测量（等效更大），首页 720、课程 568、帮助 529 均溢出 | 页头（Logo + 登录按钮）与课程卡在高倍缩放时溢出，截图可见“Sign up”被截 |
+
+局限：这是网页近似，**原生 iOS 动态字体（Dynamic Type）仍为 未验证**；Chromium 的 (c) 与 (b) 叠加，不是纯 200%。
+
+对碎片编程：字号用 rem、关卡页在 `html{font-size:200%}` 下自测一次，确认“检查”按钮与代码块不横向溢出。
 
 ---
 
 ## 优先采用的 5 项
 
-1. **单元末尾“单元复盘”关**：混合本单元题型，至少一道需改写代码，作为“会独立应用”的检查点（对应 Brilliant 的 Level Review）。
-2. **提示分级，不在第二次点击就给答案**：方向 → 指出关键行/位置 → 最后才给答案并标记“本题看过答案”，变式题再考一次。
-3. **简化版“保签”**：每周自动 1 次漏签保护，无需购买，避免一次断签导致放弃。
-4. **关卡顶栏加声音开关 + 分段进度**：与返回并列，随手静音（地铁/课堂场景）。
-5. **无账号试学 + 离线缓存**：保持首屏 3 步内进入第一题；Pyodide 与课程内容缓存后可离线继续——这是 Brilliant 明确做不到的。
+（已按 GPT 决策更新，2026-11-03）
+
+1. **单元复盘——原则批准**：不新增关卡类型，**复用现有的复习关（`review: true`）与项目关**，在其中混合本单元题型并含一道改写代码题。
+2. **分级提示 + 变式——批准**：与 Claude 在 PR #19 定义的字段对齐（`requiresVariationAfterSolution`、`variation`）；看过答案后必须完成变式；**不另建第二套提示系统**。
+3. **每周保签——暂缓**：本轮不做。
+4. **关卡内声音开关——之后单独小 PR**：复用已保存的声音偏好；按钮位置与实现必须保证**绝不会误触提交答案**。
+5. **无账号试学与离线学习——保留**：离线 Python 执行须先完成上文 9 节所述的 Pyodide 缓存评估；本条不替代已批准的会员方案。
 
 ## 明确不建议采用的 3 项
 
@@ -146,6 +164,7 @@
 
 ## 需要用户试玩验证的假设
 
+- H0：“注册前问卷/注册墙能提高 Brilliant 的注册转化”与“我们的引导更好”均为假设，无对比数据。
 - H1：零基础用户更愿意“先做题后了解”，3 屏引导已足够；加一题“写过代码吗？”不会增加流失。
 - H2：答错扣红心让新手不敢试错；改为“只有看答案/连续答错才扣”是否提升完成率（**本 PR 不改规则**，仅待验证）。
 - H3：单元复盘关里的“改写代码”题对零基础用户难度可接受（完成率 ≥ 70%）。
@@ -155,12 +174,12 @@
 
 ## 当前 App 对应页面的具体改法
 
-（基于 main 的 `src/app.js`、`src/game.css`、`content/unit1.json`、`content/unit2.json`。注：main 目前题型为 predict / fill / order，尚无独立的“代码任务/变式”数据结构，下文第 2、5 条对应新增内容格式。本 PR 只写文档，不改代码。）
+（基于 main 的 `src/app.js`、`src/game.css`、`content/unit1.json`、`content/unit2.json`。更正：main 目前题型为 predict / fill / order；代码任务 / 变式格式**已存在于未合并的 PR #19**（feat/code-task-run，代码任务页与判题链），使用该 schema 的内容在未合并的 PR #24（content/code-tasks，含 `requiresVariationAfterSolution` / `variation` 字段）。下文第 2 条应基于 #19 的字段实现，不新建格式。本 PR 只写文档，不改代码。）
 
 1. **`renderPath()`（关卡地图）+ `content/course.json`/`unitN.json`**：在每个单元 `lessons` 末尾增加一个 `review: true` 的“单元复盘”关（地图已支持 `hexNode(st, review)` 的复盘图标），题目从本单元各关抽取并附加 1 道 fill/改写题。
-2. **`renderExercise()` 中 `helpBtn` 处理函数**：现在是 `hintShown ? correctAnswerText(ex) : ex.hint` 两级；改为三级：`ex.hint` → `ex.hint2`（指出位置，可在代码块高亮行）→ 答案；看过答案时在 `run` 上记一笔，`renderFinish()` 中显示“有 N 题看过答案，已加入复习”。
-3. **`lessonHeader(run)`**：在红心/护盾旁增加声音开关按钮，复用“我的”页的音效设置与 `feel` 模块（`src/feel.js`）；点击区域 ≥ 44×44。
-4. **`statsBar()` 与 streak 逻辑（`currentStreak(state)`，`src/storage.js`）**：增加每周 1 次自动保签的状态与说明，在 `renderMe()` 的统计卡显示“本周保签：可用/已用”。（属于奖励规则变更，需单独 PR 与用户确认。）
+2. **`renderExercise()` 中 `helpBtn` 处理函数（及 #19 的代码任务页）**：按 #19 的 `requiresVariationAfterSolution` / `variation` 字段接入；现在是 `hintShown ? correctAnswerText(ex) : ex.hint` 两级；改为三级：`ex.hint` → `ex.hint2`（指出位置，可在代码块高亮行）→ 答案；看过答案时在 `run` 上记一笔，`renderFinish()` 中显示“有 N 题看过答案，已加入复习”。
+3. **`lessonHeader(run)`（之后单独小 PR）**：复用已保存的声音偏好，与“检查”按钮保持距离，确保不会误触提交；在红心/护盾旁增加声音开关按钮，复用“我的”页的音效设置与 `feel` 模块（`src/feel.js`）；点击区域 ≥ 44×44。
+4. **（暂缓）`statsBar()` 与 streak 逻辑（`currentStreak(state)`，`src/storage.js`）**：增加每周 1 次自动保签的状态与说明，在 `renderMe()` 的统计卡显示“本周保签：可用/已用”。（属于奖励规则变更，需单独 PR 与用户确认。）
 5. **`renderOnboarding()`**：保持 3 屏；可选在第 2 屏加“写过代码吗？”两个按钮，只影响文案，不影响解锁。
 6. **`src/game.css`**：为 `.lesson`、`.onboard`、`.lsheet` 增加 `max-width: 560px; margin-inline: auto`（iPad 横屏）；检查所有 sheet 在 `prefers-color-scheme: dark` 下的颜色；`prefers-reduced-motion` 已有（第 267 行），确认反馈动画都被覆盖。
 7. **`src/py-worker.js` / 构建配置**：增加 Service Worker 缓存 Pyodide 与 `content/*.json`，`showRun()` 在离线且未缓存时给出明确提示而非一直加载。
