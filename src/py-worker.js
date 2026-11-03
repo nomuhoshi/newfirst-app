@@ -148,7 +148,8 @@ onmessage = async (e) => {
         res = taskPy(data);
         const r = res.toJs({ dict_converter: Object.fromEntries });
         err = r.error || null;
-        files = r.files || null;
+        // Python 的 None 转到 JS 是 undefined：统一成 null（文件不存在）
+        files = r.files ? Object.fromEntries(Object.entries(r.files).map(([k, v]) => [k, v ?? null])) : null;
       } else {
         data = m.data ? pyodide.toPy(m.data) : null;
         res = data ? runPy(m.code, data) : runPy(m.code);
