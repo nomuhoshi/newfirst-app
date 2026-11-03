@@ -17,17 +17,23 @@ def order(prompt, lines, shuffled, answers, expected, hint):
 
 
 import itertools, io, contextlib
-def valid_orders(lines, expected):
-    """所有能得到 expected 的排列都算对（规范答案在最前面）。"""
-    res = []
-    for p in itertools.permutations(range(len(lines))):
-        buf = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(buf): exec("\n".join(lines[k] for k in p), {})
-        except Exception: continue
-        if buf.getvalue().rstrip("\n") == expected: res.append(list(p))
-    canon = list(range(len(lines))); res.sort(key=lambda a: a != canon); return res
-O8 = ["pay = 100", "if pay >= 100:", "    pay = pay - 20", "is_vip = True", "if is_vip:", "    pay = pay - 5", "print(\"应付\", pay)"]
+def _out(code):
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf): exec(code, {})
+    except Exception as e: return "<" + type(e).__name__ + ">"
+    return buf.getvalue().rstrip("\n")
+def _case(lines, case):
+    return [f"{l.split(' = ')[0]} = {case[l.split(' = ')[0]]!r}" if " = " in l and not l.startswith(" ") and l.split(" = ")[0] in case else l for l in lines]
+def valid_orders(lines, expected, cases=()):
+    """能得到 expected、并且在 cases 的每组数据下都和标准顺序输出相同的排列才算对（规范答案在最前面）。"""
+    canon = list(range(len(lines))); res = []
+    for p in itertools.permutations(canon):
+        if _out("\n".join(lines[k] for k in p)) != expected: continue
+        if all(_out("\n".join(_case(lines, c)[k] for k in p)) == _out("\n".join(_case(lines, c)[k] for k in canon)) for c in cases): res.append(list(p))
+    res.sort(key=lambda a: a != canon); return res
+O8 = ["total = 100", "is_vip = True", "pay = total", "if total >= 100:", "    pay = pay - 20", "if is_vip:", "    pay = pay - 5", "print(\"应付\", pay)"]
+C8 = [{"total": t, "is_vip": v} for t in (80, 99, 100, 104, 120, 150) for v in (True, False)]
 
 SHOW = "点单屏运行这段程序，屏幕上会显示什么？"
 T, F = True, False
@@ -143,9 +149,9 @@ lessons = [
         ("满减 20 元\n不满减\n谢谢光临", F, "else 里缩进的行只有条件不成立时才执行。")],
         tip="看缩进：缩进的行属于上面的 if 或 else，没缩进的行谁都不属于。"),
   ],
-  "pending": [{"type": "modify", "status": "待 Claude 的代码题运行器，暂不开放", "plan": "改一改：把 else 写成 else total < 100: 的程序改正确"}]},
- {"id": "U3L6", "title": "满多少减多少", "concept": "elif 多分支和 if 套 if",
-  "story": "有好几档优惠时，用 elif（意思是“否则如果”）。Python 从上往下检查，遇到第一个成立的条件就执行它，后面的都跳过。所以要把更严格的条件（比如 >= 100）放在前面。if 里面还可以再写 if，里面那层要再缩进 4 格。",
+  "pending": [{"type": "modify", "replaces": 4, "status": "待 Claude 的代码题运行器，暂不开放", "plan": "改一改：把 else 写成 else total < 100: 的程序改正确"}]},
+ {"id": "U3L6", "title": "满多少减多少", "concept": "elif 多分支",
+  "story": "有好几档优惠时，用 elif（意思是“否则如果”）。Python 从上往下检查，遇到第一个成立的条件就执行它，后面的都跳过。所以要把更严格的条件（比如 >= 100）放在前面。",
   "introCode": "total = 120\nif total >= 100:\n    print(\"减 20\")\nelif total >= 50:\n    print(\"减 5\")\nelse:\n    print(\"不减\")",
   "exercises": [
     pred(SHOW, "total = 120\nif total >= 100:\n    print(\"减 20\")\nelif total >= 50:\n    print(\"减 5\")\nelse:\n    print(\"不减\")", [
@@ -160,13 +166,12 @@ lessons = [
         ["100", "50"], ["100", "50"], "减 5",
         {"50": "如果先检查 >= 50，60 元会先命中“减 20”那一档。严格的条件要放前面。"},
         "从上往下只走第一个成立的：门槛高的放前面。"),
-    pred(SHOW, "total = 120\nis_vip = False\nif total >= 100:\n    if is_vip:\n        print(\"减 25\")\n    else:\n        print(\"减 20\")\nelse:\n    print(\"不减\")", [
-        ("减 20", T, "外层：120 >= 100 成立，进入里面；里层：不是会员，走里面的 else。"),
-        ("减 25", F, "is_vip 是 False，里层的 if 不成立。"),
-        ("不减", F, "外层条件成立，最外面的 else 不执行。")],
-        tip="if 套 if：先看外层，成立了再看里层。缩进越深，层越里面。"),
+    fill("满 200 减 50，满 100 减 20（只减一档）。顾客买了 150 元，补全两个数字，屏幕要显示：应付 130", "total = 150\npay = total\nif total >= {0}:\n    pay = pay - 50\nelif total >= {1}:\n    pay = pay - 20\nprint(\"应付\", pay)",
+        ["200", "100"], ["200", "100"], "应付 130",
+        {"100": "门槛顺序反了：150 元会先命中“减 50”那一档（150 >= 100），多减了钱。门槛高的要放前面。"},
+        "elif 从上往下只走一个：门槛高的放前面。"),
   ],
-  "pending": [{"type": "modify", "status": "待 Claude 的代码题运行器，暂不开放", "plan": "改一改：把 >=50 写在 >=100 前面的程序改对"}]},
+  "pending": [{"type": "modify", "replaces": 3, "status": "待 Claude 的代码题运行器，暂不开放", "plan": "改一改：把 >=50 写在 >=100 前面的程序改对"}]},
  {"id": "U3L7", "title": "会员或满额送赠品", "concept": "and / or / not",
   "story": "把几个条件组合起来：and 是“两个都成立才成立”；or 是“有一个成立就成立”；not 把 True 变 False、False 变 True。每个比较都要写完整：cups > 3 and cups < 10，不能写成 cups > 3 and < 10。",
   "introCode": "total = 120\nis_vip = False\nprint(total >= 100 and is_vip)\nprint(total >= 100 or is_vip)",
@@ -190,33 +195,38 @@ lessons = [
         {"and": "and 要两个都成立；这位顾客不是会员，结果是没有赠品。“或者”要用 or。"},
         "“有一个成立就行”用哪个词？"),
   ],
-  "pending": [{"type": "modify", "status": "待 Claude 的代码题运行器，暂不开放", "plan": "改一改：把 cups > 3 and < 10 改成完整条件"}]},
- {"id": "U3L8", "title": "项目：折扣检查", "concept": "单元项目：组合 if、and/or、边界值",
-  "story": "单元项目：做一个折扣检查器。规则：满 100 元（正好 100 也算）减 20；会员再减 5。程序用 pay 记住应付金额，一步步减。",
+  "pending": [{"type": "modify", "replaces": 4, "status": "待 Claude 的代码题运行器，暂不开放", "plan": "改一改：把 cups > 3 and < 10 改成完整条件"}]},
+ {"id": "U3L8", "title": "项目：折扣检查", "concept": "if 套 if + 单元项目",
+  "story": "先看一个新写法：if 里面还可以再写 if（if 套 if），先判断外层，成立了再判断里层，里层要再缩进 4 格。然后做单元项目：折扣检查器。规则：满 100 元（正好 100 也算）减 20；会员再减 5。程序用 pay 记住应付金额，一步步减。",
   "introCode": "total = 120\nis_vip = True\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
   "exercises": [
+    pred(SHOW, "total = 120\nis_vip = False\nif total >= 100:\n    if is_vip:\n        print(\"减 25\")\n    else:\n        print(\"减 20\")\nelse:\n    print(\"不减\")", [
+        ("减 20", T, "外层：120 >= 100 成立，进入里面；里层：不是会员，走里面的 else。"),
+        ("减 25", F, "is_vip 是 False，里层的 if 不成立。"),
+        ("不减", F, "外层条件成立，最外面的 else 不执行。")],
+        tip="if 套 if：先看外层，成立了再看里层。缩进越深，层越里面。"),
     pred(SHOW, "total = 100\nis_vip = False\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)", [
         ("应付 80", T, "正好 100：>= 包含相等，减 20；不是会员，不再减。"),
         ("应付 100", F, ">= 100 包含正好 100，所以要减。"),
         ("应付 75", F, "is_vip 是 False，会员那一步不执行。")],
         tip="边界值：正好 100 算不算，看用的是 > 还是 >=。"),
     order("排好顺序：会员正好买 100 元，算出要付多少。屏幕显示：应付 75",
-        O8, [6, 4, 5, 2, 3, 0, 1], valid_orders(O8, "应付 75"), "应付 75",
-        "先满减再判断会员：如果先减会员的 5 元，100 就变成 95，不满 100 了。每个 if 下面紧跟它缩进的那行。"),
-    fill("满 200 减 50，满 100 减 20（只减一档）。顾客买了 150 元，补全两个数字，屏幕要显示：应付 130", "total = 150\npay = total\nif total >= {0}:\n    pay = pay - 50\nelif total >= {1}:\n    pay = pay - 20\nprint(\"应付\", pay)",
-        ["200", "100"], ["200", "100"], "应付 130",
-        {"100": "门槛顺序反了：150 元会先命中“减 50”那一档（150 >= 100），多减了钱。门槛高的要放前面。"},
-        "elif 从上往下只走一个：门槛高的放前面。"),
+        O8, [7, 4, 5, 2, 6, 3, 1, 0], valid_orders(O8, "应付 75", C8), "应付 75",
+        "先有 total 才能算 pay；满减看的是原价 total；每个 if 下面紧跟它该做的那一行（满减减 20，会员减 5）。"),
     pred(SHOW, "total = 80\nis_vip = True\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)", [
         ("应付 75", T, "80 不满 100，不减 20；是会员，减 5。两个 if 是分开的，各自判断。"),
         ("应付 55", F, "80 < 100，满减那步不执行。"),
         ("应付 80", F, "两个 if 各自独立：第一个不成立，第二个仍会检查。")],
         tip="两个分开的 if 都会检查；if/elif 才是只走一个。"),
   ],
-  "pending": [{"type": "write", "status": "待 Claude 的代码题运行器，暂不开放", "plan": "写一写：已给 total、is_vip，输出 应付 <金额>。测试：(120, False)→应付 100；(120, True)→应付 95；(80, True)→应付 75；(100, False)→应付 80",
+  "pending": [{"type": "write", "replaces": 4, "keep": "第 2 题（边界值 100）保留", "status": "待 Claude 的代码题运行器，暂不开放", "plan": "写一写：已给 total、is_vip，输出 应付 <金额>。测试：(120, False)→应付 100；(120, True)→应付 95；(80, True)→应付 75；(100, False)→应付 80",
     "reference": "pay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
     "tests": [{"data": {"total": 120, "is_vip": False}, "stdout": "应付 100"}, {"data": {"total": 120, "is_vip": True}, "stdout": "应付 95"}, {"data": {"total": 80, "is_vip": True}, "stdout": "应付 75"}, {"data": {"total": 100, "is_vip": False}, "stdout": "应付 80"}]}]},
 ]
+
+for l in lessons:
+    for e in l["exercises"]:
+        if e["type"] == "order" and e["lines"] == O8: e["equivCases"] = C8
 
 unit = {"id": "U3", "title": "比较与判断", "subtitle": "比较、if/else/elif、and/or/not", "lessons": lessons}
 p = pathlib.Path(__file__).resolve().parent.parent / "content/unit3.json"
