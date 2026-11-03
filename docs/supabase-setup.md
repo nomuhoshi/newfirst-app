@@ -16,7 +16,7 @@
 
 ## 3. 打开邮箱验证码登录
 1. Authentication → Sign In / Providers → Email：打开 Enable Email provider。
-2. 关闭 "Confirm email" 以外的"点链接确认"流程依赖不需要处理；**我们用 6 位验证码，不用链接**。
+2. 保持 "Confirm email" 开启。**我们用 6 位验证码登录，不用邮件里的链接**（原因：iPhone 主屏幕 App 和 Safari 的存储是分开的，点链接会登录到 Safari 而不是 App）。
 3. Authentication → Email Templates → **Magic Link** 和 **Confirm signup** 两个模板的正文改成只含验证码（我会给你中文模板，内容是 `{{ .Token }}`，不含链接）。
 4. Authentication → Settings：验证码有效期 600 秒（10 分钟）；验证码长度 6 位。
 
