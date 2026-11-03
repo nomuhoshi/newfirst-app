@@ -389,8 +389,21 @@ function renderPath() {
     tabBar("path"),
   );
   notice = null;
-  // 当前关卡滚到可见
-  appEl.querySelector(".node.current")?.scrollIntoView({ block: "center" });
+  scrollToCurrent();
+}
+
+// 当前关卡（含上方“开始”气泡和下方关名）滚到可见：可见区域要扣掉吸顶的“随机练习”入口，不能被它挡住
+function scrollToCurrent() {
+  const view = appEl.querySelector(".pathview"), node = view?.querySelector(".node.current");
+  if (!node) return;
+  const parts = [node, node.parentElement?.querySelector(".bubble"), node.parentElement?.querySelector(".node-label")].filter(Boolean);
+  const vr = view.getBoundingClientRect();
+  const entry = view.querySelector(".practice-entry-wrap");
+  const top0 = entry ? Math.max(vr.top, entry.getBoundingClientRect().bottom) : vr.top; // 入口下沿以下才算可见
+  const gTop = Math.min(...parts.map((e) => e.getBoundingClientRect().top)), gBot = Math.max(...parts.map((e) => e.getBoundingClientRect().bottom));
+  const room = vr.bottom - top0, gh = gBot - gTop;
+  const want = gh >= room ? top0 + 4 : top0 + (room - gh) / 2; // 放不下就贴着入口下沿
+  view.scrollTop += gTop - want;
 }
 
 function openLessonSheet(l) {

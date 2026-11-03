@@ -247,6 +247,31 @@ try {
     check("360 宽竖屏：范围页没有横向溢出，11 关全部可选", (await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)) && (await page.locator("[data-practice-lesson]").count()) === 11);
     await ctx.close();
   }
+  { // 矮屏横屏 + 各种进度：吸顶的“随机练习”入口和当前关（“开始”气泡、节点、关名）互不遮挡，都完整可见；滚到当前关时扣掉入口高度
+    const L = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6", "U2L1", "U2L2", "U2L3", "U2L4", "U2L5"];
+    for (const vp of [{ width: 734, height: 343 }, { width: 568, height: 320 }, { width: 852, height: 393 }, { width: 390, height: 844 }]) {
+      for (const n of [1, 3, 8, 10]) {
+        const { ctx, page } = await openPage(baseState(L.slice(0, n)), vp);
+        await page.waitForSelector(".node.current");
+        const g = await page.evaluate(() => {
+          const view = document.querySelector(".pathview"), vr = view.getBoundingClientRect(), node = view.querySelector(".node.current");
+          const box = (e) => e.getBoundingClientRect(); const ent = box(view.querySelector(".practice-entry-wrap"));
+          const parts = { bubble: node.parentElement.querySelector(".bubble"), node, label: node.parentElement.querySelector(".node-label") };
+          const bad = [];
+          if (ent.top < vr.top - 0.5 || ent.bottom > vr.bottom + 0.5) bad.push("入口不在可见区");
+          for (const [k, e] of Object.entries(parts)) { const r = box(e); if (r.top < ent.bottom - 0.5) bad.push(`${k} 被入口挡住 top=${Math.round(r.top)} 入口下沿=${Math.round(ent.bottom)}`); if (r.bottom > vr.bottom + 0.5) bad.push(`${k} 超出底部`);
+            const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); if (!(t === e || e.contains(t))) bad.push(`${k} 中心点被别的元素盖住`); }
+          const eb = view.querySelector("[data-practice-entry]"), er = box(eb), et = document.elementFromPoint(er.left + er.width / 2, er.top + er.height / 2);
+          if (!(et === eb || eb.contains(et))) bad.push("入口按钮中心被盖住");
+          return bad;
+        });
+        check(`${vp.width}x${vp.height} 通关 ${n} 关：入口与当前关（气泡/节点/关名）都完整可见、互不遮挡`, g.length === 0, g.join("；"));
+        await page.locator(".node.current").click(); // 真实点击
+        check(`${vp.width}x${vp.height} 通关 ${n} 关：真实点击当前关能打开关卡弹窗`, await page.waitForSelector(".overlay", { timeout: 3000 }).then(() => true, () => false));
+        await ctx.close();
+      }
+    }
+  }
 } finally {
   await browser.close();
   srv.close();
