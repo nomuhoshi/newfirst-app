@@ -66,6 +66,12 @@ h1, h2, h3 { letter-spacing: .2px; }
 .feedbar { border-radius: 20px 20px 0 0; padding: 16px 18px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px -16px rgba(0, 0, 0, .35); }
 .fb-head { font-size: 24px; font-weight: 800; }
 
+/* 键盘就在底栏下面时，底栏不需要再给 Safari 工具栏留 80px */
+.lessonfoot:has(+ #keyboard:not([hidden])), .ios-browser .lessonfoot:has(+ #keyboard:not([hidden])) { padding-bottom: 10px; }
+.practice-entry-wrap { padding: 10px 0 6px; margin: -10px 0 10px; }
+@media (max-width: 599px) { .choices { grid-template-columns: 1fr; gap: 8px; } .choice { text-align: left; } }
+.finish > * { flex-shrink: 0; }
+
 /* ---------- 代码题：题面区可滚动，编辑器固定留够 6 行 ---------- */
 .lesson-code { display: flex; flex-direction: column; }
 .lesson-code > .q { font-size: 18px; margin: 4px 0 8px; flex: none; }
@@ -74,8 +80,9 @@ h1, h2, h3 { letter-spacing: .2px; }
 .lesson-code .ct-given { font-size: 14px; color: var(--g-muted); }
 .lesson-code .ct-given code { background: var(--g-code-bg); color: var(--g-code-fg); border-radius: 6px; padding: 1px 7px; font-size: 13px; }
 .lesson-code .ct-samples { gap: 6px; }
-.lesson-code .ct-sample { background: transparent; border: none; border-left: 3px solid var(--g-line); border-radius: 0; padding: 2px 0 2px 10px; display: flex; flex-wrap: wrap; gap: 0 14px; font-size: 13px; line-height: 1.5; }
-.lesson-code .ct-sample b { flex: 1 0 100%; margin: 0; font-size: 12px; }
+.lesson-code .ct-sample { background: transparent; border: none; border-left: 3px solid var(--g-line); border-radius: 0; padding: 2px 0 2px 10px; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; font-size: 13px; line-height: 1.5; }
+.lesson-code .ct-sample b { grid-row: 1 / span 2; align-self: center; }
+.lesson-code .ct-sample b { margin: 0; font-size: 12px; }
 .lesson-code .ct-worked { margin: 0; padding: 0 12px; border-radius: 12px; background: var(--g-card); border: 1.5px solid var(--g-line); }
 .lesson-code .ct-worked summary { min-height: 40px; font-size: 14px; color: var(--g-primary); }
 .lesson-code .ct-worked[open] { max-height: none; overflow: visible; padding-bottom: 8px; }
@@ -133,4 +140,10 @@ h1, h2, h3 { letter-spacing: .2px; }
   .ct-kb .kb-actions .kb-key { flex: 1 1 calc(50% - 4px); max-width: none; height: 44px; }
   .ct-kb .kb-row:not(.kb-actions) { grid-column: 1; margin: 2px 0; }
   .ct-kb .kb-key { height: 44px; }
+  #app { position: relative; }
+  #app > .lessonfoot.code-foot { position: absolute; top: max(3px, env(safe-area-inset-top)); right: 84px; width: 230px; padding: 0; gap: 8px; border: none; box-shadow: none; background: none; z-index: 3; }
+  #app > .lessonfoot.code-foot .btn3d { min-height: 44px; font-size: 16px; padding: 0 12px; }
+  #app > .lessonfoot.code-foot .mascot-btn { min-width: 44px; min-height: 44px; }
+  #app > .lessonfoot.code-foot .mascot-btn svg { width: 40px; height: 40px; }
+  .lessonbar:has(~ .code-foot) .progress { margin-right: 238px; }
 }

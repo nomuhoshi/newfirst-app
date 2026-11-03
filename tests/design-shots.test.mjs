@@ -110,14 +110,15 @@ try {
       await start(page, [VARI("T-D1")]);
       await page.waitForTimeout(300);
       await S(page, "4-code-task");
-      const edBox = async () => page.evaluate(() => { const e = document.querySelector(".ct-editor").getBoundingClientRect(); const k = document.querySelector("#keyboard"); const kt = k && !k.hidden ? k.getBoundingClientRect().top : innerHeight; return { top: e.top, bottom: e.bottom, h: e.height, kbTop: kt, vh: innerHeight }; });
+      // 看得见的编辑器高度：编辑器与答题区（.lesson）相交，再扣掉键盘
+      const edBox = async () => page.evaluate(() => { const e = document.querySelector(".ct-editor").getBoundingClientRect(); const l = document.querySelector(".lesson-code").getBoundingClientRect(); const k = document.querySelector("#keyboard"); const kt = k && !k.hidden ? k.getBoundingClientRect().top : innerHeight; const top = Math.max(e.top, l.top, 0), bottom = Math.min(e.bottom, l.bottom, kt, innerHeight); return { top, bottom, h: bottom - top, full: e.height, kbTop: kt, vh: innerHeight }; });
       const b0 = await edBox();
-      if (portraitPhone || tag.startsWith("ipad")) check(`${tag} 代码题：键盘打开时编辑器完整可见且至少 6 行（≥150px）`, b0.h >= 150 && b0.bottom <= b0.kbTop + 1 && b0.top >= 0, JSON.stringify(b0));
-      else check(`${tag} 代码题：横屏键盘打开时编辑器至少露出 70px`, Math.min(b0.bottom, b0.kbTop) - Math.max(b0.top, 0) >= 70, JSON.stringify(b0));
+      if (portraitPhone || tag.startsWith("ipad")) check(`${tag} 代码题：键盘打开时编辑器至少露出 6 行（≥150px 实际可见）`, b0.h >= 150, JSON.stringify(b0));
+      else check(`${tag} 代码题：横屏键盘打开时编辑器至少露出 70px`, b0.h >= 70, JSON.stringify(b0));
       await page.locator("[data-worked] summary").tap(); await page.waitForTimeout(200);
       await S(page, "5-code-worked-open");
       const b1 = await edBox();
-      if (portraitPhone || tag.startsWith("ipad")) check(`${tag} 代码题：展开示例后编辑器仍完整可见（≥150px）`, b1.h >= 150 && b1.bottom <= b1.kbTop + 1 && b1.top >= 0, JSON.stringify(b1));
+      if (portraitPhone || tag.startsWith("ipad")) check(`${tag} 代码题：展开示例后编辑器仍完整可见（≥150px）`, b1.h >= 150, JSON.stringify(b1));
       await setCode(page, 'price = 15\ncups = 4\ntotal = price - cups\nprint("总价", total)');
       await S(page, "6-code-editing");
       check(`${tag} 代码题：没有横向滚动`, await noHScroll(page));

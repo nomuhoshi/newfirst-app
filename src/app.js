@@ -801,8 +801,8 @@ function renderExercise(run) {
       area.node,
       outPanel,
     ),
-    h("footer", { class: "lessonfoot" }, helpBtn, checkBtn),
-    area.after,
+    h("footer", { class: "lessonfoot" + (isCode ? " code-foot" : "") }, helpBtn, checkBtn),
+    ...(area.after ? [area.after] : []), // 只有代码题有内置键盘；其他题型没有，不能把 undefined 当文字显示出来
   );
 
   function check() {
