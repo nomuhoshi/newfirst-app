@@ -94,8 +94,10 @@ await new Promise((res) => srv.listen(PORT, res));
 const browser = await chromium.launch();
 const KEY = "suipian.progress";
 
-async function openPage(seedState, viewport = { width: 390, height: 844 }) {
-  const ctx = await browser.newContext({ viewport, hasTouch: true, isMobile: true, serviceWorkers: "block" });
+const IPHONE_SAFARI_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+async function openPage(seedState, vp = { width: 390, height: 844 }) {
+  const { safari, ...viewport } = vp; // safari: 用 iPhone Safari 的 UA，应用会加 ios-browser 类（底栏更高）
+  const ctx = await browser.newContext({ viewport, hasTouch: true, isMobile: true, serviceWorkers: "block", ...(safari ? { userAgent: IPHONE_SAFARI_UA } : {}) });
   if (seedState) await ctx.addInitScript(([k, v]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem(k, v); sessionStorage.setItem("seeded", "1"); } }, [KEY, JSON.stringify(seedState)]);
   const page = await ctx.newPage();
   const errors = [];
@@ -249,7 +251,7 @@ try {
   }
   { // 矮屏横屏 + 各种进度：吸顶的“随机练习”入口和当前关（“开始”气泡、节点、关名）互不遮挡，都完整可见；滚到当前关时扣掉入口高度
     const L = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6", "U2L1", "U2L2", "U2L3", "U2L4", "U2L5"];
-    for (const vp of [{ width: 734, height: 343 }, { width: 568, height: 320 }, { width: 852, height: 393 }, { width: 390, height: 844 }]) {
+    for (const vp of [{ width: 734, height: 343 }, { width: 568, height: 320 }, { width: 852, height: 393 }, { width: 390, height: 844 }, { width: 568, height: 320, safari: true }, { width: 734, height: 343, safari: true }]) {
       for (const n of [1, 3, 8, 10]) {
         const { ctx, page } = await openPage(baseState(L.slice(0, n)), vp);
         await page.waitForSelector(".node.current");
@@ -265,9 +267,9 @@ try {
           if (!(et === eb || eb.contains(et))) bad.push("入口按钮中心被盖住");
           return bad;
         });
-        check(`${vp.width}x${vp.height} 通关 ${n} 关：入口与当前关（气泡/节点/关名）都完整可见、互不遮挡`, g.length === 0, g.join("；"));
+        check(`${vp.width}x${vp.height}${vp.safari ? " Safari" : ""} 通关 ${n} 关：入口与当前关（气泡/节点/关名）都完整可见、互不遮挡`, g.length === 0, g.join("；"));
         await page.locator(".node.current").click(); // 真实点击
-        check(`${vp.width}x${vp.height} 通关 ${n} 关：真实点击当前关能打开关卡弹窗`, await page.waitForSelector(".overlay", { timeout: 3000 }).then(() => true, () => false));
+        check(`${vp.width}x${vp.height}${vp.safari ? " Safari" : ""} 通关 ${n} 关：真实点击当前关能打开关卡弹窗`, await page.waitForSelector(".overlay", { timeout: 3000 }).then(() => true, () => false));
         await ctx.close();
       }
     }

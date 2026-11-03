@@ -324,3 +324,11 @@ body { background: var(--g-bg); color: var(--g-fg); }
   .practice-entry-text { flex-direction: row; gap: 8px; align-items: baseline; }
   .practice-empty { margin: 2px 0 0; }
 }
+@media (max-height: 340px) {
+  /* 极矮屏（iPhone SE 横屏 + Safari 底栏）：当前关（气泡+节点+关名）和吸顶入口要同时放下，入口再压低一些 */
+  .practice-entry-wrap { padding: 2px 0; margin: -12px 0 4px; }
+  .practice-entry { min-height: 32px; padding: 2px 12px; }
+  .tab { min-height: 44px; } /* 仍不小于 44px 触控尺寸 */
+  .bubble { margin-bottom: 4px; }
+  .node-label { margin-top: 2px; }
+}
