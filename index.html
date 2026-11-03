@@ -33,7 +33,7 @@
       document.documentElement.style.colorScheme = "light dark";
       box = document.createElement("div");
       box.id = "load-fallback";
-      box.style.cssText = "font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;padding:32px 20px;max-width:520px;margin:0 auto;color:CanvasText";
+      box.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;overflow:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box;background:Canvas;font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;padding:32px 20px;color:CanvasText";
       add(box, "h1", "页面没有正常加载", "font-size:20px;margin:0 0 12px");
       add(box, "p", "可能的原因（按可能性排列）：", "margin:0 0 8px");
       var ul = add(box, "ul", "", "padding-left:20px;margin:0 0 16px");
