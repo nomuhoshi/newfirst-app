@@ -18,8 +18,9 @@
     {
       "id": "U3",
       "title": "比较与判断",
-      "subtitle": "True/False、if/else",
-      "available": false
+      "subtitle": "比较、True/False、if",
+      "available": true,
+      "file": "unit3.json"
     },
     {
       "id": "U4",

@@ -25,6 +25,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: 用真实 Python 验证题目答案
+        run: npm run verify:content
       - run: npm run build
       - name: 自动测试（不通过就不部署）
         run: npm test

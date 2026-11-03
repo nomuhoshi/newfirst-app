@@ -24,11 +24,14 @@ function check(name, ok, detail = "") {
 // ---------- 内容结构 ----------
 const L = unit.lessons;
 const L2 = unit2.lessons;
+const L3 = JSON.parse(readFileSync(new URL("../content/unit3.json", import.meta.url))).lessons;
 // 全部关卡（第 1、2 单元）的题目；下面的通用内容检查对两个单元一起做
 const allEx = [...L, ...L2].flatMap((l) => l.exercises.map((e) => ({ ...e, lesson: l.id })));
 check("内容：第 1 单元 6 关，最后一关是单元复习", L.length === 6 && L.at(-1).review === true);
 check("内容：每关 3–5 道题，都有故事开场和示例代码", L.every((l) => l.exercises.length >= 3 && l.exercises.length <= 5 && l.story && l.introCode));
-check("内容：关卡 id 不重复，且课程路线只有第 1、2 单元可用，第 3–5 单元仍是“即将推出”", new Set([...L, ...L2].map((l) => l.id)).size === L.length + L2.length && course.units.filter((u) => u.available).map((u) => u.id).join() === "U1,U2" && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U3,U4,U5");
+check("内容：关卡 id 不重复，课程路线第 1–3 单元可用，第 4–5 单元仍是“即将推出”", new Set([...L, ...L2, ...L3].map((l) => l.id)).size === L.length + L2.length + L3.length && course.units.filter((u) => u.available).map((u) => u.id).join() === "U1,U2,U3" && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U4,U5");
+check("第 3 单元第一部分：U3L1–U3L4 每关 4 题，课程文件指向 unit3.json", L3.map((l) => l.id).join() === "U3L1,U3L2,U3L3,U3L4" && L3.every((l) => l.exercises.length === 4 && l.story && l.introCode && l.concept) && course.units[2].file === "unit3.json");
+check("第 3 单元：只用已有题型（predict / fill / order）", L3.every((l) => l.exercises.every((e) => ["predict", "fill", "order"].includes(e.type))));
 {
   const t = (l) => l.exercises.map((e) => e.type).join();
   check("第 2 单元：5 关、每关 4 题、共 20 题，最后一关是单元复习", L2.length === 5 && L2.every((l) => l.exercises.length === 4) && L2.flatMap((l) => l.exercises).length === 20 && L2.at(-1).review === true && L2.slice(0, 4).every((l) => !l.review));
