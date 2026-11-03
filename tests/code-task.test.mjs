@@ -361,6 +361,8 @@ try {
       await shot(page, `v-${tag}-2-worked-open`);
       await setCode(page, "print(1");
       await shot(page, `v-${tag}-3-editing`);
+      { const bb = await page.locator(".ct-editor").boundingBox(); const vh = viewport.height; const kbTop = await page.evaluate(() => document.querySelector("#keyboard")?.getBoundingClientRect().top ?? innerHeight);
+        check(`视觉 ${tag}：键盘弹出时编辑器至少露出 40px 且在键盘上方`, !!bb && bb.y >= 0 && Math.min(bb.y + bb.height, kbTop) - bb.y >= 40 && bb.y < Math.min(vh, kbTop)); }
       await setCode(page, "while True:\n    pass\n");
       await page.locator("[data-check]").tap();
       await waitJudged(page, 90000);
