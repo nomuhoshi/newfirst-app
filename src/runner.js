@@ -36,7 +36,16 @@ export class Runner {
     if (this.worker) this.worker.terminate();
     this.state = "loading";
     this.onStatus("loading");
-    const w = new Worker(new URL("./py-worker.js", import.meta.url), { type: "module" });
+    let w;
+    try {
+      w = new Worker(new URL("./py-worker.js", import.meta.url), { type: "module" });
+    } catch (e) {
+      // 有些环境（例如部分内置浏览器）不允许创建模块工作线程：不能让整个页面因此白屏，只让“运行结果”提示失败
+      this.worker = null;
+      this.state = "loadError";
+      this.onStatus("loadError", { msg: (e && e.message) || "无法创建 Python 工作线程" });
+      return;
+    }
     this.worker = w;
     this.loadTimer = setTimeout(() => {
       if (this.worker === w && this.state === "loading") this.onStatus("slowLoad");
