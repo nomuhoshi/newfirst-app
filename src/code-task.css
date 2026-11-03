@@ -1,0 +1,42 @@
+/* 写代码 / 改代码题 */
+.ct-root { display: flex; flex-direction: column; gap: 10px; }
+.ct-given { margin: 0; font-size: 15px; }
+.ct-samples { display: grid; gap: 8px; }
+.ct-sample { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 8px 12px; font-size: 14px; line-height: 1.5; }
+.ct-sample b { display: block; color: var(--g-muted); font-size: 12px; margin-bottom: 2px; }
+.ct-exp, .ct-out, .ct-cmp pre { margin: 4px 0 0; font: 14px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+.ct-editor { border: 1.5px solid var(--g-line); border-radius: 12px; background: var(--g-card); min-height: 132px; max-height: 38dvh; overflow: auto; overscroll-behavior: contain; }
+.ct-editor .cm-editor { font-size: 16px; }
+.ct-editor .cm-editor.cm-focused { outline: 2px solid var(--g-primary); outline-offset: -1px; border-radius: 12px; }
+.ct-editor .cm-gutters { background: transparent; border: none; color: var(--g-muted); }
+.ct-editor .cm-content { caret-color: var(--g-fg); color: var(--g-fg); }
+.ct-editor .cm-cursor { border-left-color: var(--g-fg); }
+.ct-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.ct-btn { font: 600 15px -apple-system, system-ui, sans-serif; min-height: 44px; padding: 0 16px; border-radius: 12px; border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); }
+.ct-btn.run { background: var(--g-primary); color: var(--g-on-primary); border-color: var(--g-primary); }
+.ct-btn.ghost { color: var(--g-muted); }
+.ct-btn.small { min-height: 36px; padding: 0 12px; font-size: 14px; }
+.ct-btn:disabled { opacity: .5; }
+.ct-meta { font-size: 12px; color: var(--g-muted); }
+.ct-savenote.bad { color: var(--g-bad); font-weight: 700; }
+.ct-status { font-size: 13px; color: var(--g-muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ct-results { border: 1.5px solid var(--g-line); border-radius: 12px; padding: 0 12px; background: var(--g-card); }
+.ct-results:empty { display: none; }
+.ct-results h3 { margin: 10px 0 6px; font-size: 16px; }
+.ct-results.ok { border-color: var(--g-ok); } .ct-results.ok h3 { color: var(--g-ok); }
+.ct-results.bad { border-color: var(--g-bad); } .ct-results.bad h3 { color: var(--g-bad); }
+.ct-results.warn { border-color: var(--g-copper); } .ct-results.warn h3 { color: var(--g-copper); }
+.ct-results p { margin: 6px 0; font-size: 14px; line-height: 1.55; }
+.ct-results .warn { color: var(--g-copper); font-weight: 600; }
+.ct-results .bad { color: var(--g-bad); }
+.ct-case { border-top: 1px solid var(--g-line); padding: 8px 0; font-size: 14px; }
+.ct-case-head b { margin-right: 6px; }
+.ct-case.ok .ct-case-head b { color: var(--g-ok); } .ct-case.bad .ct-case-head b { color: var(--g-bad); }
+.ct-cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ct-cmp > div { background: var(--g-bg); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+.ct-why { background: var(--g-bad-bg); border-radius: 8px; padding: 6px 8px; }
+.ct-diff { font-weight: 600; }
+/* 内置键盘贴在页面底部（样式沿用 style.css 里的 #keyboard），不随内容滚动 */
+.ct-kb { flex: 0 0 auto; }
+.ios-browser .ct-kb { padding-bottom: 76px; }
+@media (orientation: landscape) and (max-height: 500px) { .ct-editor { max-height: 30dvh; min-height: 80px; } .ct-cmp { grid-template-columns: 1fr; } }
