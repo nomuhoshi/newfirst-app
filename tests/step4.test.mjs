@@ -30,7 +30,7 @@ const srv = createServer((req, resp) => {
 await new Promise((res) => srv.listen(PORT, res));
 const browser = await chromium.launch();
 
-async function open({ ua = IPHONE_UA, init = null, route = null } = {}) {
+async function open({ ua = IPHONE_UA, init = null, route = null, clock = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: ua, hasTouch: true, isMobile: true, serviceWorkers: "block" });
   await ctx.addInitScript(() => { window.__fallbackMs = 1500; }); // 测试里把 8 秒缩短成 1.5 秒
   if (init) await ctx.addInitScript(init);
@@ -38,6 +38,7 @@ async function open({ ua = IPHONE_UA, init = null, route = null } = {}) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e.message || e)));
   if (route) await route(page);
+  if (clock) await page.clock.install(); // 可控时钟：用来“快进”超时，不依赖应用内部接口
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   return { ctx, page, errors };
 }
@@ -137,17 +138,25 @@ try {
     await ctx.close();
   }
   { // 加载一直没有结果（Worker 创建了但永远不回应）：到时间也要结束“运行中…”
-    const { ctx, page } = await open({ init: () => { window.Worker = function () { this.postMessage = () => {}; this.terminate = () => {}; }; } });
+    // 不改应用内部的超时设置（旧版本没有 __app.LIMITS），而是用浏览器可控时钟快进 40 秒（> 加载上限 30 秒 + 2 秒）。
+    // 这样在没有超时处理的旧代码上，失败原因就是“一直显示运行中…”，而不是接口缺失。
+    const { ctx, page, errors } = await open({ clock: true, init: () => { window.Worker = function () { this.postMessage = () => {}; this.terminate = () => {}; }; } });
     await page.waitForSelector("#app *");
-    await page.evaluate(() => { window.__app.LIMITS.loadMs = 600; const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+    await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
     await page.locator('[data-lesson="U1L1"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
     await page.getByRole("button", { name: "继续", exact: true }).tap();
     await page.waitForFunction(() => window.__app.currentEx);
     const e = await page.evaluate(() => window.__app.currentEx);
     await page.locator(".choice").nth(e.options.findIndex((o) => !!o.correct)).tap();
     await page.locator("[data-check]").tap(); await page.waitForSelector(".feedbar");
-    await page.waitForFunction(() => { const t = document.querySelector(".outpanel pre")?.textContent; return t && !/运行中/.test(t); }, null, { timeout: 8000 });
-    check("Worker 一直不回应：超时后“运行中…”结束并给出重试", (await page.locator("[data-retry-python]").count()) === 1);
+    await page.clock.runFor(40000);
+    const ended = await page.waitForFunction(() => { const t = document.querySelector(".outpanel pre")?.textContent; return t && !/运行中/.test(t); }, null, { timeout: 5000 }).then(() => true, () => false);
+    check("Worker 一直不回应：快进 40 秒后“运行中…”已结束", ended, ended ? "" : (await page.locator(".outpanel pre").innerText()).slice(0, 60));
+    check("Worker 一直不回应：超时后给出重试", (await page.locator("[data-retry-python]").count()) === 1);
+    await page.waitForFunction(() => { const b = document.querySelector("[data-continue]"); return b && !b.disabled; }, null, { timeout: 3000 }).catch(() => {});
+    await page.locator("[data-continue]").tap().catch(() => {});
+    check("Worker 一直不回应：点“继续”后进入下一题", (await page.locator(".feedbar").count()) === 0);
+    check("Worker 一直不回应：没有脚本错误（不依赖 __app.LIMITS）", errors.length === 0, errors.join(" | "));
     await ctx.close();
   }
   { // 访问测试页：未配置 Supabase 时只测网站文件，并明确说明
