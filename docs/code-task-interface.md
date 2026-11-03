@@ -40,7 +40,14 @@ executor.exec({ files, entry, data, stdin, vfs, readFiles, timeoutMs, signal })
 |---|---|
 | `settle && status==="pass"` | 答对：现有 `XP_CORRECT` / 复习 `XP_REVIEW` 逻辑，同一题只结算一次 |
 | `settle && status==="fail"` | 答错：现有答错逻辑（非复习扣 1 心，题放到队尾） |
-| `!attempt`（unavailable / internal-error） | 什么都不做：不扣心、不加分、不弹反馈，保留代码，显示重试 |
+| `!attempt`（timeout / unavailable / cancelled / internal-error） | 什么都不做：不扣心、不加分、不弹反馈，保留代码，显示重试 |
+### 时限与取消（2026-11-03 项目主人新规则，取代 PR #15 §5 里“死循环超时 = 答错扣 1 红心”）
+- **题目不设时限**。判题的 5 秒（单组）/ 10 秒（整次）只是环境保护：超时 → `status:"timeout"`，**不算答错、不扣红心**，`attempt:false, settle:false, retry:true`，代码保留，提示写明“不算作答，不扣红心”。
+- 遇到第一个超时就停止，不再跑后面的组（结果本来也不能结算）。
+- 取消（AbortSignal）→ `status:"cancelled"`，`attempt:false, settle:false, retry:false`，不弹“环境不可用”提示。
+- 待 GPT 定：输出太多（`output-limit`）目前仍按“答错”处理（学生程序死循环 print 也会走到这里）。如果也要算环境保护，改一行即可。
+- `settleCheck` 对 `timeout / unavailable / cancelled / internal-error` 一律什么都不做。
+
 “运行”按钮：只调 executor，不调 `settleCheck`。
 `app.js` 里我只加**一个**钩子（`renderExercise` 里 `type==="modify"||"write"` 分支调用 `renderCodeTask`），其余在新文件。
 
