@@ -6,7 +6,10 @@ const list = process.argv.slice(2).length ? process.argv.slice(2) : ["webkit", "
 let worst = 0;
 for (const b of list) {
   const r = spawnSync(process.execPath, [T], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b } });
-  const code = r.status ?? 2;
+  let code = r.status ?? 2;
+  // 账号登录 / 云端同步界面（假 Supabase、两台设备）：同一个内核再跑一遍
+  const x = spawnSync(process.execPath, [fileURLToPath(new URL("../account-ui.test.mjs", import.meta.url))], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b } });
+  code = Math.max(code, x.status ?? 2);
   console.log(`== ${b}: ${code === 0 ? "通过" : code === 2 ? "环境失败" : "失败"}`);
   worst = Math.max(worst, code);
 }

@@ -16,6 +16,11 @@ import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
+import { CLOUD } from "./cloud-config.js";
+import { createApi } from "./cloud-api.js";
+import { createSync } from "./sync.js";
+import { createAccountUi } from "./account-ui.js";
+import { docToState } from "./account-data.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2 };
@@ -209,8 +214,40 @@ let state = loaded.state;
 let notice = loaded.notice;
 feel.setPrefs(state.prefs);
 if (notice) saveState(state); // 迁移或修复后的记录立即存一次，下次不再重复提示
+// ---------- 账号与云端 ----------
+// 登录后，学习进度写进“这个账号在本机的副本”（再在后台同步到云端），不再写游客记录；退出登录后回到游客记录。
+let safeStorage = null;
+try { safeStorage = window.localStorage; } catch { /* 存储被禁用：只能游客模式 */ }
+const cloudApi = createApi({ url: CLOUD.url, anonKey: CLOUD.anonKey });
+let accountUi = null;
+let currentView = "path"; // 地图 "path" / 我的 "me" / 其他（做题等）
+const sync = safeStorage ? createSync({
+  storage: safeStorage, api: cloudApi,
+  onStatus: () => accountUi?.refreshStatus(),
+  onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
+}) : null;
+const restored = sync ? sync.restore(state) : null;
+if (restored) { state = restored.state; notice = null; feel.setPrefs(state.prefs); }
 function persist() {
+  if (sync && sync.account()) {
+    const r = sync.persistLocal(state);
+    if (!r.ok) showToast("无法保存进度到这台设备（" + (r.message || "存储不可用") + "），关掉页面后进度可能丢失。");
+    return;
+  }
   if (!saveState(state)) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
+}
+accountUi = createAccountUi({
+  h, button, sheet, icon, showToast, sync, api: cloudApi, getState: () => state,
+  rerender: () => (currentView === "me" ? renderMe() : renderPath()),
+  // 登录成功：换成账号里的进度；退出 / 删除：回到这台设备的游客记录
+  onSwitchedIn: (r) => { state = r.state; feel.setPrefs(state.prefs); notice = null; currentView === "me" ? renderMe() : renderPath(); },
+  onSwitchedOut: () => { const l = loadState(); state = l.state; notice = l.notice; feel.setPrefs(state.prefs); currentView === "me" ? renderMe() : renderPath(); },
+});
+if (sync && restored) sync.syncNow(); // 打开应用时后台同步一次（失败也不影响学习）
+if (sync) {
+  addEventListener("online", () => { if (sync.account()) sync.syncNow(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && sync.account()) sync.syncNow(); });
+  setInterval(() => { if (document.visibilityState === "visible" && sync.account() && sync.status().pending) sync.syncNow(); }, 60000);
 }
 const allLessons = () => course.units.filter((u) => u.available).flatMap((u) => UNITS[u.id].lessons.map((l) => ({ ...l, unit: u.id })));
 const firstUndone = () => allLessons().find((l) => !state.done[l.id]);
@@ -362,6 +399,7 @@ function renderOnboarding(i = 0) {
   appEl.replaceChildren(h("main", { class: "onboard" },
     h("div", { class: "onboard-mid" }, mascot(120, s.mood), h("h1", { text: s.text }), s.sub ? h("p", { text: s.sub }) : null),
     h("div", { class: "onboard-dots" }, steps.map((_, k) => h("span", { class: k === i ? "on" : "" }))),
+    i === steps.length - 1 && cloudApi.configured ? button("已有账号？登录", () => accountUi.openLogin({ reason: "登录后会取回你在云端保存的进度。" }), "btn3d ghost wide", { "data-onboard-login": "" }) : null,
     button(i < steps.length - 1 ? "继续" : "开始学习", () => {
       if (i < steps.length - 1) renderOnboarding(i + 1);
       else { state.onboarded = true; persist(); renderPath(); }
@@ -393,6 +431,7 @@ function tabBar(active) {
 
 // ---------- 关卡地图 ----------
 function renderPath() {
+  currentView = "path";
   regenHearts(state);
   currentRun = null;
   const units = course.units.map((u) => {
@@ -421,7 +460,7 @@ function renderPath() {
   appEl.replaceChildren(
     circuit("full"),
     statsBar(),
-    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, practiceEntry(), units),
+    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, practiceEntry(), accountUi?.accountRow(), units),
     tabBar("path"),
   );
   notice = null;
@@ -651,6 +690,7 @@ function keyLab() {
 }
 
 function renderMe() {
+  currentView = "me";
   currentRun = null;
   let confirmBox = null;
   const clearBtn = button("清除学习记录", () => {
@@ -668,13 +708,14 @@ function renderMe() {
   appEl.replaceChildren(
     statsBar(),
     h("main", { class: "view me" },
-      h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: "记录只保存在这台设备上" }))),
+      h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: sync?.account() ? "记录已关联账号，会同步到云端" : "没登录时，记录只保存在这台设备上" }))),
       h("div", { class: "me-grid" },
         statCard("flame", String(currentStreak(state)), "连续天数"),
         statCard("bolt", String(state.xp), "经验值 XP"),
         statCard(null, `${doneCount}/${allLessons().length}`, "已完成关卡"),
         statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
+      accountUi?.accountCard(),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
       feel.hapticsSupported()
@@ -693,7 +734,7 @@ function renderMe() {
       ),
       h("h3", { text: "添加到主屏幕" }),
       h("p", { text: "iPhone：用 Safari 打开 → 分享按钮 → 「添加到主屏幕」。从主屏幕打开是全屏的，记录也和 Safari 分开保存。" }),
-      clearBtn,
+      sync?.account() ? null : clearBtn,
     ),
     tabBar("me"),
   );
@@ -701,6 +742,7 @@ function renderMe() {
 
 // ---------- 做题 ----------
 function startLesson(l, { review = false } = {}) {
+  currentView = "lesson";
   regenHearts(state);
   if (!review && state.hearts <= 0) return openNoHearts(l);
   const run = {
@@ -1012,6 +1054,7 @@ function practiceEntry() {
 }
 
 function renderPracticeSetup(prev) {
+  currentView = "practice";
   currentRun = null; currentPractice = null;
   const scope = clearedScope(availableUnits(), state.done);
   if (!scope.length) {
@@ -1192,7 +1235,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;
