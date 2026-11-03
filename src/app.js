@@ -962,5 +962,6 @@ window.addEventListener("online", () => {
   if (runner.state === "loadError") runner.boot(); // 恢复网络后自动重新加载 Python
   swReg?.update().catch(() => {});
 });
-runner.boot(); // 后台加载 Python，用来显示真实运行结果
+// 先把界面画出来，再在后台加载 Python：Python 出任何问题都不能让页面一片空白
 if (state.onboarded) renderPath(); else renderOnboarding();
+try { runner.boot(); } catch { /* 失败时 runner 已经记录为 loadError，“运行结果”面板会如实提示 */ }
