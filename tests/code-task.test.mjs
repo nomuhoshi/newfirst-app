@@ -204,9 +204,18 @@ try {
     await ctx.close();
   }
 
-  { // 提示：两级提示 + 参考解法需要确认
+  { // 没有 variant 的题：提示用完就没有了，不提供参考解法
     const { ctx, page } = await open();
     await start(page, [W("T-W1")]);
+    for (let i = 0; i < 3; i++) { await page.locator(".mascot-btn").tap(); if (i < 2) await page.locator(".overlay").getByRole("button", { name: "好的" }).tap(); }
+    const t = await page.locator(".overlay").innerText();
+    check("没有 variant 字段的题：两级提示之后不给参考解法", /没有更多提示/.test(t) && !/price \* cups/.test(t) && !(await page.evaluate(() => window.__app.currentArea.viewedSolution())), t.slice(0, 80));
+    await ctx.close();
+  }
+
+  { // 提示：两级提示 + 参考解法需要确认（题目带 variant 才提供）
+    const { ctx, page } = await open();
+    await start(page, [W("T-W1", { variant: { id: "T-W1-V", prompt: "变化题", tests: [] } })]);
     await page.locator(".mascot-btn").tap();
     check("提示 1", /提示一/.test(await page.locator(".overlay .hint-text").innerText()));
     await page.locator(".overlay").getByRole("button", { name: "好的" }).tap();

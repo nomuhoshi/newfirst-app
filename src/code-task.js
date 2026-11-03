@@ -238,6 +238,8 @@ export function createCodeArea(ex, ctx) {
     const hints = ex.hints || [];
     const show = (title, body, last) => ui.sheet((close) => [h("div", { class: "lsheet hint" }, h("b", { text: title }), h("pre", { class: "hint-text", text: body }), ui.button(last ? "好的" : "好的", close, "btn3d primary wide"))]);
     if (hintLevel < hints.length) { hintLevel++; show(`提示 ${hintLevel}/${hints.length}`, hints[hintLevel - 1]); return; }
+    // 产品负责人决定：变化题流程做好之前不提供“看过解法后完成”。没有 variant 字段的题目，提示用完就是用完了。
+    if (!ex.variant) { show("没有更多提示了", "再试一次吧：先看看上面的例子，一步一步对照你的输出和期望输出。", true); return; }
     if (viewed) { show("参考解法（你已经查看过）", ex.reference ?? "", true); return; }
     ui.sheet((close) => [h("div", { class: "lsheet" },
       h("h2", { text: "要看参考解法吗？" }),
