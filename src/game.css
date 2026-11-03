@@ -74,6 +74,8 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .tab small { display: block; font-size: 12px; font-weight: 700; }
 .tab.on { color: var(--g-primary); }
 .ios-browser .tabbar { padding-bottom: 70px; }
+/* 手机横屏时 Safari 的底部工具栏很薄，不需要竖屏那样的 70px；仍保留系统安全区 */
+@media (orientation: landscape) and (max-height: 500px) { .ios-browser .tabbar { padding-bottom: max(env(safe-area-inset-bottom), 24px); } }
 
 /* 关卡地图：单元横幅 + 六边形电路节点 */
 .pathview { padding: 16px 16px 40px; }
@@ -270,6 +272,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .keybtn:active { outline: 3px solid var(--g-primary); outline-offset: -3px; }
   .node:active { filter: brightness(1.12); }
 }
-.out.offline { color: var(--g-muted); }
+/* 输出面板底色一直是深色，所以提示文字用浅色（原来用的灰色在深底上看不清）；比正常输出略暗一点用来区分 */
+.outpanel .out.offline { color: #C9D6DC; }
 .py-retry { margin-top: 8px; }
 .no-haptics small { display: block; }
