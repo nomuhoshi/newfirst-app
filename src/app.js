@@ -798,7 +798,7 @@ function renderExercise(run) {
       outPanel,
     ),
     h("footer", { class: "lessonfoot" }, helpBtn, checkBtn),
-    area.after,
+    ...(area.after ? [area.after] : []), // 只有代码题有内置键盘；其他题型没有，不能把 undefined 当文字显示出来
   );
 
   function check() {
@@ -1223,7 +1223,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { startLesson, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { allLessons, startLesson, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;

@@ -76,6 +76,15 @@ const results$ = (page) => page.locator("[data-results]").innerText();
 const waitJudged = (page, ms = 60000) => page.waitForFunction(() => { const b = document.querySelector("[data-check]"); return b && b.textContent === "检查" || document.querySelector(".feedbar"); }, null, { timeout: ms });
 
 try {
+  { // 普通题（非代码题）页面底部不能出现 "undefined" / "null" 文字
+    const { ctx, page } = await open();
+    await page.evaluate(() => { const l = window.__app.allLessons().find((x) => x.id === "U1L2"); window.__app.startLesson(l); });
+    await page.getByRole("button", { name: "继续", exact: true }).tap();
+    await page.waitForSelector(".lesson .q");
+    const txt = await page.locator("#app").innerText();
+    check("普通题页面没有多余的 undefined / null 文字", !/undefined|null/.test(txt), JSON.stringify(txt.slice(-30)));
+    await ctx.close();
+  }
   { // 页面结构 + 运行（不计分）+ 答对
     const { ctx, page, errors } = await open();
     await start(page, [W("T-W1"), W("T-W2")]);
