@@ -15,6 +15,8 @@ def check(lessons):
     return c
 
 # 有 task（#19 格式）的代码题：参考答案全过；要改的程序 / 起始代码至少错一个且不卡死；两级提示；公开和隐藏测试都有；id 唯一；示范代码输出属实。
+# U4L6-M1 专门教“死循环超时后怎么改”：起始代码必须超时（运行器显示超时/输出超限，不算作答、不扣红心）。
+EXPECT_HANG = {"U4L6-M1"}
 _orig_check = check
 def _go(src, t):
     pre = "".join(f"{k} = {v!r}\n" for k, v in t.get("data", {}).items())
@@ -35,9 +37,34 @@ def check(lessons):
                 c.ok(err is None and out.rstrip("\n") == t["expected"], f"{w}-参考-{t['name']}", f"得到 {out!r}/{err}，期望 {t['expected']!r}")
             src = k.get("code") if k["type"] == "modify" else k.get("starter")
             res = [_go(src, t) for t in ts]
-            c.ok(all(e is None or "超时" not in str(e) and "timeout" not in str(e).lower() for _, e in res), w + "-起始不卡死", "起始代码卡死")
+            hang = any(e == "Timeout" for _, e in res)
+            if w in EXPECT_HANG: c.ok(hang, w + "-起始应超时", "这题教死循环恢复，起始代码应当超时")
+            else: c.ok(not hang, w + "-起始不卡死", "起始代码卡死")
             c.ok(any(e is not None or o.rstrip("\n") != t["expected"] for (o, e), t in zip(res, ts)), w + "-起始不能直接过", "起始代码已经全部通过")
             wk = k.get("worked")
             if wk:
                 o, e = run(wk["code"]); c.ok(e is None and o.rstrip("\n") == wk["output"], w + "-示范", f"示范输出 {o!r}/{e}")
+    return c
+
+# variation 草稿（字段待 Claude 确认）：solution 全过；starter 至少错一个且不卡死；两级提示；公开+隐藏测试；id 唯一；
+# 父题 reference 至少过不了一个 variation 隐藏测试（数据和要求都变了，不能照抄父题）。
+_check2 = check
+def check(lessons):
+    c = _check2(lessons); ids = set()
+    for l in lessons:
+        for pt in l.get("pending", []):
+            k = pt.get("task") or {}
+            v = k.get("variation")
+            if not v: continue
+            w = v["id"]; c.ok(w not in ids and w != k["id"], w, "variation id 重复"); ids.add(w)
+            c.ok(k.get("requiresVariationAfterSolution") is True, w + "-父题标记", "父题缺 requiresVariationAfterSolution")
+            c.ok(len(v.get("hints", [])) == 2, w + "-提示", "提示不是两级")
+            ts = v.get("tests", []); hid = [t for t in ts if t.get("hidden")]
+            c.ok(hid and any(not t.get("hidden") for t in ts), w + "-测试", "缺公开或隐藏测试")
+            for t in ts:
+                o, e = _go(v["solution"], t); c.ok(e is None and o == t["expected"], f"{w}-答案-{t['name']}", f"得到 {o!r}/{e}")
+            res = [(_go(v["starter"], t), t) for t in ts]
+            c.ok(all(e != "Timeout" for (o, e), t in res), w + "-起始不卡死", "卡死")
+            c.ok(any(e or o != t["expected"] for (o, e), t in res), w + "-起始不能直接过", "起始代码已全过")
+            c.ok(any(_go(k["reference"], t) != (t["expected"], None) for t in hid), w + "-父题答案不能过", "父题 reference 能过全部隐藏测试")
     return c
