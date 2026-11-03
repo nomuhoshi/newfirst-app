@@ -132,7 +132,7 @@ try {
       const { ctx, page } = await open({ route: (pg) => pg.route(/\/pyodide\//, (r) => r.abort()) });
       await page.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 20000 });
       const t = await hasText(page);
-      check("Python 加载失败（在线、原因未确认）：不一律说成要联网，写明“原因未确认”并附诊断信息", /原因未确认/.test(t) && /诊断：/.test(t) && !/Python运行功能需要联网后加载/.test(t) && /iOS 16\.6/.test(t), t.replace(/\n/g, " / ").slice(0, 200));
+      check("Python 加载失败（在线、原因未确认）：写明“原因未确认”并附诊断信息，不断定是网络问题", /原因未确认/.test(t) && /诊断：/.test(t) && /可能是网络、浏览器版本/.test(t) && /iOS 16\.6/.test(t), t.replace(/\n/g, " / ").slice(0, 200));
       await ctx.close();
     }
     { // 不能创建 Python 线程

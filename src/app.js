@@ -264,7 +264,7 @@ function pythonUnavailableText() {
   if (lastLoadError?.kind === "noWorker") return "这个环境不允许启动 Python 运行线程（可能是浏览器版本较旧，或应用内置浏览器的限制）。可以点右上角“···”选“在浏览器打开”，或换成 Safari / Chrome。" + tail;
   const os = (navigator.userAgent.match(/(?:iPhone )?OS (\d+[_.]\d+)/) || [])[1];
   const diag = `诊断：${String(lastLoadError?.msg || "无错误信息").slice(0, 120)}；在线：${navigator.onLine ? "是" : "否"}${os ? "；iOS " + os.replace("_", ".") : ""}${/MicroMessenger|QQ\//i.test(navigator.userAgent) ? "；微信/QQ 内" : ""}`;
-  return "Python 运行环境没有加载成功，原因未确认（可能是网络、浏览器版本，或应用内置浏览器的限制）。联网后点“重试”；仍然不行，请把下面的诊断信息发给开发者。" + tail + "\n" + diag;
+  return "Python 运行环境没有加载成功，原因未确认（可能是网络、浏览器版本，或应用内置浏览器的限制）。Python运行功能需要联网后加载，联网后点“重试”；仍然不行，请把下面的诊断信息发给开发者。" + tail + "\n" + diag;
 }
 
 // 在“运行结果”面板里显示真实运行结果。Python 加载不了（比如离线）时如实说明并给“重试”，不显示任何预设输出。
