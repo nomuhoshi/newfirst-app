@@ -148,7 +148,7 @@
 
 ## 10. 第二阶段：无需账号的公开资料补充
 
-**记录**：2026-11-03 23:00–23:40 JST；平台：Linux 上 Playwright WebKit（iPhone 13 视口，390×844）+ curl；未注册、未登录、未安装 App、未点击任何付款按钮。
+**记录**：2026-11-03 23:18–23:22 JST；平台：Linux 上 Playwright WebKit（iPhone 13 视口，390×844）+ curl；未注册、未登录、未安装 App、未点击任何付款按钮。
 **步骤**：① 抓取帮助中心首页的全部 92 个文章链接（`logs/helpurls.txt`），读取与提示、复习、钥匙、Koji、会员、到期相关的 11 篇（`logs/help2.txt`）；② 读 `/about/`、`/cs/tutor/`、`/resources/coding/interactive-python-for-teens/`、Google Play 详情页；③ 在 WebKit iPhone 视口打开上述页面并截图，读取计算样式（`logs/b6-public.log`，脚本 `logs/b6.mjs`）；④ 在课程页点 Level 1 → 点 “Updating Variables”，确认**不能匿名预览单节课**（URL 不变，截图 `pub-course-lesson-tap.png`）；⑤ 下载 `/cs/tutor/` 页面自动播放的两段官方演示视频，只抽帧作证据（`official-demo-*-frames.jpg`），**视频本身不入库**；⑥ 用 `reducedMotion` 开/关对比首页动画数。
 
 标签：**实际体验** = 本次亲手在浏览器中看到；**官方资料** = brilliant.org、App Store、Google Play 上的官方文字或官方演示视频；**推断** = 从资料或第三方材料推理，未经官方证实；**未验证** = 未能观察。
