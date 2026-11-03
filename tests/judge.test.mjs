@@ -145,5 +145,21 @@ fr = fakeRunner((r) => { r.state = "ready"; r.onStatus("outputLimitStopped"); })
 r = await judge({ code: good, tests: t1 }, makeRunnerExecutor(fr));
 check("适配器：输出超限 → output-limit，不算作答", r.cases[0].kind === KIND.OUTPUT_LIMIT && r.status === "output-limit" && !r.attempt);
 
+// 保护性停止出现在前面组已通过之后：仍然不结算、不算作答；下一次提交可以正常结算
+r = await judge({ code: "if n == 1:\n    while True: pass\nprint(n)", tests: [T("a", "0", { n: 0 }), T("b", "1", { n: 1 }), T("c", "2", { n: 2 })], limits: { caseMs: 400, totalMs: 3000 } }, pyExec);
+check("前面通过、第二组超时：status=timeout，不结算，第三组没有运行", r.status === "timeout" && !r.attempt && !r.settle && r.cases.map((c) => c.kind).join() === "pass,case-timeout", JSON.stringify(r.cases.map((c) => c.kind)));
+r = await judge({ code: "print(n)", tests: [T("a", "0", { n: 0 }), T("b", "1", { n: 1 })] }, pyExec);
+check("下一次提交恢复正常：pass 且可结算", r.status === "pass" && r.attempt && r.settle);
+{
+  let calls = 0;
+  const ex = { exec: async () => (calls++ === 0 ? { stdout: "ok", error: null } : { stdout: "x", error: null, limitHit: true }) };
+  r = await judge({ code: good, tests: [T("a", "ok"), T("b", "ok"), T("c", "ok")] }, ex);
+  check("前面通过、第二组输出超限：status=output-limit，不结算，第三组不运行", r.status === "output-limit" && !r.attempt && !r.settle && calls === 2 && r.cases.length === 2);
+}
+r = await judge({ code: good, tests: [T("a", "ok"), T("b", "ok")] }, { exec: async () => ({ stdout: "ok", error: null }) }, { signal: AbortSignal.abort() });
+check("取消（已取消的信号）：status=cancelled，retry=false，不结算", r.status === "cancelled" && !r.attempt && !r.settle && !r.retry);
+r = await judge({ code: "print(n)", tests: [T("a", "0", { n: 0 }), T("b", "9", { n: 1 })] }, pyExec);
+check("普通答错 / 运行错误仍然正常判分（attempt=true，可结算）", r.status === "fail" && r.attempt && r.settle && r.cases[1].kind === KIND.WRONG);
+
 console.log(`\n${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);
