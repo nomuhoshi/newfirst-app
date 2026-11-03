@@ -542,6 +542,49 @@
               "code": "cups = 1\nif cups >= 3:\n    print(\"送券\")\nelse:\n    print(\"不送券\")",
               "output": "不送券",
               "explain": "if 不成立的情况全归 else，else 后面不写条件，只写冒号。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U3L5-M1-V1",
+              "prompt": "满 50 元显示“送小料”，不满就显示还差多少。",
+              "starter": "# total 已经准备好\n",
+              "tests": [
+                {
+                  "name": "60 元",
+                  "data": {
+                    "total": 60
+                  },
+                  "expected": "送小料"
+                },
+                {
+                  "name": "30 元",
+                  "data": {
+                    "total": 30
+                  },
+                  "expected": "还差 20 元"
+                },
+                {
+                  "name": "80 元",
+                  "data": {
+                    "total": 80
+                  },
+                  "expected": "送小料",
+                  "hidden": true
+                },
+                {
+                  "name": "49 元",
+                  "data": {
+                    "total": 49
+                  },
+                  "expected": "还差 1 元",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "if total >= 50: 下面显示送小料；其余交给 else。",
+                "else: 下面 print(\"还差\", 50 - total, \"元\")。"
+              ],
+              "solution": "if total >= 50:\n    print(\"送小料\")\nelse:\n    print(\"还差\", 50 - total, \"元\")\n"
             }
           }
         }
@@ -707,6 +750,49 @@
               "code": "total = 60\nif total >= 100:\n    print(\"减 20\")\nelif total >= 50:\n    print(\"减 5\")",
               "output": "减 5",
               "explain": "从上往下检查，门槛高的放前面；遇到第一个成立的就停。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U3L6-M1-V1",
+              "prompt": "规则：满 200 减 50，满 100 减 15，其余不减。",
+              "starter": "# total 已经准备好\n",
+              "tests": [
+                {
+                  "name": "250 元",
+                  "data": {
+                    "total": 250
+                  },
+                  "expected": "减 50"
+                },
+                {
+                  "name": "120 元",
+                  "data": {
+                    "total": 120
+                  },
+                  "expected": "减 15"
+                },
+                {
+                  "name": "80 元",
+                  "data": {
+                    "total": 80
+                  },
+                  "expected": "不减",
+                  "hidden": true
+                },
+                {
+                  "name": "正好 200",
+                  "data": {
+                    "total": 200
+                  },
+                  "expected": "减 50",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "门槛高的放前面。",
+                "if total >= 200 / elif total >= 100 / else。"
+              ],
+              "solution": "if total >= 200:\n    print(\"减 50\")\nelif total >= 100:\n    print(\"减 15\")\nelse:\n    print(\"不减\")\n"
             }
           }
         }
@@ -866,6 +952,57 @@
               "code": "cups = 5\nprint(cups > 3 and cups < 10)",
               "output": "True",
               "explain": "and 两边各写一个完整的比较：变量、符号、数字。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U3L7-M1-V1",
+              "prompt": "杯数大于等于 5 且小于等于 20 时显示“团购价”，否则显示“原价”。",
+              "starter": "# cups 已经准备好\n",
+              "tests": [
+                {
+                  "name": "10 杯",
+                  "data": {
+                    "cups": 10
+                  },
+                  "expected": "团购价"
+                },
+                {
+                  "name": "3 杯",
+                  "data": {
+                    "cups": 3
+                  },
+                  "expected": "原价"
+                },
+                {
+                  "name": "5 杯",
+                  "data": {
+                    "cups": 5
+                  },
+                  "expected": "团购价",
+                  "hidden": true
+                },
+                {
+                  "name": "20 杯",
+                  "data": {
+                    "cups": 20
+                  },
+                  "expected": "团购价",
+                  "hidden": true
+                },
+                {
+                  "name": "21 杯",
+                  "data": {
+                    "cups": 21
+                  },
+                  "expected": "原价",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "“大于等于”和“小于等于”都包含边界。",
+                "if cups >= 5 and cups <= 20:"
+              ],
+              "solution": "if cups >= 5 and cups <= 20:\n    print(\"团购价\")\nelse:\n    print(\"原价\")\n"
             }
           }
         }
@@ -1199,6 +1336,53 @@
               "code": "total = 100\nis_vip = False\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
               "output": "应付 80",
               "explain": "本关第 2、3 题就是示范：两个独立的 if，满额看原价 total。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U3L8-W1-V1",
+              "prompt": "满 150 元减 30；会员再减 10。输出“应付 金额”。",
+              "starter": "# total、is_vip 已经准备好\n",
+              "tests": [
+                {
+                  "name": "160 元，非会员",
+                  "data": {
+                    "total": 160,
+                    "is_vip": false
+                  },
+                  "expected": "应付 130"
+                },
+                {
+                  "name": "90 元，会员",
+                  "data": {
+                    "total": 90,
+                    "is_vip": true
+                  },
+                  "expected": "应付 80"
+                },
+                {
+                  "name": "正好 150，会员",
+                  "data": {
+                    "total": 150,
+                    "is_vip": true
+                  },
+                  "expected": "应付 110",
+                  "hidden": true
+                },
+                {
+                  "name": "120 元，非会员",
+                  "data": {
+                    "total": 120,
+                    "is_vip": false
+                  },
+                  "expected": "应付 120",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "和父题一样两个独立的 if，只是门槛和金额变了。",
+                "pay = total / if total >= 150: pay = pay - 30 / if is_vip: pay = pay - 10。"
+              ],
+              "solution": "pay = total\nif total >= 150:\n    pay = pay - 30\nif is_vip:\n    pay = pay - 10\nprint(\"应付\", pay)\n"
             }
           }
         }
