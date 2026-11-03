@@ -135,6 +135,14 @@ try {
       check("Python 加载失败（在线、原因未确认）：写明“原因未确认”并附诊断信息，不断定是网络问题", /原因未确认/.test(t) && /诊断：/.test(t) && /可能是网络、浏览器版本/.test(t) && /iOS 16\.6/.test(t), t.replace(/\n/g, " / ").slice(0, 200));
       await ctx.close();
     }
+    { // iPhone 系统低于 16.4：确定的不兼容，写出具体版本
+      const OLD = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
+      const { ctx, page } = await open({ ua: OLD, route: (pg) => pg.route(/\/pyodide\//, (r) => r.abort()) });
+      await page.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 20000 });
+      const t = await hasText(page);
+      check("iPhone 系统 15.8（低于 16.4）：写出具体版本和所需的 16.4，不说成网络问题", /iOS 15\.8/.test(t) && /16\.4/.test(t) && !/原因未确认/.test(t) && !/Python运行功能需要联网后加载/.test(t), t.slice(0, 90));
+      await ctx.close();
+    }
     { // 不能创建 Python 线程
       const { ctx, page } = await open({ init: () => { window.Worker = function () { throw new Error("SecurityError: 模拟"); }; } });
       await page.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 5000 });
