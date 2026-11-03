@@ -64,6 +64,16 @@ try {
     check("主脚本加载失败：非微信时，“网络不稳定”排在“微信或 QQ”前面", txt.indexOf("网络不稳定") >= 0 && txt.indexOf("网络不稳定") < txt.indexOf("微信或 QQ"), txt.replace(/\n+/g, " / ").slice(0, 120));
     check("主脚本加载失败：有“重新加载”按钮", (await page.locator("#load-fallback-reload").count()) === 1);
     check("主脚本加载失败：显示给开发者的信息（含 iOS 版本）", /给开发者的信息/.test(txt) && /iOS 16\.6/.test(txt));
+    { // 回归（助手复测 dc08c92）：提示必须铺满可视区域，按钮不用滚动就能点到，且没有被别的元素盖住
+      const g = await page.evaluate(() => {
+        const r = (el) => el.getBoundingClientRect();
+        const box = r(document.getElementById("load-fallback")), btn = r(document.getElementById("load-fallback-reload"));
+        const cx = btn.left + btn.width / 2, cy = btn.top + btn.height / 2;
+        return { vw: innerWidth, vh: innerHeight, box: [box.left, box.top, box.right, box.bottom], btn: [btn.left, btn.top, btn.right, btn.bottom], pos: getComputedStyle(document.getElementById("load-fallback")).position, top: document.elementFromPoint(cx, cy)?.id, sy: scrollY };
+      });
+      check("兜底提示：position:fixed 铺满视口", g.pos === "fixed" && g.box[0] <= 0 && g.box[1] <= 0 && g.box[2] >= g.vw && g.box[3] >= g.vh, JSON.stringify(g));
+      check("兜底提示：“重新加载”按钮在视口内、无需滚动、没被盖住", g.btn[1] >= 0 && g.btn[3] <= g.vh && g.btn[0] >= 0 && g.btn[2] <= g.vw && g.top === "load-fallback-reload" && g.sy === 0, JSON.stringify(g));
+    }
     blocked = false;
     await page.locator("#load-fallback-reload").click();
     await page.waitForSelector("#app *", { timeout: 8000 });
@@ -97,6 +107,46 @@ try {
     // 直接标记“看过开场”并显示地图（和其他测试一样用 window.__app 钩子）
     await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
     check("不能创建 Python 工作线程：能走到关卡地图", (await page.locator(".pathview").count()) === 1, (await page.locator("#app").innerText()).slice(0, 60));
+    await ctx.close();
+  }
+  { // 回归（助手复测 dc08c92）：不能创建 Worker 时，答题后“运行中…”必须结束并给出失败提示，地图、答题、继续按钮照常
+    const { ctx, page, errors } = await open({ init: () => { window.Worker = function () { throw new Error("SecurityError: 模拟"); }; } });
+    await page.waitForSelector("#app *");
+    await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+    await page.waitForSelector('[data-lesson="U1L1"]');
+    await page.locator('[data-lesson="U1L1"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
+    await page.getByRole("button", { name: "继续", exact: true }).tap();
+    await page.waitForFunction(() => window.__app.currentEx, null, { timeout: 5000 });
+    const e = await page.evaluate(() => window.__app.currentEx);
+    check("Worker 失败：能进入答题", !!e && e.type === "predict", e && e.type); // U1L1 第一题是选输出题
+    await page.locator(".choice").nth(e.options.findIndex((o) => !!o.correct)).tap();
+    await page.locator("[data-check]").tap(); await page.waitForSelector(".feedbar");
+    await page.waitForFunction(() => { const t = document.querySelector(".outpanel pre")?.textContent; return t && !/运行中/.test(t); }, null, { timeout: 8000 });
+    const t = await page.locator(".outpanel pre").innerText();
+    check("Worker 失败：“运行中…”在几秒内结束，写明环境不允许启动 Python 线程", /不允许启动 Python 运行线程/.test(t), t.slice(0, 60));
+    check("Worker 失败：有“重试”按钮", (await page.locator("[data-retry-python]").count()) === 1);
+    const cont = page.locator(".feedbar").getByRole("button", { name: "继续", exact: true });
+    check("Worker 失败：“继续”按钮可点", await cont.count() === 1 && await cont.isEnabled());
+    await page.locator("[data-retry-python]").tap();
+    await page.waitForFunction(() => { const t = document.querySelector(".outpanel pre")?.textContent; return t && !/运行中/.test(t); }, null, { timeout: 8000 });
+    check("Worker 失败：点“重试”后仍然会结束，不会卡在“运行中…”", /不允许启动 Python 运行线程/.test(await page.locator(".outpanel pre").innerText()));
+    await cont.tap();
+    check("Worker 失败：点“继续”后进入下一题", (await page.locator(".feedbar").count()) === 0);
+    check("Worker 失败：整个过程没有脚本错误", errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
+  { // 加载一直没有结果（Worker 创建了但永远不回应）：到时间也要结束“运行中…”
+    const { ctx, page } = await open({ init: () => { window.Worker = function () { this.postMessage = () => {}; this.terminate = () => {}; }; } });
+    await page.waitForSelector("#app *");
+    await page.evaluate(() => { window.__app.LIMITS.loadMs = 600; const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+    await page.locator('[data-lesson="U1L1"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
+    await page.getByRole("button", { name: "继续", exact: true }).tap();
+    await page.waitForFunction(() => window.__app.currentEx);
+    const e = await page.evaluate(() => window.__app.currentEx);
+    await page.locator(".choice").nth(e.options.findIndex((o) => !!o.correct)).tap();
+    await page.locator("[data-check]").tap(); await page.waitForSelector(".feedbar");
+    await page.waitForFunction(() => { const t = document.querySelector(".outpanel pre")?.textContent; return t && !/运行中/.test(t); }, null, { timeout: 8000 });
+    check("Worker 一直不回应：超时后“运行中…”结束并给出重试", (await page.locator("[data-retry-python]").count()) === 1);
     await ctx.close();
   }
   { // 访问测试页：未配置 Supabase 时只测网站文件，并明确说明

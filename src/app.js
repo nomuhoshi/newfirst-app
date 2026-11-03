@@ -9,7 +9,7 @@ import course from "../content/course.json";
 import unit1 from "../content/unit1.json";
 import unit2 from "../content/unit2.json";
 import words from "../content/words.json";
-import { Runner } from "./runner.js";
+import { Runner, LIMITS } from "./runner.js";
 import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
@@ -230,6 +230,8 @@ const runner = new Runner({
 });
 function runForOutput(code) {
   return new Promise((resolve) => {
+    let waiter = null, timer = null;
+    const finish = (v) => { clearTimeout(timer); if (waiter) listeners.delete(waiter); resolve(v); };
     const go = () => {
       let out = "";
       const l = {
@@ -244,12 +246,15 @@ function runForOutput(code) {
       if (!runner.run(code)) { listeners.delete(l); resolve(null); }
     };
     if (runner.state === "ready") return go();
-    if (runner.state === "loadError") runner.boot();
-    const w = { status: (s) => {
-      if (s === "ready") { listeners.delete(w); go(); }
-      else if (s === "loadError") { listeners.delete(w); resolve(null); }
+    // 先挂好监听，再重新启动：启动可能同步失败（比如不能创建 Worker），那时监听必须已经在了
+    waiter = { status: (s) => {
+      if (s === "ready") { listeners.delete(waiter); clearTimeout(timer); go(); }
+      else if (s === "loadError") finish(null);
     } };
-    listeners.add(w);
+    listeners.add(waiter);
+    // 兜底：无论什么原因一直等不到，到时间就结束“运行中…”，显示失败提示和“重试”
+    timer = setTimeout(() => finish(null), LIMITS.loadMs + 2000);
+    if (runner.state === "loadError") runner.boot();
   });
 }
 
@@ -953,7 +958,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
+window.__app = { LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;
