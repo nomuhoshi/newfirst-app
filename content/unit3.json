@@ -490,7 +490,60 @@
           "type": "modify",
           "replaces": 4,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：把 else 写成 else total < 100: 的程序改正确"
+          "plan": "改一改：把 else 写成 else total < 100: 的程序改正确",
+          "task": {
+            "id": "U3L5-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "这段程序想做到：满 100 元显示“满减 20 元”，不满就显示还差多少。它运行会报错，请改正。",
+            "given": [
+              "total"
+            ],
+            "checkMode": "output",
+            "code": "if total >= 100:\n    print(\"满减 20 元\")\nelse total < 100:\n    print(\"还差\", 100 - total, \"元\")\n",
+            "tests": [
+              {
+                "name": "满 100",
+                "data": {
+                  "total": 120
+                },
+                "expected": "满减 20 元"
+              },
+              {
+                "name": "不满 100",
+                "data": {
+                  "total": 80
+                },
+                "expected": "还差 20 元"
+              },
+              {
+                "name": "正好 100",
+                "data": {
+                  "total": 100
+                },
+                "expected": "满减 20 元",
+                "hidden": true
+              },
+              {
+                "name": "差 1 元",
+                "data": {
+                  "total": 99
+                },
+                "expected": "还差 1 元",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "看 else 那一行：else 后面能写条件吗？",
+              "else 后面直接写英文冒号：把 else total < 100: 改成 else:"
+            ],
+            "reference": "if total >= 100:\n    print(\"满减 20 元\")\nelse:\n    print(\"还差\", 100 - total, \"元\")\n",
+            "worked": {
+              "code": "cups = 1\nif cups >= 3:\n    print(\"送券\")\nelse:\n    print(\"不送券\")",
+              "output": "不送券",
+              "explain": "if 不成立的情况全归 else，else 后面不写条件，只写冒号。"
+            }
+          }
         }
       ]
     },
@@ -595,7 +648,67 @@
           "type": "modify",
           "replaces": 3,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：把 >=50 写在 >=100 前面的程序改对"
+          "plan": "改一改：把 >=50 写在 >=100 前面的程序改对",
+          "task": {
+            "id": "U3L6-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "规则：满 100 减 20，满 50 减 5，其余不减。这段程序买 120 元时显示“减 5”，不对。请改正。",
+            "given": [
+              "total"
+            ],
+            "checkMode": "output",
+            "code": "if total >= 50:\n    print(\"减 5\")\nelif total >= 100:\n    print(\"减 20\")\nelse:\n    print(\"不减\")\n",
+            "tests": [
+              {
+                "name": "120 元",
+                "data": {
+                  "total": 120
+                },
+                "expected": "减 20"
+              },
+              {
+                "name": "60 元",
+                "data": {
+                  "total": 60
+                },
+                "expected": "减 5"
+              },
+              {
+                "name": "30 元",
+                "data": {
+                  "total": 30
+                },
+                "expected": "不减"
+              },
+              {
+                "name": "正好 100",
+                "data": {
+                  "total": 100
+                },
+                "expected": "减 20",
+                "hidden": true
+              },
+              {
+                "name": "正好 50",
+                "data": {
+                  "total": 50
+                },
+                "expected": "减 5",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "从上往下只走第一个成立的条件。120 元先碰到哪个条件？",
+              "把门槛高的 total >= 100 放在最前面，total >= 50 放到 elif。"
+            ],
+            "reference": "if total >= 100:\n    print(\"减 20\")\nelif total >= 50:\n    print(\"减 5\")\nelse:\n    print(\"不减\")\n",
+            "worked": {
+              "code": "total = 60\nif total >= 100:\n    print(\"减 20\")\nelif total >= 50:\n    print(\"减 5\")",
+              "output": "减 5",
+              "explain": "从上往下检查，门槛高的放前面；遇到第一个成立的就停。"
+            }
+          }
         }
       ]
     },
@@ -694,7 +807,67 @@
           "type": "modify",
           "replaces": 4,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：把 cups > 3 and < 10 改成完整条件"
+          "plan": "改一改：把 cups > 3 and < 10 改成完整条件",
+          "task": {
+            "id": "U3L7-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "杯数大于 3 且小于 10 时显示“团购价”，否则显示“原价”。这段程序会报错，请改正。",
+            "given": [
+              "cups"
+            ],
+            "checkMode": "output",
+            "code": "if cups > 3 and < 10:\n    print(\"团购价\")\nelse:\n    print(\"原价\")\n",
+            "tests": [
+              {
+                "name": "5 杯",
+                "data": {
+                  "cups": 5
+                },
+                "expected": "团购价"
+              },
+              {
+                "name": "3 杯",
+                "data": {
+                  "cups": 3
+                },
+                "expected": "原价"
+              },
+              {
+                "name": "10 杯",
+                "data": {
+                  "cups": 10
+                },
+                "expected": "原价"
+              },
+              {
+                "name": "4 杯",
+                "data": {
+                  "cups": 4
+                },
+                "expected": "团购价",
+                "hidden": true
+              },
+              {
+                "name": "9 杯",
+                "data": {
+                  "cups": 9
+                },
+                "expected": "团购价",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "and 两边都要是完整的比较。",
+              "把 and < 10 写成 and cups < 10。"
+            ],
+            "reference": "if cups > 3 and cups < 10:\n    print(\"团购价\")\nelse:\n    print(\"原价\")\n",
+            "worked": {
+              "code": "cups = 5\nprint(cups > 3 and cups < 10)",
+              "output": "True",
+              "explain": "and 两边各写一个完整的比较：变量、符号、数字。"
+            }
+          }
         }
       ]
     },
@@ -960,7 +1133,74 @@
               },
               "stdout": "应付 80"
             }
-          ]
+          ],
+          "task": {
+            "id": "U3L8-W1",
+            "version": 1,
+            "type": "write",
+            "prompt": "写一个折扣检查器：满 100 元（正好 100 也算）减 20；会员再减 5。输出“应付 金额”。",
+            "given": [
+              "total",
+              "is_vip"
+            ],
+            "checkMode": "output",
+            "starter": "# total（总价）和 is_vip（是不是会员，True/False）已经准备好\n",
+            "tests": [
+              {
+                "name": "120 元，非会员",
+                "data": {
+                  "total": 120,
+                  "is_vip": false
+                },
+                "expected": "应付 100"
+              },
+              {
+                "name": "80 元，会员",
+                "data": {
+                  "total": 80,
+                  "is_vip": true
+                },
+                "expected": "应付 75"
+              },
+              {
+                "name": "120 元，会员",
+                "data": {
+                  "total": 120,
+                  "is_vip": true
+                },
+                "expected": "应付 95",
+                "hidden": true
+              },
+              {
+                "name": "正好 100，非会员",
+                "data": {
+                  "total": 100,
+                  "is_vip": false
+                },
+                "expected": "应付 80",
+                "hidden": true
+              },
+              {
+                "name": "99 元，会员",
+                "data": {
+                  "total": 99,
+                  "is_vip": true
+                },
+                "expected": "应付 94",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "先用 pay = total 记住应付金额，再分两步判断：满额、会员。",
+              "if total >= 100: 下面 pay = pay - 20；另起一个 if is_vip: 下面 pay = pay - 5；最后 print(\"应付\", pay)。"
+            ],
+            "reference": "pay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)\n",
+            "worked": {
+              "code": "total = 100\nis_vip = False\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
+              "output": "应付 80",
+              "explain": "本关第 2、3 题就是示范：两个独立的 if，满额看原价 total。"
+            }
+          }
         }
       ]
     }

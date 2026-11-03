@@ -297,7 +297,52 @@
           "type": "modify",
           "status": "待 Claude 的代码题运行器，暂不开放",
           "replaces": 2,
-          "plan": "改一改：把从 0 开始的编号改成从 1 开始"
+          "plan": "改一改：把从 0 开始的编号改成从 1 开始",
+          "task": {
+            "id": "U4L3-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "要显示订单 1 到 n，但这段程序从“订单 0”开始。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(n):\n    print(\"订单\", i)\n",
+            "tests": [
+              {
+                "name": "3 单",
+                "data": {
+                  "n": 3
+                },
+                "expected": "订单 1\n订单 2\n订单 3"
+              },
+              {
+                "name": "1 单",
+                "data": {
+                  "n": 1
+                },
+                "expected": "订单 1"
+              },
+              {
+                "name": "5 单",
+                "data": {
+                  "n": 5
+                },
+                "expected": "订单 1\n订单 2\n订单 3\n订单 4\n订单 5",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "range(n) 的 i 从 0 开始。显示时能不能加点什么？",
+              "把 print(\"订单\", i) 改成 print(\"订单\", i + 1)（或者改用 range(1, n + 1)）。"
+            ],
+            "reference": "for i in range(n):\n    print(\"订单\", i + 1)\n",
+            "worked": {
+              "code": "for i in range(3):\n    print(\"第\", i + 1, \"单\")",
+              "output": "第 1 单\n第 2 单\n第 3 单",
+              "explain": "本关第 1 题：i 从 0 开始，显示 i + 1 就从 1 开始。"
+            }
+          }
         }
       ]
     },
@@ -407,7 +452,60 @@
           "type": "modify",
           "status": "待 Claude 的代码题运行器，暂不开放",
           "replaces": 3,
-          "plan": "改一改：把 total = 0 从循环里移到循环外"
+          "plan": "改一改：把 total = 0 从循环里移到循环外",
+          "task": {
+            "id": "U4L4-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "要算 1 + 2 + … + n（range(1, n + 1) 就是 1 到 n），但这段程序结果不对。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(1, n + 1):\n    total = 0\n    total = total + i\nprint(total)\n",
+            "tests": [
+              {
+                "name": "n = 3",
+                "data": {
+                  "n": 3
+                },
+                "expected": "6"
+              },
+              {
+                "name": "n = 4",
+                "data": {
+                  "n": 4
+                },
+                "expected": "10"
+              },
+              {
+                "name": "n = 1",
+                "data": {
+                  "n": 1
+                },
+                "expected": "1",
+                "hidden": true
+              },
+              {
+                "name": "n = 0",
+                "data": {
+                  "n": 0
+                },
+                "expected": "0",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "total = 0 在循环里，每一轮会发生什么？",
+              "把 total = 0 移到 for 的上面，并去掉缩进。"
+            ],
+            "reference": "total = 0\nfor i in range(1, n + 1):\n    total = total + i\nprint(total)\n",
+            "worked": {
+              "code": "total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)",
+              "output": "6",
+              "explain": "本关第 1 题：累加器放在循环外，每轮在原来的基础上加。"
+            }
+          }
         }
       ]
     },
