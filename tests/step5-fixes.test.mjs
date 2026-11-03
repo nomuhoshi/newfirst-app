@@ -143,5 +143,12 @@ check("7 设备时间往回拨：不加心、不重置", () => {
   S.saveAccount(st, "userA", { doc }, { now: NOW });
   const h = S.loadAccount(st, "userA", { now: NOW - 3600000 }).copy.doc.hearts; return h.n === 3 && h.msToNext === 5 * 60000;
 });
+// 8（对抗轮发现）同一设备两个标签页
+check("8 两个标签页各自从 40 开始挣 +10 / +5，先后保存（带 baseline）：55，不丢", () => {
+  let doc = { ...D.emptyDoc({ lineage: "L1" }), xp: { devA: 40 } }; const b = { xp: 40, lessonsCompleted: 0 };
+  doc = D.syncStateIntoDoc(doc, { ...freshState(), xp: 50 }, { deviceId: DEV, today: "2026-11-03", now: NOW, baseline: b }).doc;
+  doc = D.syncStateIntoDoc(doc, { ...freshState(), xp: 45 }, { deviceId: DEV, today: "2026-11-03", now: NOW, baseline: b }).doc;
+  return D.sumXp(doc) === 55;
+});
 console.log(`\n共 ${total} 项，失败 ${fails} 项`);
 process.exit(fails ? 1 : 0);

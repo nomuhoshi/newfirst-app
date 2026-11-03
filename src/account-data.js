@@ -192,13 +192,16 @@ export function docToState(doc, base = null, now = Date.now()) {
 // 关键：本机新挣的 XP = 状态里的总 XP − 文档里的总 XP，只加到“这台设备自己的格子”里。
 // 刚从云端下载的总数，不会被当成这台设备新挣的。
 // 返回 { doc, changed: { xp, runs, done, days, hearts, prefs } }，changed 用来给同步层判断“红心/设置是否改过”。
-export function syncStateIntoDoc(doc, state, { deviceId, today, now = Date.now() }) {
+// opts.baseline = { xp, lessonsCompleted }：这个标签页上次读取 / 同步时的总数。传了就按“状态 − baseline”算新挣的部分，
+// 这样同一台设备开两个标签页、各自学习后先后保存，后保存的不会把先保存的那份抵掉（不传则按旧方式和文档总数比较）。
+export function syncStateIntoDoc(doc, state, { deviceId, today, now = Date.now(), baseline = null }) {
   if (!isId(deviceId)) throw new Error("缺少设备编号");
   const out = clone(doc);
   const changed = { xp: false, runs: false, done: false, days: false, hearts: false, prefs: false };
-  const dxp = natural(state.xp) - sumXp(out);
+  const bx = baseline ? natural(baseline.xp) : sumXp(out), br = baseline ? natural(baseline.lessonsCompleted) : sumRuns(out);
+  const dxp = natural(state.xp) - bx;
   if (dxp > 0) { out.xp[deviceId] = (out.xp[deviceId] ?? 0) + dxp; changed.xp = true; }
-  const druns = natural(state.lessonsCompleted) - sumRuns(out);
+  const druns = natural(state.lessonsCompleted) - br;
   if (druns > 0) { out.runs[deviceId] = (out.runs[deviceId] ?? 0) + druns; changed.runs = true; }
   for (const [k, v] of Object.entries(state.done ?? {})) if (v && isId(k) && !(k in out.done)) { out.done[k] = validDay(today) ? today : ""; changed.done = true; }
   // 两次同步之间连续学了多天：按 lastDay + streak 把这几天都补上（只有 lastDay 会丢掉中间的日子）
