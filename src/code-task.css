@@ -56,8 +56,10 @@
   .ios-browser .ct-kb { padding-bottom: 24px; }
   .lessonfoot .mascot-btn { min-width: 44px; min-height: 44px; }
   .lessonfoot .mascot-btn svg { width: 40px; height: 40px; }
-  .ct-kb .kb-key { height: 34px; }
-  .ct-kb .kb-row { margin: 2px 0; }
+  .ct-kb .kb-key { height: 30px; }
+  .ct-kb .kb-actions .kb-key { height: 30px; }
+  .ct-kb .kb-row { margin: 1px 0; gap: 3px; }
+  .lessonfoot .btn3d { min-height: 44px; }
   .ct-kb { padding-top: 2px; padding-bottom: 2px; }
   .ct-worked summary { min-height: 36px; }
 }
