@@ -141,8 +141,8 @@ for (const vp of [{ w: 390, h: 844, tag: "iPhone15" }, { w: 375, h: 667, tag: "i
 
     // ---- 主线错题进错题本，之后答对移出 ----
     await page.evaluate(() => { const st = window.__app.getState(); st.hearts = 5; window.__app.persist(); localStorage.setItem("suipian.missed", "[]"); window.__app.renderPath(); });
-    await page.waitForSelector(".path-item.st-current .node");
-    await page.locator(".path-item.st-current .node").tap();
+    await page.waitForSelector(".node.current");
+    await page.locator(".node.current").tap();
     await page.locator(".overlay .btn3d.primary").tap(); await page.waitForSelector(".intro-title");
     await page.getByRole("button", { name: "继续", exact: true }).tap(); await page.waitForSelector("[data-check]");
     const lessonId = await page.evaluate(() => window.__app.getRun().lesson.id);
