@@ -40,13 +40,15 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const r = JSON.parse(storage.getItem(AUTH_KEY));
       if (!r || !r.session || !r.session.userId) return null;
       if (projectId && (r.project || legacyProject) !== projectId) {
-        try { storage.setItem(STALE_KEY, JSON.stringify({ userId: r.session.userId, email: String(r.session.email || "").trim().toLowerCase(), project: r.project || legacyProject || "" })); storage.removeItem(AUTH_KEY); } catch {}
+        // 不是这个项目的凭证：只是不用它（返回空）。绝不删除——它可能是另一个入口（正式版）还在用的登录。只留一个不含令牌的提示标记。
+        try { storage.setItem(STALE_KEY, JSON.stringify({ userId: r.session.userId, email: String(r.session.email || "").trim().toLowerCase(), project: r.project || legacyProject || "" })); } catch {}
         return null;
       }
       return r.session;
     } catch { return null; }
   };
   const writeAuth = () => { try { if (session) storage.setItem(AUTH_KEY, JSON.stringify(projectId ? { session, project: projectId } : { session })); else storage.removeItem(AUTH_KEY); } catch {} };
+  const isUnsent = (c) => !!c && (c.base == null || !!(c.dirty && (c.dirty.hearts || c.dirty.prefs || c.dirty.content)));
   const readStale = () => { try { const r = JSON.parse(storage.getItem(STALE_KEY)); return r && typeof r.userId === "string" ? r : null; } catch { return null; } };
   const clearStale = () => { try { storage.removeItem(STALE_KEY); } catch {} };
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
@@ -84,7 +86,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     userId = uid; email = session?.email || "";
     const state = docToState(L.copy.doc, baseState ? { ...baseState, onboarded: true } : { ...freshState(), onboarded: true }, now());
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
-    pending = true;
+    pending = isUnsent(L.copy); // 只有本机副本里真有没上传的内容才算“有进度没上传”；打开页面本身不算
     setStatus(session ? "pending" : "need-login");
     return { userId, email, state };
   }
@@ -97,9 +99,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const L = loadAccount(storage, userId, { now: now() });
     if (!L.ok || !L.copy) return { ok: false, code: L.code || "no-copy", message: L.message };
     const { doc, changed } = syncStateIntoDoc(L.copy.doc, state, { deviceId: d.id, today: today(), now: now(), baseline });
-    const ok = saveAccount(storage, userId, { doc, base: L.copy.base, dirty: { hearts: L.copy.dirty.hearts || changed.hearts, prefs: L.copy.dirty.prefs || changed.prefs, content: L.copy.dirty.content || changed.xp || changed.runs || changed.done || changed.days } }, { now: now() });
+    const dirty = { hearts: L.copy.dirty.hearts || changed.hearts, prefs: L.copy.dirty.prefs || changed.prefs, content: L.copy.dirty.content || changed.xp || changed.runs || changed.done || changed.days };
+    const ok = saveAccount(storage, userId, { doc, base: L.copy.base, dirty }, { now: now() });
     if (!ok) return { ok: false, code: "save-failed", message: "无法保存到本机" };
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
+    if (!isUnsent({ base: L.copy.base, dirty })) return { ok: true }; // 这次保存没有新内容（比如只是打开页面）：不标记“有没上传的进度”，也不触发同步
     pending = true;
     if (status !== "offline" && status !== "need-login") setStatus("pending");
     scheduleSync(1500);
