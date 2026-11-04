@@ -1,0 +1,552 @@
+<title>碎片编程 材质样片</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@700&display=swap" rel="stylesheet">
+<style>
+/* 版式：单栏。样片三列 → 手机原型（左控制右手机）→ 参数表 → 交接。
+   方向沿用 v3「编程实验室」：墨色、暖白、铜色；铜色竖线做进度。 */
+:root{
+  --bg:#f5f2ec; --surface:#fffdf9; --surface-2:#ece7de;
+  --fg:#1d1b19; --muted:#6a6258; --line:#d8d0c3;
+  --accent:#a85a24; --accent-fg:#fffaf3;
+  --ok:#25724a; --ok-bg:#dcefe3; --bad:#a8322a; --bad-bg:#f6dedb;
+  --glow-a:#d98a52; --glow-b:#5a9db8; --bezel:#1d1b19;
+  --font-display:'Noto Serif SC','Songti SC','STSong',serif;
+  --font-body:'Noto Sans SC','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141311; --surface:#1d1b18; --surface-2:#26231f;
+    --fg:#efe9df; --muted:#a29a8d; --line:#3a352e;
+    --accent:#d98a52; --accent-fg:#1a120b;
+    --ok:#6cc08e; --ok-bg:#1d3326; --bad:#ee8f84; --bad-bg:#3a201d;
+    --glow-a:#c9753b; --glow-b:#3f7f99; --bezel:#46403a; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141311; --surface:#1d1b18; --surface-2:#26231f;
+  --fg:#efe9df; --muted:#a29a8d; --line:#3a352e;
+  --accent:#d98a52; --accent-fg:#1a120b;
+  --ok:#6cc08e; --ok-bg:#1d3326; --bad:#ee8f84; --bad-bg:#3a201d;
+  --glow-a:#c9753b; --glow-b:#3f7f99; --bezel:#46403a; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 15px/1.65 var(--font-body);
+  padding-block:32px 72px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3,h4{margin:0}
+h1{font:700 clamp(28px,6vw,40px)/1.2 var(--font-display);text-wrap:balance}
+h2{font:700 22px/1.3 var(--font-display)}
+p{margin:0}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.eyebrow{font:500 12px/1.4 var(--font-mono);letter-spacing:.06em;color:var(--muted)}
+.lede{max-width:60ch;color:var(--muted);margin-top:12px}
+.top nav{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:20px;font-size:14px}
+.top nav a{color:var(--accent);text-decoration:none;border-bottom:1px solid currentColor}
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
+.switch input{accent-color:var(--accent);width:16px;height:16px}
+
+/* ---------- 吉祥物（占位形象「小方」） ---------- */
+.mascot{position:relative;display:block;font-size:var(--s,100px);width:1em;height:1em;will-change:transform}
+.mascot .m-body{position:absolute;inset:0;border-radius:34%;overflow:hidden}
+.mascot .m-shine{position:absolute;left:12%;top:9%;width:46%;height:26%;border-radius:50%;transform:rotate(-24deg);opacity:0;
+  background:linear-gradient(160deg,rgba(255,255,255,.95),rgba(255,255,255,0))}
+.mascot .m-sweep{position:absolute;top:-20%;bottom:-20%;left:0;width:35%;opacity:0;display:none;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.9),transparent)}
+.mascot .m-eyes{position:absolute;left:25%;right:25%;top:40%;height:.16em;display:flex;justify-content:space-between;align-items:center}
+.mascot .m-eyes i{display:block;width:.13em;height:.16em;border-radius:50%;background:var(--eye);transition:transform .2s;
+  animation:blink 5s infinite}
+.mascot .m-eyes i:nth-child(2){animation-delay:.04s}
+.mascot .m-mouth{position:absolute;left:50%;top:62%;width:.2em;height:.08em;transform:translateX(-50%);
+  border-bottom:.03em solid var(--eye);border-radius:0 0 .2em .2em}
+@keyframes blink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+.mascot.happy .m-eyes i{animation:none;background:transparent;height:.07em;width:.13em;border-top:.035em solid var(--eye);border-radius:.13em .13em 0 0}
+.mascot.happy .m-mouth{width:.26em;height:.12em}
+.mascot.sad .m-eyes i{animation:none}
+.mascot.sad .m-eyes i:first-child{transform:translateY(.02em) rotate(-14deg)}
+.mascot.sad .m-eyes i:last-child{transform:translateY(.02em) rotate(14deg)}
+.mascot.sad .m-mouth{top:68%;border-bottom:0;border-top:.03em solid var(--eye);border-radius:.2em .2em 0 0}
+
+/* 玻璃：透亮、脆。需要背景透出，所以舞台里放色块和代码行 */
+.mascot[data-mat="glass"]{--eye:#1d1b19}
+.mascot[data-mat="glass"] .m-body{
+  background:linear-gradient(150deg,rgba(255,255,255,.62),rgba(255,255,255,.14) 45%,rgba(255,255,255,.3));
+  -webkit-backdrop-filter:blur(.09em) saturate(1.5);backdrop-filter:blur(.09em) saturate(1.5);
+  box-shadow:inset 0 0 0 .014em rgba(255,255,255,.75),inset 0 .1em .2em rgba(255,255,255,.35),inset 0 -.1em .18em rgba(255,255,255,.18),0 .14em .28em rgba(40,25,10,.25)}
+.mascot[data-mat="glass"] .m-shine{opacity:.85}
+.mascot[data-mat="glass"] .m-sweep{display:block}
+/* 橡胶：弹、哑光 */
+.mascot[data-mat="rubber"]{--eye:#fff6ea}
+.mascot[data-mat="rubber"] .m-body{
+  background:radial-gradient(120% 120% at 30% 22%,#7b97ff 0%,#3d63e8 55%,#2542b3 100%);
+  box-shadow:inset 0 -.09em .15em rgba(10,20,90,.4),inset 0 .06em .1em rgba(200,215,255,.28),0 .12em .2em rgba(20,35,120,.3)}
+.mascot[data-mat="rubber"] .m-shine{opacity:.16;filter:blur(.03em)}
+/* 软木：颗粒、闷。颗粒用噪点贴图，边缘用位移滤镜做粗糙感 */
+.mascot[data-mat="cork"]{--eye:#3b2410}
+.mascot[data-mat="cork"] .m-body{
+  background-color:#c8995f;
+  background-image:var(--grainA),var(--grainB),radial-gradient(120% 120% at 30% 22%,rgba(255,235,200,.35),rgba(0,0,0,0) 60%);
+  background-size:.75em .75em,1.1em 1.1em,100% 100%;
+  filter:url(#rough);
+  box-shadow:inset 0 -.08em .12em rgba(80,45,15,.4),inset 0 .05em .08em rgba(255,230,190,.25),0 .1em .16em rgba(60,35,10,.3)}
+
+/* 舞台 */
+.mstage{position:relative;display:grid;place-items:center;border:0;padding:0;background:var(--surface-2);border-radius:14px;overflow:hidden}
+.halo{position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 24% 28% at 26% 34%,var(--glow-a) 98%,transparent 100%),
+    radial-gradient(ellipse 28% 30% at 78% 72%,var(--glow-b) 98%,transparent 100%),
+    repeating-linear-gradient(180deg,color-mix(in srgb,var(--fg) 9%,transparent) 0 1px,transparent 1px 11px)}
+.mstage .mascot{z-index:1}
+
+/* ---------- 样片卡片 ---------- */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card .mstage{width:100%;aspect-ratio:4/3.1;cursor:pointer}
+.card h3{font:700 16px/1.3 var(--font-body)}
+.card .trait{color:var(--muted);font-size:14px}
+.card .meta{font:500 12px/1.6 var(--font-mono);color:var(--muted);margin-top:6px}
+.card .meta b{color:var(--fg);font-weight:500}
+
+/* ---------- 手机原型 ---------- */
+.flow-grid{display:grid;gap:28px;grid-template-columns:1fr;align-items:start}
+@media (min-width:760px){.flow-grid{grid-template-columns:minmax(220px,300px) 1fr}}
+.controls{display:flex;flex-direction:column;gap:22px}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+legend{padding:0;margin-bottom:8px;font:500 12px/1.4 var(--font-mono);letter-spacing:.06em;color:var(--muted)}
+.seg{display:flex;flex-wrap:wrap;gap:8px}
+.seg button{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:10px;font-size:14px}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.hint{font-size:13px;color:var(--muted);max-width:36ch}
+.hint code{font:500 12px var(--font-mono);color:var(--fg)}
+.phone-wrap{display:flex;justify-content:center}
+.phone{position:relative;width:min(100%,348px);aspect-ratio:9/18.6;background:var(--surface);border:7px solid var(--bezel);border-radius:40px;overflow:hidden;
+  box-shadow:0 28px 50px -28px rgba(20,12,4,.5)}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;gap:14px;padding:20px 18px 18px}
+.screen.enter{animation:enter .28s cubic-bezier(.2,.8,.2,1)}
+@keyframes enter{from{opacity:0;transform:translateY(10px)}}
+.sc-bottom{margin-top:auto}
+.cta{width:100%;padding:14px;border:0;border-radius:14px;background:var(--accent);color:var(--accent-fg);font:700 15px/1.2 var(--font-body);transition:transform .08s}
+.cta:active{transform:translateY(1px)}
+.cta:disabled{opacity:.4;cursor:default}
+.brand-mono{font:500 11px/1 var(--font-mono);letter-spacing:.08em;color:var(--muted)}
+.hero{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.hero-stage{width:100%;height:164px;cursor:pointer}
+.app-name{font:700 32px/1.1 var(--font-display)}
+.hero p{color:var(--muted);font-size:14px}
+.path-title{font:500 11px/1 var(--font-mono);letter-spacing:.06em;color:var(--muted);margin-bottom:6px}
+.path{list-style:none;margin:0;padding:0;position:relative}
+.path::before{content:"";position:absolute;left:5px;top:20px;bottom:20px;width:2px;background:var(--accent)}
+.path li{position:relative;display:flex;align-items:center;gap:8px;padding:7px 0 7px 26px;font-size:14px;color:var(--muted)}
+.path li::before{content:"";position:absolute;left:0;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:50%;background:var(--surface);border:2px solid var(--line)}
+.path li.now{color:var(--fg);font-weight:700}
+.path li.now::before{background:var(--accent);border-color:var(--accent)}
+.path em{font:500 11px var(--font-mono);color:var(--accent);font-style:normal;margin-left:auto}
+.q-top{display:flex;align-items:center;gap:12px}
+.x{border:0;background:transparent;font-size:24px;line-height:1;padding:0 4px;color:var(--muted)}
+.bar{flex:1;height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.bar i{display:block;height:100%;width:20%;background:var(--accent);border-radius:inherit}
+.energy{display:inline-flex;align-items:center;gap:4px;font:500 13px var(--font-mono);color:var(--accent)}
+.ask{display:flex;gap:10px;align-items:center}
+.ask .mstage{width:68px;height:68px;flex:none;border-radius:16px;cursor:pointer}
+.bubble{background:var(--surface-2);padding:10px 12px;border-radius:12px 12px 12px 4px;font-size:14px;line-height:1.5;min-width:0}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 14px;font:500 14px/1.3 var(--font-mono);transition:border-color .12s,background .12s}
+.opt.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.opt.ok{border-color:var(--ok);background:var(--ok-bg);box-shadow:none}
+.opt.no{border-color:var(--bad);background:var(--bad-bg);box-shadow:none}
+.opt:disabled{cursor:default}
+.sheet{position:absolute;left:0;right:0;bottom:0;padding:16px 18px 18px;display:flex;flex-direction:column;gap:10px;border-top:2px solid var(--tone);background:var(--tint);animation:rise .28s cubic-bezier(.2,.8,.2,1)}
+.sheet.ok{--tone:var(--ok);--tint:var(--ok-bg)}
+.sheet.bad{--tone:var(--bad);--tint:var(--bad-bg)}
+.sheet h4{font:700 18px/1.2 var(--font-body);color:var(--tone)}
+.sheet p{font-size:13.5px;line-height:1.55}
+@keyframes rise{from{transform:translateY(100%)}}
+.toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);max-width:90%;background:var(--fg);color:var(--bg);font-size:12.5px;padding:8px 12px;border-radius:10px;z-index:5;text-align:center}
+
+/* ---------- 参数表 / 交接 ---------- */
+.scroll-x{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:700px;font-size:13.5px}
+th,td{text-align:left;vertical-align:top;padding:11px 14px;border-bottom:1px solid var(--line)}
+tr:last-child th,tr:last-child td{border-bottom:0}
+thead th{font:500 12px var(--font-mono);letter-spacing:.06em;color:var(--muted);background:var(--surface-2)}
+tbody th{font-weight:500;color:var(--muted);width:92px;white-space:nowrap}
+td code{font:500 12px var(--font-mono)}
+.ho{display:grid;grid-template-columns:112px minmax(0,1fr);gap:0;margin:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ho dt,.ho dd{margin:0;padding:12px 16px;border-bottom:1px solid var(--line)}
+.ho dt{font:500 12px/1.9 var(--font-mono);color:var(--muted);background:var(--surface-2)}
+.ho dd{font-size:14px}
+.ho dt:last-of-type,.ho dd:last-of-type{border-bottom:0}
+.ho ul{margin:0;padding-left:18px}
+@media (max-width:520px){.ho{grid-template-columns:1fr}.ho dt{border-bottom:0;padding-bottom:0;background:transparent}.ho dd{padding-top:2px}}
+.copy{margin-top:14px;border:1px solid var(--line);background:var(--surface);padding:9px 16px;border-radius:10px;font-size:14px}
+.copy:hover{border-color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.screen.enter,.sheet{animation:none}.mascot .m-eyes i{animation:none}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="rough" x="-6%" y="-6%" width="112%" height="112%">
+    <feTurbulence type="fractalNoise" baseFrequency=".06" numOctaves="2" seed="2" result="t"/>
+    <feDisplacementMap in="SourceGraphic" in2="t" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">碎片编程 · 设计师 Sonnet · 2026-11-04</p>
+    <h1>三种材质，一个占位角色</h1>
+    <p class="lede">点每个角色，看回弹，听声音。造型和颜色都是占位，等设计师 Opus 定下角色和变身规则后整体替换，材质的手感保持不变。</p>
+    <nav aria-label="页面导航"><a href="#samples">材质样片</a><a href="#flow">手机原型</a><a href="#specs">动效参数</a><a href="#handoff">交接</a></nav>
+  </header>
+
+  <section id="samples" aria-labelledby="h-samples">
+    <div class="sec-head">
+      <h2 id="h-samples">材质样片</h2>
+      <label class="switch"><input id="snd" type="checkbox" checked> 声音</label>
+    </div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section id="flow" aria-labelledby="h-flow">
+    <div class="sec-head"><h2 id="h-flow">手机原型：欢迎 → 第一道题 → 反馈</h2></div>
+    <div class="flow-grid">
+      <div class="controls">
+        <fieldset>
+          <legend>角色材质</legend>
+          <div class="seg" id="matSeg">
+            <button type="button" data-mat="glass" aria-pressed="true">玻璃</button>
+            <button type="button" data-mat="rubber" aria-pressed="false">橡胶</button>
+            <button type="button" data-mat="cork" aria-pressed="false">软木</button>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>跳到状态</legend>
+          <div class="seg" id="goSeg">
+            <button type="button" data-go="welcome" aria-pressed="true">欢迎</button>
+            <button type="button" data-go="question" aria-pressed="false">题目</button>
+            <button type="button" data-go="correct" aria-pressed="false">答对</button>
+            <button type="button" data-go="wrong" aria-pressed="false">答错</button>
+          </div>
+        </fieldset>
+        <p class="hint">页面地址后加 <code>#welcome</code> <code>#question</code> <code>#correct</code> <code>#wrong</code> 可直接打开对应画面，方便截图。题目、课程名和体力图标都是占位内容。</p>
+      </div>
+
+      <div class="phone-wrap">
+        <div class="phone" id="phone">
+          <section class="screen" id="s-welcome" aria-label="欢迎页">
+            <p class="brand-mono">PYTHON · 每次五分钟</p>
+            <div class="hero">
+              <button class="mstage hero-stage" type="button" aria-label="摸摸小方"><span class="halo"></span><span class="mascot flow-m" data-mascot data-size="124" data-mat="glass" id="mHero"></span></button>
+              <h3 class="app-name">碎片编程</h3>
+              <p>点一点，就会 Python。</p>
+            </div>
+            <div>
+              <p class="path-title">单元 1（示例）</p>
+              <ol class="path">
+                <li class="now">print 显示文字<em>现在</em></li>
+                <li>变量</li>
+                <li>input 输入</li>
+              </ol>
+            </div>
+            <div class="sc-bottom"><button class="cta" type="button" data-act="start">开始第一课</button></div>
+          </section>
+
+          <section class="screen" id="s-question" aria-label="题目页" hidden>
+            <div class="q-top">
+              <button class="x" type="button" data-act="home" aria-label="退出练习">×</button>
+              <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="5" aria-valuenow="1" aria-label="第 1 题，共 5 题"><i></i></div>
+              <span class="energy" title="体力（占位图标）"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 1.5h6a2.5 2.5 0 0 1 2.5 2.5v3a4 4 0 0 1-2 3.4V14h-7v-3.6a4 4 0 0 1-2-3.4V4A2.5 2.5 0 0 1 5 1.5z"/><path d="M6 10V5.5M10 10V5.5M6 5.5h4"/></svg>5</span>
+            </div>
+            <div class="ask">
+              <button class="mstage" type="button" aria-label="摸摸小方"><span class="halo"></span><span class="mascot flow-m" data-mascot data-size="52" data-mat="glass" id="mAsk"></span></button>
+              <p class="bubble">想让屏幕显示 Hello，应该写哪一行？</p>
+            </div>
+            <div class="opts" id="opts" role="radiogroup" aria-label="选项">
+              <button class="opt" type="button" role="radio" aria-checked="false" data-i="0">print("Hello")</button>
+              <button class="opt" type="button" role="radio" aria-checked="false" data-i="1">show("Hello")</button>
+              <button class="opt" type="button" role="radio" aria-checked="false" data-i="2">echo Hello</button>
+              <button class="opt" type="button" role="radio" aria-checked="false" data-i="3">print(Hello)</button>
+            </div>
+            <div class="sc-bottom"><button class="cta" id="check" type="button" disabled>检查</button></div>
+            <div class="sheet" id="sheet" role="status" hidden>
+              <h4 id="fbTitle"></h4>
+              <p id="fbBody"></p>
+              <button class="cta" id="fbBtn" type="button"></button>
+            </div>
+          </section>
+          <div class="toast" id="toast" role="status" hidden></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="specs" aria-labelledby="h-specs">
+    <div class="sec-head"><h2 id="h-specs">动效与素材参数</h2></div>
+    <div class="scroll-x"><table id="specTable"></table></div>
+  </section>
+
+  <section id="handoff" aria-labelledby="h-ho">
+    <div class="sec-head"><h2 id="h-ho">交接：给程序员 Sonnet</h2></div>
+    <dl class="ho" id="ho"></dl>
+    <button class="copy" id="copyHo" type="button">复制交接文字</button>
+    <pre id="hoText" hidden></pre>
+  </section>
+</div>
+
+<script>
+(function(){
+  var $=function(s,r){return (r||document).querySelector(s)},$$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+  var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* 动效数值：页面动画、参数表、卡片说明都读这一份 */
+  var T={glass:{pop:240,okPop:320,sweep:620},rubber:{tap:420,ok:700,bad:520},cork:{tap:220,ok:480,bad:300}};
+  var NAMES={glass:'玻璃',rubber:'橡胶',cork:'软木'};
+  var TRAIT={glass:'透亮、脆',rubber:'弹、哑光',cork:'颗粒、闷'};
+  var META={
+    glass:'点击 <b>'+T.glass.pop+'ms</b> · 高光扫过 <b>'+T.glass.sweep+'ms</b>',
+    rubber:'点击 <b>'+T.rubber.tap+'ms</b> · 压扁 <b>120%×80%</b>',
+    cork:'点击 <b>'+T.cork.tap+'ms</b> · 下压 <b>95%</b>，不过冲'
+  };
+
+  /* 软木颗粒贴图 */
+  var svgA="<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' seed='7'/><feColorMatrix values='0 0 0 0 .22 0 0 0 0 .11 0 0 0 0 .03 0 0 0 2.2 -.95'/></filter><rect width='100%' height='100%' filter='url(#n)'/></svg>";
+  var svgB="<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='.07' numOctaves='3' seed='3'/><feColorMatrix values='0 0 0 0 .96 0 0 0 0 .79 0 0 0 0 .52 0 0 0 1.6 -.5'/></filter><rect width='100%' height='100%' filter='url(#n)'/></svg>";
+  var root=document.documentElement;
+  root.style.setProperty('--grainA','url("data:image/svg+xml,'+encodeURIComponent(svgA)+'")');
+  root.style.setProperty('--grainB','url("data:image/svg+xml,'+encodeURIComponent(svgB)+'")');
+
+  /* 渲染吉祥物 */
+  function paint(el){
+    el.style.setProperty('--s',el.dataset.size+'px');
+    el.innerHTML='<span class="m-body"><span class="m-sweep"></span><span class="m-shine"></span></span><span class="m-eyes"><i></i><i></i></span><span class="m-mouth"></span>';
+  }
+
+  /* 样片卡片 */
+  var cards=$('#cards');
+  ['glass','rubber','cork'].forEach(function(m){
+    var a=document.createElement('article');a.className='card';
+    a.innerHTML='<button class="mstage" type="button" aria-label="试玩'+NAMES[m]+'样片"><span class="halo"></span><span class="mascot" data-mascot data-size="112" data-mat="'+m+'"></span></button>'+
+      '<div><h3>'+NAMES[m]+'</h3><p class="trait">'+TRAIT[m]+'</p><p class="meta">'+META[m]+'</p></div>';
+    cards.appendChild(a);
+  });
+  $$('[data-mascot]').forEach(paint);
+
+  /* 声音 */
+  var ac=null,acted=false;
+  addEventListener('pointerdown',function(){acted=true},{capture:true,once:true});
+  function ctx(){
+    if(!acted||!$('#snd').checked)return null;
+    try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume();return ac}catch(e){return null}
+  }
+  function tone(c,f0,f1,dur,vol,type,delay){
+    var t=c.currentTime+(delay||0),o=c.createOscillator(),g=c.createGain();
+    o.type=type||'sine';o.frequency.setValueAtTime(f0,t);
+    if(f1!==f0)o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+    g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+dur+.02);
+  }
+  function knock(c,freq,vol,delay){
+    var t=c.currentTime+(delay||0),n=Math.floor(c.sampleRate*.05),b=c.createBuffer(1,n,c.sampleRate),d=b.getChannelData(0);
+    for(var i=0;i<n;i++)d[i]=(Math.random()*2-1)*(1-i/n);
+    var s=c.createBufferSource(),f=c.createBiquadFilter(),g=c.createGain();
+    s.buffer=b;f.type='bandpass';f.frequency.value=freq;f.Q.value=1.2;g.gain.value=vol;
+    s.connect(f);f.connect(g);g.connect(c.destination);s.start(t);
+    tone(c,160,110,.06,.12,'sine',delay);
+  }
+  function sound(mat,kind){
+    var c=ctx();if(!c)return;
+    try{
+      var p={tap:1,ok:1.33,bad:.6}[kind];
+      if(mat==='glass'){tone(c,1320*p,1320*p,.45,.1);tone(c,1980*p,1980*p,.3,.06);if(kind==='ok')tone(c,1760,1760,.4,.08,'sine',.09)}
+      else if(mat==='rubber'){tone(c,220*p,110*p,.16,.2);if(kind==='ok')tone(c,330,165,.16,.18,'sine',.12)}
+      else{knock(c,1000*p,.35);if(kind==='ok')knock(c,1330,.3,.13)}
+    }catch(e){}
+  }
+
+  /* 角色反应：tap / ok / bad */
+  function sweep(m){
+    var s=$('.m-sweep',m);if(!s)return;
+    s.animate([{transform:'translateX(-160%) skewX(-12deg)',opacity:0},{opacity:1,offset:.3},{transform:'translateX(420%) skewX(-12deg)',opacity:0}],{duration:T.glass.sweep,easing:'ease-in-out'});
+  }
+  function mood(m,kind){
+    clearTimeout(m._mt);m.classList.remove('happy','sad');
+    if(kind==='ok')m.classList.add('happy');
+    if(kind==='bad')m.classList.add('sad');
+    if(kind!=='tap')m._mt=setTimeout(function(){m.classList.remove('happy','sad')},1700);
+  }
+  function react(m,kind){
+    if(!m)return;
+    var mat=m.dataset.mat;
+    sound(mat,kind);mood(m,kind);
+    if(reduce){m.animate([{opacity:1},{opacity:.7},{opacity:1}],{duration:120});return}
+    m.getAnimations().forEach(function(a){a.cancel()});
+    m.style.transformOrigin=mat==='rubber'?'50% 92%':'50% 50%';
+    function A(kf,d,e){return m.animate(kf,{duration:d,easing:e||'ease-out'})}
+    if(mat==='glass'){
+      if(kind==='bad')A([{transform:'translateX(0)'},{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'translateX(-2px)'},{transform:'translateX(0)'}],260,'linear');
+      else{
+        A([{transform:'scale(1)'},{transform:'scale('+(kind==='ok'?1.1:1.06)+')'},{transform:'scale(1)'}],kind==='ok'?T.glass.okPop:T.glass.pop,'cubic-bezier(.2,.8,.2,1)');
+        sweep(m);if(kind==='ok')setTimeout(function(){sweep(m)},220);
+      }
+    }else if(mat==='rubber'){
+      if(kind==='tap')A([{transform:'scale(1,1)',offset:0},{transform:'scale(1.2,.8)',offset:.2},{transform:'scale(.92,1.1)',offset:.5},{transform:'scale(1.04,.97)',offset:.75},{transform:'scale(1,1)',offset:1}],T.rubber.tap);
+      else if(kind==='ok')A([{transform:'translateY(0) scale(1,1)',offset:0},{transform:'translateY(0) scale(1.15,.85)',offset:.15},{transform:'translateY(-22%) scale(.92,1.12)',offset:.45},{transform:'translateY(0) scale(1.2,.8)',offset:.75},{transform:'translateY(0) scale(1,1)',offset:1}],T.rubber.ok);
+      else A([{transform:'rotate(0) scale(1)',offset:0},{transform:'rotate(-9deg) scale(1.06,.94)',offset:.25},{transform:'rotate(8deg) scale(.96,1.04)',offset:.55},{transform:'rotate(-4deg) scale(1)',offset:.8},{transform:'rotate(0) scale(1)',offset:1}],T.rubber.bad);
+    }else{
+      if(kind==='tap')A([{transform:'scale(1)',offset:0},{transform:'scale(.95)',offset:.35},{transform:'scale(1)',offset:1}],T.cork.tap);
+      else if(kind==='ok')A([{transform:'translateY(0)',offset:0},{transform:'translateY(6%)',offset:.25},{transform:'translateY(0)',offset:.5},{transform:'translateY(6%)',offset:.75},{transform:'translateY(0)',offset:1}],T.cork.ok,'ease-in-out');
+      else A([{transform:'scale(1) translateX(0)',offset:0},{transform:'scale(.93) translateX(-2px)',offset:.2},{transform:'scale(.95) translateX(2px)',offset:.45},{transform:'scale(1) translateX(0)',offset:1}],T.cork.bad);
+    }
+  }
+  document.addEventListener('click',function(e){
+    var st=e.target.closest('.mstage');
+    if(st){var m=$('.mascot',st);react(m,'tap')}
+  });
+
+  /* 手机原型状态机 */
+  var STATES=['welcome','question','correct','wrong'];
+  var mat='glass',sel=null,cur='welcome';
+  var opts=$$('.opt'),checkBtn=$('#check'),sheet=$('#sheet'),toastEl=$('#toast'),mAsk=$('#mAsk'),mHero=$('#mHero');
+  var FB={
+    0:['答对了','print 把括号里的内容显示在屏幕上，文字要放在引号里。'],
+    1:['差一点','Python 里没有 show。显示文字用 print。'],
+    2:['差一点','echo 是命令行的写法，Python 里要用 print(...)。'],
+    3:['差一点','print 用对了，但 Hello 缺引号。没有引号，Python 会把它当成变量名。']
+  };
+  function renderOpts(done){
+    opts.forEach(function(b,i){
+      var on=sel===i;
+      b.setAttribute('aria-checked',on?'true':'false');
+      b.className='opt'+(on?(done?(i===0?' ok':' no'):' sel'):'');
+      b.disabled=!!done;
+    });
+    checkBtn.disabled=sel===null;
+  }
+  function showSheet(){
+    var ok=sel===0;
+    $('#fbTitle').textContent=FB[sel][0];$('#fbBody').textContent=FB[sel][1];
+    $('#fbBtn').textContent=ok?'继续':'再试一次';
+    sheet.className='sheet '+(ok?'ok':'bad');sheet.hidden=false;
+    renderOpts(true);
+  }
+  function show(s,quiet){
+    cur=s;
+    $('#s-welcome').hidden=s!=='welcome';
+    var q=$('#s-question');q.hidden=s==='welcome';
+    var t=s==='welcome'?$('#s-welcome'):q;
+    t.classList.remove('enter');void t.offsetWidth;t.classList.add('enter');
+    sheet.hidden=true;toastEl.hidden=true;
+    if(s==='welcome'||s==='question'){sel=null;renderOpts(false)}
+    if(s==='correct'){sel=0;showSheet()}
+    if(s==='wrong'){sel=3;showSheet()}
+    $$('#goSeg button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.go===s?'true':'false')});
+    if(!quiet){
+      if(s==='correct')setTimeout(function(){react(mAsk,'ok')},200);
+      if(s==='wrong')setTimeout(function(){react(mAsk,'bad')},200);
+    }
+  }
+  function go(s){
+    show(s);
+    try{if(location.hash!=='#'+s)history.replaceState(null,'','#'+s)}catch(e){}
+  }
+  function toast(t){toastEl.textContent=t;toastEl.hidden=false}
+  function setMat(m){
+    mat=m;
+    $$('.flow-m').forEach(function(el){el.dataset.mat=m});
+    $$('#matSeg button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.mat===m?'true':'false')});
+    react(cur==='welcome'?mHero:mAsk,'tap');
+  }
+
+  $('#matSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(b)setMat(b.dataset.mat)});
+  $('#goSeg').addEventListener('click',function(e){var b=e.target.closest('button');if(b)go(b.dataset.go)});
+  $('#phone').addEventListener('click',function(e){
+    var a=e.target.closest('[data-act]');
+    if(a){
+      if(a.dataset.act==='start')go('question');
+      if(a.dataset.act==='home')go('welcome');
+    }
+    var o=e.target.closest('.opt');
+    if(o&&!sheet.hidden===false){sel=+o.dataset.i;renderOpts(false);react(mAsk,'tap')}
+  });
+  checkBtn.addEventListener('click',function(){
+    if(sel===null)return;
+    showSheet();
+    var ok=sel===0;
+    react(mAsk,ok?'ok':'bad');
+    try{history.replaceState(null,'','#'+(ok?'correct':'wrong'))}catch(e){}
+    cur=ok?'correct':'wrong';
+    $$('#goSeg button').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.go===cur?'true':'false')});
+  });
+  $('#fbBtn').addEventListener('click',function(){
+    if(sel===0){toast('原型到此为止，回到欢迎页');setTimeout(function(){go('welcome')},1100)}
+    else go('question');
+  });
+  addEventListener('hashchange',function(){
+    var h=location.hash.slice(1);
+    if(STATES.indexOf(h)>-1&&h!==cur)show(h);
+  });
+
+  /* 参数表 */
+  var rows=[
+    ['手感',TRAIT.glass,TRAIT.rubber,TRAIT.cork],
+    ['点击','整体放大到 106%，高光带从左扫到右','横向压扁到 120%×80%，再回弹两次','下压到 95%，直接回位，不过冲'],
+    ['时长','整体 '+T.glass.pop+'ms，高光 '+T.glass.sweep+'ms',T.rubber.tap+'ms',T.cork.tap+'ms'],
+    ['缓动','<code>cubic-bezier(.2,.8,.2,1)</code>','分段 ease-out，3 个过冲点','ease-out'],
+    ['答对','放大到 110%，高光扫两次，眼睛变弯，'+T.glass.okPop+'ms','跳起 22%，落地压扁，'+T.rubber.ok+'ms','点头两次，'+T.cork.ok+'ms'],
+    ['答错','横向轻抖 ±3px，眼睛下垂，260ms','左右摇晃 ±9°，眼睛下垂，'+T.rubber.bad+'ms','闷沉缩到 93%，眼睛下垂，'+T.cork.bad+'ms'],
+    ['声音','1320Hz + 1980Hz 正弦，衰减 0.45s','220→110Hz 下滑，0.16s','1kHz 带通噪声 0.05s + 160Hz 低音'],
+    ['占位颜色','白色 14–62% 透明，靠背景色透出；眼睛 <code>#1d1b19</code>','<code>#3d63e8</code> 钴蓝，眼睛 <code>#fff6ea</code>','<code>#c8995f</code> 底色加噪点颗粒，眼睛 <code>#3b2410</code>'],
+    ['形状','圆角 34%，眼睛 13%×16%，嘴宽 20%（均为占位角色的比例）','同左','同左，边缘加 3px 位移滤镜做粗糙感'],
+    ['低端机降级','去掉 backdrop-filter，改半透明渐变','不需要降级','去掉边缘位移滤镜，保留颗粒'],
+    ['减少动态','只做 120ms 淡闪','同左','同左']
+  ];
+  var tbl='<thead><tr><th></th><th>玻璃</th><th>橡胶</th><th>软木</th></tr></thead><tbody>';
+  rows.forEach(function(r){tbl+='<tr><th scope="row">'+r[0]+'</th><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td></tr>'});
+  $('#specTable').innerHTML=tbl+'</tbody>';
+
+  /* 交接 */
+  var HO=[
+    ['任务','吉祥物三种材质样片（玻璃、橡胶、软木），以及「欢迎 → 第一道题 → 反馈」手机原型'],
+    ['主责','设计师 Sonnet'],
+    ['PR 或分支','无。这是独立预览页，没有进 nomuhoshi/newfirst-app，正式站没动'],
+    ['提交号','无（同上）'],
+    ['已做内容',['三种材质样片，均可点击，带声音开关','手机原型 4 个状态：欢迎、题目、答对、答错，可切换角色材质','每种材质 3 个反应：点击、答对、答错；眼睛有常态、开心、难过','上方参数表：时长、缓动、颜色、降级方案','视觉方向沿用 v3「编程实验室」：墨色、暖白、铜色、铜色竖线进度']],
+    ['验证证据','页面脚本语法检查通过；三种材质的动画数值与参数表读自同一份配置。没有在真机上看过'],
+    ['待验事项',['iPhone 真机的触感、声音和玻璃模糊效果','低端机上 backdrop-filter 的帧率','角色造型和变身规则，等设计师 Opus 定','题目、课程名、体力图标是占位，需要换成真实课程数据和 GPT 定的规则']],
+    ['下一棒','程序员 Sonnet：把参数表接进组件，先接一种材质即可。设计师 Opus 给出角色和验收标准后，我出正式细稿。']
+  ];
+  var dl=$('#ho'),txt='';
+  HO.forEach(function(r){
+    var dt=document.createElement('dt'),dd=document.createElement('dd');
+    dt.textContent=r[0];
+    if(Array.isArray(r[1])){
+      var ul=document.createElement('ul');
+      r[1].forEach(function(x){var li=document.createElement('li');li.textContent=x;ul.appendChild(li)});
+      dd.appendChild(ul);txt+=r[0]+'：\n'+r[1].map(function(x){return '- '+x}).join('\n')+'\n';
+    }else{dd.textContent=r[1];txt+=r[0]+'：'+r[1]+'\n'}
+    dl.appendChild(dt);dl.appendChild(dd);
+  });
+  var pre=$('#hoText');pre.textContent=txt.trim();
+  $('#copyHo').addEventListener('click',function(){
+    var b=this,done=function(t){b.textContent=t;setTimeout(function(){b.textContent='复制交接文字'},1600)};
+    try{navigator.clipboard.writeText(pre.textContent).then(function(){done('已复制')},function(){fallback()})}catch(e){fallback()}
+    function fallback(){
+      pre.hidden=false;var r=document.createRange();r.selectNodeContents(pre);
+      var s=getSelection();s.removeAllRanges();s.addRange(r);done('已选中，请手动复制');
+    }
+  });
+
+  /* 启动 */
+  var h0=location.hash.slice(1);
+  if(STATES.indexOf(h0)>-1){
+    show(h0,true);
+    setTimeout(function(){try{$('#phone').scrollIntoView({block:'center'})}catch(e){}},60);
+  }else show('welcome',true);
+})();
+</script>
