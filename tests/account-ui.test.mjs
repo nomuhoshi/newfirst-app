@@ -122,7 +122,7 @@ try {
   check("离线时我的页显示“离线/等待上传”提示", /离线|等待上传/.test(await A.page.locator("[data-sync-status]").innerText()));
   await earn(A2, "U1L4", 30); await syncNow(A2);
   await A.ctx.setOffline(false); A.ctx.__off = false;
-  await syncNow(A); await syncNow(A2); await syncNow(A); await syncNow(A2); // 重连后需要多轮才能让两台都拿到最新
+  await syncNow(A); await syncNow(A2); // 只发生一次真实重连：A 补传，A2 拉到最新（不再多跑一轮绕过）
   check("重连后：云端 120 XP（60 + 离线 30 + iPad 30），两台设备都是 120，没有重复加分", xpIn("a@example.com") === 120 && (await xpOnPage(A)) === 120 && (await xpOnPage(A2)) === 120, `${xpIn("a@example.com")}/${await xpOnPage(A)}/${await xpOnPage(A2)}`);
   for (let i = 0; i < 3; i++) { await syncNow(A); await syncNow(A2); }
   check("反复同步不会多加分", xpIn("a@example.com") === 120);

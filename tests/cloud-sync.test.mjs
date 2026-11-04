@@ -37,8 +37,10 @@ function fakeServer() {
 function fakeStorage() { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: (k) => { m.delete(k); }, _m: m }; }
 const TODAY = "2026-11-03";
 function device(server, name) {
-  const dev = { name, storage: fakeStorage(), offline: false, state: freshState() };
-  dev.sync = createSync({ storage: dev.storage, api: server.apiFor(dev), schedule: () => 0, today: () => TODAY, onState: (doc) => { dev.state = docToState(doc, dev.state); } });
+  const dev = { name, storage: fakeStorage(), offline: false, state: freshState(), timers: [] };
+  const base = server.apiFor(dev);
+  const api = { ...base, async getProgress(session) { if (dev.hold) { await dev.hold; if (dev.heldFails) return { ok: false, kind: "network", message: "网络连不上" }; } return base.getProgress(session); } }; // dev.hold：让读云端卡住，用来模拟“断网时发出的请求”
+  dev.sync = createSync({ storage: dev.storage, api, schedule: (fn, ms) => { dev.timers.push({ fn, ms }); return dev.timers.length; }, today: () => TODAY, onState: (doc) => { dev.state = docToState(doc, dev.state); } });
   return dev;
 }
 // 模拟应用里“完成一关”：加 XP、记完成、连续天数，然后保存
@@ -214,6 +216,42 @@ const xpOf = (server, email) => sumXp(server.rows.get(server.users.get(email)).d
   const off = createApi({ url: "https://p.supabase.co", anonKey: "pub", fetchFn: async () => { throw new Error("offline"); } });
   const none = createApi({ url: "", anonKey: "" });
   check("接口：断网归类为 network；没配置 → config", (await off.sendCode("a@b.c")).kind === "network" && (await none.sendCode("a@b.c")).kind === "config");
+}
+
+// ---------- 回归：A2 重连后停在旧值（断网时发出的请求失败，被后来的同步请求“借走”失败结果）----------
+{
+  const S = fakeServer();
+  const a1 = device(S, "A-iPhone"), a2 = device(S, "A-iPad");
+  await login(a1, "r@x.com"); finishLesson(a1, "U1L1", 20); await a1.sync.syncNow();
+  await login(a2, "r@x.com");
+  // iPhone 断网学习 30 XP；iPad 联网学习 30 XP 并同步
+  a1.offline = true; finishLesson(a1, "U1L2", 30);
+  finishLesson(a2, "U1L3", 30); await a2.sync.syncNow();
+  check("准备：iPad 先同步，云端 50 XP（20 + iPad 30）；iPhone 离线本机 50 XP", xpOf(S, "r@x.com") === 50 && a1.state.xp === 20 + 30);
+  // 联网事件触发的同步（P1）卡在断网时发出的读云端请求上；这时又有人要求同步（P2，借用 P1）；P1 失败后网络已恢复
+  let release; a1.hold = new Promise((r) => { release = r; }); a1.heldFails = true;
+  const p1 = a1.sync.syncNow();
+  await new Promise((r) => setImmediate(r));
+  const p2 = a1.sync.syncNow();
+  release(); a1.hold = null; a1.offline = false; // 卡住的请求在断网状态下失败（heldFails），随后网络恢复
+  const r1 = await p1, r2b = await p2;
+  check("单次重连：后来要求同步的那次拿到的是成功结果，不是借来的旧失败", r2b.ok === true, JSON.stringify(r2b));
+  check("单次重连：云端合并为 80 XP（20 + 30 + 30），没有重复加分", xpOf(S, "r@x.com") === 80, String(xpOf(S, "r@x.com")));
+  check("单次重连后 iPad 再同步一次就是 80 XP（不需要多余的轮次）", (await a2.sync.syncNow()).ok && a2.state.xp === 80 && a1.state.xp === 80, `${a1.state.xp}/${a2.state.xp}`);
+  await a1.sync.syncNow(); await a2.sync.syncNow();
+  check("再多同步几次仍是 80 XP", xpOf(S, "r@x.com") === 80 && a1.state.xp === 80 && a2.state.xp === 80);
+}
+// 没有人催的时候，网络失败也要自己重试（退避），不能一直停在“离线”
+{
+  const S = fakeServer();
+  const a1 = device(S, "A-iPhone");
+  await login(a1, "t@x.com"); finishLesson(a1, "U1L1", 20); await a1.sync.syncNow();
+  a1.offline = true; finishLesson(a1, "U1L2", 30);
+  const r = await a1.sync.syncNow();
+  check("断网同步失败：状态是离线，并且安排了退避重试", r.ok === false && a1.sync.status().status === "offline" && a1.timers.some((t) => t.ms === 3000), JSON.stringify(a1.timers.map((t) => t.ms)));
+  a1.offline = false; a1.timers.filter((t) => t.ms === 3000).forEach((t) => t.fn());
+  await new Promise((r) => setImmediate(r)); await new Promise((r) => setImmediate(r));
+  check("网络恢复后，重试自动把离线学的 30 XP 补传到云端（50 XP）", xpOf(S, "t@x.com") === 50 && a1.sync.status().status === "synced", `${xpOf(S, "t@x.com")} ${a1.sync.status().status}`);
 }
 
 const failed = results.filter((x) => !x).length;

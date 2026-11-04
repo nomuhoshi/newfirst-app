@@ -13,7 +13,7 @@ export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新�
 
 export function createSync({ storage, api, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {} }) {
   let session = null, userId = null, email = "";
-  let status = null, pending = false, running = null, again = false, timer = null;
+  let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
   let baseline = null, lastError = "";
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
 
@@ -74,10 +74,27 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
     if (!userId) return Promise.resolve({ ok: false, kind: "no-account" });
     if (running) { again = true; return running; }
     running = (async () => {
-      try { let r; do { again = false; r = await syncOnce(); } while (again && r.ok); return r; }
-      finally { running = null; }
+      try {
+        let r, joinedRetry = 0;
+        for (;;) {
+          again = false; r = await syncOnce();
+          if (r.ok) { netFails = 0; if (again) continue; break; }
+          if (r.kind === "network") {
+            // 联网了但这一轮因为“断网时发出的请求”失败：如果期间有人又要求同步（again），立刻再试一次，不能把旧的失败当成结果还给他
+            if (again && joinedRetry++ < 1) continue;
+            scheduleRetry(); // 否则退避重试，不要停在“离线”等下一次用户操作
+          }
+          break;
+        }
+        return r;
+      } finally { running = null; }
     })();
     return running;
+  }
+  function scheduleRetry() {
+    if (retryTimer || !userId || !session) return;
+    const delay = [3000, 10000, 30000, 60000][Math.min(netFails, 3)]; netFails++;
+    retryTimer = schedule(() => { retryTimer = null; syncNow(); }, delay);
   }
 
   async function syncOnce() {
