@@ -472,6 +472,21 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .route-line.locked { stroke: var(--g-muted); stroke-width: 2.5; stroke-dasharray: 1 8; opacity: .7; }
 @keyframes route-flow { to { stroke-dashoffset: -12; } }
 
+/* ============ 首屏压缩（产品官意见）：随机练习入口改成一行，让“从这里开始”更早进入视线 ============ */
+@media (min-height: 501px) {
+  .pathview { padding-top: 10px; }
+  .practice-entry-wrap { padding: 4px 0; margin: -4px 0 8px; }
+  .practice-entry { min-height: 44px; padding: 4px 14px; }
+  .practice-entry-text { flex-direction: row; gap: 8px; align-items: baseline; }
+  .practice-entry-text small { font-size: 12px; }
+  .practice-entry-wrap .practice-empty { margin: 3px 0 0; font-size: 12px; line-height: 1.2; text-align: center; }
+  .unit { margin-bottom: 34px; }
+  .unit-banner { padding: 12px 16px 12px; }
+  .unit-banner h2 { font-size: 19px; }
+  .unit-banner .unit-prog { position: absolute; top: 14px; right: 16px; width: 44%; margin: 0; }
+  .path { padding-top: 12px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active { transform: none; }
   .route-line.now { animation: none; }
