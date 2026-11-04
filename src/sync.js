@@ -7,12 +7,24 @@
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
 import { emptyDoc, mergeDocs, docsEquivalent, replaceWithGuest, docToState, syncStateIntoDoc, guestFingerprint, normalizeDoc, sumXp } from "./account-data.js";
-import { getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified } from "./account-store.js";
+import { SESSION_KEY, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
 
-export function createSync({ storage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {} }) {
+// 账号相关的键（当前账号、账号本机副本、登录凭证、换项目标记）按 Supabase 项目分开存：
+//  - 正式项目（和云端关闭时）沿用原来的键，朋友们现有的存档、登录状态一个字不变；
+//  - 其他项目（测试库）的这些键都带 “proj:<主机名>:” 前缀，和正式版的互不可见。两个项目即使碰巧有相同的用户编号，也读不到对方的本机副本。
+//  - 游客记录、游客编号、设备编号不分项目（它们是这台设备自己的，不属于任何云端项目）。
+export function projectNamespace(projectId, legacyProject) { return projectId && projectId !== "cloud-off" && projectId !== legacyProject ? `proj:${projectId}:` : ""; }
+export function scopedStorage(raw, ns) {
+  if (!ns) return raw;
+  const scoped = (k) => (k === SESSION_KEY || k === AUTH_KEY || k === STALE_KEY || k.startsWith("suipian.acct.") ? ns + k : k);
+  return { getItem: (k) => raw.getItem(scoped(k)), setItem: (k, v) => raw.setItem(scoped(k), v), removeItem: (k) => raw.removeItem(scoped(k)) };
+}
+
+export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {} }) {
+  const storage = scopedStorage(rawStorage, projectNamespace(projectId, legacyProject));
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "";
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
