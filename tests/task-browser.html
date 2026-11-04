@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><base href="/"><title>任务运行（真实 Pyodide）测试页</title>
+<script type="module">
+import { Runner } from "/src/runner.js";
+let waiter = null;
+window.out = "";
+window.runner = new Runner({
+  onStatus: (s, info) => { if (waiter && ["done", "timeout", "stopped", "outputLimit", "outputLimitStopped", "loadError"].includes(s)) { const w = waiter; waiter = null; w({ s, info }); } },
+  onOutput: (t) => { window.out += t; },
+});
+// 跑一次任务：返回 { stdout, error, files }
+window.T = async (code, task, data = null) => {
+  await window.runner.whenReady(60000);
+  window.out = "";
+  const p = new Promise((res) => { waiter = res; });
+  if (!window.runner.run(code, data, task)) throw new Error("runner 不能运行");
+  const r = await p;
+  return { stdout: window.out, status: r.s, error: r.info?.error ?? null, files: r.info?.files ?? null };
+};
+window.runner.boot();
+window.pageReady = true;
+</script>
