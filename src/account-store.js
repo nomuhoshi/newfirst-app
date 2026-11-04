@@ -54,7 +54,7 @@ export function setCurrentAccount(storage, userId) {
 }
 
 // ---------- 账号副本 ----------
-// 副本的格式：{ doc, base, dirty }，base 是上次和云端同步时的云端版本号（给同步层用），dirty 记录红心 / 设置是否在上次同步后改过。
+// 副本的格式：{ doc, base, dirty }，base 是上次和云端同步时的云端版本号（给同步层用），dirty 记录红心 / 设置是否在上次同步后改过；content = 上次同步后学了新内容（XP、完成、日期）还没上传。
 // 结果：{ ok:true, copy:null } 没有副本；{ ok:false, code:"read-failed" } 读取失败；{ ok:false, code:"corrupt" } 损坏。
 // 读取失败和损坏时调用方不得当成空副本去覆盖（saveAccount 的 expectEmpty 会再挡一次）。
 // 红心：保存时记下 savedAt（本机时间），读取时按经过的时间继续倒计时（用现有 regenHearts 规则），重新打开不会重置计时。
@@ -74,7 +74,7 @@ export function loadAccount(storage, userId, { now = Date.now() } = {}) {
     const ms = regenHearts(h, now);
     doc.hearts = { n: h.hearts, msToNext: h.hearts >= HEARTS_MAX ? 0 : Math.round(ms) };
   }
-  return { ok: true, copy: { doc, base: parsed.base ?? null, dirty: { hearts: !!parsed.dirty?.hearts, prefs: !!parsed.dirty?.prefs } } };
+  return { ok: true, copy: { doc, base: parsed.base ?? null, dirty: { hearts: !!parsed.dirty?.hearts, prefs: !!parsed.dirty?.prefs, content: !!parsed.dirty?.content } } };
 }
 // opts.expectEmpty：调用方以为“没有副本”时传 true；若此时读取失败或已经有内容，拒绝写入，避免把读不到的记录覆盖掉。
 export function saveAccount(storage, userId, copy, { now = Date.now(), expectEmpty = false } = {}) {
@@ -82,7 +82,7 @@ export function saveAccount(storage, userId, copy, { now = Date.now(), expectEmp
   if (expectEmpty) { const cur = safeRead(storage, acctKey(userId)); if (!cur.ok || cur.value !== null) return false; }
   const n = normalizeDoc(copy?.doc);
   if (!n.ok) return false;
-  const payload = JSON.stringify({ doc: n.doc, base: copy.base ?? null, dirty: { hearts: !!copy.dirty?.hearts, prefs: !!copy.dirty?.prefs }, savedAt: now });
+  const payload = JSON.stringify({ doc: n.doc, base: copy.base ?? null, dirty: { hearts: !!copy.dirty?.hearts, prefs: !!copy.dirty?.prefs, content: !!copy.dirty?.content }, savedAt: now });
   return safeSet(storage, acctKey(userId), payload);
 }
 export function removeAccountCopy(storage, userId) {
