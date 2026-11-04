@@ -108,7 +108,7 @@ try {
     const t2 = await open();
     check("同一个账号开第二个标签页：已登录（共用本机存储）", await t2.page.evaluate(() => !!window.__app.sync.account()));
     // 让访问令牌过期，两个标签页同时同步：都需要刷新令牌，但刷新令牌只能用一次
-    await t1.page.evaluate((k) => { const a = JSON.parse(localStorage.getItem(k)); a.session.expiresAt = 1; localStorage.setItem(k, JSON.stringify(a)); }, AUTH_KEY);
+    await t1.page.evaluate((k) => { const key = Object.keys(localStorage).find((x) => x === k || x.endsWith(":" + k)); /* 本机测试的假云端不是正式项目：凭证键带 proj:<主机名>: 前缀 */ const a = JSON.parse(localStorage.getItem(key)); a.session.expiresAt = 1; localStorage.setItem(key, JSON.stringify(a)); }, AUTH_KEY);
     const before = S.refreshCalls || 0;
     const [r1, r2] = await Promise.all([syncNow({ page: t1.page }), syncNow({ page: t2.page })]);
     const still = await Promise.all([t1.page, t2.page].map((p) => p.evaluate(() => !!window.__app.sync.account())));
