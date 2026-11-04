@@ -1,0 +1,23 @@
+# 临时：复现 step6 随机练习测试的偶发失败（只在 fix/step6-flaky 分支运行；查完会删）。
+name: Step6 repro
+on:
+  push:
+    branches: [fix/step6-flaky]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: node tests/step6-repro.test.mjs
+        env:
+          TRIALS: "100"
