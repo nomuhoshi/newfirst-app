@@ -160,7 +160,8 @@ try {
   await A.page.getByRole("button", { name: "继续", exact: true }).tap(); await A.page.waitForSelector("[data-check]");
   A.ctx.__off = false; await A.ctx.setOffline(false);
   await syncNow(A);
-  const inLesson = await A.page.evaluate(() => ({ notice: !!document.querySelector(".notice"), toast: document.querySelector(".toast")?.textContent || false, hasCheck: !!document.querySelector("[data-check]") }));
+  // toast 只看带“替换”的：登录时的“登录成功，进度已同步”会残留 6 秒，不算
+  const inLesson = await A.page.evaluate(() => ({ notice: !!document.querySelector(".notice"), toast: /替换/.test(document.querySelector(".toast")?.textContent || "") ? document.querySelector(".toast").textContent : false, hasCheck: !!document.querySelector("[data-check]") }));
   check("做题中发生替换：不弹提示、不打断做题", !inLesson.notice && !inLesson.toast && inLesson.hasCheck, JSON.stringify(inLesson));
   await A.page.getByRole("button", { name: "退出本关" }).tap(); await A.page.getByRole("button", { name: "退出", exact: true }).tap();
   await A.page.waitForSelector(".pathview");
@@ -172,8 +173,8 @@ try {
   await A.ctx.setOffline(true); A.ctx.__off = true;
   await earn(A, "U1L2", 30);
   await overwriteCloud("a@example.com", 7);
+  await toMe(A); // 先停在“我的”页，再联网：联网后浏览器会自动触发同步，替换提示要出现在当前所在的页面
   A.ctx.__off = false; await A.ctx.setOffline(false);
-  await toMe(A);
   await syncNow(A);
   await A.page.waitForSelector("[data-replaced-notice]");
   check("“我的”页：显示替换提示", REPLACED.test(await A.page.locator("[data-replaced-notice]").innerText()));
