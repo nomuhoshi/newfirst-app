@@ -2,6 +2,7 @@
 // 首页是关卡地图；每关 = 故事开场 + 4 道点选题（选输出 / 点词块填空或修程序 / 排顺序）。
 // 答错扣红心、错题放到最后再做；答对加 XP；每天完成一关续上连续天数。
 // 点“检查”的时间线（ms）：0 提交并锁定 → 120 揭示结果 + 声音 → 240 红心/XP 更新 → 280（减少动态效果时 120）可以继续。
+import "./exp-storage.js";
 import "./style.css";
 import "./app.css";
 import "./game.css";
@@ -16,7 +17,7 @@ import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
-import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
+import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise, shuffle as shuffleList } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2 };
 const XP_CORRECT = 10;
@@ -496,7 +497,7 @@ function selfTest() {
   const showDiag = (extra = "") => {
     const d = feel.diagnostics();
     diag.textContent = [
-      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}`,
+      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}${EXP ? `（实验预览 ${EXP}）` : ""}`,
       `缓存版本：${swInfo.caches.length ? swInfo.caches.join("、").replace(/suipian-/g, "").slice(0, 40) : "无"}`,
       `离线支持：${swInfo.status}`,
       `网络：${navigator.onLine === false ? "离线" : "在线"}`,
@@ -1001,6 +1002,27 @@ function renderFinish(run) {
 // ---------- 随机练习（SPEC §0.3）：只用已通关关卡的原题；无奖励，不改变主线学习数据 ----------
 // 本轮结果只在内存里（currentPractice），不写本机记录：不加 XP、不扣也不恢复红心、不计连续天数、不推进解锁。
 let currentPractice = null;
+// ---- 实验：闪电 5 题（仅实验预览构建 EXP=quick 才有）。一键开练，不用选范围；优先练“错过的题”，答对后移出错题记录。
+// 错题记录只存在预览自己的存储里（exp-quick: 前缀），不碰正式版。练习仍然无奖励：不改 XP、红心、连续天数、解锁。
+const EXP = typeof __EXP__ !== "undefined" ? __EXP__ : "";
+const QUICK = EXP === "quick";
+const MISSED_KEY = "suipian.missed";
+const loadMissed = () => { try { const v = JSON.parse(localStorage.getItem(MISSED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } };
+const saveMissed = (a) => { try { localStorage.setItem(MISSED_KEY, JSON.stringify(a)); } catch { /* 存不了就算了，不影响练习 */ } };
+const QUICK_SIZE = 5, QUICK_MISSED_MAX = 3;
+function quickDrill() {
+  const units = availableUnits();
+  const sel = clearedScope(units, state.done).flatMap((u) => u.lessons.map((l) => l.id));
+  const pool = buildPool(units, state.done, sel);
+  if (!pool.length) return renderPath();
+  const miss = new Set(loadMissed());
+  const old = pool.filter((p) => miss.has(p.id)), fresh = pool.filter((p) => !miss.has(p.id));
+  const picked = [...shuffleList(old).slice(0, QUICK_MISSED_MAX)];
+  picked.push(...shuffleList(fresh).slice(0, QUICK_SIZE - picked.length));
+  if (picked.length < QUICK_SIZE) picked.push(...shuffleList(old).filter((p) => !picked.includes(p)).slice(0, QUICK_SIZE - picked.length));
+  const items = shuffleList(picked);
+  startPractice(pool, QUICK_SIZE, { quick: true, round: { items, requested: QUICK_SIZE, actual: items.length, short: items.length < QUICK_SIZE }, oldCount: items.filter((p) => miss.has(p.id)).length });
+}
 const availableUnits = () => course.units.filter((u) => u.available).map((u) => ({ id: u.id, title: u.title, lessons: UNITS[u.id].lessons }));
 
 function practiceEntry() {
@@ -1008,7 +1030,10 @@ function practiceEntry() {
   const b = button(h("span", { class: "practice-entry-text" }, h("b", { text: "随机练习" }), h("small", { text: "无奖励，自由练习" })),
     () => renderPracticeSetup(), "btn3d practice-entry wide", { "data-practice-entry": "" });
   b.disabled = !any;
-  return h("div", { class: "practice-entry-wrap" }, b, any ? null : h("p", { class: "muted small practice-empty", "data-practice-empty": "", text: "完成第一关后可开始刷题" }));
+  const q = QUICK ? button(h("span", { class: "practice-entry-text" }, h("b", { text: "闪电 5 题" }), h("small", { text: "一键开练，优先练错过的" })),
+    () => quickDrill(), "btn3d practice-entry quick wide", { "data-quick-entry": "" }) : null;
+  if (q) q.disabled = !any;
+  return h("div", { class: "practice-entry-wrap" }, q, b, any ? null : h("p", { class: "muted small practice-empty", "data-practice-empty": "", text: "完成第一关后可开始刷题" }));
 }
 
 function renderPracticeSetup(prev) {
@@ -1066,7 +1091,7 @@ function renderPracticeSetup(prev) {
 }
 
 function startPractice(pool, size, setup) {
-  const round = drawRound(pool, size);
+  const round = setup?.quick ? setup.round : drawRound(pool, size);
   currentPractice = {
     setup, requested: round.requested, total: round.actual,
     items: round.items.map((p) => ({ ...p, ex: shuffleExercise(p.ex) })),
@@ -1132,6 +1157,7 @@ function renderPracticeExercise(pr) {
     const reduce = feel.reducedMotion();
     // 只记在内存里；不碰 state（XP、红心、连续天数、解锁全部不变）
     if (retry) pr.results[i].retry = ok; else pr.results[i].first = ok;
+    if (QUICK) { const m = new Set(loadMissed()); if (ok) m.delete(item.id); else m.add(item.id); saveMissed([...m]); }
     pr.answered++;
     pr.queue.shift();
     if (!ok && !retry) pr.queue.push({ i, retry: true }); // 答错：本轮末尾重练一次
@@ -1177,7 +1203,8 @@ function renderPracticeFinish(pr) {
     wrong.length ? h("div", { class: "practice-wrong" }, h("h3", { text: "错题" }), h("ul", {}, wrong.map((x) =>
       h("li", {}, h("span", { text: `${lessonTitle(x.it.lessonId)}：${x.it.ex.prompt}` }), h("small", { text: x.r.retry ? "重练答对" : "重练仍错，已看解答" }))))) : null,
     h("p", { class: "muted small", text: "随机练习不加 XP、不扣红心、不计连续天数。" }),
-    button("再来一轮", () => renderPracticeSetup(setup), "btn3d primary wide", { "data-practice-again": "" }),
+    QUICK && setup?.quick ? h("p", { class: "muted small", "data-missed-left": "", text: `错题本里还剩 ${loadMissed().length} 道。` + (setup.oldCount ? `本轮有 ${setup.oldCount} 道是之前错过的。` : "") }) : null,
+    button("再来一轮", () => (setup?.quick ? quickDrill() : renderPracticeSetup(setup)), "btn3d primary wide", { "data-practice-again": "" }),
     button("回到地图", () => { feel.haptic(); renderPath(); }, "btn3d ghost wide", { "data-continue": "" }),
   ));
 }

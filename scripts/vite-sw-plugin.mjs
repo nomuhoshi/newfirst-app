@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 const PUBLIC_SHELL = ["manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 
-export default function swPlugin({ version }) {
+export default function swPlugin({ version, prefix = "suipian-" }) {
   return {
     name: "suipian-sw",
     apply: "build",
@@ -35,6 +35,7 @@ export default function swPlugin({ version }) {
       const list = ["./", "./index.html", ...files.map((n) => "./" + n), ...PUBLIC_SHELL.map((n) => "./" + n)];
       const src = readFileSync(new URL("./sw-template.js", import.meta.url), "utf8")
         .replace("__VERSION__", version)
+        .replace("__PREFIX__", prefix)
         .replace("__PRECACHE__", JSON.stringify([...new Set(list)], null, 2));
       this.emitFile({ type: "asset", fileName: "sw.js", source: src });
     } },

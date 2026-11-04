@@ -332,3 +332,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
   .bubble { margin-bottom: 4px; }
   .node-label { margin-top: 2px; }
 }
+
+/* 实验：闪电 5 题 */
+.practice-entry.quick { background: var(--g-primary); color: var(--g-on-primary); border-color: transparent; margin-bottom: 8px; }
+.practice-entry.quick small { color: rgba(255,255,255,.88); }
