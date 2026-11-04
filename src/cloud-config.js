@@ -5,12 +5,21 @@ const DEFAULT = { url: "https://aqlcunkmggzzvyavlkjg.supabase.co", anonKey: "sb_
 // 测试入口（构建时设了 PREVIEW_ID）绝不连正式项目：只用构建时给的“测试项目”配置（TEST_SUPABASE_URL / TEST_SUPABASE_ANON_KEY）；
 // 没给 = 云端关闭（只能在本机学习）；给的网址就是正式项目 = 同样关闭。这样朋友们的正式数据不会被测试入口碰到。
 const PROD_REF = "aqlcunkmggzzvyavlkjg";
+// 解析网址取主机名（小写）；解析不了 = 空字符串。判断是不是正式项目一律看解析后的主机名，不看原始字符串（大小写、端口、用户信息、多余路径都不能绕过）。
+export function hostOf(url) {
+  try { const u = new URL(String(url)); return /^https?:$/.test(u.protocol) ? u.hostname.toLowerCase() : ""; } catch { return ""; }
+}
+export const PROD_HOST = hostOf(DEFAULT.url);
+export function isProdUrl(url) {
+  const h = hostOf(url);
+  return !h || h === PROD_HOST || h.split(".")[0] === PROD_REF || h.includes(PROD_REF); // 解析不了的网址按“可能是正式”处理（拒绝）
+}
 function testCloud() {
   try {
     const t = typeof __TEST_CLOUD__ !== "undefined" ? __TEST_CLOUD__ : null;
-    if (!t || typeof t.url !== "string" || typeof t.anonKey !== "string" || !t.url || !t.anonKey) return { url: "", anonKey: "" };
-    if (t.url.includes(PROD_REF) || t.url === DEFAULT.url) return { url: "", anonKey: "" };
-    return { url: t.url, anonKey: t.anonKey };
+    if (!t || typeof t.url !== "string" || typeof t.anonKey !== "string" || !t.url.trim() || !t.anonKey.trim()) return { url: "", anonKey: "" };
+    if (isProdUrl(t.url.trim())) return { url: "", anonKey: "" };
+    return { url: t.url.trim(), anonKey: t.anonKey.trim() };
   } catch { return { url: "", anonKey: "" }; }
 }
 const IS_PREVIEW = typeof __PREVIEW_ID__ !== "undefined" && !!__PREVIEW_ID__;

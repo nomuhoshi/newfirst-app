@@ -22,7 +22,7 @@ import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
 } from "./storage.js";
-import { CLOUD } from "./cloud-config.js";
+import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
 import { createSync } from "./sync.js";
 import { createAccountUi } from "./account-ui.js";
@@ -240,7 +240,7 @@ function replacedFor(view) {
   return replacedOn === view ? REPLACED_TEXT : null;
 }
 const sync = safeStorage ? createSync({
-  storage: safeStorage, api: cloudApi,
+  storage: safeStorage, api: cloudApi, projectId: hostOf(CLOUD.url) || "cloud-off", legacyProject: PROD_HOST,
   onStatus: () => accountUi?.refreshStatus(),
   onNotice: (kind) => { if (kind !== "replaced") return; pendingReplaced = true; if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); },
   onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
