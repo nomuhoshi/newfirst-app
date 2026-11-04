@@ -74,6 +74,8 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .tab small { display: block; font-size: 12px; font-weight: 700; }
 .tab.on { color: var(--g-primary); }
 .ios-browser .tabbar { padding-bottom: 70px; }
+/* 手机横屏时 Safari 的底部工具栏很薄，不需要竖屏那样的 70px；仍保留系统安全区 */
+@media (orientation: landscape) and (max-height: 500px) { .ios-browser .tabbar { padding-bottom: max(env(safe-area-inset-bottom), 24px); } }
 
 /* 关卡地图：单元横幅 + 六边形电路节点 */
 .pathview { padding: 16px 16px 40px; }
@@ -103,7 +105,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .hex-ring { fill: none; stroke: var(--g-primary); stroke-width: 2; stroke-linejoin: round; opacity: .35; animation: ring 2.4s ease-in-out infinite; }
 @keyframes ring { 50% { opacity: .1; } }
 .node-label { font-size: 13px; font-weight: 700; color: var(--g-muted); margin-top: 6px; background: var(--g-bg); padding: 1px 8px; border-radius: 8px; }
-.bubble { background: var(--g-card); border: 1.5px solid var(--g-line); color: var(--g-copper); font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 10px; margin-bottom: 8px; }
+.bubble { cursor: pointer; background: var(--g-card); border: 1.5px solid var(--g-line); color: var(--g-copper); font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 10px; margin-bottom: 8px; }
 
 /* 流动电路背景：固定在最底层，不拦截点击和滚动；内容区都用不透明面板盖住它 */
 .circuit-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
@@ -270,6 +272,63 @@ body { background: var(--g-bg); color: var(--g-fg); }
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .keybtn:active { outline: 3px solid var(--g-primary); outline-offset: -3px; }
   .node:active { filter: brightness(1.12); }
 }
-.out.offline { color: var(--g-muted); }
+/* 输出面板底色一直是深色，所以提示文字用浅色（原来用的灰色在深底上看不清）；比正常输出略暗一点用来区分 */
+.outpanel .out.offline { color: #C9D6DC; }
 .py-retry { margin-top: 8px; }
 .no-haptics small { display: block; }
+
+/* 矮屏（iPhone 横屏）：开场介绍和结算页内容比屏幕高时可以滑动，底部按钮不会被挤出屏幕（#app 是 overflow:hidden）。
+   内容不超出时仍然居中：用第一个/最后一个子元素的 auto 外边距代替 justify-content:center（后者超出时会把顶部也裁掉）。 */
+.finish, .onboard { overflow-y: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.finish { justify-content: flex-start; }
+.finish > :first-child { margin-top: auto; }
+.finish > :last-child { margin-bottom: auto; }
+.onboard-mid { flex: 1 0 auto; }
+
+/* ---------- 随机练习 ---------- */
+.practice-entry-wrap { margin: 0 0 18px; }
+.practice-entry { display: flex; align-items: center; justify-content: center; margin-top: 0; background: var(--g-card); border-color: var(--g-line); color: var(--g-fg); }
+.practice-entry-text { display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.practice-entry-text small { font-size: 13px; font-weight: 500; color: var(--g-muted); }
+.practice-empty { text-align: center; margin: 6px 0 0; }
+.practice-setup { padding: 16px 16px 40px; max-width: 640px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+.practice-setup h1 { margin: 4px 0 6px; }
+.practice-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.practice-links { display: flex; gap: 12px; }
+.practice-unit { margin: 8px 0 14px; }
+.practice-lessons, .practice-sizes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pchip { min-height: 44px; padding: 6px 14px; border-radius: 10px; border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); font-size: 15px; font-weight: 600; text-align: left; }
+.pchip.sel { border-color: var(--g-primary); background: var(--g-primary); color: var(--g-on-primary); }
+.pchip.part { border-color: var(--g-primary); }
+.unit-chip { width: 100%; }
+.unit-chip > span { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.unit-chip small { font-weight: 500; opacity: .85; }
+.pchip.size { min-width: 72px; text-align: center; }
+.practice-info { margin: 14px 0 0; font-weight: 600; }
+.practice-tag { font-size: 14px; font-weight: 700; color: var(--g-muted); }
+.practice-wrong { width: 100%; max-width: 560px; text-align: left; }
+.practice-wrong ul { padding-left: 18px; margin: 4px 0; }
+.practice-wrong li { margin: 6px 0; }
+.practice-wrong small { display: block; color: var(--g-muted); }
+.practice-finish .btn3d { margin-top: 10px; }
+@media (orientation: landscape) and (min-width: 700px) { .practice-unit { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: start; } .practice-lessons { margin-top: 0; } }
+/* 结算内容比关卡结算多（错题列表 + 两个按钮），矮屏（iPhone 横屏）要能滚动，不能把按钮挤出屏幕 */
+.practice-finish { overflow-y: auto; min-height: 0; justify-content: flex-start; overscroll-behavior: contain; }
+.practice-finish > :first-child { margin-top: auto; }
+.practice-finish > :last-child { margin-bottom: auto; }
+/* 地图会自动滚到当前关，放在顶部的“随机练习”入口会被滚出屏幕（竖屏有进度时也会）：入口吸顶，始终能看到。矮屏（iPhone 横屏）再缩成一行。 */
+.practice-entry-wrap { position: sticky; top: 0; z-index: 5; background: var(--g-bg); padding: 6px 0; margin: -6px 0 12px; }
+@media (max-height: 500px) {
+  .practice-entry-wrap { margin: 0 0 8px; }
+  .practice-entry { min-height: 40px; padding: 4px 12px; }
+  .practice-entry-text { flex-direction: row; gap: 8px; align-items: baseline; }
+  .practice-empty { margin: 2px 0 0; }
+}
+@media (max-height: 340px) {
+  /* 极矮屏（iPhone SE 横屏 + Safari 底栏）：当前关（气泡+节点+关名）和吸顶入口要同时放下，入口再压低一些 */
+  .practice-entry-wrap { padding: 2px 0; margin: -12px 0 4px; }
+  .practice-entry { min-height: 32px; padding: 2px 12px; }
+  .tab { min-height: 44px; } /* 仍不小于 44px 触控尺寸 */
+  .bubble { margin-bottom: 4px; }
+  .node-label { margin-top: 2px; }
+}

@@ -297,7 +297,87 @@
           "type": "modify",
           "status": "待 Claude 的代码题运行器，暂不开放",
           "replaces": 2,
-          "plan": "改一改：把从 0 开始的编号改成从 1 开始"
+          "plan": "改一改：把从 0 开始的编号改成从 1 开始",
+          "task": {
+            "id": "U4L3-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "要显示订单 1 到 n，但这段程序从“订单 0”开始。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(n):\n    print(\"订单\", i)\n",
+            "tests": [
+              {
+                "name": "3 单",
+                "data": {
+                  "n": 3
+                },
+                "expected": "订单 1\n订单 2\n订单 3"
+              },
+              {
+                "name": "1 单",
+                "data": {
+                  "n": 1
+                },
+                "expected": "订单 1"
+              },
+              {
+                "name": "5 单",
+                "data": {
+                  "n": 5
+                },
+                "expected": "订单 1\n订单 2\n订单 3\n订单 4\n订单 5",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "range(n) 的 i 从 0 开始。显示时能不能加点什么？",
+              "把 print(\"订单\", i) 改成 print(\"订单\", i + 1)（或者改用 range(1, n + 1)）。"
+            ],
+            "reference": "for i in range(n):\n    print(\"订单\", i + 1)\n",
+            "worked": {
+              "code": "for i in range(3):\n    print(\"第\", i + 1, \"单\")",
+              "output": "第 1 单\n第 2 单\n第 3 单",
+              "explain": "本关第 1 题：i 从 0 开始，显示 i + 1 就从 1 开始。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L3-M1-V1",
+              "prompt": "显示“号码 1”到“号码 n”，每个号码隔 2（1、3、5…，共 n 个）。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "3 个",
+                  "data": {
+                    "n": 3
+                  },
+                  "expected": "号码 1\n号码 3\n号码 5"
+                },
+                {
+                  "name": "1 个",
+                  "data": {
+                    "n": 1
+                  },
+                  "expected": "号码 1"
+                },
+                {
+                  "name": "4 个",
+                  "data": {
+                    "n": 4
+                  },
+                  "expected": "号码 1\n号码 3\n号码 5\n号码 7",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "第 i 个（i 从 0 开始）的号码是 i * 2 + 1。",
+                "for i in range(n): print(\"号码\", i * 2 + 1)。"
+              ],
+              "solution": "for i in range(n):\n    print(\"号码\", i * 2 + 1)\n"
+            }
+          }
         }
       ]
     },
@@ -407,7 +487,103 @@
           "type": "modify",
           "status": "待 Claude 的代码题运行器，暂不开放",
           "replaces": 3,
-          "plan": "改一改：把 total = 0 从循环里移到循环外"
+          "plan": "改一改：把 total = 0 从循环里移到循环外",
+          "task": {
+            "id": "U4L4-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "要算 1 + 2 + … + n（range(1, n + 1) 就是 1 到 n），但这段程序结果不对。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(1, n + 1):\n    total = 0\n    total = total + i\nprint(total)\n",
+            "tests": [
+              {
+                "name": "n = 3",
+                "data": {
+                  "n": 3
+                },
+                "expected": "6"
+              },
+              {
+                "name": "n = 4",
+                "data": {
+                  "n": 4
+                },
+                "expected": "10"
+              },
+              {
+                "name": "n = 1",
+                "data": {
+                  "n": 1
+                },
+                "expected": "1",
+                "hidden": true
+              },
+              {
+                "name": "n = 0",
+                "data": {
+                  "n": 0
+                },
+                "expected": "0",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "total = 0 在循环里，每一轮会发生什么？",
+              "把 total = 0 移到 for 的上面，并去掉缩进。"
+            ],
+            "reference": "total = 0\nfor i in range(1, n + 1):\n    total = total + i\nprint(total)\n",
+            "worked": {
+              "code": "total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)",
+              "output": "6",
+              "explain": "本关第 1 题：累加器放在循环外，每轮在原来的基础上加。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L4-M1-V1",
+              "prompt": "每单 3 元，算 n 单一共多少元：每轮加 3。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "n = 2",
+                  "data": {
+                    "n": 2
+                  },
+                  "expected": "6"
+                },
+                {
+                  "name": "n = 4",
+                  "data": {
+                    "n": 4
+                  },
+                  "expected": "12"
+                },
+                {
+                  "name": "n = 3",
+                  "data": {
+                    "n": 3
+                  },
+                  "expected": "9",
+                  "hidden": true
+                },
+                {
+                  "name": "n = 0",
+                  "data": {
+                    "n": 0
+                  },
+                  "expected": "0",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "累加器放循环外，每轮加 3。",
+                "total = 0 / for i in range(n): total = total + 3 / print(total)。"
+              ],
+              "solution": "total = 0\nfor i in range(n):\n    total = total + 3\nprint(total)\n"
+            }
+          }
         }
       ]
     },
@@ -518,7 +694,103 @@
           "type": "modify",
           "replaces": 2,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：把放错位置的 count = 0（在循环里）移到循环外"
+          "plan": "改一改：把放错位置的 count = 0（在循环里）移到循环外",
+          "task": {
+            "id": "U4L5-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "数一数 1 到 n 号订单里编号大于 2 的有几单，但这段程序结果总是 0 或 1。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(1, n + 1):\n    count = 0\n    if i > 2:\n        count = count + 1\nprint(\"大单数\", count)\n",
+            "tests": [
+              {
+                "name": "5 单",
+                "data": {
+                  "n": 5
+                },
+                "expected": "大单数 3"
+              },
+              {
+                "name": "4 单",
+                "data": {
+                  "n": 4
+                },
+                "expected": "大单数 2"
+              },
+              {
+                "name": "2 单",
+                "data": {
+                  "n": 2
+                },
+                "expected": "大单数 0",
+                "hidden": true
+              },
+              {
+                "name": "6 单",
+                "data": {
+                  "n": 6
+                },
+                "expected": "大单数 4",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "count = 0 在循环里，每一轮都会被清零。",
+              "把 count = 0 移到 for 上面，去掉缩进。"
+            ],
+            "reference": "count = 0\nfor i in range(1, n + 1):\n    if i > 2:\n        count = count + 1\nprint(\"大单数\", count)\n",
+            "worked": {
+              "code": "count = 0\nfor i in range(1, 6):\n    if i >= 4:\n        count = count + 1\nprint(\"大单数\", count)",
+              "output": "大单数 2",
+              "explain": "本关开头的示范：计数器放在循环外，if 成立才加 1。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L5-M1-V1",
+              "prompt": "数一数 1 到 n 号订单里编号小于 3 的有几单，输出“小单数 数量”。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "5 单",
+                  "data": {
+                    "n": 5
+                  },
+                  "expected": "小单数 2"
+                },
+                {
+                  "name": "1 单",
+                  "data": {
+                    "n": 1
+                  },
+                  "expected": "小单数 1"
+                },
+                {
+                  "name": "6 单",
+                  "data": {
+                    "n": 6
+                  },
+                  "expected": "小单数 2",
+                  "hidden": true
+                },
+                {
+                  "name": "2 单",
+                  "data": {
+                    "n": 2
+                  },
+                  "expected": "小单数 2",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "计数器放循环外，if i < 3 才加 1。",
+                "count = 0 / for i in range(1, n + 1): if i < 3: count = count + 1 / print(\"小单数\", count)。"
+              ],
+              "solution": "count = 0\nfor i in range(1, n + 1):\n    if i < 3:\n        count = count + 1\nprint(\"小单数\", count)\n"
+            }
+          }
         }
       ]
     },
@@ -626,7 +898,95 @@
           "type": "modify",
           "replaces": 3,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：给忘记更新变量的 while 加上 n = n + 1（运行会超时：不算作答、不扣红心）"
+          "plan": "改一改：给忘记更新变量的 while 加上 x = x + 1（运行会超时：不算作答、不扣红心）",
+          "task": {
+            "id": "U4L6-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "要算 1 + 2 + … + n，但这段程序停不下来（运行会超时，不算答错、不扣红心）。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "total = 0\nx = 1\nwhile x <= n:\n    total = total + x\nprint(total)\n",
+            "tests": [
+              {
+                "name": "n = 3",
+                "data": {
+                  "n": 3
+                },
+                "expected": "6"
+              },
+              {
+                "name": "n = 4",
+                "data": {
+                  "n": 4
+                },
+                "expected": "10"
+              },
+              {
+                "name": "n = 1",
+                "data": {
+                  "n": 1
+                },
+                "expected": "1",
+                "hidden": true
+              },
+              {
+                "name": "n = 5",
+                "data": {
+                  "n": 5
+                },
+                "expected": "15",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "循环里有没有改变 x？条件 x <= n 会不会变成不成立？",
+              "在 total = total + x 下面加一行 x = x + 1（缩进 4 格）。"
+            ],
+            "reference": "total = 0\nx = 1\nwhile x <= n:\n    total = total + x\n    x = x + 1\nprint(total)\n",
+            "worked": {
+              "code": "n = 1\nwhile n <= 3:\n    print(n)\n    n = n + 1",
+              "output": "1\n2\n3",
+              "explain": "本关第 1 题：每遍都把 n 加 1，条件最终不成立，循环停下。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L6-M1-V1",
+              "prompt": "从 n 倒数到 1（每次减 1）。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "n = 3",
+                  "data": {
+                    "n": 3
+                  },
+                  "expected": "3\n2\n1"
+                },
+                {
+                  "name": "n = 1",
+                  "data": {
+                    "n": 1
+                  },
+                  "expected": "1"
+                },
+                {
+                  "name": "n = 4",
+                  "data": {
+                    "n": 4
+                  },
+                  "expected": "4\n3\n2\n1",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "while 的条件写 x >= 1，循环里要让 x 变小。",
+                "x = n / while x >= 1: print(x) / x = x - 1。"
+              ],
+              "solution": "x = n\nwhile x >= 1:\n    print(x)\n    x = x - 1\n"
+            }
+          }
         }
       ]
     },
@@ -729,7 +1089,87 @@
           "type": "modify",
           "replaces": 4,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改：把误用的 continue 改成 break（或反过来）"
+          "plan": "改一改：把误用的 continue 改成 break（或反过来）",
+          "task": {
+            "id": "U4L7-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "第 stop 杯时原料卖完，之后都不能再卖。这段程序在卖完后还会继续卖。请改正。",
+            "given": [
+              "stop"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(1, 6):\n    if i == stop:\n        continue\n    print(\"卖出第\", i, \"杯\")\n",
+            "tests": [
+              {
+                "name": "第 3 杯卖完",
+                "data": {
+                  "stop": 3
+                },
+                "expected": "卖出第 1 杯\n卖出第 2 杯"
+              },
+              {
+                "name": "第 5 杯卖完",
+                "data": {
+                  "stop": 5
+                },
+                "expected": "卖出第 1 杯\n卖出第 2 杯\n卖出第 3 杯\n卖出第 4 杯"
+              },
+              {
+                "name": "第 2 杯卖完",
+                "data": {
+                  "stop": 2
+                },
+                "expected": "卖出第 1 杯",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "continue 只跳过一轮。“之后都不能再卖”要怎样？",
+              "把 continue 改成 break。"
+            ],
+            "reference": "for i in range(1, 6):\n    if i == stop:\n        break\n    print(\"卖出第\", i, \"杯\")\n",
+            "worked": {
+              "code": "for i in range(1, 6):\n    if i == 3:\n        break\n    print(i)",
+              "output": "1\n2",
+              "explain": "本关第 1 题：break 结束整个循环。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L7-M1-V1",
+              "prompt": "第 skip 杯做坏了要跳过，其余照卖（共 5 杯）。",
+              "starter": "# skip 已经准备好\n",
+              "tests": [
+                {
+                  "name": "第 3 杯坏",
+                  "data": {
+                    "skip": 3
+                  },
+                  "expected": "卖出第 1 杯\n卖出第 2 杯\n卖出第 4 杯\n卖出第 5 杯"
+                },
+                {
+                  "name": "第 5 杯坏",
+                  "data": {
+                    "skip": 5
+                  },
+                  "expected": "卖出第 1 杯\n卖出第 2 杯\n卖出第 3 杯\n卖出第 4 杯"
+                },
+                {
+                  "name": "第 1 杯坏",
+                  "data": {
+                    "skip": 1
+                  },
+                  "expected": "卖出第 2 杯\n卖出第 3 杯\n卖出第 4 杯\n卖出第 5 杯",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "只跳过这一轮，后面继续：用哪个？",
+                "if i == skip: continue，然后 print。"
+              ],
+              "solution": "for i in range(1, 6):\n    if i == skip:\n        continue\n    print(\"卖出第\", i, \"杯\")\n"
+            }
+          }
         }
       ]
     },
@@ -920,7 +1360,111 @@
               },
               "stdout": "总杯数 7"
             }
-          ]
+          ],
+          "task": {
+            "id": "U4L8-W1",
+            "version": 1,
+            "type": "write",
+            "prompt": "一共 n 单，编号 1 到 n，每单 2 杯；第 3 号订单多要 1 杯。输出“总杯数 数量”。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "starter": "# n（订单数）已经准备好\n",
+            "tests": [
+              {
+                "name": "5 单",
+                "data": {
+                  "n": 5
+                },
+                "expected": "总杯数 11"
+              },
+              {
+                "name": "2 单",
+                "data": {
+                  "n": 2
+                },
+                "expected": "总杯数 4"
+              },
+              {
+                "name": "3 单",
+                "data": {
+                  "n": 3
+                },
+                "expected": "总杯数 7",
+                "hidden": true
+              },
+              {
+                "name": "0 单",
+                "data": {
+                  "n": 0
+                },
+                "expected": "总杯数 0",
+                "hidden": true
+              },
+              {
+                "name": "1 单",
+                "data": {
+                  "n": 1
+                },
+                "expected": "总杯数 2",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "total = 0 放循环外；for i in range(1, n + 1) 每轮加 2；i == 3 时再加 1。",
+              "total = 0 / for i in range(1, n + 1): / total = total + 2 / if i == 3: total = total + 1 / 最后 print(\"总杯数\", total)。"
+            ],
+            "reference": "total = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)\n",
+            "worked": {
+              "code": "n = 5\ntotal = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)",
+              "output": "总杯数 11",
+              "explain": "本关第 1 题就是示范。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L8-W1-V1",
+              "prompt": "一共 n 单，每单 3 杯；第 2 号订单多要 2 杯。输出“总杯数 数量”。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "4 单",
+                  "data": {
+                    "n": 4
+                  },
+                  "expected": "总杯数 14"
+                },
+                {
+                  "name": "1 单",
+                  "data": {
+                    "n": 1
+                  },
+                  "expected": "总杯数 3"
+                },
+                {
+                  "name": "2 单",
+                  "data": {
+                    "n": 2
+                  },
+                  "expected": "总杯数 8",
+                  "hidden": true
+                },
+                {
+                  "name": "0 单",
+                  "data": {
+                    "n": 0
+                  },
+                  "expected": "总杯数 0",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "和父题一样的结构，换成每单 3 杯、第 2 单多 2 杯。",
+                "total = 0 / for i in range(1, n + 1): total = total + 3 / if i == 2: total = total + 2。"
+              ],
+              "solution": "total = 0\nfor i in range(1, n + 1):\n    total = total + 3\n    if i == 2:\n        total = total + 2\nprint(\"总杯数\", total)\n"
+            }
+          }
         }
       ]
     }
