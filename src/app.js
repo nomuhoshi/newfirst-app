@@ -844,6 +844,8 @@ function renderExercise(run) {
       area.mark();
       feel.play(ok ? "correct" : "wrong");
       appEl.querySelector(".lessonfoot").replaceWith(fb);
+      // 预览：反馈栏会占掉下半屏，把选项滚到题区顶部，保证选项（含对错标记）不被反馈栏挡住
+      if (LAB) appEl.querySelector(".choices")?.scrollIntoView({ block: "start" });
       // ---- 240 ms：红心 / 统计更新 ----
       setTimeout(() => {
         if (!fb.isConnected) return;

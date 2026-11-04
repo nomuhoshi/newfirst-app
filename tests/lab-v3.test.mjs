@@ -75,9 +75,9 @@ for (const scheme of ["light", "dark"]) {
     await page.getByRole("button", { name: "继续", exact: true }).tap(); await page.waitForSelector("[data-check]");
     const ex = await page.evaluate(() => window.__app.currentEx);
     check(`${T} 进入的是“选输出”题`, ex.type === "predict");
-    const lay = await page.evaluate(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const q = r(".q"), c = r(".codeblock"), o = r(".choices"), f = r(".lessonfoot"); return { q, c, o, f, vh: window.innerHeight, foot: f && { top: f.top, bottom: f.bottom }, checkH: r("[data-check]")?.height, qLabel: getComputedStyle(document.querySelector(".q"), "::before").content, cLabel: getComputedStyle(document.querySelector(".codeblock"), "::before").content, oLabel: getComputedStyle(document.querySelector(".choices"), "::before").content, optBefore: getComputedStyle(document.querySelector(".choice"), "::before").content }; });
+    const lay = await page.evaluate(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const q = r(".q"), c = r(".codeblock"), o = r(".choices"), f = r(".lessonfoot"); return { q, c, o, f, vh: window.innerHeight, foot: f && { top: f.top, bottom: f.bottom }, checkH: r("[data-check]")?.height, checkBottom: r("[data-check]")?.bottom, qLabel: getComputedStyle(document.querySelector(".q"), "::before").content, cLabel: getComputedStyle(document.querySelector(".codeblock"), "::before").content, oLabel: getComputedStyle(document.querySelector(".choices"), "::before").content, optBefore: getComputedStyle(document.querySelector(".choice"), "::before").content }; });
     check(`${T} 答题页：题干、代码、选项三块自上而下分开，各有小标签`, lay.q.bottom <= lay.c.top + 1 && lay.c.bottom <= lay.o.top + 1 && /题干/.test(lay.qLabel) && /代码/.test(lay.cLabel) && /选项/.test(lay.oLabel) && /counter\(opt/.test(lay.optBefore));
-    check(`${T} 答题页：底部栏固定在屏幕底部、检查按钮 ≥ 48px 高`, Math.abs(lay.f.bottom - lay.vh) <= 1 && lay.checkH >= 48, `bottom=${lay.f.bottom}/${lay.vh} h=${lay.checkH}`);
+    check(`${T} 答题页：底部栏固定在屏幕底部、检查按钮 ≥ 48px 高、按钮离屏幕底 ≥ 60px（Safari 工具栏）`, Math.abs(lay.f.bottom - lay.vh) <= 1 && lay.checkH >= 48 && lay.vh - lay.checkBottom >= 60, `bottom=${lay.f.bottom}/${lay.vh} h=${lay.checkH}`);
     check(`${T} 答题页：选项点得到（每个 ≥ 48px 高）`, await page.evaluate(() => [...document.querySelectorAll(".choice")].every((x) => x.getBoundingClientRect().height >= 48)));
     check(`${T} 答题页：没选之前“检查”不可点`, await page.locator("[data-check]").isDisabled());
     const cQ = [await contrastOf(page, ".q"), await contrastOf(page, ".choice pre"), await contrastOf(page, ".codeblock")];
@@ -103,6 +103,9 @@ for (const scheme of ["light", "dark"]) {
     check(`${T} 答错：扣 1 颗红心、XP 不变（规则没动）`, bad.st.hearts === heartsBefore - 1 && bad.st.xp === xpBefore, `${heartsBefore}→${bad.st.hearts}`);
     const cFb = [await contrastOf(page, ".feedbar .fb-head b"), await contrastOf(page, ".feedbar p"), await contrastOf(page, "[data-continue]")];
     check(`${T} 答错：反馈文字和“继续”按钮对比度 ≥ 4.5`, cFb.every((c) => c !== null && c >= 4.5), cFb.join("/"));
+    const vis = await page.evaluate(() => { const fb = document.querySelector(".feedbar").getBoundingClientRect(); return { fbTop: fb.top, chBottoms: [...document.querySelectorAll(".choice")].map((c) => Math.round(c.getBoundingClientRect().bottom)), contBottom: document.querySelector("[data-continue]").getBoundingClientRect().bottom, vh: window.innerHeight, ios: document.documentElement.classList.contains("ios-browser") || document.body.classList.contains("ios-browser") || !!document.querySelector(".ios-browser") }; });
+    check(`${T} 答错：反馈栏没有挡住任何选项（三个选项都在反馈栏上方）`, vis.chBottoms.every((b) => b <= vis.fbTop + 1), `${vis.chBottoms.join(",")} < ${Math.round(vis.fbTop)}`);
+    check(`${T} 答错：“继续”按钮离屏幕底部 ≥ 60px（让出 Safari 工具栏的位置）`, vis.vh - vis.contBottom >= 60, `${Math.round(vis.vh - vis.contBottom)}px`);
     await shot("4-wrong");
     await page.locator("[data-continue]").tap(); await page.waitForSelector("[data-check]");
 
@@ -124,10 +127,30 @@ for (const scheme of ["light", "dark"]) {
     await page.getByRole("button", { name: "退出", exact: true }).tap(); await page.waitForSelector(".pathview .path-item");
     check(`${T} 回到地图：铜线地图重新出现，当前关仍是 U1L2，进度保留`, await page.evaluate(() => document.querySelector(".path-item.st-current .node")?.dataset.lesson === "U1L2" && !!document.querySelector(".path-item.st-done")));
     await shot("6-back-to-map");
+    const before = await page.evaluate(() => { const st = window.__app.getState(); return { xp: st.xp, hearts: st.hearts }; });
+    await page.reload(); await page.waitForSelector(".pathview .path-item.st-current");
+    const after = await page.evaluate(() => { const st = window.__app.getState(); return { xp: st.xp, hearts: st.hearts, cur: document.querySelector(".path-item.st-current .node")?.dataset.lesson, lab: document.body.classList.contains("lab3") }; });
+    check(`${T} 刷新后继续可用：XP ${before.xp}、红心 ${before.hearts} 还在，当前关仍是 U1L2，仍是预览样式`, after.xp === before.xp && after.hearts === before.hearts && after.cur === "U1L2" && after.lab, JSON.stringify(after));
     check(`${T} 全程没有页面脚本错误`, errors.length === 0, errors.join(" | "));
   } catch (e) {
     check(`${T} 场景异常`, false, String(e.message).split("\n").slice(0, 3).join(" ")); await shot("error").catch(() => {});
   }
+  await ctx.close();
+}
+{ // ---- 离线缓存隔离：预览的 Service Worker 只建 lab3-suipian- 前缀的缓存，不动正式版的 suipian- 缓存 ----
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "allow" });
+  const page = await ctx.newPage();
+  try {
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await page.evaluate(async () => { await caches.open("suipian-prod-decoy"); await (await caches.open("suipian-prod-decoy")).put("/x", new Response("prod")); });
+    await page.reload(); await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 20000 });
+    await page.waitForFunction(async () => (await caches.keys()).some((k) => k.startsWith("lab3-suipian-")), null, { timeout: 20000 });
+    await page.waitForTimeout(1500);
+    const keys = await page.evaluate(() => caches.keys());
+    check("离线缓存隔离：预览只建了 lab3-suipian-* 缓存，没有新增 suipian-* 缓存", keys.some((k) => k.startsWith("lab3-suipian-")) && keys.filter((k) => k.startsWith("suipian-")).every((k) => k === "suipian-prod-decoy"), keys.join(","));
+    check("离线缓存隔离：正式版的 suipian- 缓存（这里用假的代替）没有被预览的 SW 清理掉", keys.includes("suipian-prod-decoy"));
+    check("离线缓存隔离：SW 的缓存清理前缀是 lab3-suipian-，不是 suipian-", (await page.evaluate(async () => (await (await fetch("./sw.js")).text()).includes('const PREFIX = "lab3-suipian-"'))));
+  } catch (e) { check("离线缓存隔离：场景异常", false, String(e.message).split("\n")[0]); }
   await ctx.close();
 }
 await browser.close(); srv.close();
