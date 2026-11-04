@@ -455,7 +455,33 @@ function renderPath() {
     tabBar("path"),
   );
   notice = null;
+  drawRoutes();
   scrollToCurrent();
+}
+
+// 关卡之间的路线：沿节点左右错开的位置连线，已走过 / 通向当前关 / 未解锁 三种样式（线画在节点下面，不挡点击）
+let routeObserver = null;
+function drawRoutes() {
+  routeObserver?.disconnect();
+  const units = [...appEl.querySelectorAll(".unit:not(.locked)")];
+  const paint = () => units.forEach((unit) => {
+    unit.querySelector(":scope > svg.route")?.remove();
+    const nodes = [...unit.querySelectorAll(".path .node")];
+    if (nodes.length < 2) return;
+    const ur = unit.getBoundingClientRect();
+    const pts = nodes.map((n) => { const r = n.getBoundingClientRect(); return [Math.round((r.left + r.width / 2 - ur.left) * 10) / 10, Math.round((r.top + r.height / 2 - ur.top) * 10) / 10]; });
+    const segs = [];
+    for (let i = 1; i < nodes.length; i++) {
+      const [x1, y1] = pts[i - 1], [x2, y2] = pts[i], ym = Math.round((y1 + y2) / 2);
+      const kind = nodes[i].classList.contains("done") ? "done" : nodes[i].classList.contains("current") ? "now" : "locked";
+      const d = `M${x1} ${y1}C${x1} ${ym} ${x2} ${ym} ${x2} ${y2}`;
+      segs.push(svg("path", { d, class: `route-case ${kind}` }), svg("path", { d, class: `route-line ${kind}` }));
+    }
+    const el = svg("svg", { class: "route", "aria-hidden": "true", width: String(Math.round(ur.width)), height: String(Math.round(ur.height)), viewBox: `0 0 ${Math.round(ur.width)} ${Math.round(ur.height)}` }, ...segs);
+    unit.prepend(el);
+  });
+  paint();
+  if (typeof ResizeObserver !== "undefined" && units[0]) { routeObserver = new ResizeObserver(() => paint()); units.forEach((u) => routeObserver.observe(u)); }
 }
 
 // 当前关卡（含上方“开始”气泡和下方关名）滚到可见：可见区域要扣掉吸顶的“随机练习”入口，不能被它挡住
