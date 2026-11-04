@@ -18,7 +18,7 @@ V = {
    "tests": [T("10 杯", {"cups": 10}, "团购价"), T("3 杯", {"cups": 3}, "原价"), T("5 杯", {"cups": 5}, "团购价", True), T("20 杯", {"cups": 20}, "团购价", True), T("21 杯", {"cups": 21}, "原价", True)],
    "hints": ["“大于等于”和“小于等于”都包含边界。", "if cups >= 5 and cups <= 20:"],
    "solution": "if cups >= 5 and cups <= 20:\n    print(\"团购价\")\nelse:\n    print(\"原价\")\n"},
- "U3L8-W1": {"prompt": "满 150 元减 30；会员再减 10。输出“应付 金额”。", "starter": "# total、is_vip 已经准备好\n",
+ "U3L8-W1": {"prompt": "满 150 元减 30；会员再减 10（会员优惠不受满 150 元限制，不满 150 元的会员也减 10）。输出“应付 金额”。", "starter": "# total、is_vip 已经准备好\n",
    "tests": [T("160 元，非会员", {"total": 160, "is_vip": False}, "应付 130"), T("90 元，会员", {"total": 90, "is_vip": True}, "应付 80"), T("正好 150，会员", {"total": 150, "is_vip": True}, "应付 110", True), T("120 元，非会员", {"total": 120, "is_vip": False}, "应付 120", True)],
    "hints": ["和父题一样两个独立的 if，只是门槛和金额变了。", "pay = total / if total >= 150: pay = pay - 30 / if is_vip: pay = pay - 10。"],
    "solution": "pay = total\nif total >= 150:\n    pay = pay - 30\nif is_vip:\n    pay = pay - 10\nprint(\"应付\", pay)\n"},

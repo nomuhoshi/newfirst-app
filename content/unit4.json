@@ -1417,9 +1417,9 @@
             ],
             "reference": "total = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)\n",
             "worked": {
-              "code": "n = 5\ntotal = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)",
-              "output": "总杯数 11",
-              "explain": "本关第 1 题就是示范。"
+              "code": "n = 4\ntotal = 0\nfor i in range(1, n + 1):\n    if i != 2:\n        total = total + 3\nprint(\"共\", total)",
+              "output": "共 9",
+              "explain": "total = 0 放在循环外面；每一轮用 if 看编号 i，满足条件才往 total 上加 3。这里编号 2 的订单被跳过，所以是 3 单 × 3 杯 = 9。"
             },
             "requiresVariationAfterSolution": true,
             "variation": {

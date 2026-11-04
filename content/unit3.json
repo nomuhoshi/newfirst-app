@@ -1281,7 +1281,7 @@
             "id": "U3L8-W1",
             "version": 1,
             "type": "write",
-            "prompt": "写一个折扣检查器：满 100 元（正好 100 也算）减 20；会员再减 5。输出“应付 金额”。",
+            "prompt": "写一个折扣检查器：满 100 元（正好 100 也算）减 20；会员再减 5（会员优惠不受满 100 元限制，不满 100 元的会员也减 5）。输出“应付 金额”。",
             "given": [
               "total",
               "is_vip"
@@ -1339,14 +1339,14 @@
             ],
             "reference": "pay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)\n",
             "worked": {
-              "code": "total = 100\nis_vip = False\npay = total\nif total >= 100:\n    pay = pay - 20\nif is_vip:\n    pay = pay - 5\nprint(\"应付\", pay)",
-              "output": "应付 80",
-              "explain": "本关第 2、3 题就是示范：两个独立的 if，满额看原价 total。"
+              "code": "price = 12\nadd_pearl = True\nlarge = False\ncost = price\nif add_pearl:\n    cost = cost + 2\nif large:\n    cost = cost + 3\nprint(\"单价\", cost)",
+              "output": "单价 14",
+              "explain": "两个独立的 if，各自判断各自的条件，都往同一个变量上改：加珍珠加 2，大杯再加 3。本关第 2、3 题是同样的写法。"
             },
             "requiresVariationAfterSolution": true,
             "variation": {
               "id": "U3L8-W1-V1",
-              "prompt": "满 150 元减 30；会员再减 10。输出“应付 金额”。",
+              "prompt": "满 150 元减 30；会员再减 10（会员优惠不受满 150 元限制，不满 150 元的会员也减 10）。输出“应付 金额”。",
               "starter": "# total、is_vip 已经准备好\n",
               "tests": [
                 {
