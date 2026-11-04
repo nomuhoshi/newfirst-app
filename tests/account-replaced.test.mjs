@@ -125,6 +125,19 @@ try {
   check("A 学习后同步到云端（60 XP）", (await syncNow(A)) && xpIn("a@example.com") === 60);
   check("还没有被替换时：地图上没有提示", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 0);
 
+  // 备份区文案：只有真的“已同步”才写“进度已同步到云端”；登录了但还没上传时不能提前宣称已上云；已登录不显示“导入”
+  await toMe(A);
+  const backupSynced = await A.page.locator("[data-backup] p.small").first().innerText();
+  check("已同步时：备份区写“进度已同步到云端”，且没有“导入”按钮", /进度已同步到云端/.test(backupSynced) && (await A.page.locator("[data-import]").count()) === 0 && (await A.page.locator("[data-export]").count()) === 1, backupSynced);
+  await A.ctx.setOffline(true); A.ctx.__off = true;
+  await earn(A, "U1L4", 30);
+  await toPathTab(A); await toMe(A);
+  const backupPending = await A.page.locator("[data-backup] p.small").first().innerText();
+  check("登录了但还有进度没上传（离线）：备份区不写“已同步到云端”，提示看“已同步 ✓”", !/进度已同步到云端/.test(backupPending) && /已同步 ✓/.test(backupPending), backupPending);
+  A.ctx.__off = false; await A.ctx.setOffline(false);
+  await syncNow(A);
+  await toPathTab(A);
+
   // 1) 在地图页：A 离线多学一关，别的设备覆盖云端，A 联网同步
   await A.ctx.setOffline(true); A.ctx.__off = true;
   await earn(A, "U1L3", 30);

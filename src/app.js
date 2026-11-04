@@ -741,7 +741,7 @@ function backupCard() {
   });
   return h("section", { class: "backup", "data-backup": "" },
     h("h3", { text: "备份学习记录" }),
-    h("p", { class: "small muted", text: signedIn ? "进度已在云端。这里的文件是你自己多留的一份；已登录时不需要导入。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
+    h("p", { class: "small muted", text: signedIn ? (sync.status().status === "synced" ? "进度已同步到云端。这里的文件是你自己多留的一份；已登录时不需要导入。" : "已登录：进度先存在这台设备上，看到上方“已同步 ✓”才算上传到云端。这里的文件是你自己多留的一份；已登录时不需要导入（要导入请先退出登录）。") : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
     h("div", { class: "acct-row" },
       button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
       signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
