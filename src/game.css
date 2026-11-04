@@ -336,3 +336,8 @@ body { background: var(--g-bg); color: var(--g-fg); }
 /* 实验：闪电 5 题 */
 .practice-entry.quick { background: var(--g-primary); color: var(--g-on-primary); border-color: transparent; margin-bottom: 8px; }
 .practice-entry.quick small { color: rgba(255,255,255,.88); }
+/* 两个入口并排，一行，少占首屏 */
+.practice-entry-wrap:has(.quick) { display: flex; gap: 8px; flex-wrap: wrap; }
+.practice-entry-wrap:has(.quick) .practice-entry { flex: 1 1 0; min-width: 0; margin: 0; padding: 6px 8px; min-height: 52px; }
+.practice-entry-wrap:has(.quick) .practice-entry-text { flex-direction: column; gap: 0; }
+.practice-entry-wrap:has(.quick) .practice-empty { flex-basis: 100%; }

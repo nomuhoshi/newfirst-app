@@ -66,6 +66,8 @@ for (const vp of [{ w: 390, h: 844, tag: "iPhone15" }, { w: 375, h: 667, tag: "i
     check(`${T} 存储隔离：真实 localStorage 里只有 exp-quick: 前缀的键`, keys.length > 0 && keys.every((k) => k.startsWith("exp-quick:")), keys.join(","));
     const btn = await page.evaluate(() => { const r = document.querySelector("[data-quick-entry]").getBoundingClientRect(); return { top: r.top, bottom: r.bottom, h: r.height, vh: innerHeight }; });
     check(`${T} 地图一打开就能看到“闪电 5 题”（首屏内、≥40px 高）`, btn.top >= 0 && btn.bottom <= btn.vh && btn.h >= 40, JSON.stringify(btn));
+    const row = await page.evaluate(() => { const a = document.querySelector("[data-quick-entry]").getBoundingClientRect(), b = document.querySelector("[data-practice-entry]").getBoundingClientRect(); return { sameRow: Math.abs(a.top - b.top) < 4, aw: a.width, bw: b.width, bottom: Math.max(a.bottom, b.bottom) }; });
+    check(`${T} 两个入口并排一行，各 ≥120px 宽，整体不超过首屏上方 140px`, row.sameRow && row.aw >= 120 && row.bw >= 120 && row.bottom <= 140, JSON.stringify(row));
     await shot("1-map");
     const before = await page.evaluate(() => { const s = window.__app.getState(); return { xp: s.xp, hearts: s.hearts, done: JSON.stringify(s.done), streak: JSON.stringify(s.streak ?? null) }; });
 
