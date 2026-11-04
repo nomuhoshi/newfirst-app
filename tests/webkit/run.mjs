@@ -11,6 +11,8 @@ for (const b of list) {
   const x = spawnSync(process.execPath, [fileURLToPath(new URL("../judge-browser.test.mjs", import.meta.url))], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b, JUDGE_BROWSERS: b } });
   const y = spawnSync(process.execPath, [fileURLToPath(new URL("../account-ui.test.mjs", import.meta.url))], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b } }); // 账号登录 / 云端同步界面（假 Supabase、两台设备）
   code = Math.max(code, y.status ?? 2);
+  const z = spawnSync(process.execPath, [fileURLToPath(new URL("../account-replaced.test.mjs", import.meta.url))], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b } }); // 多标签页刷新令牌 + 进度被替换提示
+  code = Math.max(code, z.status ?? 2);
   code = Math.max(code, x.status ?? 2);
   console.log(`== ${b}: ${code === 0 ? "通过" : code === 2 ? "环境失败" : "失败"}`);
   worst = Math.max(worst, code);
