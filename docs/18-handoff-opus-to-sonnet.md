@@ -7,7 +7,7 @@
 
 | # | 内容 | 分支 / PR | 提交号 | 证据 |
 |---|---|---|---|---|
-| A | 首发课程地图（9 单元，约 59 关，每单元写清学完能做什么和前置知识）+ U5 第二部分的范围和验收条件 + 12 道已有代码题的复核 | `opus/launch-curriculum-map` → PR **#34**（Draft，目标 main，只有文档和脚本） | 6000d7a（本文件随后提交） | 见 `docs/16-launch-curriculum-map.md` §4 |
+| A | 首发课程地图（9 单元，57 关，每单元写清学完能做什么和前置知识）+ U5 第二部分的范围和验收条件 + 12 道已有代码题的复核 | `opus/launch-curriculum-map` → PR **#34**（Draft，目标 main，只有文档和脚本） | 6000d7a（本文件随后提交） | 见 `docs/16-launch-curriculum-map.md` §4 |
 | B | 代码题复核工具 `scripts/review-code-tasks.py` + 已登记的合理写法和错误写法 `scripts/review-alternatives.json`（29 种合理写法、14 种错误写法） | 同上 | 同上 | 在 U3–U5 的 12 道题上：0 条“错”。工具自检：造一道有 7 种毛病的假题，7 种全部报出 |
 | C | #11 修复 1：多标签页时旧刷新令牌导致整个会话被作废（`src/sync.js` ensureToken 先换用存储里更新的凭证） | `opus/11-token-refresh-tabs` → PR **#37**（目标是 #11 的分支 `feat/account-data-layer`，**不是 main**） | 4b5863a | `tests/cloud-sync-tabs.test.mjs`：修复前 2/6，修复后 6/6；CI 手动运行 41802513800 **success** |
 | D | #11 修复 2：别的设备“覆盖云端”后，本机未上传的学习进度被静默丢弃（docs/15 §5 要求提示）。新增 `dirty.content` 标记、`onNotice("replaced")` 回调和结果字段 `replacedLocal` | 同上 | 575a473 | `tests/cloud-sync-replaced.test.mjs`：修复前 2/6，修复后 6/6；本地 cloud-sync 40/40、step5-fixes 20/20。CI 手动运行 41802744233 **交接时还在跑，请查结果** |
