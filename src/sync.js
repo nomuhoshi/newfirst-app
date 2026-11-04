@@ -11,7 +11,8 @@ import { getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccoun
 
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
 
-export function createSync({ storage, api, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {} }) {
+export function createSync({ storage, api, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {} }) {
+  // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "";
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
   let baseline = null, lastError = "";
@@ -22,11 +23,25 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
   const writeAuth = () => { try { if (session) storage.setItem(AUTH_KEY, JSON.stringify({ session })); else storage.removeItem(AUTH_KEY); } catch {} };
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
 
+  // 同一浏览器的其他标签页共用这份凭证：别的标签页刷新令牌后会写回存储。
+  // 刷新令牌是一次性的，拿内存里的旧令牌再去刷新，Supabase 会当作令牌被盗、把整个会话作废（所有标签页都被退出）。
+  // 所以每次用令牌前先看存储里有没有同一账号、更新的凭证，有就换用。
+  function adoptStoredSession() {
+    const s = readAuth();
+    if (!s || s.userId !== userId || !s.refreshToken) return false;
+    if (session && (s.refreshToken === session.refreshToken || !(s.expiresAt > session.expiresAt))) return false;
+    session = s; email = s.email || email;
+    return true;
+  }
+
   async function ensureToken() {
+    adoptStoredSession();
     if (!session) return { ok: false, kind: "auth", message: "需要重新登录" };
     if (session.expiresAt - now() > 60000) return { ok: true };
     const r = await api.refresh(session);
     if (r.ok && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }
+    // 刷新失败，可能是另一个标签页刚好抢先刷新了：再看一次存储
+    if (!r.ok && r.kind === "auth" && adoptStoredSession() && session.expiresAt - now() > 60000) return { ok: true };
     return r.ok ? { ok: false, kind: "auth", message: "登录账号不一致" } : r;
   }
 
@@ -54,7 +69,7 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
     const L = loadAccount(storage, userId, { now: now() });
     if (!L.ok || !L.copy) return { ok: false, code: L.code || "no-copy", message: L.message };
     const { doc, changed } = syncStateIntoDoc(L.copy.doc, state, { deviceId: d.id, today: today(), now: now(), baseline });
-    const ok = saveAccount(storage, userId, { doc, base: L.copy.base, dirty: { hearts: L.copy.dirty.hearts || changed.hearts, prefs: L.copy.dirty.prefs || changed.prefs } }, { now: now() });
+    const ok = saveAccount(storage, userId, { doc, base: L.copy.base, dirty: { hearts: L.copy.dirty.hearts || changed.hearts, prefs: L.copy.dirty.prefs || changed.prefs, content: L.copy.dirty.content || changed.xp || changed.runs || changed.done || changed.days } }, { now: now() });
     if (!ok) return { ok: false, code: "save-failed", message: "无法保存到本机" };
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
     pending = true;
@@ -75,9 +90,10 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
     if (running) { again = true; return running; }
     running = (async () => {
       try {
-        let r, joinedRetry = 0;
+        let r, joinedRetry = 0, replaced = false;
         for (;;) {
           again = false; r = await syncOnce();
+          if (r.replacedLocal) replaced = true;
           if (r.ok) { netFails = 0; if (again) continue; break; }
           if (r.kind === "network") {
             // 联网了但这一轮因为“断网时发出的请求”失败：如果期间有人又要求同步（again），立刻再试一次，不能把旧的失败当成结果还给他
@@ -86,7 +102,7 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
           }
           break;
         }
-        return r;
+        return replaced && r.ok ? { ...r, replacedLocal: true } : r;
       } finally { running = null; }
     })();
     return running;
@@ -107,7 +123,7 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
       const L = loadAccount(storage, userId, { now: now() });
       if (!L.ok || !L.copy) { setStatus("error", "本机账号记录读取失败"); return { ok: false, kind: "local", message: "本机账号记录读取失败" }; }
       const copy = L.copy;
-      let finalDoc, rev;
+      let finalDoc, rev, replaced = false;
       if (!remote.row) {
         const c = await api.createProgress(session, copy.doc);
         if (!c.ok) { setStatus(statusFromFailure(c), c.message); return c; }
@@ -118,6 +134,7 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
         if (m.error) { setStatus("error", m.error.message); return { ok: false, kind: "data", code: m.error.code, message: m.error.message }; }
         if (m.outcome === "conflict") { setStatus("conflict"); return { ok: false, kind: "conflict", message: "这个账号在别处被“覆盖”过，需要选择保留哪一份" }; }
         finalDoc = m.doc; rev = remote.row.rev;
+        if (m.outcome === "remote-newer" && copy.dirty.content) replaced = true;
         if (!docsEquivalent(finalDoc, remote.row.doc)) {
           const s = await api.saveProgress(session, remote.row.rev, finalDoc);
           if (!s.ok) { setStatus(statusFromFailure(s), s.message); return s; }
@@ -128,10 +145,14 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
       // 同步期间用户可能又学了新内容：把云端结果合并进新的本机副本，下一轮再上传
       const cur = loadAccount(storage, userId, { now: now() });
       const curCopy = cur.ok && cur.copy ? cur.copy : copy;
-      let saveDoc = finalDoc, dirty = { hearts: false, prefs: false };
+      let saveDoc = finalDoc, dirty = { hearts: false, prefs: false, content: false };
       if (!docsEquivalent(curCopy.doc, copy.doc)) {
         const m2 = mergeDocs(curCopy.doc, finalDoc, { localHeartsDirty: true, localPrefsDirty: true });
-        if (m2.doc) { saveDoc = m2.doc; dirty = { hearts: curCopy.dirty.hearts, prefs: curCopy.dirty.prefs }; again = true; }
+        if (m2.doc) {
+          const lost = m2.outcome === "remote-newer";
+          if (lost && curCopy.dirty.content) replaced = true;
+          saveDoc = m2.doc; dirty = { hearts: curCopy.dirty.hearts, prefs: curCopy.dirty.prefs, content: !lost && curCopy.dirty.content }; again = true;
+        }
       }
       saveAccount(storage, userId, { doc: saveDoc, base: rev, dirty }, { now: now() });
       if (!docsEquivalent(curCopy.doc, saveDoc)) { // 云端带来了本机没有的内容：用合并后的结果刷新应用状态，并把“新挣的 XP”的基准同步成新的总数
@@ -141,7 +162,8 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
       }
       pending = again;
       setStatus(again ? "pending" : "synced");
-      return { ok: true, rev };
+      if (replaced) { try { onNotice("replaced", {}); } catch {} }
+      return replaced ? { ok: true, rev, replacedLocal: true } : { ok: true, rev };
     }
     setStatus("error", "同步冲突太多次，请稍后再试");
     return { ok: false, kind: "server", message: "同步冲突太多次，请稍后再试" };
@@ -196,7 +218,7 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
       if (!r.ok) return { ok: false, kind: "data", message: r.message };
       doc = r.doc; transferred = r.outcome === "created" || r.outcome === "replaced";
     } else doc = ctx.remoteDoc ?? emptyDoc();
-    const copy = { doc, base, dirty: { hearts: transferred, prefs: transferred } };
+    const copy = { doc, base, dirty: { hearts: transferred, prefs: transferred, content: transferred } };
     if (!saveAccount(storage, uid, copy, { now: now(), expectEmpty: !ctx.copy })) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
     if (!setCurrentAccount(storage, uid)) return { ok: false, kind: "local", message: "无法记录当前账号" };
     session = ctx.session; userId = uid; email = session.email || ""; writeAuth();

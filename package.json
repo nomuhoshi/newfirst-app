@@ -8,7 +8,7 @@
     "dev": "npm run copy-pyodide && vite --host",
     "build": "npm run copy-pyodide && vite build",
     "preview": "vite preview --host",
-    "test": "node tests/step1.test.mjs && node tests/step2.test.mjs && node tests/step3.test.mjs && node tests/step4.test.mjs && node tests/step6.test.mjs && node tests/step7.test.mjs && node tests/a11y-sheet.test.mjs && node tests/judge.test.mjs && npm run copy-pyodide && node tests/judge-browser.test.mjs && node tests/cloud-sync.test.mjs",
+    "test": "node tests/step1.test.mjs && node tests/step2.test.mjs && node tests/step3.test.mjs && node tests/step4.test.mjs && node tests/step6.test.mjs && node tests/step7.test.mjs && node tests/a11y-sheet.test.mjs && node tests/judge.test.mjs && npm run copy-pyodide && node tests/judge-browser.test.mjs && node tests/cloud-sync.test.mjs && node tests/cloud-sync-tabs.test.mjs && node tests/cloud-sync-replaced.test.mjs",
     "test:setup": "playwright install chromium",
     "test:judge-browser": "npm run copy-pyodide && node tests/judge-browser.test.mjs",
     "test:mobile": "node tests/webkit/run.mjs"
