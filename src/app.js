@@ -2,6 +2,7 @@
 // 首页是关卡地图；每关 = 故事开场 + 4 道点选题（选输出 / 点词块填空或修程序 / 排顺序）。
 // 答错扣红心、错题放到最后再做；答对加 XP；每天完成一关续上连续天数。
 // 点“检查”的时间线（ms）：0 提交并锁定 → 120 揭示结果 + 声音 → 240 红心/XP 更新 → 280（减少动态效果时 120）可以继续。
+import "./preview-storage.js"; // 必须第一个：测试入口里给 localStorage 加前缀，和正式版隔离
 import "./style.css";
 import "./app.css";
 import "./game.css";
@@ -535,7 +536,7 @@ function selfTest() {
   const showDiag = (extra = "") => {
     const d = feel.diagnostics();
     diag.textContent = [
-      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}`,
+      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}${typeof __PREVIEW_ID__ !== "undefined" && __PREVIEW_ID__ ? `（测试入口 ${__PREVIEW_ID__}）` : ""}`,
       `缓存版本：${swInfo.caches.length ? swInfo.caches.join("、").replace(/suipian-/g, "").slice(0, 40) : "无"}`,
       `离线支持：${swInfo.status}`,
       `网络：${navigator.onLine === false ? "离线" : "在线"}`,
