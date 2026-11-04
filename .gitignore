@@ -1,3 +1,5 @@
 node_modules/
 dist/
 public/pyodide/
+__pycache__/
+*.pyc
