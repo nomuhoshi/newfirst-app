@@ -175,7 +175,7 @@ lessons = [
         ("-2", F, "每遍开始前都检查：money 是 2 时不再减。")],
         tip="每一遍开始前都检查条件。"),
   ],
-  "pending": [{"type": "modify", "replaces": 3, "status": "待 Claude 的代码题运行器，暂不开放", "plan": "改一改：给忘记更新变量的 while 加上 n = n + 1（运行会超时：不算作答、不扣红心）"}]},
+  "pending": [{"type": "modify", "replaces": 3, "status": "待 Claude 的代码题运行器，暂不开放", "plan": "改一改：给忘记更新变量的 while 加上 x = x + 1（运行会超时：不算作答、不扣红心）"}]},
  {"id": "U4L7", "title": "售罄就停", "concept": "break 和 continue",
   "story": "break：立刻结束整个循环，后面的轮次都不做了。continue：只跳过这一轮剩下的部分，直接进入下一轮。它们都写在循环里的 if 下面。",
   "introCode": "for i in range(1, 6):\n    if i == 3:\n        break\n    print(i)",
@@ -233,6 +233,9 @@ for l in lessons:
     for e in l["exercises"]:
         if e["type"] == "order" and e["lines"] == O48: e["equivCases"] = C48
 
+import sys as _s; _s.path.insert(0, str(pathlib.Path(__file__).parent)); from codetasks import TASKS
+for _l in lessons:  # 有内容的代码题挂到 pending[0].task；题目页（#19）接上前仍不开放
+    if _l["id"] in TASKS: _l["pending"][0]["task"] = TASKS[_l["id"]]
 unit = {"id": "U4", "title": "重复", "subtitle": "for、range、while、break", "lessons": lessons}
 p = pathlib.Path(__file__).resolve().parent.parent / "content/unit4.json"
 p.write_text(json.dumps(unit, ensure_ascii=False, indent=2) + "\n")
