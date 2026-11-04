@@ -59,7 +59,13 @@ for (const vp of [{ w: 390, h: 844, tag: "iPhone15" }, { w: 375, h: 667, tag: "i
     // 新用户：没有通关的关卡时按钮不可点
     await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
     await page.waitForSelector("[data-quick-entry]");
-    check(`${T} 没有通关的关卡时“闪电 5 题”不可点`, await page.locator("[data-quick-entry]").isDisabled());
+    const z = await page.evaluate(() => { const b = document.querySelector("[data-quick-entry]"); return { disabled: b.disabled, text: b.textContent, first: b.hasAttribute("data-quick-first") }; });
+    check(`${T} 零通关：“闪电 5 题”可点，写明“先通关第一关”`, !z.disabled && z.first && /先通关第一关/.test(z.text), JSON.stringify(z));
+    await page.locator("[data-quick-entry]").tap(); await page.waitForSelector(".lsheet");
+    const sh = await page.evaluate(() => ({ title: document.querySelector(".lsheet h2")?.textContent, start: [...document.querySelectorAll(".lsheet button")].some((b) => /开始/.test(b.textContent)) }));
+    check(`${T} 零通关点它：弹出第一关的开始面板（不进练习）`, !!sh.title && sh.start && !(await page.evaluate(() => !!window.__app.getPractice())), JSON.stringify(sh));
+    await page.evaluate(() => document.querySelector(".lsheet button.ghost")?.click());
+    await page.evaluate(() => window.__app.renderPath());
     await page.evaluate(() => { const st = window.__app.getState(); st.done = { U1L1: true, U1L2: true, U1L3: true }; st.xp = 120; window.__app.persist(); window.__app.renderPath(); });
     await page.waitForSelector("[data-quick-entry]:not([disabled])");
     const keys = await page.evaluate(() => { const f = document.createElement("iframe"); document.body.append(f); const ls = f.contentWindow.localStorage; const ks = []; for (let i = 0; i < ls.length; i++) ks.push(ls.key(i)); f.remove(); return ks; });
@@ -106,6 +112,50 @@ for (const vp of [{ w: 390, h: 844, tag: "iPhone15" }, { w: 375, h: 667, tag: "i
     const after = await page.evaluate(() => { const s = window.__app.getState(); return { xp: s.xp, hearts: s.hearts, done: JSON.stringify(s.done), streak: JSON.stringify(s.streak ?? null) }; });
     check(`${T} 闪电 5 题不改 XP、红心、通关记录、连续天数`, JSON.stringify(after) === JSON.stringify(before), JSON.stringify({ before, after }));
     await page.locator(".practice-finish [data-continue]").tap(); await page.waitForSelector(".pathview");
+
+    // ---- 旧错题最多 3 道、同轮不重复 ----
+    await page.evaluate(() => localStorage.setItem("suipian.missed", JSON.stringify(["U1L1#0", "U1L1#1", "U1L1#2", "U1L1#3", "U1L2#0", "U1L2#1"])));
+    const capIds = [];
+    for (let k = 0; k < 8; k++) {
+      await page.evaluate(() => window.__app.renderPath()); await page.waitForSelector("[data-quick-entry]");
+      await page.locator("[data-quick-entry]").tap(); await page.waitForSelector("[data-check]");
+      const r = await page.evaluate(() => { const p = window.__app.getPractice(); const miss = new Set(JSON.parse(localStorage.getItem("suipian.missed") || "[]")); return { ids: p.items.map((x) => x.id), old: p.items.filter((x) => miss.has(x.id)).length }; });
+      capIds.push(r);
+      await page.evaluate(() => { const m = ["U1L1#0", "U1L1#1", "U1L1#2", "U1L1#3", "U1L2#0", "U1L2#1"]; localStorage.setItem("suipian.missed", JSON.stringify(m)); window.__app.renderPath(); });
+    }
+    check(`${T} 8 轮抽样：每轮 5 道、同轮不重复、旧错题 ≤3 道，且有旧错题时至少抽到 1 道`, capIds.every((r) => r.ids.length === 5 && new Set(r.ids).size === 5 && r.old <= 3 && r.old >= 1), JSON.stringify(capIds.map((r) => r.old)));
+    check(`${T} 抽到的题都来自已通关关卡`, capIds.every((r) => r.ids.every((id) => /^U1L[123]#/.test(id))));
+
+    // ---- 题目不足 5 道：只通关第一关（4 道题）→ 按实际数量开练 ----
+    await page.evaluate(() => { const st = window.__app.getState(); st.done = { U1L1: true }; window.__app.persist(); localStorage.setItem("suipian.missed", "[]"); window.__app.renderPath(); });
+    await page.waitForSelector("[data-quick-entry]:not([data-quick-first])");
+    await page.locator("[data-quick-entry]").tap(); await page.waitForSelector("[data-check]");
+    const few = await page.evaluate(() => { const p = window.__app.getPractice(); return { total: p.total, requested: p.requested, ids: p.items.map((x) => x.id) }; });
+    check(`${T} 题目不足 5 道：只有 4 道可用时，开练 4 道、不重复`, few.total === 4 && new Set(few.ids).size === 4, JSON.stringify(few));
+    guard = 0;
+    while (guard++ < 15 && !(await page.locator(".practice-finish").count())) { await answer(page, true); await page.waitForSelector("[data-check], .practice-finish"); }
+    const note = await page.evaluate(() => document.querySelector(".practice-finish .muted")?.textContent || "");
+    check(`${T} 结束页说明“题目不够 5 道，本轮用了全部 4 道”`, /题目不够 5 道，本轮用了全部 4 道/.test(note), note);
+    await shot("4-few");
+    await page.locator(".practice-finish [data-continue]").tap(); await page.waitForSelector(".pathview");
+
+    // ---- 主线错题进错题本，之后答对移出 ----
+    await page.evaluate(() => { const st = window.__app.getState(); st.hearts = 5; window.__app.persist(); localStorage.setItem("suipian.missed", "[]"); window.__app.renderPath(); });
+    await page.waitForSelector(".path-item.st-current .node");
+    await page.locator(".path-item.st-current .node").tap();
+    await page.locator(".overlay .btn3d.primary").tap(); await page.waitForSelector(".intro-title");
+    await page.getByRole("button", { name: "继续", exact: true }).tap(); await page.waitForSelector("[data-check]");
+    const lessonId = await page.evaluate(() => window.__app.getRun().lesson.id);
+    const idx0 = await page.evaluate(() => window.__app.getRun().queue[0]);
+    const okFirst = await answer(page, false); await page.waitForSelector("[data-check], .finish");
+    const m1 = await page.evaluate(() => JSON.parse(localStorage.getItem("suipian.missed") || "[]"));
+    check(`${T} 主线答错：这道题进错题本（${lessonId}#${idx0}）`, okFirst === false && m1.includes(`${lessonId}#${idx0}`), m1.join(","));
+    guard = 0;
+    while (guard++ < 15 && !(await page.locator(".finish").count())) { await answer(page, true); await page.waitForSelector("[data-check], .finish"); }
+    const m2 = await page.evaluate(() => JSON.parse(localStorage.getItem("suipian.missed") || "[]"));
+    check(`${T} 主线里重做答对：这道题移出错题本`, m2.length === 0, m2.join(","));
+    await shot("5-lesson-done");
+
     check(`${T} 全程没有页面脚本错误`, errors.length === 0, errors.join(" | "));
   } catch (e) { check(`${T} 流程跑完`, false, String(e.message).split("\n")[0]); }
   await ctx.close();

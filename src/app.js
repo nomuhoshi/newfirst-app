@@ -17,7 +17,7 @@ import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
 } from "./storage.js";
-import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise, shuffle as shuffleList } from "./practice.js";
+import { exerciseId, ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise, shuffle as shuffleList } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2 };
 const XP_CORRECT = 10;
@@ -800,6 +800,7 @@ function renderExercise(run) {
     feel.haptic(); // 必须在用户点击的这一刻请求
     const ok = area.isCorrect();
     const reduce = feel.reducedMotion();
+    if (QUICK) recordMissed(exerciseId(run.lesson.id, idx), ok); // 实验：主线答错进错题本，之后答对就移出
     if (ok) {
       run.correct++;
       const gain = run.review ? XP_REVIEW : XP_CORRECT;
@@ -1009,6 +1010,7 @@ const QUICK = EXP === "quick";
 const MISSED_KEY = "suipian.missed";
 const loadMissed = () => { try { const v = JSON.parse(localStorage.getItem(MISSED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } };
 const saveMissed = (a) => { try { localStorage.setItem(MISSED_KEY, JSON.stringify(a)); } catch { /* 存不了就算了，不影响练习 */ } };
+const recordMissed = (id, ok) => { const m = new Set(loadMissed()); if (ok) m.delete(id); else m.add(id); saveMissed([...m]); };
 const QUICK_SIZE = 5, QUICK_MISSED_MAX = 3;
 function quickDrill() {
   const units = availableUnits();
@@ -1019,7 +1021,6 @@ function quickDrill() {
   const old = pool.filter((p) => miss.has(p.id)), fresh = pool.filter((p) => !miss.has(p.id));
   const picked = [...shuffleList(old).slice(0, QUICK_MISSED_MAX)];
   picked.push(...shuffleList(fresh).slice(0, QUICK_SIZE - picked.length));
-  if (picked.length < QUICK_SIZE) picked.push(...shuffleList(old).filter((p) => !picked.includes(p)).slice(0, QUICK_SIZE - picked.length));
   const items = shuffleList(picked);
   startPractice(pool, QUICK_SIZE, { quick: true, round: { items, requested: QUICK_SIZE, actual: items.length, short: items.length < QUICK_SIZE }, oldCount: items.filter((p) => miss.has(p.id)).length });
 }
@@ -1030,9 +1031,9 @@ function practiceEntry() {
   const b = button(h("span", { class: "practice-entry-text" }, h("b", { text: "随机练习" }), h("small", { text: "无奖励，自由练习" })),
     () => renderPracticeSetup(), "btn3d practice-entry wide", { "data-practice-entry": "" });
   b.disabled = !any;
-  const q = QUICK ? button(h("span", { class: "practice-entry-text" }, h("b", { text: "闪电 5 题" }), h("small", { text: "一键开练，优先练错过的" })),
-    () => quickDrill(), "btn3d practice-entry quick wide", { "data-quick-entry": "" }) : null;
-  if (q) q.disabled = !any;
+  const q = QUICK ? button(h("span", { class: "practice-entry-text" }, h("b", { text: "闪电 5 题" }), h("small", { text: any ? "一键开练，优先练错过的" : "先通关第一关，点这里去" })),
+    () => { if (any) quickDrill(); else { const f = firstUndone(); if (f) openLessonSheet(f); } }, "btn3d practice-entry quick wide", { "data-quick-entry": "", ...(any ? {} : { "data-quick-first": "" }) }) : null;
+
   return h("div", { class: "practice-entry-wrap" }, q, b, any ? null : h("p", { class: "muted small practice-empty", "data-practice-empty": "", text: "完成第一关后可开始刷题" }));
 }
 
@@ -1157,7 +1158,7 @@ function renderPracticeExercise(pr) {
     const reduce = feel.reducedMotion();
     // 只记在内存里；不碰 state（XP、红心、连续天数、解锁全部不变）
     if (retry) pr.results[i].retry = ok; else pr.results[i].first = ok;
-    if (QUICK) { const m = new Set(loadMissed()); if (ok) m.delete(item.id); else m.add(item.id); saveMissed([...m]); }
+    if (QUICK) recordMissed(item.id, ok);
     pr.answered++;
     pr.queue.shift();
     if (!ok && !retry) pr.queue.push({ i, retry: true }); // 答错：本轮末尾重练一次
