@@ -2,6 +2,7 @@
 # - 每个可接受答案的真实输出 = expected；
 # - 所有词块组合都跑一遍（单空时就是 verify-fill 的“每个词块”），能得到 expected 的组合必须被列为可接受答案；
 # - 单空题记录每个错误词块的真实输出和解释，--verbose 时打印，供人工核对解释（verify-fill 的输出）。
+# - 任何组合都不能卡死（超时）：while 题里学生可能点出死循环，题目要避免。
 # - 组合超过 400 种只验标准答案（计为跳过）；initial 不能直接得到 expected。
 import itertools
 from .common import run, Check
@@ -25,6 +26,7 @@ def check(items):
             combo = list(combo)
             if combo in accepted: continue
             out, err = run(fill_code(ex, combo))
+            c.ok(err != "Timeout", w, f"组合 {combo} 会卡死（超时），学生点到就停不下来，换掉这个词块")
             c.ok(not (err is None and out == ex["expected"]), w, f"组合 {combo} 也能得到期望输出，但会被判错（加进 answers）")
             if n == 1: c.notes.append(f"{w} [{combo[0]}] -> {(out if err is None else '<' + err + '>')!r} why: {ex.get('why', {}).get(combo[0], '')}")
         if ex.get("initial"):

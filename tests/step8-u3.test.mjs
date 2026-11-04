@@ -35,7 +35,7 @@ async function answer(ex, right) {
     const i = right ? ex.options.findIndex((o) => o.correct) : ex.options.findIndex((o) => !o.correct);
     await page.locator(".choice").nth(i).click();
   } else if (ex.type === "fill") {
-    const toks = right ? ex.answer : [ex.tokens.find((t) => t !== ex.answer[0])];
+    const toks = right ? ex.answer : ex.answer.map((a, i) => (i === 0 ? ex.tokens.find((t) => t !== a) : a)); // 答错：每个空都填，第一个空换成错误词块
     for (const t of toks) await page.locator(`.kchip.tok[data-token="${t.replace(/"/g, '\\"')}"]`).click();
   } else {
     const seq = right ? ex.answers[0] : [...ex.answers[0]].reverse();
