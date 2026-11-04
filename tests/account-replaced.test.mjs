@@ -2,7 +2,8 @@
 // 真实构建产物 + 浏览器里拦截网络请求的假 Supabase（刷新令牌一次性：用过就作废，和真实服务一样）。
 // 运行：npm run build && MOBILE_BROWSER=chromium node tests/account-replaced.test.mjs
 import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, statSync, mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, extname, resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 import { emptyDoc } from "../src/account-data.js";
@@ -128,12 +129,12 @@ try {
   // 备份区文案：只有真的“已同步”才写“进度已同步到云端”；登录了但还没上传时不能提前宣称已上云；已登录不显示“导入”
   await toMe(A);
   const backupSynced = await A.page.locator("[data-backup] p.small").first().innerText();
-  check("已同步时：备份区写“进度已同步到云端”，且没有“导入”按钮", /进度已同步到云端/.test(backupSynced) && (await A.page.locator("[data-import]").count()) === 0 && (await A.page.locator("[data-export]").count()) === 1, backupSynced);
+  check("已同步时：备份区只写“云端状态以上方为准”，不自己宣称已上云，也没有“导入”按钮", /云端状态以上方为准/.test(backupSynced) && !/已同步到云端|已在云端/.test(backupSynced) && (await A.page.locator("[data-import]").count()) === 0 && (await A.page.locator("[data-export]").count()) === 1, backupSynced);
   await A.ctx.setOffline(true); A.ctx.__off = true;
   await earn(A, "U1L4", 30);
   await toPathTab(A); await toMe(A);
   const backupPending = await A.page.locator("[data-backup] p.small").first().innerText();
-  check("登录了但还有进度没上传（离线）：备份区不写“已同步到云端”，提示看“已同步 ✓”", !/进度已同步到云端/.test(backupPending) && /已同步 ✓/.test(backupPending), backupPending);
+  check("登录了但还有进度没上传（离线）：备份区文案不变，仍不宣称已上云（同步状态只看上方）", /云端状态以上方为准/.test(backupPending) && !/已同步到云端|已在云端/.test(backupPending), backupPending);
   A.ctx.__off = false; await A.ctx.setOffline(false);
   await syncNow(A);
   await toPathTab(A);
@@ -194,6 +195,22 @@ try {
   await A.shot("7-replaced-notice-me");
   await toPathTab(A); await toMe(A);
   check("“我的”页离开再进入：不再提示", (await A.page.locator("[data-replaced-notice]").count()) === 0);
+
+  // 已登录时不能导入：隐藏按钮之外，读取文件和“确认导入”时都要拦住
+  const [dl] = await Promise.all([A.page.waitForEvent("download"), A.page.locator("[data-export]").tap()]);
+  const saved = join(mkdtempSync(join(tmpdir(), "sp-")), dl.suggestedFilename()); await dl.saveAs(saved);
+  await A.page.locator("[data-import-file]").setInputFiles(saved);
+  await A.page.waitForFunction(() => /不能导入/.test(document.querySelector("[data-backup-msg]")?.textContent || ""));
+  check("已登录：选了文件也不会出现导入确认框，提示要先退出登录", (await A.page.locator("[data-import-confirm]").count()) === 0 && /先退出登录/.test(await A.page.locator("[data-backup-msg]").innerText()));
+  // 已经打开的确认框：模拟另一个标签页刚登录（确认框是登录前打开的），点“确认导入”也要被拦住，进度不变
+  await A.page.evaluate(() => { const s = window.__app.sync; window.__realAccount = s.account; s.account = () => null; });
+  await toPathTab(A); await toMe(A);
+  await A.page.locator("[data-import-file]").setInputFiles(saved);
+  await A.page.waitForSelector("[data-import-confirm]");
+  await A.page.evaluate(() => { window.__app.sync.account = window.__realAccount; });
+  const xpBeforeImport = await xpOnPage(A);
+  await A.page.locator("[data-import-confirm] button", { hasText: "确认导入" }).tap();
+  check("确认框打开后才变成已登录：点“确认导入”被拦住，进度不变，确认框收起", (await xpOnPage(A)) === xpBeforeImport && (await A.page.locator("[data-import-confirm]").count()) === 0 && /不能导入/.test(await A.page.locator("[data-backup-msg]").innerText()));
   check("全程没有脚本错误", A.errors.length === 0, A.errors.join(" | "));
 } catch (e) { check("流程跑完", false, String(e.message).split("\n").slice(0, 3).join(" ¦ ") + " @ " + String(e.stack).split("\n").find((l) => l.includes("account-replaced.test"))); }
 await browser.close(); srv.closeAllConnections?.(); srv.close();

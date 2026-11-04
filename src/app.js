@@ -710,6 +710,13 @@ function backupCard() {
   const msg = h("p", { class: "backup-msg small muted", role: "status", "data-backup-msg": "" });
   const panel = h("div", { class: "backup-panel" });
   const say = (t, bad = false) => { msg.textContent = t; msg.classList.toggle("bad", bad); };
+  // 已登录时不能导入（进度以云端为准，导入会让 XP 在多设备间重复累加）。隐藏按钮之外，读取文件和点“确认导入”时都再查一次登录状态
+  const blockedByLogin = () => {
+    if (!sync?.account()) return false;
+    panel.replaceChildren();
+    say("已登录账号，不能导入进度文件。要导入请先退出登录，导入后再登录并选“转存到账号”。", true);
+    return true;
+  };
   const doExport = () => {
     try {
       const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
@@ -725,6 +732,7 @@ function backupCard() {
   file.addEventListener("change", async () => {
     const f = file.files && file.files[0]; file.value = "";
     panel.replaceChildren(); if (!f) return;
+    if (blockedByLogin()) return;
     let text = "";
     try { text = await f.text(); } catch { say("读取文件失败。", true); return; }
     const r = parseImport(text);
@@ -734,6 +742,7 @@ function backupCard() {
     panel.replaceChildren(h("div", { class: "confirm", role: "alertdialog", "data-import-confirm": "" },
       h("p", { text: `文件里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（导出于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
       button("确认导入", () => {
+        if (blockedByLogin()) return;
         state = mergeImport(state, r.state); persist(); renderMe(); showToast("进度已导入。");
       }, "btn3d primary"),
       button("取消", () => { panel.replaceChildren(); }, "btn"),
@@ -741,7 +750,7 @@ function backupCard() {
   });
   return h("section", { class: "backup", "data-backup": "" },
     h("h3", { text: "备份学习记录" }),
-    h("p", { class: "small muted", text: signedIn ? (sync.status().status === "synced" ? "进度已同步到云端。这里的文件是你自己多留的一份；已登录时不需要导入。" : "已登录：进度先存在这台设备上，看到上方“已同步 ✓”才算上传到云端。这里的文件是你自己多留的一份；已登录时不需要导入（要导入请先退出登录）。") : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
+    h("p", { class: "small muted", text: signedIn ? "导出本机学习记录，云端状态以上方为准。已登录时不能导入（要导入请先退出登录）。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
     h("div", { class: "acct-row" },
       button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
       signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
