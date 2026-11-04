@@ -20,13 +20,14 @@ import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
-  loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
+  loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
 } from "./storage.js";
 import { CLOUD } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
 import { createSync } from "./sync.js";
 import { createAccountUi } from "./account-ui.js";
 import { docToState } from "./account-data.js";
+import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
@@ -227,9 +228,21 @@ try { safeStorage = window.localStorage; } catch { /* 存储被禁用：只能�
 const cloudApi = createApi({ url: CLOUD.url, anonKey: CLOUD.anonKey });
 let accountUi = null;
 let currentView = "path"; // 地图 "path" / 我的 "me" / 其他（做题等）
+// 别的设备用“覆盖云端”换掉了这个账号的进度，而这台设备还有没上传的学习内容：同步层发出 replaced 通知（docs/15 §5）。
+// 只在地图页或“我的”页提示，做题中不打断；等回到这两个页面时再显示，显示过就清掉（同一次替换只提示一次）。
+const REPLACED_TEXT = "这个账号的进度已在别的设备上被替换，这台设备上还没上传的学习内容没有保留。";
+let pendingReplaced = false; // 提示还没显示
+let replacedOn = null; // 提示正在哪个页面显示（"path" / "me"）：同一页面被同步刷新时保留，离开该页面（换页、进入做题）后清除
+// 页面渲染时调用：返回该页面要不要显示替换提示
+function replacedFor(view) {
+  if (pendingReplaced) { pendingReplaced = false; replacedOn = view; }
+  else if (replacedOn !== view) replacedOn = null;
+  return replacedOn === view ? REPLACED_TEXT : null;
+}
 const sync = safeStorage ? createSync({
   storage: safeStorage, api: cloudApi,
   onStatus: () => accountUi?.refreshStatus(),
+  onNotice: (kind) => { if (kind !== "replaced") return; pendingReplaced = true; if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); },
   onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
 }) : null;
 const restored = sync ? sync.restore(state) : null;
@@ -440,6 +453,7 @@ function tabBar(active) {
 function renderPath() {
   currentArea?.destroy?.(); currentArea = null; // 从代码题退出时保存草稿
   currentView = "path";
+  { const r = replacedFor("path"); if (r) notice = r; }
   regenHearts(state);
   currentRun = null;
   const units = course.units.map((u) => {
@@ -697,9 +711,64 @@ function keyLab() {
   );
 }
 
+// ---------- 备份学习记录：导出 / 导入进度文件 ----------
+function backupCard() {
+  const signedIn = !!sync?.account();
+  const msg = h("p", { class: "backup-msg small muted", role: "status", "data-backup-msg": "" });
+  const panel = h("div", { class: "backup-panel" });
+  const say = (t, bad = false) => { msg.textContent = t; msg.classList.toggle("bad", bad); };
+  // 已登录时不能导入（进度以云端为准，导入会让 XP 在多设备间重复累加）。隐藏按钮之外，读取文件和点“确认导入”时都再查一次登录状态
+  const blockedByLogin = () => {
+    if (!sync?.account()) return false;
+    panel.replaceChildren();
+    say("已登录账号，不能导入进度文件。要导入请先退出登录，导入后再登录并选“转存到账号”。", true);
+    return true;
+  };
+  const doExport = () => {
+    try {
+      const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = h("a", { href: url, download: exportFileName(new Date()), hidden: "" });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      say("已导出。文件在浏览器的下载位置（iPhone：“文件”App → 下载），请自己保管好。");
+    } catch { say("导出失败，请换个浏览器再试。", true); }
+  };
+  const file = h("input", { type: "file", accept: "application/json,.json", hidden: "", "data-import-file": "" });
+  file.addEventListener("change", async () => {
+    const f = file.files && file.files[0]; file.value = "";
+    panel.replaceChildren(); if (!f) return;
+    if (blockedByLogin()) return;
+    let text = "";
+    try { text = await f.text(); } catch { say("读取文件失败。", true); return; }
+    const r = parseImport(text);
+    if (!r.ok) { say(r.error, true); return; }
+    const sm = summarize(r.state);
+    say("");
+    panel.replaceChildren(h("div", { class: "confirm", role: "alertdialog", "data-import-confirm": "" },
+      h("p", { text: `文件里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（导出于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
+      button("确认导入", () => {
+        if (blockedByLogin()) return;
+        state = mergeImport(state, r.state); persist(); renderMe(); showToast("进度已导入。");
+      }, "btn3d primary"),
+      button("取消", () => { panel.replaceChildren(); }, "btn"),
+    ));
+  });
+  return h("section", { class: "backup", "data-backup": "" },
+    h("h3", { text: "备份学习记录" }),
+    h("p", { class: "small muted", text: signedIn ? "导出本机学习记录，云端状态以上方为准。已登录时不能导入（要导入请先退出登录）。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
+    h("div", { class: "acct-row" },
+      button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
+      signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
+    ),
+    file, panel, msg);
+}
+
 function renderMe() {
   currentView = "me";
   currentRun = null;
+  const replacedMsg = replacedFor("me");
   let confirmBox = null;
   const clearBtn = button("清除学习记录", () => {
     if (confirmBox) return;
@@ -716,6 +785,7 @@ function renderMe() {
   appEl.replaceChildren(
     statsBar(),
     h("main", { class: "view me" },
+      replacedMsg ? h("p", { class: "notice", role: "status", "data-replaced-notice": "", text: replacedMsg }) : null,
       h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: sync?.account() ? "记录已关联账号，会同步到云端" : "没登录时，记录只保存在这台设备上" }))),
       h("div", { class: "me-grid" },
         statCard("flame", String(currentStreak(state)), "连续天数"),
@@ -724,6 +794,7 @@ function renderMe() {
         statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
       accountUi?.accountCard(),
+      backupCard(),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
       feel.hapticsSupported()
@@ -750,7 +821,7 @@ function renderMe() {
 
 // ---------- 做题 ----------
 function startLesson(l, { review = false } = {}) {
-  currentView = "lesson";
+  currentView = "lesson"; replacedOn = null;
   regenHearts(state);
   if (!review && state.hearts <= 0) return openNoHearts(l);
   const run = {
@@ -1090,7 +1161,7 @@ function practiceEntry() {
 }
 
 function renderPracticeSetup(prev) {
-  currentView = "practice";
+  currentView = "practice"; replacedOn = null;
   currentRun = null; currentPractice = null;
   const scope = clearedScope(availableUnits(), state.done);
   if (!scope.length) {
