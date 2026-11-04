@@ -10,6 +10,21 @@ export const DEVICE_KEY = "suipian.device";        // 这台设备的随机编�
 export const SESSION_KEY = "suipian.session";      // 当前登录的账号编号（没有 = 游客）
 const ACCT_PREFIX = "suipian.acct.";
 
+// ---------- 按 Supabase 项目分开存 ----------
+// 账号编号（user id）只在一个项目里唯一：两个项目里可能恰好有同一个编号（比如把正式库备份复制成测试库）。
+// 所以“当前账号”“账号本机副本”“登录凭证”都带上项目标记：
+//   正式项目（和以前一样）：沿用原来的键 suipian.session / suipian.acct.<编号> / suipian.auth，朋友们已有的存档一条不动；
+//   其他项目（测试库、云端关闭）：用 suipian.proj.<项目主机名>.session / .acct.<编号> / .auth，和正式项目的互相看不见。
+// 游客记录、游客编号、设备编号不分项目（它们不属于任何账号）。
+export const projectScope = (projectId, legacyProject) => (projectId && projectId !== legacyProject ? String(projectId) : null);
+export const projectKey = (scope, name) => `suipian.proj.${scope}.${name}`;
+// 给账号存储套一层：当前账号 / 账号副本的键换成这个项目自己的；其他键原样放行。scope 为空 = 不换（正式项目 / 旧测试）。
+export function scopedStorage(storage, scope) {
+  if (!scope) return storage;
+  const map = (k) => (k === SESSION_KEY ? projectKey(scope, "session") : typeof k === "string" && k.startsWith(ACCT_PREFIX) ? projectKey(scope, "acct." + k.slice(ACCT_PREFIX.length)) : k);
+  return { getItem: (k) => storage.getItem(map(k)), setItem: (k, v) => storage.setItem(map(k), v), removeItem: (k) => storage.removeItem(map(k)) };
+}
+
 const acctKey = (userId) => ACCT_PREFIX + userId;
 
 // 读取结果区分三种情况：{ ok:true, value:null } 没有记录；{ ok:true, value } 有记录；{ ok:false } 读取失败（绝不能当成“没有记录”）

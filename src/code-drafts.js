@@ -1,6 +1,8 @@
 // 写代码 / 改代码题的草稿：只存在本机，键 = 游客或账号编号 + 题目编号 + 题目版本，独立于学习进度（suipian.progress 完全不碰）。
 // 所有读写都包在 try/catch 里：存储被禁用或写满时返回失败，不抛错，当前会话照常可用。
 // 游客编号 / 账号编号用的键和 PR #11 的账号层一致（suipian.guestId / suipian.session）；#11 合并后可改成直接引用它。
+import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
+import { projectScope, projectKey } from "./account-store.js";
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 export const DRAFT_PREFIX = "suipian.draft.";
 
@@ -12,7 +14,8 @@ const rand = () => {
 
 export function ownerId(storage = globalThis.localStorage) {
   try {
-    const acct = storage.getItem("suipian.session");
+    const scope = projectScope(hostOf(CLOUD.url) || "cloud-off", PROD_HOST); // 账号按项目分开存（和 sync.js 同一规则）
+    const acct = storage.getItem(scope ? projectKey(scope, "session") : "suipian.session");
     if (ID_RE.test(acct || "")) return acct;
     let g = storage.getItem("suipian.guestId");
     if (!ID_RE.test(g || "")) { g = rand(); try { storage.setItem("suipian.guestId", g); } catch { /* 写不进去也能用 */ } }

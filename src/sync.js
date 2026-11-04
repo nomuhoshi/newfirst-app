@@ -7,12 +7,15 @@
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
 import { emptyDoc, mergeDocs, docsEquivalent, replaceWithGuest, docToState, syncStateIntoDoc, guestFingerprint, normalizeDoc, sumXp } from "./account-data.js";
-import { getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified } from "./account-store.js";
+import { projectScope, projectKey, scopedStorage, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
 
-export function createSync({ storage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {} }) {
+export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {} }) {
+  const scope = projectScope(projectId, legacyProject);
+  const storage = scopedStorage(rawStorage, scope); // 当前账号 / 账号副本按项目分开存（正式项目沿用原来的键）
+  const authKey = scope ? projectKey(scope, "auth") : AUTH_KEY; // 登录凭证同理
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "";
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
@@ -25,18 +28,23 @@ export function createSync({ storage, api, projectId = null, legacyProject = nul
   // 没记项目的旧凭证只可能来自正式库（项目标记是后加的），所以按 legacyProject（正式库主机名）处理。projectId 没给 = 不检查（旧测试用）。
   const readAuth = () => {
     try {
-      const r = JSON.parse(storage.getItem(AUTH_KEY));
+      // 其他项目的入口（测试库）永远不用旧位置（正式项目位置）的凭证：读到就作废。
+      if (scope) {
+        const legacy = JSON.parse(rawStorage.getItem(AUTH_KEY) || "null");
+        if (legacy && legacy.session) { try { rawStorage.removeItem(AUTH_KEY); } catch {} } // 只删令牌；正式项目的账号副本和“当前账号”记录不动
+      }
+      const r = JSON.parse(rawStorage.getItem(authKey));
       if (!r || !r.session || !r.session.userId) return null;
       if (projectId && (r.project || legacyProject) !== projectId) {
-        try { storage.setItem(STALE_KEY, JSON.stringify({ userId: r.session.userId, email: String(r.session.email || "").trim().toLowerCase(), project: r.project || legacyProject || "" })); storage.removeItem(AUTH_KEY); } catch {}
+        try { rawStorage.setItem(STALE_KEY, JSON.stringify({ userId: r.session.userId, email: String(r.session.email || "").trim().toLowerCase(), project: r.project || legacyProject || "" })); rawStorage.removeItem(authKey); } catch {}
         return null;
       }
       return r.session;
     } catch { return null; }
   };
-  const writeAuth = () => { try { if (session) storage.setItem(AUTH_KEY, JSON.stringify(projectId ? { session, project: projectId } : { session })); else storage.removeItem(AUTH_KEY); } catch {} };
-  const readStale = () => { try { const r = JSON.parse(storage.getItem(STALE_KEY)); return r && typeof r.userId === "string" ? r : null; } catch { return null; } };
-  const clearStale = () => { try { storage.removeItem(STALE_KEY); } catch {} };
+  const writeAuth = () => { try { if (session) rawStorage.setItem(authKey, JSON.stringify(projectId ? { session, project: projectId } : { session })); else rawStorage.removeItem(authKey); } catch {} };
+  const readStale = () => { try { const r = JSON.parse(rawStorage.getItem(STALE_KEY)); return r && typeof r.userId === "string" ? r : null; } catch { return null; } };
+  const clearStale = () => { try { rawStorage.removeItem(STALE_KEY); } catch {} };
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
 
   // 同一浏览器的其他标签页共用这份凭证：别的标签页刷新令牌后会写回存储。
@@ -64,7 +72,7 @@ export function createSync({ storage, api, projectId = null, legacyProject = nul
   // ---------- 启动：恢复上次登录的账号（只读本机，不联网）----------
   function restore(baseState = null) {
     const uid = getCurrentAccount(storage);
-    if (!uid) return null;
+    if (!uid) { if (scope) readAuth(); return null; } // 其他项目：没有当前账号也要先把旧位置（正式项目）的凭证作废
     const L = loadAccount(storage, uid, { now: now() });
     if (!L.ok || !L.copy) return null;
     const s = readAuth();
