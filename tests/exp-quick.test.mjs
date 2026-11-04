@@ -157,7 +157,7 @@ for (const vp of [{ w: 390, h: 844, tag: "iPhone15" }, { w: 375, h: 667, tag: "i
     await shot("5-lesson-done");
 
     check(`${T} 全程没有页面脚本错误`, errors.length === 0, errors.join(" | "));
-  } catch (e) { check(`${T} 流程跑完`, false, String(e.message).split("\n")[0]); }
+  } catch (e) { await shot("FAIL"); check(`${T} 流程跑完`, false, String(e.message).split("\n").slice(0, 3).join(" ¦ ") + " @ " + String(e.stack).split("\n").find((l) => l.includes("exp-quick.test"))); }
   await ctx.close();
 }
 await browser.close(); srv.close();
