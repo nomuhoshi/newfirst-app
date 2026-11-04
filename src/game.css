@@ -511,3 +511,11 @@ body { background: var(--g-bg); color: var(--g-fg); }
   .route-line.now { animation: none; }
 }
 
+
+/* 备份学习记录 */
+.backup { margin: 12px 0; }
+.backup h3 { margin-bottom: 4px; }
+.backup .acct-row { margin-top: 8px; }
+.backup-msg { min-height: 1.4em; margin: 8px 0 0; }
+.backup-msg.bad { color: var(--g-bad); }
+.backup .confirm { margin-top: 10px; }

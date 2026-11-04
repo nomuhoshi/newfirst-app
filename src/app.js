@@ -15,13 +15,14 @@ import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
-  loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX,
+  loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
 } from "./storage.js";
 import { CLOUD } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
 import { createSync } from "./sync.js";
 import { createAccountUi } from "./account-ui.js";
 import { docToState } from "./account-data.js";
+import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2 };
@@ -759,6 +760,51 @@ function keyLab() {
   );
 }
 
+// ---------- 备份学习记录：导出 / 导入进度文件 ----------
+function backupCard() {
+  const signedIn = !!sync?.account();
+  const msg = h("p", { class: "backup-msg small muted", role: "status", "data-backup-msg": "" });
+  const panel = h("div", { class: "backup-panel" });
+  const say = (t, bad = false) => { msg.textContent = t; msg.classList.toggle("bad", bad); };
+  const doExport = () => {
+    try {
+      const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = h("a", { href: url, download: exportFileName(new Date()), hidden: "" });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      say("已导出。文件在浏览器的下载位置（iPhone：“文件”App → 下载），请自己保管好。");
+    } catch { say("导出失败，请换个浏览器再试。", true); }
+  };
+  const file = h("input", { type: "file", accept: "application/json,.json", hidden: "", "data-import-file": "" });
+  file.addEventListener("change", async () => {
+    const f = file.files && file.files[0]; file.value = "";
+    panel.replaceChildren(); if (!f) return;
+    let text = "";
+    try { text = await f.text(); } catch { say("读取文件失败。", true); return; }
+    const r = parseImport(text);
+    if (!r.ok) { say(r.error, true); return; }
+    const sm = summarize(r.state);
+    say("");
+    panel.replaceChildren(h("div", { class: "confirm", role: "alertdialog", "data-import-confirm": "" },
+      h("p", { text: `文件里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（导出于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
+      button("确认导入", () => {
+        state = mergeImport(state, r.state); persist(); renderMe(); showToast("进度已导入。");
+      }, "btn3d primary"),
+      button("取消", () => { panel.replaceChildren(); }, "btn"),
+    ));
+  });
+  return h("section", { class: "backup", "data-backup": "" },
+    h("h3", { text: "备份学习记录" }),
+    h("p", { class: "small muted", text: signedIn ? "进度已在云端。这里的文件是你自己多留的一份；已登录时不需要导入。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
+    h("div", { class: "acct-row" },
+      button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
+      signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
+    ),
+    file, panel, msg);
+}
+
 function renderMe() {
   currentView = "me";
   currentRun = null;
@@ -788,6 +834,7 @@ function renderMe() {
         statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
       accountUi?.accountCard(),
+      backupCard(),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
       feel.hapticsSupported()
