@@ -39,6 +39,22 @@ function start() {
 }
 function stop() { return new Promise((res) => { srv.closeAllConnections(); srv.close(() => res()); }); }
 
+// 刷新后等“应用真的恢复好”：只等到 domcontentloaded（不等 load——load 要等页面所有后台请求收尾，
+// CI 里曾偶发 30 秒等不到 load：page.reload: Timeout 30000ms exceeded，日志停在 waiting for navigation until "load"），
+// 再等测试真正需要的状态：状态栏已画出、应用对象已读到存档。失败时打印当时的页面状态，方便判断是没触发 load 还是状态没恢复。
+async function reloadReady(p, { timeout = 30000 } = {}) {
+  let step = "reload";
+  try {
+    await p.reload({ waitUntil: "domcontentloaded", timeout });
+    step = "状态栏"; await p.waitForSelector(".statsbar", { timeout });
+    step = "应用状态"; await p.waitForFunction(() => window.__app && window.__app.getState && window.__app.getState().onboarded, null, { timeout });
+  } catch (e) {
+    const st = await p.evaluate(() => ({ readyState: document.readyState, app: !!window.__app, statsbar: !!document.querySelector(".statsbar"), sw: !!navigator.serviceWorker.controller })).catch((x) => "页面无法读取：" + String(x.message).split("\n")[0]);
+    console.log("刷新诊断：卡在“" + step + "”", JSON.stringify({ st, 最近请求: hits.slice(-8), 根目录: root.slice(-12), 延迟ms: delayMs }));
+    throw e;
+  }
+}
+
 // 复制一份 dist 当作“新版本”：sw.js 版本号换掉，页面和脚本里加标记
 const tmp = mkdtempSync(join(tmpdir(), "suipian-"));
 function makeVersion(name, { dropCss = false } = {}) {
@@ -201,7 +217,7 @@ try {
     await pe.getByRole("button", { name: "退出", exact: true }).tap(); await pe.waitForSelector(".pathview");
     const after = await pe.evaluate(() => { const s = window.__app.getState(); return { xp: s.xp, hearts: s.hearts, done: s.done, lc: s.lessonsCompleted, streak: s.streak, run: window.__app.getRun() }; });
     check("退出关卡：已得 XP（+10）和已扣红心（-1）保留，关卡没有被记为完成，连续天数和完成次数不变", mid.xp === 10 && mid.hearts === 4 && after.xp === 10 && after.hearts === 4 && !after.done.U1L1 && after.lc === 0 && after.streak === 0 && after.run === null, JSON.stringify({ mid, after }));
-    await pe.reload(); await pe.waitForSelector(".statsbar");
+    await reloadReady(pe);
     check("退出关卡：刷新后 XP 和红心仍是退出时的值", (await pe.evaluate(() => { const s = window.__app.getState(); return s.xp === 10 && s.hearts === 4 && !s.done.U1L1; })));
     await startL1();
     const re = await pe.evaluate(() => { const r = window.__app.getRun(); return { q: r.queue.join(), mistakes: r.mistakes, correct: r.correct, xp: r.xp, first: window.__app.currentEx.prompt }; });
