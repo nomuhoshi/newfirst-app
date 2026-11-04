@@ -10,6 +10,8 @@ import unit1 from "../content/unit1.json";
 import unit2 from "../content/unit2.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
+import { makeRunnerExecutor } from "./judge.js";
+import { createCodeArea, isCodeTask } from "./code-task.js";
 import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
@@ -229,6 +231,7 @@ const runner = new Runner({
   onStatus(s, info) { if (s === "loadError") lastLoadError = info || {}; for (const l of [...listeners]) l.status?.(s, info); },
   onOutput(t) { for (const l of [...listeners]) l.output?.(t); },
 });
+const codeExec = makeRunnerExecutor(runner); // 写代码 / 改代码题的判题与运行
 function runForOutput(code) {
   return new Promise((resolve) => {
     let waiter = null, timer = null;
@@ -393,6 +396,7 @@ function tabBar(active) {
 
 // ---------- 关卡地图 ----------
 function renderPath() {
+  currentArea?.destroy?.(); currentArea = null; // 从代码题退出时保存草稿
   regenHearts(state);
   currentRun = null;
   const units = course.units.map((u) => {
@@ -751,7 +755,9 @@ function renderIntro(run) {
   );
 }
 
+let currentArea = null;
 function renderExercise(run) {
+  currentArea?.destroy?.(); currentArea = null; // 离开上一道代码题：先把草稿存好
   if (run.queue.length === 0) return renderFinish(run);
   const idx = run.queue[0];
   const ex = run.lesson.exercises[idx];
@@ -760,17 +766,22 @@ function renderExercise(run) {
   let hintShown = false;
   let submitted = false; // 一道题只能提交一次
 
-  const outPanel = h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
+  const isCode = isCodeTask(ex); // 写代码 / 改代码题：运行结果和判题结果都在答题区里，没有单独的“运行结果”面板
+  const outPanel = isCode ? null : h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
   const checkBtn = button("检查", () => check(), "btn3d primary grow", { "data-check": "" });
   checkBtn.disabled = true;
   const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
 
   // 各题型的答题区，返回 { node, ready(), lock(), mark(), isCorrect(), why(), whyWrong(), code() }
-  const area = ex.type === "predict" ? predictArea(ex, onChange)
+  const area = isCode ? createCodeArea(ex, { exec: codeExec, runner, onChange, ui: { sheet, button }, pythonUnavailable: () => (typeof pythonUnavailableText === "function" ? pythonUnavailableText() : undefined) })
+    : ex.type === "predict" ? predictArea(ex, onChange)
     : ex.type === "fill" ? fillArea(ex, onChange)
     : orderArea(ex, onChange);
+  currentArea = isCode ? area : null;
+  window.__app.currentArea = area;
 
   const helpBtn = button(mascot(56, "think"), () => {
+    if (area.openHint) return area.openHint(); // 代码题：两级提示，最后才是参考解法
     const text = hintShown || !ex.hint ? correctAnswerText(ex) : ex.hint;
     const title = hintShown || !ex.hint ? "答案是：" : "小码提示：";
     hintShown = true;
@@ -787,17 +798,38 @@ function renderExercise(run) {
       outPanel,
     ),
     h("footer", { class: "lessonfoot" }, helpBtn, checkBtn),
+    ...(area.after ? [area.after] : []), // 只有代码题有内置键盘；其他题型没有，不能把 undefined 当文字显示出来
   );
 
   function check() {
     if (submitted || checkBtn.disabled) return; // 重复点击不会二次计分
+    if (isCode) return checkCode();
+    settleAnswer(area.isCorrect(), false);
+  }
+
+  // 代码题：先真的运行判题，只有 pass / fail 且结果完整才结算；超时、输出超限、环境不可用、内部错误、取消都不算作答
+  let checking = false;
+  async function checkCode() {
+    if (checking) return;
+    checking = true;
+    checkBtn.disabled = true;
+    checkBtn.textContent = "检查中…";
+    feel.haptic(); // 必须在用户点击的这一刻请求
+    let r;
+    try { r = await area.check(); } finally { checking = false; }
+    if (!checkBtn.isConnected || submitted) return; // 这期间已经离开了这道题
+    if (r.attempt && r.settle) settleAnswer(r.status === "pass", true);
+    else { checkBtn.textContent = "检查"; checkBtn.disabled = !area.ready(); }
+  }
+
+  function settleAnswer(ok, asyncHaptic) {
     submitted = true;
     // ---- 0 ms：提交并锁定，计分只发生这一次 ----
     checkBtn.disabled = true;
     checkBtn.textContent = "检查中";
     area.lock();
-    feel.haptic(); // 必须在用户点击的这一刻请求
-    const ok = area.isCorrect();
+    if (!asyncHaptic) feel.haptic(); // 必须在用户点击的这一刻请求（代码题已在点击时请求过）
+    area.settled?.(ok);
     const reduce = feel.reducedMotion();
     if (ok) {
       run.correct++;
@@ -813,8 +845,7 @@ function renderExercise(run) {
     const outOfHearts = !ok && !run.review && state.hearts <= 0;
 
     // 显示真实运行结果：选输出题跑原程序，其他题跑你拼出来的程序
-    const code = ex.type === "predict" ? ex.code : area.code();
-    showRun(outPanel, code);
+    if (!isCode) showRun(outPanel, ex.type === "predict" ? ex.code : area.code());
 
     let continued = false;
     const contBtn = button(outOfHearts ? "红心用完了" : "继续", () => {
@@ -827,7 +858,7 @@ function renderExercise(run) {
     const fb = h("div", { class: "feedbar " + (ok ? "ok" : "bad"), role: "status" },
       h("div", { class: "fb-head" }, icon(ok ? "check" : "cross", { size: 26, cls: "fb-ico" }), h("b", { text: ok ? "答对了！" : "不对哦" }), ok ? h("span", { class: "fb-xp", text: `+${run.review ? XP_REVIEW : XP_CORRECT} XP` }) : null),
       reason ? h("p", { text: reason }) : null,
-      !ok ? h("p", { class: "fb-answer" }, "正确答案：", h("code", { text: correctAnswerText(ex) })) : null,
+      !ok && !isCode ? h("p", { class: "fb-answer" }, "正确答案：", h("code", { text: correctAnswerText(ex) })) : null,
       !ok && !run.review ? h("p", { class: "fb-heart" }, icon("heart", { size: 16 }), `红心 -1（剩 ${state.hearts} 颗）。这道题稍后再做一次。`) : null,
       contBtn,
     );
@@ -838,6 +869,7 @@ function renderExercise(run) {
       area.mark();
       feel.play(ok ? "correct" : "wrong");
       appEl.querySelector(".lessonfoot").replaceWith(fb);
+      area.afterFeedback?.();
       // ---- 240 ms：红心 / 统计更新 ----
       setTimeout(() => {
         if (!fb.isConnected) return;
@@ -1192,7 +1224,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { allLessons, startLesson, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;
