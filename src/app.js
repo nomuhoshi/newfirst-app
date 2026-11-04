@@ -222,9 +222,14 @@ try { safeStorage = window.localStorage; } catch { /* 存储被禁用：只能�
 const cloudApi = createApi({ url: CLOUD.url, anonKey: CLOUD.anonKey });
 let accountUi = null;
 let currentView = "path"; // 地图 "path" / 我的 "me" / 其他（做题等）
+// 别的设备用“覆盖云端”换掉了这个账号的进度，而这台设备还有没上传的学习内容：同步层发出 replaced 通知（docs/15 §5）。
+// 只在地图页或“我的”页提示，做题中不打断；等回到这两个页面时再显示，显示过就清掉（同一次替换只提示一次）。
+const REPLACED_TEXT = "这个账号的进度已在别的设备上被替换，这台设备上还没上传的学习内容没有保留。";
+let pendingReplaced = false;
 const sync = safeStorage ? createSync({
   storage: safeStorage, api: cloudApi,
   onStatus: () => accountUi?.refreshStatus(),
+  onNotice: (kind) => { if (kind !== "replaced") return; pendingReplaced = true; if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); },
   onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
 }) : null;
 const restored = sync ? sync.restore(state) : null;
@@ -433,6 +438,7 @@ function tabBar(active) {
 // ---------- 关卡地图 ----------
 function renderPath() {
   currentView = "path";
+  if (pendingReplaced) { notice = REPLACED_TEXT; pendingReplaced = false; }
   regenHearts(state);
   currentRun = null;
   const units = course.units.map((u) => {
@@ -693,6 +699,7 @@ function keyLab() {
 function renderMe() {
   currentView = "me";
   currentRun = null;
+  const replacedMsg = pendingReplaced ? REPLACED_TEXT : null; pendingReplaced = false;
   let confirmBox = null;
   const clearBtn = button("清除学习记录", () => {
     if (confirmBox) return;
@@ -709,6 +716,7 @@ function renderMe() {
   appEl.replaceChildren(
     statsBar(),
     h("main", { class: "view me" },
+      replacedMsg ? h("p", { class: "notice", role: "status", "data-replaced-notice": "", text: replacedMsg }) : null,
       h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: sync?.account() ? "记录已关联账号，会同步到云端" : "没登录时，记录只保存在这台设备上" }))),
       h("div", { class: "me-grid" },
         statCard("flame", String(currentStreak(state)), "连续天数"),
