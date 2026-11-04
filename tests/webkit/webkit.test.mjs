@@ -122,7 +122,7 @@ try {
     await guard(G, async () => {
     const { ctx, page, errors } = await open({ ...p, st: state([], { onboarded: false }) });
     let ok = true, why = "";
-    for (let i = 0; i < 3 && ok; i++) { const v = await reachAndClick(page, page.locator(".onboard .btn3d")); ok = v.ok; why = `第${i + 1}屏 ${v.rect}`; }
+    for (let i = 0; i < 3 && ok; i++) { const v = await reachAndClick(page, page.locator(".onboard .btn3d:not([data-onboard-login])")); ok = v.ok; why = `第${i + 1}屏 ${v.rect}`; }
     check(G, "开场介绍 3 屏按钮可达并真实点击", ok && await page.waitForSelector(".pathview", { timeout: 4000 }).then(() => true, () => false), ok ? "" : why);
     await page.locator('[data-lesson="U1L1"]').click(); await page.locator(".overlay .btn3d.primary").click();
     let v = await playToFinish(page); check(G, "普通关：每题“检查”“继续”和结算页“继续”可达并真实点击", v.ok && await page.waitForSelector(".pathview", { timeout: 4000 }).then(() => true, () => false), v.rect);

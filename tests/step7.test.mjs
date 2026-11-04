@@ -75,7 +75,7 @@ try {
     await page.waitForSelector(".onboard");
     // 开场介绍三屏
     for (let i = 0; i < 3; i++) {
-      const b = page.locator(".onboard .btn3d");
+      const b = page.locator(".onboard .btn3d:not([data-onboard-login])");
       const r = await reach(b);
       check(`${vp.name}：开场介绍第 ${i + 1} 屏按钮能点到（${r.how}）`, r.ok, r.detail);
       await b.evaluate((x) => x.click());
@@ -107,7 +107,7 @@ try {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: IPHONE_UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
     const page = await ctx.newPage();
     await page.goto(BASE); await page.waitForSelector(".onboard");
-    for (let i = 0; i < 3; i++) await page.locator(".onboard .btn3d").evaluate((x) => x.click());
+    for (let i = 0; i < 3; i++) await page.locator(".onboard .btn3d:not([data-onboard-login])").evaluate((x) => x.click());
     await page.locator('[data-lesson="U1L1"]').evaluate((b) => b.click());
     await page.locator(".overlay .btn3d.primary").evaluate((b) => b.click());
     await page.getByRole("button", { name: "继续", exact: true }).evaluate((b) => b.click());
