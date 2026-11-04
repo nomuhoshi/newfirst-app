@@ -1,0 +1,210 @@
+{
+  "id": "U3",
+  "title": "比较与判断",
+  "subtitle": "True/False、if/else",
+  "lessons": [
+    {
+      "id": "U3L1",
+      "title": "够不够送小料",
+      "concept": "比较与 True/False",
+      "story": "点单屏要判断：杯数够不够送小料？两个值比一比，结果只有两种：对（True）或不对（False）。",
+      "introCode": "cups = 3\nprint(cups > 2)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 3\nprint(cups > 2)",
+          "options": [
+            {
+              "text": "True",
+              "correct": true,
+              "why": "3 > 2 成立，比较的结果是 True（对）。"
+            },
+            {
+              "text": "False",
+              "correct": false,
+              "why": "3 比 2 大，所以 3 > 2 是成立的，结果是 True，不是 False。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "比较显示的是“成立 / 不成立”，不是变量里的值。"
+            }
+          ],
+          "tip": "> 是“大于”，< 是“小于”。比较的结果只有 True 和 False 两种。"
+        },
+        {
+          "type": "fill",
+          "prompt": "价格 18 元，没超过 20。屏幕要显示 True，补全比较符号。",
+          "code": "price = 18\nprint(price {0} 20)",
+          "tokens": [
+            "<",
+            ">",
+            "+"
+          ],
+          "answer": [
+            "<"
+          ],
+          "expected": "True",
+          "why": {
+            ">": "18 > 20 不成立，会显示 False。要表示“小于 20”，开口朝向小的那一边：<。",
+            "+": "+ 是加法，会显示 38，不是 True 或 False。"
+          },
+          "hint": "18 比 20 小，用“小于”。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，让屏幕先显示 True，再显示 False（先 3 杯，后 1 杯）",
+          "lines": [
+            "cups = 3",
+            "print(cups > 2)",
+            "cups = 1",
+            "print(cups > 2)"
+          ],
+          "shuffled": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ],
+            [
+              0,
+              3,
+              2,
+              1
+            ]
+          ],
+          "expected": "True\nFalse",
+          "hint": "print 显示的是那一刻 cups 的比较结果：先放 3 杯的，再换成 1 杯的。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "price = 15\nprint(price < 10)",
+          "options": [
+            {
+              "text": "False",
+              "correct": true,
+              "why": "15 不小于 10，比较不成立，结果是 False。"
+            },
+            {
+              "text": "True",
+              "correct": false,
+              "why": "15 比 10 大，15 < 10 不成立，结果是 False。"
+            },
+            {
+              "text": "15",
+              "correct": false,
+              "why": "比较显示的是 True 或 False，不是变量里的值。"
+            }
+          ],
+          "tip": "每次比较，先把变量换成它里面的值，再看大小。"
+        }
+      ]
+    },
+    {
+      "id": "U3L2",
+      "title": "是不是大杯",
+      "concept": "== 与 !=",
+      "story": "顾客点了「大杯」，屏幕要判断：他点的是不是大杯？判断“相等”用 ==，判断“不相等”用 !=。",
+      "introCode": "size = \"大杯\"\nprint(size == \"大杯\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "size = \"大杯\"\nprint(size == \"大杯\")",
+          "options": [
+            {
+              "text": "True",
+              "correct": true,
+              "why": "size 里存着「大杯」，和「大杯」相等，结果是 True。"
+            },
+            {
+              "text": "False",
+              "correct": false,
+              "why": "两边都是「大杯」，相等，所以 == 的结果是 True。"
+            },
+            {
+              "text": "大杯",
+              "correct": false,
+              "why": "比较显示的是 True 或 False，不是变量里的文字。"
+            }
+          ],
+          "tip": "== 读作“等于”：两边一样是 True，不一样是 False。一个 = 是存值，两个 == 才是比较。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 2\nprint(cups != 3)",
+          "options": [
+            {
+              "text": "True",
+              "correct": true,
+              "why": "!= 是“不等于”。2 和 3 不一样，所以“不等于”成立，结果是 True。"
+            },
+            {
+              "text": "False",
+              "correct": false,
+              "why": "!= 问的是“不一样吗？”。2 和 3 确实不一样，所以是 True。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "比较显示的是 True 或 False，不是变量里的值。"
+            }
+          ],
+          "tip": "!= 读作“不等于”：两边不一样是 True，一样是 False。"
+        },
+        {
+          "type": "fill",
+          "prompt": "顾客点的是中杯，不是大杯。屏幕要显示 False，补全比较符号。",
+          "code": "size = \"中杯\"\nprint(size {0} \"大杯\")",
+          "tokens": [
+            "==",
+            "=",
+            "!="
+          ],
+          "answer": [
+            "=="
+          ],
+          "expected": "False",
+          "why": {
+            "=": "一个 = 是“存值”，不是比较，写在这里程序会出错。比较要用两个 ==。",
+            "!=": "!= 是“不等于”。中杯和大杯不一样，所以会显示 True，不是 False。"
+          },
+          "hint": "问“是不是大杯”，用 ==；不是，所以结果是 False。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 2\ncups == 3\nprint(cups)",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "cups == 3 只是比较，不会把 cups 改成 3；它的结果也没有被 print，所以不会显示。屏幕只显示 print(cups)：2。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "== 是比较，不是存值。想把 cups 改成 3，要写一个 =：cups = 3。"
+            },
+            {
+              "text": "False",
+              "correct": false,
+              "why": "比较的结果不会自己显示，要放进 print(...) 里才会显示。"
+            }
+          ],
+          "tip": "== 只比较，不改变变量，也不会自己显示；改值用 =，显示用 print。"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+# 题库分支“U3 前 2 关”预览：先用真实 python3 核对题目 → 构建（EXP=u3）→ 浏览器自动测试 → 产物推到 preview-dist-exp-u3，截图推到 ci-screenshots-exp-u3。
+# 不部署网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 exp-u3/ 目录。
+name: Exp u3 preview
+on:
+  push:
+    branches: [content/py-bank]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: exp-u3-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  u3:
+    runs-on: ubuntu-latest
+    env:
+      EXP: u3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 生成脚本与 JSON 一致（改题要改脚本再生成）
+        run: |
+          python3 scripts/make-unit3.py
+          git diff --exit-code content/unit3.json
+      - name: 用真实 python3 核对题目
+        run: npm run test:unit3
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build:exp
+      - name: 预览浏览器测试（地图出现 U3 → 玩通两关 → 规则不变）
+        run: npm run test:exp-u3
+        env:
+          SHOTS_DIR: ${{ github.workspace }}/shots
+      - name: 截图推到 ci-screenshots-exp-u3（只供查看）
+        if: always() && hashFiles('shots/*.png') != ''
+        run: |
+          cd shots
+          git init -q -b shots && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "exp-u3 screenshots for ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" shots:ci-screenshots-exp-u3
+      - name: 测试通过后，把构建产物推到 preview-dist-exp-u3
+        if: success()
+        run: |
+          cd dist-exp
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "exp-u3 preview build from ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist:preview-dist-exp-u3

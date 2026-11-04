@@ -2,12 +2,14 @@
 // 首页是关卡地图；每关 = 故事开场 + 4 道点选题（选输出 / 点词块填空或修程序 / 排顺序）。
 // 答错扣红心、错题放到最后再做；答对加 XP；每天完成一关续上连续天数。
 // 点“检查”的时间线（ms）：0 提交并锁定 → 120 揭示结果 + 声音 → 240 红心/XP 更新 → 280（减少动态效果时 120）可以继续。
+import "./exp-storage.js";
 import "./style.css";
 import "./app.css";
 import "./game.css";
 import course from "../content/course.json";
 import unit1 from "../content/unit1.json";
 import unit2 from "../content/unit2.json";
+import unit3 from "../content/unit3.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
 import { describeError } from "./errors.js";
@@ -19,6 +21,9 @@ import {
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2 };
+// 实验预览（EXP=u3）：把第 3 单元的前 2 关接进地图。正式构建 __EXP__ 为空，U3 保持“即将推出”，不受影响。
+const EXP = typeof __EXP__ !== "undefined" ? __EXP__ : "";
+if (EXP === "u3") { UNITS.U3 = unit3; const u3 = course.units.find((u) => u.id === "U3"); if (u3) u3.available = true; }
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;
@@ -496,7 +501,7 @@ function selfTest() {
   const showDiag = (extra = "") => {
     const d = feel.diagnostics();
     diag.textContent = [
-      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}`,
+      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}${EXP ? `（实验预览 ${EXP}）` : ""}`,
       `缓存版本：${swInfo.caches.length ? swInfo.caches.join("、").replace(/suipian-/g, "").slice(0, 40) : "无"}`,
       `离线支持：${swInfo.status}`,
       `网络：${navigator.onLine === false ? "离线" : "在线"}`,
