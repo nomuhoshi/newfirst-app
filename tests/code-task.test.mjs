@@ -360,6 +360,53 @@ try {
   }
 
 
+  // 键盘弹出时光标行可见 + 判分未通过后结果能看全、按钮能点到（竖屏 iPhone 15 和 iPhone SE 两种高度）
+  for (const [tag, viewport] of [["iPhone15", { width: 390, height: 844 }], ["iPhoneSE", { width: 375, height: 667 }]]) {
+    const { ctx, page } = await open({ viewport });
+    await start(page, [VARI("T-K1")]);
+    await page.locator("[data-worked] summary").tap(); // 展开示范：题面最长的状态
+    const cursorInfo = () => page.evaluate(() => {
+      const view = window.__app.currentArea.view, c = view.coordsAtPos(view.state.selection.main.head);
+      const lr = document.querySelector(".lesson").getBoundingClientRect(), fr = document.querySelector(".lessonfoot")?.getBoundingClientRect(), kb = document.querySelector("#keyboard");
+      return { top: c?.top ?? null, bottom: c?.bottom ?? null, lessonTop: lr.top, lessonBottom: lr.bottom, footTop: fr?.top ?? null, kbShown: !!kb && !kb.hidden };
+    });
+    await page.locator(".ct-editor .cm-content").tap();
+    await page.locator('#keyboard .kb-key[data-key="p"]').tap();
+    let ci = await cursorInfo();
+    check(`键盘 ${tag}：点进编辑器并输入一个字符后，光标所在行在可视区内（内置键盘打开）`, ci.kbShown && ci.top !== null && ci.top >= ci.lessonTop - 1 && ci.bottom <= ci.lessonBottom + 1, JSON.stringify(ci));
+    check(`键盘 ${tag}：光标行没有被底栏（检查按钮）或键盘盖住`, ci.footTop === null || ci.bottom <= ci.footTop + 1, JSON.stringify(ci));
+    await setCode(page, "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\nf = 6\ng = 7\nh = 8\nprint(");
+    for (const k of ["p"]) await page.locator(`#keyboard .kb-key[data-key="${k}"]`).tap();
+    ci = await cursorInfo();
+    await page.waitForTimeout(150); await shot(page, `fix-${tag}-keyboard-open`);
+    check(`键盘 ${tag}：写了 9 行之后继续输入，当前输入行仍在可视区内`, ci.top !== null && ci.top >= ci.lessonTop - 1 && ci.bottom <= ci.lessonBottom + 1, JSON.stringify(ci));
+    // 收起键盘后页面仍能正常滚动
+    await page.locator("[data-toggle-kb]").tap(); await page.waitForTimeout(150);
+    const sc = await page.evaluate(() => { const l = document.querySelector(".lesson"); l.scrollTop = 0; const a = l.scrollTop; l.scrollTop = 120; return { hidden: document.querySelector("#keyboard").hidden, canScroll: l.scrollHeight > l.clientHeight, moved: l.scrollTop - a }; });
+    check(`键盘 ${tag}：收起键盘后键盘确实隐藏，页面可以滚动`, sc.hidden && (!sc.canScroll || sc.moved > 0), JSON.stringify(sc));
+    await ctx.close();
+  }
+  for (const [tag, viewport] of [["iPhone15", { width: 390, height: 844 }], ["iPhoneSE", { width: 375, height: 667 }]]) {
+    const { ctx, page } = await open({ viewport });
+    await start(page, [W("T-R1")]);
+    await setCode(page, "print(1");
+    await page.locator("[data-check]").tap();
+    await page.waitForSelector(".feedbar.bad", { timeout: 60000 });
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => {
+      const l = document.querySelector(".lesson"), lr = l.getBoundingClientRect(), res = document.querySelector("[data-results]").getBoundingClientRect(), f = document.querySelector(".feedbar").getBoundingClientRect(), cb = document.querySelector("[data-continue]").getBoundingClientRect();
+      const first = res.top - lr.top;               // 结果框顶部离可视区顶部的距离
+      l.scrollTop = l.scrollHeight;                 // 滚到最底
+      const res2 = document.querySelector("[data-results]").getBoundingClientRect(), lr2 = l.getBoundingClientRect();
+      return { firstTop: Math.round(first), lessonH: Math.round(lr.height), resBottomAfterScroll: Math.round(res2.bottom), lessonBottom: Math.round(lr2.bottom), fbTop: Math.round(f.top), contBottom: Math.round(cb.bottom), vh: innerHeight, contDisabled: document.querySelector("[data-continue]").disabled };
+    });
+    check(`判分 ${tag}：未通过后，结果框顶部在可视区里（不被反馈栏盖住开头）`, r.firstTop >= -1 && r.firstTop < r.lessonH - 40, JSON.stringify(r));
+    check(`判分 ${tag}：滚到底能看完整个结果框（末尾在反馈栏上方）`, r.resBottomAfterScroll <= r.lessonBottom + 1 && r.lessonBottom <= r.fbTop + 1, JSON.stringify(r));
+    check(`判分 ${tag}：“继续”按钮在屏幕内且可点（离屏幕底 ≥ 60px 留给 Safari 工具栏）`, !r.contDisabled && r.contBottom <= r.vh - 60 + 1, JSON.stringify(r));
+    await shot(page, `fix-${tag}-judge-fail`);
+    await ctx.close();
+  }
+
   if (SHOTS) { // 视觉检查：竖屏 / 横屏 × 浅色 / 深色，依次截取各个状态（只在 CI 上传截图时运行，不做断言）
     const configs = [["portrait-light", { width: 390, height: 844 }, "light"], ["portrait-dark", { width: 390, height: 844 }, "dark"], ["landscape-light", { width: 844, height: 390 }, "light"], ["landscape-dark", { width: 844, height: 390 }, "dark"]];
     for (const [tag, viewport, colorScheme] of configs) {

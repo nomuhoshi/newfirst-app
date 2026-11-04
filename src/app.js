@@ -869,6 +869,7 @@ function renderExercise(run) {
       area.mark();
       feel.play(ok ? "correct" : "wrong");
       appEl.querySelector(".lessonfoot").replaceWith(fb);
+      area.afterFeedback?.();
       // ---- 240 ms：红心 / 统计更新 ----
       setTimeout(() => {
         if (!fb.isConnected) return;

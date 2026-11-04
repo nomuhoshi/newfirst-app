@@ -106,6 +106,24 @@ export function createCodeArea(ex, ctx) {
   }
   const promptNode = h("div", { class: "ct-prompt" }, buildPrompt());
 
+  // 页面滚动区是 .lesson：键盘和底栏占掉下半屏后，题面可能把编辑器挤到可视区外。输入时把光标所在行滚进 .lesson 的可视范围（留 12px 边距）
+  let keepRaf = 0;
+  function keepCursorVisible() {
+    if (keepRaf) return;
+    keepRaf = requestAnimationFrame(() => {
+      keepRaf = 0;
+      const sc = root.closest(".lesson"); if (!sc || !view.dom.isConnected) return;
+      const c = view.coordsAtPos(view.state.selection.main.head);
+      const box = c ? { top: c.top, bottom: c.bottom } : editorHost.getBoundingClientRect();
+      const vr = sc.getBoundingClientRect(), pad = 12;
+      if (box.bottom > vr.bottom - pad) sc.scrollTop += box.bottom - (vr.bottom - pad);
+      else if (box.top < vr.top + pad) sc.scrollTop -= (vr.top + pad) - box.top;
+    });
+  }
+  // 系统键盘 / 地址栏收放会改变可视高度：焦点在编辑器里时再对齐一次
+  const onViewport = () => { if (!root.isConnected) { window.visualViewport?.removeEventListener("resize", onViewport); return; } if (view.hasFocus) keepCursorVisible(); };
+  window.visualViewport?.addEventListener("resize", onViewport);
+
   // ---- 编辑器 ----
   const editorHost = h("div", { class: "ct-editor", "aria-label": "代码编辑区", role: "group" });
   const saveNote = h("span", { class: "ct-savenote", text: "代码暂存于此设备" });
@@ -115,7 +133,10 @@ export function createCodeArea(ex, ctx) {
   activeSaver = saver;
   const view = createEditor(editorHost, "", [
     EditorState.changeFilter.of(() => !locked),
-    EditorView.updateListener.of((u) => { if (u.docChanged && initialized) { ctx.onChange?.(); saver.schedule(); } }),
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged && initialized) { ctx.onChange?.(); saver.schedule(); }
+      if (initialized && (u.docChanged || u.selectionSet || u.focusChanged)) keepCursorVisible(); // 输入、移动光标、点进编辑器：当前行始终留在可视区
+    }),
   ]);
   view.contentDOM.setAttribute("aria-label", "Python 代码");
   const text0 = curDraft ? curDraft.code : initial;
@@ -128,6 +149,7 @@ export function createCodeArea(ex, ctx) {
   function applyKb() {
     kb.hidden = useSystem || kbHidden;
     toggleKbBtn.textContent = useSystem ? "回到内置键盘" : kbHidden ? "展开键盘" : "收起键盘";
+    if (initialized) setTimeout(keepCursorVisible, 60); // 键盘高度变了，等布局稳定后再对齐
   }
   function toggleSystem() { useSystem = !useSystem; kbHidden = false; setSystemKeyboard(view, useSystem); applyKb(); }
   createKeyboard(kb, view, { onToggleSystem: toggleSystem });
@@ -333,6 +355,7 @@ export function createCodeArea(ex, ctx) {
     ready: () => getCode().trim().length > 0 && !locked,
     lock() { locked = true; runBtn.disabled = true; resetBtn.disabled = true; kb.hidden = true; },
     mark() {},
+    afterFeedback() { results.scrollIntoView?.({ block: "start" }); }, // 反馈栏占掉下半屏后，把判分结果（未通过详情）滚到可视区顶部
     check,                           // async：返回 judge 结果
     settled(ok) { if (ok) { clearDraft(storage, owner, ex); if (vspec) clearDraft(storage, owner, vspec); saver.cancel(); } else saver.flush(); },
     isCorrect: () => lastResult?.status === "pass",
