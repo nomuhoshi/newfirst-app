@@ -145,6 +145,27 @@ function prodSetup() { const prod = fakeServer(), test = fakeServer(), st = fake
   const d2 = open(st, prod, PROD);
   check("正式站重新打开：没标项目的旧凭证继续有效，不用重新登录", d2.sync.status().status === "pending" || d2.sync.status().status === "syncing", String(d2.sync.status().status));
 }
+// ---------- 6. 退出时不误报“有进度还没上传” ----------
+{
+  const S = fakeServer(), st = fakeStorage();
+  const d = open(st, S, PROD); await login(d, "me@x.com"); finishLesson(d, "U1L1", 20); await d.sync.syncNow();
+  const d2 = open(st, S, PROD); d2.offline = true; // 重新打开页面（离线），没有任何新学习
+  const lo = await d2.sync.logout();
+  check("打开页面没学新东西、离线时退出：直接退出，不弹“有进度还没上传”", lo.ok === true && d2.sync.account() === null, JSON.stringify(lo));
+  // 令牌失效（需要重新登录）也一样
+  const d3 = open(st, S, PROD); await login(d3, "me@x.com"); await d3.sync.syncNow();
+  st.removeItem(AUTH_KEY);
+  const d4 = open(st, S, PROD);
+  const st4 = d4.sync.status().status;
+  const lo4 = await d4.sync.logout();
+  check("没有登录凭证（需要重新登录）、没学新东西时退出：直接退出", st4 === "need-login" && lo4.ok === true, st4 + " " + JSON.stringify(lo4));
+  // 真有没上传的内容：照常提示
+  const d5 = open(st, S, PROD); await login(d5, "me@x.com"); finishLesson(d5, "U1L2", 20); d5.offline = true;
+  const lo5 = await d5.sync.logout();
+  check("真有没上传的新学习（离线）：仍然提示，不静默丢", lo5.ok === false && lo5.pending === true);
+  const d6 = open(st, S, PROD); d6.offline = true;
+  check("重新打开后（还没上传）再退出：仍然提示", (await d6.sync.logout()).pending === true);
+}
 const pass = results.filter(Boolean).length;
 console.log(`\n切换项目：${pass}/${results.length} 通过`);
 process.exit(pass === results.length ? 0 : 1);

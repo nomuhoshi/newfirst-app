@@ -49,13 +49,14 @@ const copyOf = (st, proj, uid = "u1") => loadAccount(view(st, proj), uid, { now:
 { // 同一个命名空间里，凭证记的项目对不上：作废，本机副本保留
   const st = mkStorage(); seed(st, { session: sess, project: "OTHER.supabase.co" });
   const s = mk(st, PROD); s.restore(freshState());
-  check("项目标记对不上：作废并要求重新登录", s.status().status === "need-login" && st.getItem(AUTH_KEY) === null);
+  check("项目标记对不上：不使用这份凭证、要求重新登录，但不删除它（可能是另一个入口还在用）", s.status().status === "need-login" && st.getItem(AUTH_KEY) !== null);
   check("作废后本机学习记录原样保留", copyOf(st, PROD).doc.xp.devA === 40);
 }
 { // 云端关闭（沿用正式版的键）：不能带着正式库的凭证
   const st = mkStorage(); seed(st, { session: sess });
+  const before = st.getItem(AUTH_KEY);
   const s = mk(st, "cloud-off"); s.restore(freshState());
-  check("云端关闭的入口：旧凭证作废，本机记录保留", st.getItem(AUTH_KEY) === null && copyOf(st, PROD).doc.xp.devA === 40);
+  check("云端关闭的入口：不使用正式库的凭证，但也不删除它；本机记录保留", s.status().status === "need-login" && st.getItem(AUTH_KEY) === before && copyOf(st, PROD).doc.xp.devA === 40);
 }
 { // 游客记录不受影响
   const st = mkStorage(); const g = JSON.stringify({ ...freshState(), xp: 77, done: { U1L1: true } });
