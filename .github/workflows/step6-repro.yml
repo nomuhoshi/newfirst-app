@@ -18,6 +18,10 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - run: node tests/step6-repro.test.mjs
-        env:
-          TRIALS: "100"
+      - name: 重复跑 step6 20 次，收集失败现场
+        run: |
+          fails=0
+          for i in $(seq 1 20); do
+            node tests/step6.test.mjs > /tmp/step6-$i.log 2>&1 || { fails=$((fails+1)); echo "=== 第 $i 次失败 ==="; grep -E "❌|⚠️|TimeoutError|at .*step6" /tmp/step6-$i.log | cut -c1-1500; }
+          done
+          echo "20 次里失败 $fails 次"

@@ -136,7 +136,12 @@ async function answer(page, correct) {
     for (const k of order) await page.locator(`.order-bank [data-line="${k}"]`).first().click();
   }
   await page.evaluate(() => { const b = document.querySelector("[data-check]"); b.click(); b.click(); }); // 连点检查只算一次
-  await page.locator("[data-continue]:not([disabled])").waitFor();
+  try { await page.locator("[data-continue]:not([disabled])").waitFor(); }
+  catch (e) { // 偶发超时时把现场打出来，方便定位（不改变通过/失败的判定：仍然抛出）
+    const dom = await page.evaluate(() => ({ cur: window.__app.currentPracticeItem, foot: document.querySelector(".lessonfoot, .feedbar")?.outerHTML.slice(0, 500), check: document.querySelector("[data-check]")?.outerHTML.slice(0, 200), body: document.querySelector("#app").innerText.slice(0, 500), renders: window.__app.renders })).catch(() => null);
+    console.log("⚠️ answer() 超时现场：", JSON.stringify({ type: ex.type, correct, ex: JSON.stringify(ex).slice(0, 600), dom }));
+    throw e;
+  }
   return ex.type;
 }
 
