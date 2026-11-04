@@ -1,0 +1,204 @@
+{
+  "id": "U6",
+  "title": "类型与报错",
+  "subtitle": "type、int()/str()、读报错",
+  "lessons": [
+    {
+      "id": "U6L1",
+      "title": "它是什么类型",
+      "concept": "type() 和四种类型",
+      "story": "点单屏里的值有不同的“种类”：15 是整数（int），15.5 是小数（float），\"15\" 是文字（str），True 是布尔（bool）。同样长得像 15，加了引号就是文字。type() 能让 Python 说出一个值的种类，结果长这样：<class 'int'>，引号里的 int 就是种类名。",
+      "introCode": "print(type(15))\nprint(type(\"15\"))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 3\nprint(type(cups))",
+          "options": [
+            {
+              "text": "<class 'int'>",
+              "correct": true,
+              "why": "3 没有引号，是整数，种类名是 int。"
+            },
+            {
+              "text": "<class 'str'>",
+              "correct": false,
+              "why": "cups 里是数字 3，没有引号，不是文字。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "type() 说的是值的种类，不是值本身。"
+            }
+          ],
+          "tip": "type(值) 显示这个值的种类：<class '种类名'>。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "a = 15\nb = \"15\"\nprint(type(a))\nprint(type(b))",
+          "options": [
+            {
+              "text": "<class 'int'>\n<class 'str'>",
+              "correct": true,
+              "why": "a 是数字 15（int）；b 加了引号，是文字（str）。"
+            },
+            {
+              "text": "<class 'int'>\n<class 'int'>",
+              "correct": false,
+              "why": "b 的 15 带着引号，是文字，不是整数。"
+            },
+            {
+              "text": "<class 'str'>\n<class 'int'>",
+              "correct": false,
+              "why": "顺序反了：a 没有引号，是整数；b 才有引号。"
+            }
+          ],
+          "tip": "15 和 \"15\" 看着一样，种类不一样：有引号的是文字。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：<class 'float'>。哪一个能做到？",
+          "code": "print(type({0}))",
+          "tokens": [
+            "30 / 2",
+            "30 - 2",
+            "\"30\""
+          ],
+          "answer": [
+            "30 / 2"
+          ],
+          "expected": "<class 'float'>",
+          "why": {
+            "30 - 2": "30 - 2 是 28，整数，显示 <class 'int'>。",
+            "\"30\"": "加了引号的 30 是文字，显示 <class 'str'>。"
+          },
+          "hint": "还记得 30 / 2 得到 15.0 吗？除法的结果是小数（float）。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "ok = 5 > 3\nprint(type(ok))",
+          "options": [
+            {
+              "text": "<class 'bool'>",
+              "correct": true,
+              "why": "比较的结果是 True 或 False，种类是布尔 bool。"
+            },
+            {
+              "text": "True",
+              "correct": false,
+              "why": "type() 说的是种类，不是比较的结果。"
+            },
+            {
+              "text": "<class 'int'>",
+              "correct": false,
+              "why": "True / False 不是整数，是布尔 bool。"
+            }
+          ],
+          "tip": "比较的结果（True / False）种类是 bool。"
+        }
+      ]
+    },
+    {
+      "id": "U6L2",
+      "title": "文字和数字互换",
+      "concept": "int() 和 str()",
+      "story": "文字 \"15\" 和数字 15 不一样：文字不能直接和数字相加，\"杯数：\" + 3 会出错。int(\"15\") 把文字变成整数，str(3) 把数字变成文字。变换之后，才能用 + 做加法，或者拼进文字里。",
+      "introCode": "price = \"15\"\nprint(int(price) + 5)\nprint(\"杯数：\" + str(3))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "price = \"15\"\nprint(int(price) + 5)",
+          "options": [
+            {
+              "text": "20",
+              "correct": true,
+              "why": "int(price) 先把文字 \"15\" 变成数字 15，再加 5 得 20。"
+            },
+            {
+              "text": "155",
+              "correct": false,
+              "why": "155 是把 \"15\" 和 \"5\" 拼在一起的结果；这里 int() 已经把它变成数字，是做加法。"
+            },
+            {
+              "text": "15 + 5",
+              "correct": false,
+              "why": "print 显示的是计算结果，不是算式。"
+            }
+          ],
+          "tip": "int(文字) 得到整数，之后就能做加法。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：杯数：3",
+          "code": "cups = 3\nprint(\"杯数：\" + {0})",
+          "tokens": [
+            "str(cups)",
+            "cups",
+            "int(cups)"
+          ],
+          "answer": [
+            "str(cups)"
+          ],
+          "expected": "杯数：3",
+          "why": {
+            "cups": "文字不能直接和数字相加，会报错 TypeError。要先把数字变成文字。",
+            "int(cups)": "int(3) 还是数字 3，文字加数字照样报错 TypeError。"
+          },
+          "hint": "拼进文字里的必须是文字：用 str() 把数字变成文字。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序。屏幕显示：20",
+          "lines": [
+            "text = \"12\"",
+            "num = int(text)",
+            "total = num + 8",
+            "print(total)"
+          ],
+          "shuffled": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "20",
+          "hint": "先有文字，再变成整数，再相加，最后显示。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "a = \"12\"\nb = \"8\"\nprint(a + b)\nprint(int(a) + int(b))",
+          "options": [
+            {
+              "text": "128\n20",
+              "correct": true,
+              "why": "第一行：两段文字拼在一起是 128；第二行：先都变成数字，再相加得 20。"
+            },
+            {
+              "text": "20\n20",
+              "correct": false,
+              "why": "第一行 a + b 是两段文字，会拼在一起得 128，不会相加。"
+            },
+            {
+              "text": "128\n128",
+              "correct": false,
+              "why": "第二行先用 int() 把两个都变成数字，再相加得 20。"
+            }
+          ],
+          "tip": "文字 + 文字 = 拼接；整数 + 整数 = 相加。想相加，先 int()。"
+        }
+      ]
+    }
+  ]
+}
