@@ -7,7 +7,7 @@
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
 import { emptyDoc, mergeDocs, docsEquivalent, replaceWithGuest, docToState, syncStateIntoDoc, guestFingerprint, normalizeDoc, sumXp } from "./account-data.js";
-import { getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, removeAccountCopy, clearGuestAfterVerified } from "./account-store.js";
+import { getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
@@ -196,28 +196,25 @@ export function createSync({ storage, api, projectId = null, legacyProject = nul
   }
 
   async function begin(newSession, baseState) {
-    // 换了 Supabase 项目后旧登录作废：用“同一个邮箱”重新登录时，把旧账号的本机存档接到新项目的账号上（旧副本等上传成功再清）；换成别的邮箱仍要先退出，避免两个人的进度混在一起。
-    let migrateFrom = null;
+    // 换了 Supabase 项目后旧登录作废：用“同一个邮箱”可以在新项目正常登录，但只加载新项目自己的进度。
+    // 旧项目的账号副本和游客记录原样留在本机，既不上传到新项目、也不删除（数据隔离规则）。换成别的邮箱仍要先退出。
+    let leaveStale = false;
     if (userId && userId !== newSession.userId) {
       const st = readStale(), mail = String(newSession.email || "").trim().toLowerCase();
-      if (!session && st && st.userId === userId && st.email && st.email === mail) migrateFrom = userId;
+      if (!session && st && st.userId === userId && st.email && st.email === mail) leaveStale = true;
       else return { ok: false, kind: "other-account", message: "请先退出当前账号" };
     }
     const remote = await api.getProgress(newSession);
     if (!remote.ok) return remote;
     const remoteDoc = remote.row ? normalizeDoc(remote.row.doc) : null;
     if (remoteDoc && !remoteDoc.ok) return { ok: false, kind: "data", code: remoteDoc.code, message: "云端记录：" + remoteDoc.message };
-    let L = loadAccount(storage, newSession.userId, { now: now() });
+    const L = loadAccount(storage, newSession.userId, { now: now() });
     if (!L.ok) return { ok: false, kind: "local", message: L.message };
-    if (migrateFrom && !L.copy) {
-      const O = loadAccount(storage, migrateFrom, { now: now() });
-      if (O.ok && O.copy) L = { ok: true, copy: { doc: O.copy.doc, base: null, dirty: { hearts: true, prefs: true, content: true } } }; // 旧存档整份带过去，登录后正常合并上传
-    }
     const guest = readGuest(storage);
     const guestHas = guest.status === "ok" && guestFingerprint(guest.state) !== guestFingerprint(freshState());
     const gid = getGuestId(storage);
     const alreadyImported = !!(remoteDoc && gid.ok && remoteDoc.doc.imported[gid.id]);
-    const ctx = { session: newSession, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, baseState, migrateFrom };
+    const ctx = { session: newSession, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, baseState, leaveStale };
     if (guestHas && !L.copy && !alreadyImported) {
       waiting = ctx;
       return { ok: true, needChoice: true, cloudHasData: !!remoteDoc && sumXp(remoteDoc.doc) + Object.keys(remoteDoc.doc.done).length > 0, guest: { xp: guest.state.xp ?? 0, lessons: Object.keys(guest.state.done ?? {}).filter((k) => guest.state.done[k]).length } };
@@ -252,10 +249,7 @@ export function createSync({ storage, api, projectId = null, legacyProject = nul
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
     pending = true;
     const r = await syncNow();
-    if (ctx.migrateFrom) { // 旧项目的账号：新账号已拿到它的存档；上传成功才删旧副本，否则留着
-      clearStale();
-      if (r.ok) removeAccountCopy(storage, ctx.migrateFrom);
-    }
+    if (ctx.leaveStale) clearStale(); // 旧项目的账号副本不动、不上传、不删除；只是不再需要“换项目”的过渡标记
     let guestCleared = false;
     if (r.ok && transferred && ctx.guest.status === "ok") {
       const rb = await api.getProgress(session);
