@@ -121,7 +121,8 @@ async function answer(page, correct) {
     await page.locator(".choice").nth(idx).click();
   } else if (ex.type === "fill") {
     const want = [...ex.answer];
-    if (!correct) want[0] = ex.tokens.find((t) => t !== ex.answer[0]);
+    // 答错要换成“另一个能提交的错误词块”：不能选等于初始值的那个（U1L2#3 的初始值 Cups 本身就是错的；没改动时应用不让提交，检查按钮一直是灰的）
+    if (!correct) want[0] = ex.tokens.find((t) => t !== ex.answer[0] && !(ex.initial || []).includes(t)) ?? ex.tokens.find((t) => t !== ex.answer[0]);
     for (let k = 0; k < want.length; k++) {
       await page.locator(`[data-slot="${k}"]`).click();
       await page.evaluate((t) => [...document.querySelectorAll("[data-token]")].find((b) => b.dataset.token === t).click(), want[k]);
