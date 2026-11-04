@@ -1,0 +1,37 @@
+# U6 前两关（类型与报错）的独立课程预览入口：用 PREVIEW_ID=u6 构建（本地存储键前缀 u6:、缓存前缀 u6-suipian-），推到分支 preview-dist-u6。
+# 只在 preview/u6-part1 分支运行（源码与 content/u6-part1 相同，只多这个工作流文件）；不部署任何网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 u6/ 目录。
+name: U6 preview
+on:
+  push:
+    branches: [preview/u6-part1]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: u6-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 构建（云端关闭：不传任何 Supabase 配置，预览构建默认不连任何云端）
+        env:
+          PREVIEW_ID: u6
+        run: npm run build
+      - name: 检查隔离：构建里有 u6 前缀、缓存前缀不是 suipian-
+        run: |
+          grep -q 'PREFIX = "u6-suipian-"' dist/sw.js
+          grep -rq 'u6' dist/assets/main-*.js
+      - name: 推到 preview-dist-u6
+        run: |
+          cd dist
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "u6 test entry from ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist:preview-dist-u6
