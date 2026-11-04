@@ -229,6 +229,9 @@ for l in lessons:
     for e in l["exercises"]:
         if e["type"] == "order" and e["lines"] == O8: e["equivCases"] = C8
 
+import sys as _s; _s.path.insert(0, str(pathlib.Path(__file__).parent)); from codetasks import TASKS
+for _l in lessons:  # 有内容的代码题挂到 pending[0].task；题目页（#19）接上前仍不开放
+    if _l["id"] in TASKS: _l["pending"][0]["task"] = TASKS[_l["id"]]
 unit = {"id": "U3", "title": "比较与判断", "subtitle": "比较、if/else/elif、and/or/not", "lessons": lessons}
 p = pathlib.Path(__file__).resolve().parent.parent / "content/unit3.json"
 p.write_text(json.dumps(unit, ensure_ascii=False, indent=2) + "\n")
