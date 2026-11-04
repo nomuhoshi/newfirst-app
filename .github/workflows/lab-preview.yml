@@ -1,0 +1,44 @@
+# “编程实验室”第三版预览：构建（LAB=1）→ 预览自动测试 → 把构建产物推到分支 preview-dist-lab3、截图推到 ci-screenshots-lab3。
+# 只在 design/v3-lab 分支运行；不部署任何网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 lab-v3/ 目录。
+name: Lab v3 preview
+on:
+  push:
+    branches: [design/v3-lab]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: lab-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build:lab
+      - name: 预览自动测试（地图 → 进题 → 提交 → 反馈 → 回地图，浅色+深色）
+        run: npm run test:lab
+        env:
+          SHOTS_DIR: ${{ github.workspace }}/shots
+      - name: 截图推到 ci-screenshots-lab3（只供查看）
+        if: always() && hashFiles('shots/*.png') != ''
+        run: |
+          cd shots
+          git init -q -b shots && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "lab3 screenshots for ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" shots:ci-screenshots-lab3
+      - name: 测试通过后，把构建产物推到 preview-dist-lab3
+        if: success()
+        run: |
+          cd dist-lab
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "lab3 preview build from ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist:preview-dist-lab3

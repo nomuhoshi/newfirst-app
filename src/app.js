@@ -2,9 +2,13 @@
 // 首页是关卡地图；每关 = 故事开场 + 4 道点选题（选输出 / 点词块填空或修程序 / 排顺序）。
 // 答错扣红心、错题放到最后再做；答对加 XP；每天完成一关续上连续天数。
 // 点“检查”的时间线（ms）：0 提交并锁定 → 120 揭示结果 + 声音 → 240 红心/XP 更新 → 280（减少动态效果时 120）可以继续。
+import "./lab-storage.js"; // 必须第一个：预览构建里给 localStorage 加前缀，和正式版隔离
 import "./style.css";
 import "./app.css";
 import "./game.css";
+import "./lab-v3.css"; // 所有规则都限定在 body.lab3 下；正式构建不加这个类，等于没有
+const LAB = typeof __LAB__ !== "undefined" && __LAB__; // 预览构建才为 true
+if (LAB) document.body.classList.add("lab3");
 import course from "../content/course.json";
 import unit1 from "../content/unit1.json";
 import unit2 from "../content/unit2.json";
@@ -412,16 +416,17 @@ function renderPath() {
           () => openLessonSheet(l), `node ${st}${l.review ? " review" : ""}`,
           { "aria-label": `${l.title}（${st === "done" ? "已完成" : st === "current" ? "当前关卡" : "未解锁"}）`, "data-lesson": l.id },
         );
-        return h("li", { class: "path-item", style: `--off:${offset}` },
+        return h("li", { class: "path-item st-" + st, style: `--off:${offset}` },
           st === "current" ? h("div", { class: "bubble", "aria-hidden": "true", onclick: () => openLessonSheet(l), text: i === 0 && !state.done[l.id] && state.xp === 0 ? "从这里开始" : "开始" }) : null,
-          node, h("div", { class: "node-label", text: l.title }));
+          node, h("div", { class: "node-label", text: l.title }),
+          LAB ? h("div", { class: "row-sub" }, h("b", { text: st === "done" ? "已完成" : st === "current" ? "当前" : "未解锁" }), l.concept ? ` · ${l.concept}` : "") : null);
       })),
     );
   });
   appEl.replaceChildren(
     circuit("full"),
     statsBar(),
-    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, practiceEntry(), units),
+    h("main", { class: "view pathview" }, LAB ? h("p", { class: "lab-tag" }, h("b", { text: "实验室预览 v3 " }), "进度单独存放，不影响正式版。") : null, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, practiceEntry(), units),
     tabBar("path"),
   );
   notice = null;
@@ -496,7 +501,7 @@ function selfTest() {
   const showDiag = (extra = "") => {
     const d = feel.diagnostics();
     diag.textContent = [
-      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}`,
+      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}${LAB ? "（实验室预览 v3）" : ""}`,
       `缓存版本：${swInfo.caches.length ? swInfo.caches.join("、").replace(/suipian-/g, "").slice(0, 40) : "无"}`,
       `离线支持：${swInfo.status}`,
       `网络：${navigator.onLine === false ? "离线" : "在线"}`,
@@ -827,6 +832,7 @@ function renderExercise(run) {
     const fb = h("div", { class: "feedbar " + (ok ? "ok" : "bad"), role: "status" },
       h("div", { class: "fb-head" }, icon(ok ? "check" : "cross", { size: 26, cls: "fb-ico" }), h("b", { text: ok ? "答对了！" : "不对哦" }), ok ? h("span", { class: "fb-xp", text: `+${run.review ? XP_REVIEW : XP_CORRECT} XP` }) : null),
       reason ? h("p", { text: reason }) : null,
+      LAB && (ok || run.review || outOfHearts) ? h("p", { class: "fb-next", text: outOfHearts ? "红心用完了：点下方按钮回到地图。" : ok ? "下一步：点“继续”做下一题。" : "这题稍后会再出现：点“继续”。" }) : null,
       !ok ? h("p", { class: "fb-answer" }, "正确答案：", h("code", { text: correctAnswerText(ex) })) : null,
       !ok && !run.review ? h("p", { class: "fb-heart" }, icon("heart", { size: 16 }), `红心 -1（剩 ${state.hearts} 颗）。这道题稍后再做一次。`) : null,
       contBtn,

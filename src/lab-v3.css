@@ -1,0 +1,111 @@
+/* “编程实验室”第三版（预览）：墨色 + 暖白 + 铜橙。全部限定在 body.lab3 下，只有预览构建（LAB=1）才会加这个类；正式站不受影响。
+   不改任何答题、XP、红心、解锁规则，只改外观与排版。 */
+body.lab3 {
+  --l-ink: #171A1F; --l-paper: #FBF7F0; --l-card: #FFFFFF; --l-line: #E6DFD2; --l-muted: #5F5A50;
+  --l-copper: #A94F1B; --l-on-copper: #FFFFFF; --l-copper-soft: #F6E7DA;
+  --g-bg: var(--l-paper); --g-card: var(--l-card); --g-line: var(--l-line); --g-fg: var(--l-ink); --g-muted: var(--l-muted);
+  --g-primary: var(--l-ink); --g-on-primary: var(--l-paper);
+  --g-copper: var(--l-copper); --g-on-copper: var(--l-on-copper);
+  --g-ok: #1F6B4F; --g-ok-bg: #E4F1EA; --g-bad: #A33A2E; --g-bad-bg: #F8E6E1;
+  --g-locked: #ECE6DA; --g-trace: #E3DACB;
+  --g-code-bg: #171A1F; --g-code-fg: #F3EEE5;
+  --bg: var(--g-bg); --fg: var(--g-fg); --muted: var(--g-muted); --line: var(--g-line); --accent: var(--l-copper);
+  background: var(--l-paper);
+}
+@media (prefers-color-scheme: dark) {
+  body.lab3 {
+    --l-ink: #F3EEE5; --l-paper: #14171B; --l-card: #1E2227; --l-line: #30363D; --l-muted: #A8A296;
+    --l-copper: #E58F55; --l-on-copper: #14171B; --l-copper-soft: #3A2A1F;
+    --g-primary: #F3EEE5; --g-on-primary: #14171B;
+    --g-ok: #7FD1AE; --g-ok-bg: #17342B; --g-bad: #FFB3A3; --g-bad-bg: #3F2421;
+    --g-locked: #242A30; --g-trace: #262C33;
+    --g-code-bg: #0E1114; --g-code-fg: #F3EEE5;
+  }
+}
+body.lab3 #app { background: var(--l-paper); }
+
+/* ---------- 按钮：按压反馈（缩一点 + 变暗），铜橙为主按钮 ---------- */
+body.lab3 .btn3d { border-radius: 14px; transition: transform .09s ease, filter .09s ease, background-color .12s; }
+body.lab3 .btn3d:active:not(:disabled) { transform: scale(.975); filter: brightness(.92); }
+body.lab3 .btn3d.primary { background: var(--l-copper); border-color: var(--l-copper); color: var(--l-on-copper); }
+body.lab3 .btn3d:disabled { opacity: 1; background: var(--g-locked); border-color: var(--g-locked); color: var(--l-muted); }
+
+/* ---------- 地图：纵向铜线串起关卡行 ---------- */
+body.lab3 .unit-banner { border-radius: 14px; background: var(--l-ink); color: var(--l-paper); }
+body.lab3 .unit.locked .unit-banner { background: var(--g-locked); color: var(--l-muted); }
+body.lab3 .unit-no { color: var(--l-copper); font-weight: 700; }
+body.lab3 .unit-banner .unit-no { color: #E9A672; }
+body.lab3 .unit.locked .unit-banner .unit-no { color: var(--l-muted); }
+body.lab3 .path { align-items: stretch; gap: 0; padding: 14px 0 6px; }
+body.lab3 .path-item {
+  --line-x: 34px; transform: none; display: grid; grid-template-columns: 68px 1fr auto; grid-template-rows: auto auto;
+  align-items: center; column-gap: 8px; padding: 10px 10px 10px 0; position: relative; border-radius: 14px;
+}
+/* 铜线：每行上半段、下半段各画一次。走过的是实线铜色，没走到的是虚线 */
+body.lab3 .path-item::before, body.lab3 .path-item::after { content: ""; position: absolute; left: calc(var(--line-x) - 1.5px); width: 3px; z-index: 0; }
+body.lab3 .path-item::before { top: 0; bottom: 50%; }
+body.lab3 .path-item::after { top: 50%; bottom: 0; }
+body.lab3 .path-item.st-done::before, body.lab3 .path-item.st-done::after, body.lab3 .path-item.st-current::before { background: var(--l-copper); }
+body.lab3 .path-item.st-current::after, body.lab3 .path-item.st-locked::before, body.lab3 .path-item.st-locked::after {
+  background: repeating-linear-gradient(to bottom, var(--l-line) 0 6px, transparent 6px 11px); }
+body.lab3 .path-item:first-child::before, body.lab3 .path-item:last-child::after { display: none; }
+body.lab3 .node { grid-column: 1; grid-row: 1 / span 2; width: 68px; height: 68px; z-index: 1; justify-self: start; position: relative; }
+body.lab3 .node .hexnode { width: 48px; height: 48px; margin-left: 10px; }
+body.lab3 .node-label { grid-column: 2; grid-row: 1; align-self: end; background: none; padding: 0; margin: 0; font-size: 16px; color: var(--l-ink); text-align: left; }
+body.lab3 .row-sub { grid-column: 2; grid-row: 2; align-self: start; font-size: 13px; line-height: 1.4; color: var(--l-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.lab3 .row-sub b { font-weight: 700; }
+body.lab3 .bubble { grid-column: 3; grid-row: 1 / span 2; margin: 0; background: var(--l-copper); color: var(--l-on-copper); border: none; border-radius: 999px; padding: 8px 14px; font-size: 14px; position: static; }
+body.lab3 .bubble::after, body.lab3 .bubble::before { display: none; }
+/* 已完成：铜色小结点；未解锁：灰、淡 */
+body.lab3 .node.done { color: var(--l-copper); }
+body.lab3 .node.done .hex-body { stroke: var(--l-copper); }
+body.lab3 .node.done .hex-pad { fill: var(--l-copper); }
+body.lab3 .path-item.st-done .node-label { color: var(--l-muted); font-weight: 600; }
+body.lab3 .path-item.st-done .row-sub b { color: var(--g-ok); }
+body.lab3 .path-item.st-locked .node { opacity: .5; } /* 只淡化图标，文字保持可读对比度 */
+body.lab3 .path-item.st-locked .node-label { color: var(--l-muted); }
+/* 当前：整行是一张铜边卡片，节点放大，最醒目 */
+body.lab3 .path-item.st-current { background: var(--l-card); border: 2px solid var(--l-copper); margin: 6px 0; padding: 14px 12px 14px 0; box-shadow: 0 6px 18px rgba(169, 79, 27, .14); }
+body.lab3 .path-item.st-current .node { width: 76px; height: 76px; }
+body.lab3 .path-item.st-current .node .hexnode { width: 60px; height: 60px; margin-left: 8px; }
+body.lab3 .node.current { color: var(--l-copper); }
+body.lab3 .node.current .hex-body { stroke: var(--l-copper); }
+body.lab3 .node.current .hex-pad, body.lab3 .node.current .hex-ring { fill: var(--l-copper); }
+body.lab3 .path-item.st-current .node-label { font-size: 18px; }
+body.lab3 .path-item.st-current .row-sub b { color: var(--l-copper); }
+body.lab3 .path-item.st-current { --line-x: 38px; }
+body.lab3 .path-item.st-current::before { top: -6px; }
+body.lab3 .path-item.st-current::after { bottom: -6px; }
+
+/* ---------- 答题页：题干 / 代码 / 选项 三块分清 ---------- */
+body.lab3 .lesson { padding: 10px 18px 24px; }
+body.lab3 .q { font-size: 20px; font-weight: 700; line-height: 1.5; margin: 4px 0 16px; }
+body.lab3 .q::before { content: "题干"; display: block; font-size: 12px; font-weight: 700; letter-spacing: .12em; color: var(--l-copper); margin-bottom: 4px; }
+body.lab3 .codeblock { position: relative; border-radius: 14px; padding: 34px 14px 14px; }
+body.lab3 .codeblock::before { content: "代码"; position: absolute; left: 14px; top: 9px; font: 700 12px/1 system-ui, sans-serif; letter-spacing: .12em; color: #E9A672; }
+body.lab3 .choices { display: flex; flex-direction: column; gap: 10px; margin: 20px 0 10px; counter-reset: opt; }
+body.lab3 .choices::before { content: "选项"; font-size: 12px; font-weight: 700; letter-spacing: .12em; color: var(--l-copper); }
+body.lab3 .choice { counter-increment: opt; display: flex; align-items: center; gap: 12px; text-align: left; border-radius: 14px; min-height: 56px; padding: 10px 14px; border-width: 1.5px; background: var(--l-card); transition: transform .09s ease, border-color .1s, background-color .1s; }
+body.lab3 .choice::before { content: counter(opt, upper-alpha); flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: 700 14px/1 system-ui, sans-serif; border: 1.5px solid var(--l-line); color: var(--l-muted); }
+body.lab3 .choice:active { transform: scale(.98); }
+body.lab3 .choice.sel { border-color: var(--l-copper); border-width: 2px; padding: 9.5px 13.5px; background: var(--l-copper-soft); }
+body.lab3 .choice.sel::before { background: var(--l-copper); border-color: var(--l-copper); color: var(--l-on-copper); }
+body.lab3 .choice.right { border-color: var(--g-ok); background: var(--g-ok-bg); }
+body.lab3 .choice.right::before { background: var(--g-ok); border-color: var(--g-ok); color: var(--g-ok-bg); }
+body.lab3 .choice.wrong { border-color: var(--g-bad); background: var(--g-bad-bg); }
+body.lab3 .choice.wrong::before { background: var(--g-bad); border-color: var(--g-bad); color: var(--g-bad-bg); }
+body.lab3 .tip-line { border-left-color: var(--l-copper); }
+
+/* ---------- 底部固定栏：检查 / 继续 ---------- */
+body.lab3 .lessonfoot { background: var(--l-paper); border-top: 1.5px solid var(--l-line); }
+body.lab3 .lessonfoot .grow { flex: 1; }
+body.lab3 .feedbar { border-top: 2px solid currentColor; }
+body.lab3 .fb-head b { font-size: 20px; }
+body.lab3 .feedbar .fb-next { font-weight: 700; color: var(--g-fg); margin: 4px 0 8px; }
+body.lab3 .feedbar.ok .btn3d, body.lab3 .feedbar.ok .btn3d:disabled { background: var(--g-ok); border-color: var(--g-ok); color: var(--g-ok-bg); }
+body.lab3 .feedbar.bad .btn3d, body.lab3 .feedbar.bad .btn3d:disabled { background: var(--g-bad); border-color: var(--g-bad); color: var(--g-bad-bg); }
+body.lab3 .feedbar .btn3d:disabled { opacity: .7; }
+
+/* 预览提示：在页面流里（不盖住状态栏、不挡内容） */
+body.lab3 .lab-tag { margin: 0 0 12px; padding: 6px 12px; border-radius: 10px; background: var(--l-copper-soft); color: var(--l-ink); font-size: 13px; line-height: 1.4; }
+body.lab3 .lab-tag b { color: var(--l-copper); }
