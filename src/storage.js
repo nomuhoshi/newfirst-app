@@ -31,6 +31,33 @@ function migrateOld(old) {
   return { state: s, notice: "课程改版为关卡模式，旧版的学习记录不再使用，请从第一关开始。" };
 }
 
+// 读不懂的本机记录（损坏、版本不认识、旧版）在被空记录覆盖之前，原样留一份。
+// app.js 会在提示“已从头开始”后立刻把空记录存回去，没有这一步，原来的进度就永远没了。
+// 最多留 3 份（最新的）；备份本身失败（存储满、被禁用）不能让页面出错。
+// 只有用户主动点“清除学习记录”才会真正清空，那条路不经过这里。
+const STASH_PREFIX = "suipian.progress.unreadable.";
+const STASH_KEEP = 3;
+function stashUnreadable(raw) {
+  try {
+    localStorage.setItem(STASH_PREFIX + Date.now(), raw);
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(STASH_PREFIX)) keys.push(k); }
+    keys.sort(); // 时间戳位数相同，字典序就是时间序
+    while (keys.length > STASH_KEEP) localStorage.removeItem(keys.shift());
+  } catch { /* 忽略 */ }
+}
+// 列出已备份的读不懂的记录（最新的在前），供排查或以后的“找回”入口使用
+export function listUnreadable() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(STASH_PREFIX)) out.push({ key: k, savedAt: Number(k.slice(STASH_PREFIX.length)), raw: localStorage.getItem(k) });
+    }
+  } catch { /* 忽略 */ }
+  return out.sort((a, b) => b.savedAt - a.savedAt);
+}
+
 export function loadState() {
   let raw;
   try {
@@ -43,10 +70,11 @@ export function loadState() {
   try {
     data = JSON.parse(raw);
   } catch {
+    stashUnreadable(raw);
     return { state: freshState(), notice: "本机记录损坏，已从头开始。" };
   }
-  if (data && (data.version === 1 || data.version === 2)) return migrateOld(data);
-  if (!data || data.version !== DATA_VERSION) return { state: freshState(), notice: "学习记录的格式无法识别，已从头开始。" };
+  if (data && (data.version === 1 || data.version === 2)) { stashUnreadable(raw); return migrateOld(data); }
+  if (!data || data.version !== DATA_VERSION) { stashUnreadable(raw); return { state: freshState(), notice: "学习记录的格式无法识别，已从头开始。" }; }
   // 旧的 v3 记录只补新增的偏好，学习进度原样保留
   const base = freshState();
   const prefs = { ...base.prefs, ...(data.prefs && typeof data.prefs === "object" ? data.prefs : {}) };
