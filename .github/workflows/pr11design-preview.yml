@@ -1,0 +1,37 @@
+# 墨蓝设计预览：用 PREVIEW_ID=pr11design 构建（本地存储键前缀 pr11design:、缓存前缀 pr11design-suipian-），推到分支 preview-dist-pr11design。
+# 只在 sonnet/11-integrated-design 分支运行（源码与 release/rc-1 相同，只多这个工作流文件）；不部署任何网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 pr11design/ 目录。
+name: PR11 design preview
+on:
+  push:
+    branches: [sonnet/11-integrated-design]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: pr11design-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 构建（云端关闭（不给测试项目配置），永远不连正式项目）
+        env:
+          PREVIEW_ID: pr11design
+        run: npm run build
+      - name: 检查隔离：构建里有 pr11design 前缀、缓存前缀不是 suipian-
+        run: |
+          grep -q 'PREFIX = "pr11design-suipian-"' dist/sw.js
+          grep -rq 'pr11design' dist/assets/main-*.js
+      - name: 推到 preview-dist-pr11design
+        run: |
+          cd dist
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "pr11design test entry from ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist:preview-dist-pr11design
