@@ -1,4 +1,4 @@
-// 第 5 单元第 1 部分（U5L1–U5L4）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
+// 第 5 单元（U5L1–U5L7，第 1、2 部分）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
 // 运行：npm run build && node tests/step8-u5.test.mjs [chromium|webkit]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -27,7 +27,7 @@ const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 
-check("U1–U4 通关后 U5L1 是当前关，U5L2–L4 锁定", await page.evaluate(() => document.querySelector('[data-lesson="U5L1"]')?.classList.contains("current") && ["U5L2", "U5L3", "U5L4"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
+check("U1–U4 通关后 U5L1 是当前关，U5L2–L7 锁定（共 7 关）", unitN.lessons.length === 7 && await page.evaluate(() => document.querySelector('[data-lesson="U5L1"]')?.classList.contains("current") && ["U5L2", "U5L3", "U5L4", "U5L5", "U5L6", "U5L7"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
 check("第 6 单元仍显示即将推出", (await page.locator(".unit.locked").count()) === 1);
 
 async function answer(ex, right) {
@@ -43,7 +43,7 @@ async function answer(ex, right) {
   }
 }
 for (const l of unitN.lessons) {
-  // 每关故意答错一次会扣 1 颗红心；8 关会扣光，所以每关开始前补满（只改测试状态，不改红心规则）
+  // 每关故意答错一次会扣 1 颗红心；多关会扣光，所以每关开始前补满（只改测试状态，不改红心规则）
   await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); });
   await page.locator(`[data-lesson="${l.id}"]`).click(); await page.locator(".overlay .btn3d.primary").click();
   await page.getByRole("button", { name: "继续", exact: true }).click(); // 讲解页
