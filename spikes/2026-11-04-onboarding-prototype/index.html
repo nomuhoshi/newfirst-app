@@ -1,0 +1,306 @@
+<title>碎碎第一题原型</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 布局：整页就是手机 App（单列、底部操作区固定），色值取自 src/game.css，不新增主色 */
+:root{
+  --g-bg:#F7F5F0;--g-card:#FFFFFF;--g-line:#DDD8CC;--g-fg:#172B3A;--g-muted:#5B6B76;
+  --g-primary:#234E70;--g-on-primary:#FFFFFF;--g-copper:#B75532;
+  --g-ok:#176B59;--g-ok-bg:#E3F1EC;--g-bad:#A43C32;--g-bad-bg:#F8E4E0;--g-locked:#E4E0D6;
+  --g-code-bg:#172B3A;--g-code-fg:#EAF0F3;--g-tk-str:#F3BA87;--g-tk-fn:#8ED7B8;
+  --m-ink:#172B3A;--m-paper:#FFFFFF;
+  --glass:rgba(169,204,224,.30);--glass-edge:#6F9AB8;
+  --rubber:#E3956E;--rubber-deep:#C4683F;--rubber-eye:#172B3A;
+  --cork:#CDA674;--cork-dot:#8A6440;--cork-edge:#6B4A2B;--cork-eye:#172B3A;--board:#D8B98C;
+  --f-ui:-apple-system,"PingFang SC","Hiragino Sans",system-ui,sans-serif;
+  --f-code:ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --g-bg:#101E28;--g-card:#1A2D39;--g-line:#2C4352;--g-fg:#EAF0F3;--g-muted:#9FB1BC;
+  --g-primary:#A9CCE0;--g-on-primary:#102431;--g-copper:#F3BA87;
+  --g-ok:#8ED7B8;--g-ok-bg:#17382F;--g-bad:#FFB3A3;--g-bad-bg:#3F2421;--g-locked:#243845;
+  --g-code-bg:#0B1820;--m-ink:#EAF0F3;--m-paper:#1A2D39;
+  --glass:rgba(169,204,224,.18);--glass-edge:#A9CCE0;
+  --rubber:#C4683F;--rubber-deep:#8F4626;--rubber-eye:#F7F5F0;
+  --cork:#8A6A45;--cork-dot:#5E4428;--cork-edge:#D9BC94;--cork-eye:#F7F5F0;--board:#6E5434;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --g-bg:#101E28;--g-card:#1A2D39;--g-line:#2C4352;--g-fg:#EAF0F3;--g-muted:#9FB1BC;
+  --g-primary:#A9CCE0;--g-on-primary:#102431;--g-copper:#F3BA87;
+  --g-ok:#8ED7B8;--g-ok-bg:#17382F;--g-bad:#FFB3A3;--g-bad-bg:#3F2421;--g-locked:#243845;
+  --g-code-bg:#0B1820;--m-ink:#EAF0F3;--m-paper:#1A2D39;
+  --glass:rgba(169,204,224,.18);--glass-edge:#A9CCE0;
+  --rubber:#C4683F;--rubber-deep:#8F4626;--rubber-eye:#F7F5F0;
+  --cork:#8A6A45;--cork-dot:#5E4428;--cork-edge:#D9BC94;--cork-eye:#F7F5F0;--board:#6E5434;
+  color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--g-bg);color:var(--g-fg);font-family:var(--f-ui);margin:0;overflow:hidden}
+#app{height:100%;max-width:480px;margin:0 auto;display:flex;flex-direction:column;position:relative;
+  padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px))}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid var(--g-copper);outline-offset:2px}
+.btn3d{min-height:52px;border-radius:12px;font-size:17px;font-weight:700;letter-spacing:.3px;padding:0 20px;
+  background:var(--g-card);color:var(--g-fg);border:1.5px solid var(--g-line);transition:transform .08s}
+.btn3d:active:not(:disabled){transform:translateY(1px)}
+.btn3d.primary{background:var(--g-primary);color:var(--g-on-primary);border-color:var(--g-primary)}
+.btn3d.danger{background:var(--g-bad);color:var(--g-card);border-color:var(--g-bad)}
+.btn3d:disabled{background:var(--g-locked);border-color:var(--g-locked);color:var(--g-muted)}
+.wide{width:100%}
+
+/* 欢迎 */
+.welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px 24px 0}
+.welcome h1{font-size:26px;line-height:1.3;margin:8px 0 0;text-wrap:balance}
+.welcome p{margin:0;color:var(--g-muted);font-size:15px}
+.wfoot{padding:16px 20px calc(20px + env(safe-area-inset-bottom))}
+
+/* 题目 */
+.lessonbar{display:flex;align-items:center;gap:12px;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top))}
+.xbtn{width:40px;height:40px;border:none;background:none;color:var(--g-muted);display:grid;place-items:center}
+.progress{flex:1;height:14px;border-radius:7px;background:var(--g-line);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--g-copper);border-radius:7px;transition:width .3s}
+.hearts{display:flex;align-items:center;gap:4px;font-weight:700;color:var(--g-bad);font-variant-numeric:tabular-nums;min-width:40px}
+.hearts.hit{animation:hit .4s}
+@keyframes hit{30%{transform:scale(1.3)}}
+.lesson{flex:1 1 auto;overflow:auto;padding:4px 18px 16px;display:flex;flex-direction:column;gap:12px}
+.story{font-size:14px;color:var(--g-muted);background:var(--g-card);border:1.5px solid var(--g-line);border-radius:10px;padding:8px 12px;line-height:1.5}
+.prompt{font-size:18px;font-weight:700;line-height:1.45;margin:0}
+.codeblock{background:var(--g-code-bg);color:var(--g-code-fg);border-radius:12px;padding:14px 12px;font:17px/1.75 var(--f-code);position:relative;
+  min-height:72px;transition:box-shadow .15s}
+.codeblock .fn{color:var(--g-tk-fn)}.codeblock .str{color:var(--g-tk-str)}
+.choices{display:flex;flex-direction:column;gap:10px}
+.choice{border:1.5px solid var(--g-line);background:var(--g-card);border-radius:12px;padding:12px;min-height:56px;text-align:left}
+.choice pre{margin:0;font:16px/1.5 var(--f-code);white-space:pre-wrap}
+.choice.sel{border-color:var(--g-primary);border-width:2.5px;padding:11px}
+.choice.right{border-color:var(--g-ok);background:var(--g-ok-bg)}
+.choice.wrong{border-color:var(--g-bad);background:var(--g-bad-bg)}
+.lessonfoot{display:flex;align-items:center;gap:12px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));border-top:1.5px solid var(--g-line);position:relative}
+.feedbar{padding:14px 16px calc(14px + env(safe-area-inset-bottom));animation:fbin .16s ease-out;display:flex;flex-direction:column;gap:6px;position:relative}
+@keyframes fbin{from{opacity:0;transform:translateY(8px)}}
+.feedbar.ok{background:var(--g-ok-bg);color:var(--g-ok)}
+.feedbar.bad{background:var(--g-bad-bg);color:var(--g-bad)}
+.fb-head{display:flex;align-items:center;gap:8px;font-size:22px}
+.fb-xp{font-size:16px;font-weight:700}
+.feedbar p{margin:0;font-size:15px;line-height:1.6;color:var(--g-fg)}
+.feedbar code{white-space:pre-wrap;background:var(--g-card);padding:2px 6px;border-radius:6px;font-family:var(--f-code)}
+.fb-row{display:flex;gap:12px;align-items:center;margin-top:6px}
+.fb-row .btn3d{flex:1}
+
+/* 碎碎 */
+.slot{width:60px;height:60px;flex:none;position:relative}
+.suisui{position:absolute;left:0;top:0;width:60px;height:60px;touch-action:none;cursor:grab;z-index:30;border:none;background:none;padding:0}
+.suisui.dragging{cursor:grabbing;transition:none}
+.suisui.home{transition:transform .25s ease-out}
+.suisui svg{width:100%;height:100%;overflow:visible;display:block}
+.target-hot{box-shadow:0 0 0 3px var(--g-copper)}
+.bubble{position:absolute;bottom:calc(100% + 8px);left:12px;max-width:min(300px,calc(100vw - 40px));background:var(--g-card);color:var(--g-fg);
+  border:1.5px solid var(--g-line);border-radius:12px 12px 12px 4px;padding:8px 12px;font-size:14px;line-height:1.5;z-index:25;animation:fbin .18s ease-out;font-weight:400}
+.mat-tag{font-size:12px;font-weight:700;color:var(--g-muted);letter-spacing:.06em}
+
+/* 动效：时长取自交接原型参数表 T */
+@keyframes glass-pop{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes rubber{0%,100%{transform:scale(1,1)}20%{transform:scale(1.2,.8)}45%{transform:scale(.92,1.1)}65%{transform:scale(1.06,.94)}85%{transform:scale(.99,1.02)}}
+@keyframes cork{0%{transform:translateY(-24px) rotate(0)}60%{transform:translateY(0) scale(.95) rotate(-3deg)}100%{transform:rotate(-3deg)}}
+@keyframes shine{from{transform:translateY(-110%)}to{transform:translateY(110%)}}
+@keyframes spark{0%{opacity:0;transform:scale(.6)}40%{opacity:1}100%{opacity:0;transform:scale(1.4)}}
+.fx-glass svg{animation:glass-pop .24s ease-out}.fx-glass .shine{animation:shine .62s ease-out}
+.fx-rubber svg{transform-origin:50% 95%;animation:rubber .42s ease-out}
+.fx-cork svg{animation:cork .22s ease-out forwards}
+.cel .spark{animation:spark .6s ease-out}
+@media (prefers-reduced-motion:reduce){.fx-glass svg,.fx-glass .shine,.fx-rubber svg,.fx-cork svg,.cel .spark{animation:none}.suisui.home{transition:none}}
+
+/* 软木板（第一关结束） */
+.finish{flex:1;overflow:auto;padding:12px 18px 16px;display:flex;flex-direction:column;gap:14px}
+.finish h1{font-size:26px;margin:6px 0 0}
+.board{background:var(--board);border-radius:14px;padding:18px 14px 14px;min-height:150px;display:flex;flex-direction:column;gap:10px;position:relative;
+  background-image:radial-gradient(var(--cork-dot) 1px,transparent 1.5px);background-size:9px 9px;border:2px solid var(--cork-edge)}
+.board .note{background:var(--g-card);border-radius:6px;padding:8px 10px;font-size:14px;transform:rotate(-1deg);box-shadow:0 1px 0 var(--cork-edge)}
+.board .note b{font-family:var(--f-code);font-weight:400}
+.board-label{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--g-on-primary);background:var(--g-primary);align-self:flex-start;border-radius:6px;padding:2px 8px}
+
+/* 原型工具（不属于产品） */
+.proto{z-index:50;flex:none;
+  border:1.5px dashed var(--g-muted);background:var(--g-bg);color:var(--g-muted);border-radius:16px;min-height:32px;padding:0 10px;font-size:12px;font-weight:700}
+.welcome-proto{position:absolute;top:max(12px,env(safe-area-inset-top,0px));right:12px}
+.proto-sheet{position:fixed;inset:auto 0 0 0;z-index:60;background:var(--g-card);border-top:1.5px solid var(--g-line);border-radius:16px 16px 0 0;
+  padding:16px max(18px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left,0px));max-height:80%;overflow:auto;
+  max-width:480px;margin:0 auto;font-size:14px;line-height:1.6}
+.proto-sheet h2{font-size:16px;margin:0 0 6px}
+.proto-sheet ol{padding-left:1.3em;margin:0 0 12px}
+.jumps{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.jumps button{min-height:40px;border-radius:20px;border:1.5px solid var(--g-line);background:var(--g-bg);padding:0 12px;font-weight:700;font-size:13px}
+.scrim{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.25)}
+</style>
+
+<div id="app"></div>
+
+<script>
+/* ---------- 数据：U1L1 原版第 1、2 题（content/unit1.json） ---------- */
+const Q1={story:"街角的奶茶店想要一块点单屏。第一步：让屏幕显示文字。",prompt:"点单屏运行这段程序，屏幕上会显示什么？",code:'print("欢迎光临！")',
+  options:[{text:"欢迎光临！",correct:true,why:"print(...) 会把括号里的内容显示到屏幕上。"},
+    {text:'"欢迎光临！"',correct:false,why:"引号只是告诉 Python「这是一段文字」，引号本身不会显示。"},
+    {text:'print("欢迎光临！")',correct:false,why:"print、括号和引号是写给 Python 看的，屏幕上只显示引号里的文字。"}]};
+const Q2={prompt:"屏幕要显示：今日推荐：珍珠奶茶",code:"print( ▢ )"};
+
+/* ---------- 碎碎 SVG（规则见 docs/16 §二） ---------- */
+const NS="http://www.w3.org/2000/svg";
+function el(t,a,...k){const e=document.createElementNS(NS,t);for(const n in a)e.setAttribute(n,a[n]);k.flat().forEach(c=>c&&e.appendChild(c));return e}
+function h(t,a={},...k){const e=document.createElement(t);for(const n in a){if(n==="text")e.textContent=a[n];else if(n.startsWith("on"))e.addEventListener(n.slice(2),a[n]);else e.setAttribute(n,a[n])}k.flat().forEach(c=>c!=null&&e.append(c));return e}
+const BODY="M22 12H66L90 36V82L83 88L76 83L68 89L60 83L52 89L44 83L36 89L28 83L20 88L12 82V22Q12 12 22 12Z",FOLD="M66 12L90 36H76Q66 36 66 26Z";
+const MAT={paper:{fill:"var(--m-paper)",stroke:"var(--m-ink)",sw:2.5,fold:"var(--g-copper)",eye:"var(--m-ink)"},
+  glass:{fill:"var(--glass)",stroke:"var(--glass-edge)",sw:1.5,fold:"transparent",fs:"var(--g-copper)",eye:"var(--g-code-fg)"},
+  rubber:{fill:"var(--rubber)",stroke:"var(--rubber-deep)",sw:4,fold:"var(--rubber-deep)",eye:"var(--rubber-eye)"},
+  cork:{fill:"var(--cork)",stroke:"var(--cork-edge)",sw:2.5,fold:"var(--g-copper)",eye:"var(--cork-eye)"}};
+const EYES={happy:["M36 44Q31 51 36 58","M64 44Q69 51 64 58"],think:["M37 40Q32 47 37 54","M66 40Q71 47 66 54"],
+  companion:["M31 50Q36 56 41 50","M59 50Q64 56 69 50"],celebrate:["M31 54Q36 46 41 54","M59 54Q64 46 69 54"]};
+const MOUTH={happy:"M42 68Q50 75 58 68",think:"M45 69H57",companion:"M44 68Q50 72 56 68",celebrate:"M42 66Q50 80 58 66z"};
+let uid=0;
+function suisuiSVG(m,mood){
+  const s=MAT[m],id="c"+(uid++),eye=s.eye;
+  const line=d=>el("path",{d,fill:"none",stroke:eye,"stroke-width":4,"stroke-linecap":"round"});
+  const feet=m==="glass"?"var(--glass-edge)":s.stroke;
+  const k=[el("rect",{x:26,y:86,width:14,height:9,rx:3,fill:feet}),el("rect",{x:60,y:86,width:14,height:9,rx:3,fill:feet}),
+    el("path",{d:BODY,fill:s.fill,stroke:s.stroke,"stroke-width":s.sw,"stroke-linejoin":"round"})];
+  if(m==="cork"){k.push(el("clipPath",{id},el("path",{d:BODY})));const g=el("g",{"clip-path":`url(#${id})`});
+    [[24,26],[40,20],[30,40],[52,32],[22,62],[78,52],[48,80],[70,72],[34,74],[82,70],[58,54],[20,48]].forEach(([x,y])=>g.append(el("circle",{cx:x,cy:y,r:1.8,fill:"var(--cork-dot)"})));k.push(g)}
+  if(m==="rubber")k.push(el("path",{d:"M14 76Q50 84 88 76",fill:"none",stroke:"var(--rubber-deep)","stroke-width":3,opacity:.55,"stroke-linecap":"round"}));
+  k.push(el("path",{d:FOLD,fill:s.fold,stroke:s.fs||s.stroke,"stroke-width":m==="glass"?1.5:s.sw,"stroke-linejoin":"round"}));
+  if(m==="glass"){k.push(el("path",{d:"M20 30L32 18M20 42L42 20",stroke:"#FFFFFF","stroke-width":3,"stroke-linecap":"round",opacity:.8}));
+    k.push(el("clipPath",{id},el("path",{d:BODY})));k.push(el("g",{"clip-path":`url(#${id})`},el("rect",{class:"shine",x:0,y:0,width:100,height:30,fill:"#FFFFFF",opacity:.35})))}
+  if(m==="cork"){k.push(el("circle",{cx:79,cy:25,r:6,fill:"var(--g-copper)",stroke:"var(--cork-edge)","stroke-width":1.5}));k.push(el("circle",{cx:77,cy:23,r:1.8,fill:"#FFFFFF",opacity:.7}))}
+  EYES[mood].forEach(d=>k.push(line(d)));
+  k.push(mood==="celebrate"?el("path",{d:MOUTH[mood],fill:eye,stroke:eye,"stroke-width":3,"stroke-linejoin":"round"}):line(MOUTH[mood]));
+  if(mood==="celebrate")k.push(el("path",{class:"spark",d:"M6 8v10M1 13h10M96 4v8M92 8h8",stroke:"var(--g-copper)","stroke-width":3,"stroke-linecap":"round"}));
+  return el("svg",{viewBox:"-2 4 104 94","aria-hidden":"true"},k);
+}
+
+/* ---------- 状态 ---------- */
+const S={hearts:5,xp:0,picked:null,result:null,said:{}};
+const LINES={glass:"碰到什么我就变成什么。现在是玻璃，帮你看穿代码。",rubber:"碰到按键，我变成橡胶，弹一下！",cork:"错题我先钉在这儿，等会儿再来。",hint:"拖我去碰一碰代码、按钮或软木板，我会变身。"};
+const app=document.getElementById("app");
+const ICON={x:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  heart:'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.4C.9 8.1 3.2 4.5 6.7 4.5c2.1 0 3.6 1.2 5.3 3.1 1.7-1.9 3.2-3.1 5.3-3.1 3.5 0 5.8 3.6 4.3 7.1C19.5 16.4 12 21 12 21z"/></svg>',
+  check:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  cross:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>'};
+const ic=n=>{const s=h("span",{"aria-hidden":"true"});s.innerHTML=ICON[n];s.style.display="inline-flex";return s};
+
+/* ---------- 碎碎：拖到物体上就变身；点一下给提示 ---------- */
+let mascot=null;
+function makeMascot(slot,mood,targets){
+  const b=h("button",{class:"suisui home","aria-label":"碎碎（可拖动）"});
+  b.mat="paper";b.mood=mood;b.append(suisuiSVG("paper",mood));
+  if(mood==="celebrate"){b.classList.add("cel")}
+  slot.append(b);mascot={b,slot,targets};
+  let sx,sy,moved=false,id=null;
+  b.addEventListener("pointerdown",e=>{id=e.pointerId;b.setPointerCapture(id);sx=e.clientX;sy=e.clientY;moved=false;b.classList.remove("home");b.classList.add("dragging")});
+  b.addEventListener("pointermove",e=>{if(e.pointerId!==id)return;const dx=e.clientX-sx,dy=e.clientY-sy;if(Math.hypot(dx,dy)>6)moved=true;
+    b.style.transform=`translate(${dx}px,${dy}px)`;const t=hitTarget(e.clientX,e.clientY);targets.forEach(x=>x.el.classList.toggle("target-hot",x===t))});
+  b.addEventListener("pointerup",e=>{if(e.pointerId!==id)return;id=null;b.classList.remove("dragging");targets.forEach(x=>x.el.classList.remove("target-hot"));
+    const t=moved?hitTarget(e.clientX,e.clientY):null;
+    if(t){perch(t,e)}else if(!moved){say(b.mat==="paper"?LINES.hint:"这是"+NAME[b.mat]+"。拖我去碰别的东西试试。");goHome()}else{goHome();setMat("paper")}});
+  b.addEventListener("pointercancel",()=>{goHome()});
+  b.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();const t=targets[0];if(t)perch(t)}});
+}
+const NAME={paper:"纸",glass:"玻璃",rubber:"橡胶",cork:"软木"};
+function hitTarget(x,y){return mascot.targets.find(t=>{const r=t.el.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom})||null}
+function perch(t){ // 玻璃 / 软木：落进物体右下角（能透过玻璃看到代码）；橡胶：碰一下按键就弹回原位
+  const b=mascot.b,sr=mascot.slot.getBoundingClientRect(),r=t.el.getBoundingClientRect();
+  b.classList.add("home");
+  if(t.mat==="rubber"){b.style.transform=""}
+  else{const x=r.right-66-sr.left,y=r.bottom-64-sr.top;b.style.transform=`translate(${x}px,${y}px)`}
+  setMat(t.mat);if(!S.said[t.mat]){S.said[t.mat]=1;say(LINES[t.mat])}
+}
+function goHome(){const b=mascot.b;b.classList.add("home");b.style.transform=""}
+function setMat(m){const b=mascot.b;if(b.mat===m)return;b.mat=m;b.replaceChildren(suisuiSVG(m,m==="glass"?"think":b.mood));
+  b.className="suisui home"+(b.mood==="celebrate"&&m==="paper"?" cel":"");void b.offsetWidth;if(m!=="paper")b.classList.add("fx-"+m);
+  b.setAttribute("aria-label","碎碎：现在是"+NAME[m])}
+let bubbleT;
+function say(text){document.querySelectorAll(".bubble").forEach(x=>x.remove());const bb=h("div",{class:"bubble",role:"status",text});
+  mascot.slot.closest(".lessonfoot,.feedbar,.wfoot,.finishfoot").append(bb);clearTimeout(bubbleT);bubbleT=setTimeout(()=>bb.remove(),3200)}
+
+/* ---------- 页面 ---------- */
+function bar(pct){return h("header",{class:"lessonbar"},h("button",{class:"xbtn","aria-label":"退出",onclick:()=>go("welcome")},ic("x")),
+  h("div",{class:"progress",role:"progressbar","aria-valuenow":pct,"aria-valuemin":0,"aria-valuemax":100},(()=>{const i=h("i");i.style.width=pct+"%";return i})()),
+  h("span",{class:"hearts",id:"hearts","aria-label":"红心 "+S.hearts},ic("heart"),String(S.hearts)))}
+function code(src){const d=h("div",{class:"codeblock"});let last=0;src.replace(/("[^"]*")|(print)/g,(m,str,fn,i)=>{d.append(src.slice(last,i),h("span",{class:str?"str":"fn",text:m}));last=i+m.length});d.append(src.slice(last));return d}
+
+function vWelcome(){
+  Object.assign(S,{hearts:5,xp:0,picked:null,result:null,said:{}});
+  const big=h("div",{style:"width:120px;height:120px"});big.append(suisuiSVG("paper","happy"));
+  app.replaceChildren(h("main",{class:"welcome"},big,h("h1",{text:"点一点，学会 Python"}),h("p",{text:"每关约 2 分钟 · 全程点选 · 免费"})),
+    h("div",{class:"wfoot"},h("button",{class:"btn3d primary wide",onclick:()=>go("question"),"data-act":"start",text:"开始"})));
+}
+function vQuestion(){
+  S.picked=null;
+  const cb=code(Q1.code);
+  const check=h("button",{class:"btn3d primary",style:"flex:1",disabled:"",text:"检查","data-act":"check",onclick:()=>submit()});
+  const choices=h("div",{class:"choices",role:"radiogroup"},Q1.options.map((o,i)=>{const c=h("button",{class:"choice",role:"radio","aria-checked":"false","data-i":i,
+    onclick:()=>{S.picked=i;choices.querySelectorAll(".choice").forEach(x=>{x.classList.toggle("sel",x===c);x.setAttribute("aria-checked",String(x===c))});check.disabled=false}},h("pre",{text:o.text}));return c}));
+  const slot=h("div",{class:"slot"});
+  app.replaceChildren(bar(0),h("main",{class:"lesson"},h("div",{class:"story",text:Q1.story}),h("p",{class:"prompt",text:Q1.prompt}),cb,choices),
+    h("footer",{class:"lessonfoot"},slot,check));
+  makeMascot(slot,"think",[{el:cb,mat:"glass"},{el:check,mat:"rubber"}]);
+}
+function submit(force){
+  const i=force!=null?force:S.picked;const o=Q1.options[i];const ok=o.correct;
+  if(force!=null){vQuestion();S.picked=i;const c=document.querySelector(`.choice[data-i="${i}"]`);c.classList.add("sel")}
+  document.querySelectorAll(".choice").forEach(x=>{x.disabled=true;const k=+x.dataset.i;if(k===i)x.classList.add(ok?"right":"wrong")});
+  if(ok){S.xp+=10}else{S.hearts-=1;const hs=document.getElementById("hearts");hs.lastChild.textContent=String(S.hearts);hs.setAttribute("aria-label","红心 "+S.hearts);hs.classList.add("hit")}
+  document.querySelector(".progress i").style.width="25%";
+  const cont=h("button",{class:"btn3d "+(ok?"primary":"danger"),text:"继续","data-act":"continue",onclick:()=>go(ok?"next":"cork")});
+  const slot=h("div",{class:"slot"});
+  const fb=h("div",{class:"feedbar "+(ok?"ok":"bad"),role:"status"},
+    h("div",{class:"fb-head"},ic(ok?"check":"cross"),h("b",{text:ok?"答对了！":"不对哦"}),ok?h("span",{class:"fb-xp",text:"+10 XP"}):null),
+    h("p",{text:o.why}),
+    !ok?h("p",{},"正确答案：",h("code",{text:Q1.options.find(x=>x.correct).text})):null,
+    !ok?h("p",{class:"fb-heart",style:"display:flex;gap:6px;align-items:center"},(()=>{const s=ic("heart");s.style.color="var(--g-bad)";return s})(),`红心 -1（剩 ${S.hearts} 颗）。这道题稍后再做一次。`):null,
+    h("div",{class:"fb-row"},slot,cont));
+  document.querySelector(".lessonfoot").replaceWith(fb);
+  makeMascot(slot,ok?"celebrate":"companion",[{el:cont,mat:"rubber"},{el:document.querySelector(".codeblock"),mat:"glass"}]);
+  S.result=ok?"correct":"wrong";history.replaceState(null,"","#"+S.result);
+}
+function vNext(){
+  const slot=h("div",{class:"slot"}),cb=code(Q2.code),ck=h("button",{class:"btn3d primary",style:"flex:1",disabled:"",text:"检查"});
+  app.replaceChildren(bar(25),h("main",{class:"lesson"},h("p",{class:"prompt",text:Q2.prompt}),cb,
+    h("div",{class:"story",text:"这是第 2 题（填空题）。原型只做到这里，试玩结束。"}),
+    h("button",{class:"btn3d wide","data-act":"play",text:"体验三种变身",onclick:()=>{say("把我拖到代码上、按钮上试试，再点「去软木板」。");setTimeout(()=>{},0)}}),
+    h("button",{class:"btn3d wide","data-act":"to-cork",text:"去软木板",onclick:()=>go("cork")})),
+    h("footer",{class:"lessonfoot"},slot,ck));
+  makeMascot(slot,"happy",[{el:cb,mat:"glass"},{el:ck,mat:"rubber"}]);
+}
+function vCork(){
+  const slot=h("div",{class:"slot"});
+  const board=h("div",{class:"board"},h("span",{class:"board-label",text:"错题板"}),
+    h("div",{class:"note"},"第 1 题　",h("b",{text:'print("欢迎光临！")'}),"　显示什么？"));
+  app.replaceChildren(h("main",{class:"finish"},h("p",{class:"mat-tag",text:"第一关结束（原型演示状态）"}),h("h1",{text:"错题先钉在这里"}),
+      h("p",{style:"margin:0;color:var(--g-muted);font-size:15px;line-height:1.6",text:"答错的题会在关卡最后再做一次。把碎碎拖到软木板上，它会变成软木。"}),board),
+    h("footer",{class:"lessonfoot finishfoot"},slot,h("button",{class:"btn3d primary",style:"flex:1",text:"去下一题",onclick:()=>go("next")})));
+  makeMascot(slot,"companion",[{el:board,mat:"cork"}]);
+}
+
+/* ---------- 路由：#welcome #question #correct #wrong #next #cork ---------- */
+function go(v){if(location.hash!=="#"+v)history.pushState(null,"","#"+v);render()}
+function render(){const v=(location.hash||"#welcome").slice(1);mascot=null;
+  if(v==="question")vQuestion();else if(v==="correct"){S.hearts=5;submit(0)}else if(v==="wrong"){S.hearts=5;submit(1)}
+  else if(v==="next")vNext();else if(v==="cork")vCork();else vWelcome();
+  const hb=app.querySelector(".lessonbar");if(hb)hb.insertBefore(protoBtn(),hb.lastChild);else{const b=protoBtn();b.classList.add("welcome-proto");app.append(b)}}
+window.addEventListener("hashchange",render);
+
+/* ---------- 原型工具：试玩步骤 + 跳转 ---------- */
+function protoBtn(){return h("button",{class:"proto",text:"说明",onclick:openProto})}
+function openProto(){
+  const close=()=>{sc.remove();sh.remove()};
+  const sc=h("div",{class:"scrim",onclick:close});
+  const j=(t,v)=>h("button",{text:t,onclick:()=>{close();go(v)}});
+  const sh=h("div",{class:"proto-sheet",role:"dialog","aria-label":"原型说明"},
+    h("h2",{text:"试玩步骤"}),
+    h("ol",{},h("li",{text:"欢迎页点「开始」。"}),h("li",{text:"第一题：把左下角的碎碎拖到黑色代码卡上，它变成玻璃。"}),
+      h("li",{text:"选一个答案，点「检查」。答对是绿条 +10 XP；答错是红条，红心 5→4。"}),
+      h("li",{text:"在反馈条里把碎碎拖到「继续」键上，它变成橡胶弹两下。"}),
+      h("li",{text:"答对点「继续」进入第 2 题；答错点「继续」先看错题板，把碎碎拖上去变软木，再点「去下一题」。"})),
+    h("p",{style:"margin:0 0 8px;color:var(--g-muted)",text:"碎碎只在你拖它碰到东西时变身，答对答错不会让它变材质。点一下碎碎会给提示。"}),
+    h("div",{class:"jumps"},j("欢迎","welcome"),j("第一题","question"),j("答对","correct"),j("答错","wrong"),j("错题板","cork"),j("下一题","next")),
+    h("button",{class:"btn3d wide",text:"关闭",onclick:close}));
+  document.body.append(sc,sh);
+}
+render();
+</script>

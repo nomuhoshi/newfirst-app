@@ -1,0 +1,321 @@
+<title>碎碎与新手流程</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 布局：上半段三台手机横排（窄屏竖排），下半段一页变身规则；沿用 src/game.css 的墨蓝实验手账色 */
+:root{
+  --bg:#F7F5F0; --card:#FFFFFF; --line:#DDD8CC; --fg:#172B3A; --muted:#5B6B76;
+  --primary:#234E70; --on-primary:#FFFFFF; --copper:#B75532;
+  --ok:#176B59; --ok-bg:#E3F1EC; --bad:#A43C32; --bad-bg:#F8E4E0;
+  --code-bg:#172B3A; --code-fg:#EAF0F3; --tk-str:#F3BA87; --tk-fn:#8ED7B8;
+  --m-ink:#172B3A; --m-paper:#FFFFFF;
+  --glass:rgba(169,204,224,.30); --glass-edge:#6F9AB8;
+  --rubber:#E3956E; --rubber-deep:#C4683F; --rubber-eye:#172B3A;
+  --cork:#CDA674; --cork-dot:#8A6440; --cork-edge:#6B4A2B; --cork-eye:#172B3A;
+  --f-ui:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Noto Sans SC",system-ui,sans-serif;
+  --f-code:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101E28; --card:#1A2D39; --line:#2C4352; --fg:#EAF0F3; --muted:#9FB1BC;
+  --primary:#A9CCE0; --on-primary:#102431; --copper:#F3BA87;
+  --ok:#8ED7B8; --ok-bg:#17382F; --bad:#FFB3A3; --bad-bg:#3F2421;
+  --code-bg:#0B1820; --m-ink:#EAF0F3; --m-paper:#1A2D39;
+  --glass:rgba(169,204,224,.18); --glass-edge:#A9CCE0;
+  --rubber:#C4683F; --rubber-deep:#8F4626; --rubber-eye:#F7F5F0;
+  --cork:#8A6A45; --cork-dot:#5E4428; --cork-edge:#D9BC94; --cork-eye:#F7F5F0;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101E28; --card:#1A2D39; --line:#2C4352; --fg:#EAF0F3; --muted:#9FB1BC;
+  --primary:#A9CCE0; --on-primary:#102431; --copper:#F3BA87;
+  --ok:#8ED7B8; --ok-bg:#17382F; --bad:#FFB3A3; --bad-bg:#3F2421;
+  --code-bg:#0B1820; --m-ink:#EAF0F3; --m-paper:#1A2D39;
+  --glass:rgba(169,204,224,.18); --glass-edge:#A9CCE0;
+  --rubber:#C4683F; --rubber-deep:#8F4626; --rubber-eye:#F7F5F0;
+  --cork:#8A6A45; --cork-dot:#5E4428; --cork-edge:#D9BC94; --cork-eye:#F7F5F0;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+h1{font-size:1.75rem;line-height:1.25;margin:0;text-wrap:balance}
+h2{font-size:1.25rem;margin:0;text-wrap:balance}
+h3{font-size:1rem;margin:0}
+p{margin:0}
+.muted{color:var(--muted)}
+.eyebrow{font-size:.75rem;letter-spacing:.08em;color:var(--copper);font-weight:600}
+header{display:flex;gap:16px;align-items:center}
+header svg{flex:none}
+section{display:flex;flex-direction:column;gap:16px}
+
+/* 手机流程 */
+.flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+@media (max-width:860px){.flow{grid-template-columns:minmax(0,320px);justify-content:center}}
+.step{display:flex;flex-direction:column;gap:10px;min-width:0}
+.step .cap{display:flex;gap:8px;align-items:baseline}
+.step .cap b{font-variant-numeric:tabular-nums;color:var(--copper)}
+.phone{border:1.5px solid var(--line);border-radius:28px;background:var(--bg);aspect-ratio:9/17.5;max-width:100%;
+  display:flex;flex-direction:column;overflow:hidden;position:relative}
+.ph-top{display:flex;align-items:center;gap:10px;padding:14px 16px 8px;font-size:.75rem;color:var(--muted)}
+.bar{flex:1;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:25%;background:var(--ok)}
+.ph-body{flex:1;display:flex;flex-direction:column;gap:10px;padding:6px 16px;min-height:0}
+.ph-foot{padding:12px 16px 18px;display:flex;flex-direction:column;gap:8px}
+.btn{display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:12px;font-weight:600;font-size:1rem;
+  background:var(--primary);color:var(--on-primary);position:relative}
+.btn.ok{background:var(--ok);color:var(--card)}
+.btn.bad{background:var(--bad);color:var(--card)}
+.link{text-align:center;font-size:.8rem;color:var(--muted);text-decoration:underline dotted}
+.tap{position:absolute;right:-6px;top:-10px;width:24px;height:24px;border-radius:50%;background:var(--copper);color:var(--card);
+  font-size:.75rem;font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.welcome{justify-content:center;align-items:center;text-align:center;gap:14px}
+.welcome h2{font-size:1.35rem}
+.story{font-size:.78rem;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 10px;color:var(--muted)}
+.code{background:var(--code-bg);color:var(--code-fg);font-family:var(--f-code);font-size:.85rem;border-radius:12px;padding:16px 12px 22px;position:relative}
+.code .fn{color:var(--tk-fn)} .code .str{color:var(--tk-str)}
+.code .perch{position:absolute;right:-6px;top:-30px}
+.bubble{font-size:.74rem;background:var(--card);border:1px solid var(--line);border-radius:12px 12px 12px 4px;padding:6px 10px;line-height:1.45}
+.q{font-weight:600;font-size:.9rem}
+.opt{border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:9px 12px;font-family:var(--f-code);font-size:.8rem;position:relative}
+.opt.sel{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
+.sheet{border-radius:16px 16px 0 0;padding:14px 16px 18px;display:flex;flex-direction:column;gap:10px}
+.sheet.ok{background:var(--ok-bg)} .sheet.bad{background:var(--bad-bg)}
+.sheet .head{display:flex;align-items:center;gap:10px}
+.sheet.ok b{color:var(--ok)} .sheet.bad b{color:var(--bad)}
+.sheet p{font-size:.8rem}
+.dim{opacity:.45}
+.notes{font-size:.85rem;color:var(--muted)}
+.notes li{margin-bottom:4px}
+
+/* 变身规则 */
+.forms{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+@media (max-width:760px){.forms{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.form{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.stage{height:120px;border-radius:10px;display:grid;place-items:center;position:relative;overflow:hidden;background:var(--bg)}
+.stage.codey{background:var(--code-bg)}
+.stage.codey::before{content:'print("欢迎光临！")\Aprint(10)\Aprint(22)';white-space:pre;position:absolute;left:12px;top:30px;
+  font-family:var(--f-code);font-size:.8rem;line-height:1.6;color:var(--tk-str)}
+.stage svg{position:relative}
+.form dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0;font-size:.8rem}
+.form dt{color:var(--muted)} .form dd{margin:0}
+.keep{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:0;margin:0;list-style:none}
+.keep li{border-top:2px solid var(--copper);padding-top:8px;font-size:.88rem}
+.rules{margin:0;padding-left:1.2em;max-width:65ch;font-size:.92rem}
+.rules li{margin-bottom:6px}
+.play{display:flex;flex-wrap:wrap;gap:16px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.play .stage{width:160px;height:150px;flex:none}
+.play .ctl{display:flex;flex-wrap:wrap;gap:8px;flex:1;min-width:0}
+.chip{min-height:44px;padding:0 16px;border-radius:22px;border:1.5px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-weight:600;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--primary);background:var(--primary);color:var(--on-primary)}
+.chip:focus-visible{outline:3px solid var(--copper);outline-offset:2px}
+.say{width:100%;font-size:.88rem;color:var(--muted);min-height:1.6em}
+table{border-collapse:collapse;font-size:.85rem;min-width:520px}
+.tw{overflow-x:auto}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.pending{border:1.5px dashed var(--copper);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.pending ol{margin:0;padding-left:1.2em;font-size:.9rem}
+
+/* 动效 */
+@keyframes sweep{from{transform:translateY(-110%)}to{transform:translateY(110%)}}
+@keyframes squash{0%,100%{transform:scale(1,1)}20%{transform:scale(1.1,.85)}45%{transform:scale(.95,1.08)}65%{transform:scale(1.05,.92)}85%{transform:scale(.99,1.02)}}
+@keyframes drop{0%{transform:translateY(-40px) rotate(0)}70%{transform:translateY(3px) rotate(-3deg)}100%{transform:translateY(0) rotate(-3deg)}}
+.anim-glass .shine{animation:sweep .4s ease-out}
+.anim-rubber{transform-origin:50% 95%;animation:squash .5s ease-out}
+.anim-cork{animation:drop .3s ease-out forwards}
+.tilt{transform:rotate(-3deg)}
+@media (prefers-reduced-motion:reduce){.anim-glass .shine,.anim-rubber,.anim-cork{animation:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <span id="hero"></span>
+    <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+      <span class="eyebrow">碎片编程 · 设计师 Opus 定稿</span>
+      <h1>碎碎与新手流程</h1>
+      <p class="muted">首次打开到答完第一道 Python 题：1 屏欢迎、4 次点击、30–60 秒。碎碎在第一题第一次变身。</p>
+    </div>
+  </header>
+
+  <section>
+    <h2>新手流程</h2>
+    <div class="flow">
+      <div class="step">
+        <div class="cap"><b>A</b><h3>欢迎</h3><span class="muted">0–8 秒</span></div>
+        <div class="phone">
+          <div class="ph-body welcome">
+            <span data-m="paper" data-mood="happy" data-size="112"></span>
+            <h2>点一点，学会 Python</h2>
+            <p class="muted" style="font-size:.85rem">每关约 2 分钟 · 全程点选 · 免费</p>
+          </div>
+          <div class="ph-foot">
+            <div class="btn">开始第一题<span class="tap">1</span></div>
+            <span class="link dim">已有账号？登录（账号上线后显示）</span>
+          </div>
+        </div>
+        <ul class="notes"><li>原 3 屏合成 1 屏，去掉翻页圆点</li><li>无问卷、无通知授权、无注册</li></ul>
+      </div>
+
+      <div class="step">
+        <div class="cap"><b>B</b><h3>第一题</h3><span class="muted">8–35 秒</span></div>
+        <div class="phone">
+          <div class="ph-top"><span>✕</span><div class="bar"><i></i></div><span>♥ 5</span></div>
+          <div class="ph-body">
+            <div class="story">奶茶店要一块点单屏。先让屏幕显示文字。</div>
+            <div class="bubble">碰到什么我就变成什么。现在是玻璃，帮你看穿代码。</div>
+            <div class="code"><span class="fn">print</span>(<span class="str">"欢迎光临！"</span>)
+              <span class="perch" data-m="glass" data-mood="think" data-size="56"></span></div>
+            <p class="q">运行后屏幕显示什么？</p>
+            <div class="opt sel">欢迎光临！<span class="tap">2</span></div>
+            <div class="opt">"欢迎光临！"</div>
+            <div class="opt">print("欢迎光临！")</div>
+          </div>
+          <div class="ph-foot"><div class="btn">检查<span class="tap">3</span></div></div>
+        </div>
+        <ul class="notes"><li>直接进 U1L1 第 1 题，跳过介绍卡（待拍板）</li><li>8 秒未作答，气泡：「卡住了就点我」</li></ul>
+      </div>
+
+      <div class="step">
+        <div class="cap"><b>C</b><h3>反馈</h3><span class="muted">35–45 秒</span></div>
+        <div class="phone">
+          <div class="ph-top"><span>✕</span><div class="bar"><i></i></div><span>♥ 5</span></div>
+          <div class="ph-body dim">
+            <div class="code"><span class="fn">print</span>(<span class="str">"欢迎光临！"</span>)</div>
+            <div class="opt sel">欢迎光临！</div>
+          </div>
+          <div class="sheet ok">
+            <div class="head"><span data-m="paper" data-mood="celebrate" data-size="44"></span><b>答对了　+10 XP</b></div>
+            <p>print(...) 会把括号里的内容显示到屏幕上。</p>
+          </div>
+          <div class="sheet bad" style="border-radius:0">
+            <div class="head"><span data-m="rubber" data-mood="companion" data-size="44"></span><b>差一点</b></div>
+            <p>弹回来，再看一眼引号。引号本身不会显示。</p>
+          </div>
+          <div class="ph-foot" style="background:var(--ok-bg)"><div class="btn ok">继续<span class="tap">4</span></div></div>
+        </div>
+        <ul class="notes"><li>上：答对（纸 + 火花）；下：答错（橡胶弹两下）</li><li>提交第 1 题即记为已完成新手流程</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>碎碎：碰到什么，就变成什么</h2>
+    <p class="muted" style="max-width:65ch">本体是记录卡上撕下的一片。沿用小码的折角卡，底边改成撕边，这是名字的来源。材质只改填充、描边、纹理和动效，不表示对错。</p>
+    <div class="forms">
+      <div class="form"><div class="stage"><span data-m="paper" data-mood="happy" data-size="96"></span></div>
+        <h3>纸（本体）</h3><dl><dt>碰到</dt><dd>默认</dd><dt>含义</dt><dd>陪伴、庆祝</dd><dt>标志</dt><dd>撕边、铜橙折角</dd></dl></div>
+      <div class="form"><div class="stage codey"><span data-m="glass" data-mood="think" data-size="96"></span></div>
+        <h3>玻璃</h3><dl><dt>碰到</dt><dd>代码卡</dd><dt>含义</dt><dd>看穿代码、提示</dd><dt>标志</dt><dd>半透明、斜高光</dd><dt>动效</dt><dd>亮光下扫 400 ms</dd></dl></div>
+      <div class="form"><div class="stage"><span data-m="rubber" data-mood="companion" data-size="96"></span></div>
+        <h3>橡胶</h3><dl><dt>碰到</dt><dd>按键</dd><dt>含义</dt><dd>弹回来再试</dd><dt>标志</dt><dd>粗边、底部压痕</dd><dt>动效</dt><dd>压扁弹起两次 500 ms</dd></dl></div>
+      <div class="form"><div class="stage"><span data-m="cork" data-mood="happy" data-size="96" class="tilt"></span></div>
+        <h3>软木</h3><dl><dt>碰到</dt><dd>错题本、复习</dd><dt>含义</dt><dd>钉住、收集</dd><dt>标志</dt><dd>斑点、图钉</dd><dt>动效</dt><dd>落下、钉住 300 ms</dd></dl></div>
+    </div>
+
+    <div class="play" aria-live="polite">
+      <div class="stage" id="pstage"><span id="pm"></span></div>
+      <div class="ctl">
+        <button class="chip" id="b-paper" aria-pressed="true">纸</button>
+        <button class="chip" id="b-glass" aria-pressed="false">碰代码卡 → 玻璃</button>
+        <button class="chip" id="b-rubber" aria-pressed="false">碰按键 → 橡胶</button>
+        <button class="chip" id="b-cork" aria-pressed="false">碰软木板 → 软木</button>
+        <p class="say" id="say">点一个物体，看碎碎变身（动效时长按定稿）。</p>
+      </div>
+    </div>
+
+    <h3>变身时永远保留</h3>
+    <ul class="keep">
+      <li><b>轮廓</b>：左上圆角、右上折角、底边撕边、两只短脚，位置比例不动</li>
+      <li><b>脸</b>：括号眼睛和嘴的形状位置不变，四种表情照用；眼睛颜色可切换以保证 ≥ 3:1</li>
+      <li><b>大小</b>：不变，只在动效中短暂缩放</li>
+    </ul>
+
+    <h3>行为规则</h3>
+    <ol class="rules">
+      <li>同一时刻只有一种材质；离开触发场景（下一题、关闭弹层）就回到纸。</li>
+      <li>答对庆祝永远是纸加火花。材质不表示对错，对错靠颜色、文字和图标。</li>
+      <li>每种材质第一次出现配一句台词，之后不再解释。</li>
+      <li>每题最多变身一次，动画不挡点击。减少动态效果开启时直接切换。</li>
+      <li>黑白截图里也要分得清：玻璃看高光和透出的代码，橡胶看粗边和压扁，软木看斑点和图钉。</li>
+    </ol>
+
+    <h3>玩家第一次在哪碰到</h3>
+    <div class="tw"><table>
+      <thead><tr><th>形态</th><th>场景</th><th>台词</th></tr></thead>
+      <tbody>
+        <tr><td>纸（初见）</td><td>欢迎屏</td><td>无，只有标题</td></tr>
+        <tr><td>玻璃</td><td>第 1 题，跳上代码卡</td><td>碰到什么我就变成什么。现在是玻璃，帮你看穿代码。</td></tr>
+        <tr><td>橡胶</td><td>第一次答错</td><td>弹回来，再看一眼。</td></tr>
+        <tr><td>软木</td><td>第一关结束有错题，或首次打开「我的学习」</td><td>错题我先钉在这儿，等会儿再来。</td></tr>
+      </tbody></table></div>
+  </section>
+
+  <div class="pending">
+    <h3>待项目主人拍板（拍板前不实现）</h3>
+    <ol>
+      <li>改名「小码」→「碎碎」（代码里约 10 处）。</li>
+      <li>首次运行跳过第一关介绍卡，故事句挪到第 1 题顶部。</li>
+      <li>首次运行的第 1 题答错不扣红心（锁定规则，本稿只提议）。</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+function el(t,a,...k){const e=document.createElementNS(NS,t);for(const n in a)e.setAttribute(n,a[n]);k.flat().forEach(c=>c&&e.appendChild(c));return e}
+const BODY="M22 12H66L90 36V82L83 88L76 83L68 89L60 83L52 89L44 83L36 89L28 83L20 88L12 82V22Q12 12 22 12Z";
+const FOLD="M66 12L90 36H76Q66 36 66 26Z";
+const MAT={
+  paper:{fill:"var(--m-paper)",stroke:"var(--m-ink)",sw:2.5,fold:"var(--copper)",eye:"var(--m-ink)"},
+  glass:{fill:"var(--glass)",stroke:"var(--glass-edge)",sw:1.5,fold:"transparent",foldStroke:"var(--copper)",eye:"var(--code-fg)"},
+  rubber:{fill:"var(--rubber)",stroke:"var(--rubber-deep)",sw:4,fold:"var(--rubber-deep)",eye:"var(--rubber-eye)"},
+  cork:{fill:"var(--cork)",stroke:"var(--cork-edge)",sw:2.5,fold:"var(--copper)",eye:"var(--cork-eye)"}
+};
+const EYES={happy:["M36 44Q31 51 36 58","M64 44Q69 51 64 58"],think:["M37 40Q32 47 37 54","M66 40Q71 47 66 54"],
+  companion:["M31 50Q36 56 41 50","M59 50Q64 56 69 50"],celebrate:["M31 54Q36 46 41 54","M59 54Q64 46 69 54"]};
+const MOUTH={happy:"M42 68Q50 75 58 68",think:"M45 69H57",companion:"M44 68Q50 72 56 68",celebrate:"M42 66Q50 80 58 66z"};
+let uid=0;
+function suisui(m="paper",mood="happy",size=96,onCode=false){
+  const s=MAT[m],id="c"+(uid++);const eye=onCode&&m!=="glass"?s.eye:(m==="glass"?(onCode?"var(--code-fg)":"var(--m-ink)"):s.eye);
+  const line=d=>el("path",{d,fill:"none",stroke:eye,"stroke-width":4,"stroke-linecap":"round"});
+  const kids=[
+    el("rect",{x:26,y:86,width:14,height:9,rx:3,fill:m==="glass"?"var(--glass-edge)":s.stroke}),
+    el("rect",{x:60,y:86,width:14,height:9,rx:3,fill:m==="glass"?"var(--glass-edge)":s.stroke}),
+    el("path",{d:BODY,fill:s.fill,stroke:s.stroke,"stroke-width":s.sw,"stroke-linejoin":"round"})
+  ];
+  if(m==="cork"){
+    kids.push(el("clipPath",{id},el("path",{d:BODY})));
+    const g=el("g",{"clip-path":`url(#${id})`});
+    [[24,26],[40,20],[30,40],[52,32],[22,62],[78,52],[48,80],[70,72],[34,74],[82,70],[58,54],[20,48]].forEach(([x,y])=>g.appendChild(el("circle",{cx:x,cy:y,r:1.8,fill:"var(--cork-dot)"})));
+    kids.push(g);
+  }
+  if(m==="rubber")kids.push(el("path",{d:"M14 76Q50 84 88 76",fill:"none",stroke:"var(--rubber-deep)","stroke-width":3,opacity:.55,"stroke-linecap":"round"}));
+  kids.push(el("path",{d:FOLD,fill:s.fold,stroke:s.foldStroke||s.stroke,"stroke-width":m==="glass"?1.5:s.sw,"stroke-linejoin":"round"}));
+  if(m==="glass"){
+    kids.push(el("path",{d:"M20 30L32 18M20 42L42 20",stroke:"#FFFFFF","stroke-width":3,"stroke-linecap":"round",opacity:.8}));
+    kids.push(el("clipPath",{id},el("path",{d:BODY})));
+    kids.push(el("g",{"clip-path":`url(#${id})`},el("rect",{class:"shine",x:0,y:0,width:100,height:30,fill:"#FFFFFF",opacity:.35})));
+  }
+  if(m==="cork"){kids.push(el("circle",{cx:79,cy:25,r:6,fill:"var(--copper)",stroke:"var(--cork-edge)","stroke-width":1.5}));kids.push(el("circle",{cx:77,cy:23,r:1.8,fill:"#FFFFFF",opacity:.7}));}
+  EYES[mood].forEach(d=>kids.push(line(d)));
+  kids.push(mood==="celebrate"?el("path",{d:MOUTH[mood],fill:eye,stroke:eye,"stroke-width":3,"stroke-linejoin":"round"}):line(MOUTH[mood]));
+  if(mood==="celebrate")kids.push(el("path",{d:"M6 8v10M1 13h10",stroke:"var(--copper)","stroke-width":3,"stroke-linecap":"round"}));
+  const svg=el("svg",{viewBox:"-2 4 104 94",width:size,height:size,"aria-hidden":"true"},kids);
+  svg.style.overflow="visible";return svg;
+}
+document.querySelectorAll("[data-m]").forEach(n=>{const onCode=!!n.closest(".code,.codey");n.appendChild(suisui(n.dataset.m,n.dataset.mood,+n.dataset.size,onCode))});
+document.getElementById("hero").appendChild(suisui("paper","happy",72));
+
+const LINES={paper:"纸：我的本来样子。",glass:"玻璃：碰到什么我就变成什么。现在是玻璃，帮你看穿代码。",rubber:"橡胶：弹回来，再看一眼。",cork:"软木：错题我先钉在这儿，等会儿再来。"};
+const stage=document.getElementById("pstage"),pm=document.getElementById("pm"),say=document.getElementById("say");
+function show(m){
+  stage.classList.toggle("codey",m==="glass");
+  const mood={paper:"happy",glass:"think",rubber:"companion",cork:"happy"}[m];
+  const svg=suisui(m,mood,110,m==="glass");pm.replaceChildren(svg);pm.className="";
+  void pm.offsetWidth;pm.className=m==="glass"?"anim-glass":m==="rubber"?"anim-rubber":m==="cork"?"anim-cork":"";
+  if(m==="glass")svg.classList.add("anim-glass");
+  pm.style.display="inline-block";
+  say.textContent=LINES[m];
+  ["paper","glass","rubber","cork"].forEach(k=>document.getElementById("b-"+k).setAttribute("aria-pressed",String(k===m)));
+}
+["paper","glass","rubber","cork"].forEach(k=>document.getElementById("b-"+k).addEventListener("click",()=>show(k)));
+show("paper");
+</script>
