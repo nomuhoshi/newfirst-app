@@ -7,18 +7,18 @@
       "id": "U3L1",
       "title": "满不满 100 元",
       "concept": "比较大小",
-      "story": "店里搞活动：满 100 元有优惠。程序要先判断“够不够”。比较两个数，结果只有两种：True（成立）或 False（不成立）。",
+      "story": "店里搞活动：满 100 元有优惠。程序要先判断“够不够”。比较两个数，结果只有两种：True（成立）或 False（不成立）。> 读作“大于”，< 读作“小于”。",
       "introCode": "total = 120\nprint(total > 100)",
       "exercises": [
         {
           "type": "predict",
           "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
-          "code": "total = 80\nprint(total > 100)",
+          "code": "total = 80\nprint(total < 100)",
           "options": [
             {
-              "text": "False",
+              "text": "True",
               "correct": true,
-              "why": "80 不大于 100，比较不成立，结果是 False。"
+              "why": "80 小于 100，比较成立，结果是 True。"
             },
             {
               "text": "80",
@@ -26,12 +26,12 @@
               "why": "比较的结果不是数字，而是 True 或 False。"
             },
             {
-              "text": "True",
+              "text": "False",
               "correct": false,
-              "why": "80 > 100 不成立，所以是 False。"
+              "why": "< 是“小于”：80 < 100 成立，所以是 True。"
             }
           ],
-          "tip": "比较的结果只有 True 或 False，首字母大写，不加引号。"
+          "tip": "比较的结果只有 True 或 False，首字母大写，不加引号。< 读作“小于”。"
         },
         {
           "type": "predict",
@@ -104,7 +104,7 @@
       "id": "U3L2",
       "title": "是不是大杯",
       "concept": "等于和不等于",
-      "story": "要判断顾客点的是不是大杯。比较“是否相等”用两个等号 ==；“不相等”用 !=。一个等号 = 是把值存进变量，不是比较。",
+      "story": "要判断顾客点的是不是大杯。比较“是否相等”用两个等号 ==；“不相等”用 !=。一个等号 = 是把值存进变量，不是比较。文字要一模一样才相等，连大小写也要一样：\"vip\" 和 \"VIP\" 不相等。",
       "introCode": "size = \"大杯\"\nprint(size == \"大杯\")",
       "exercises": [
         {
@@ -173,21 +173,27 @@
           "tip": "回想第 2 单元：加引号的是文字（字符串），不加引号的是数字。"
         },
         {
-          "type": "fill",
-          "prompt": "会员码要和 \"VIP\" 完全一样才算。顾客输入的是 \"vip\"，补全程序，让屏幕显示 False（表示不算会员）。",
-          "code": "code = \"vip\"\nprint(code {0} \"VIP\")",
-          "tokens": [
-            "==",
-            "!="
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "cups = 2\ncups == 3\nprint(cups)",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "cups == 3 只是做了一次比较，结果不会改掉 cups，也不会自己显示出来；cups 还是 2，print(cups) 显示 2。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "== 是比较，不是存值：cups 里存的还是 2。要存值才用一个等号 =。"
+            },
+            {
+              "text": "False",
+              "correct": false,
+              "why": "单独写一行 cups == 3 并不会自动显示结果；只有 print(...) 才会显示，这里 print 的是 cups。"
+            }
           ],
-          "answer": [
-            "=="
-          ],
-          "expected": "False",
-          "why": {
-            "!=": "vip 和 VIP 大小写不同，所以“不相等”成立，!= 的结果是 True，不是题目要的 False。"
-          },
-          "hint": "大小写不同的文字不相等。要问的是“是否相等”。"
+          "tip": "比较不会改掉变量，单独写一行比较也不会显示结果。"
         }
       ]
     },
