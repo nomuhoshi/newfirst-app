@@ -95,7 +95,7 @@ const BEND = 16; // 45° 拐角的大小
 function circuitLayout(variant, W, H) {
   const r = Math.round;
   const lines = [];
-  const add = (d, pulse, pads) => lines.push({ d, pulse, pads });
+  const add = (d, pulse, pads, lane) => lines.push({ d, pulse, pads, lane });
   if (variant === "edge") {
     const m = (x, y0, y1, y2) => `M${x} ${r(y0)}V${r(y1)}L${x + (x < W / 2 ? 6 : -6)} ${r(y1 + 6)}V${r(y2)}`;
     const a = m(6, 0, H * 0.26, H * 0.6); add(a, a, [[12, r(H * 0.6)]]);
@@ -112,7 +112,7 @@ function circuitLayout(variant, W, H) {
     const pads = [[sx(xs), r(y2)]];
     let d = main;
     if (yb != null) { d += `M${sx(xs)} ${r(yb)}H${sx(xs + bl)}`; pads.push([sx(xs + bl), r(yb)], [sx(xs), r(yb)]); }
-    add(d, main, pads);
+    add(d, main, pads, [dir, right ? 1 : -1]); // 并行总线沿垂直于 45° 拐角的方向平移
   };
   const top = (x0, y1, x2) => { const d = `M${r(x0)} 0V${r(y1)}L${r(x0 + BEND)} ${r(y1 + BEND)}H${r(x2)}`; add(d, d, [[r(x2), r(y1 + BEND)]]); };
   side(false, H * 0.12, W * 0.10, H * 0.31, H * 0.215, W * 0.10);
@@ -122,15 +122,38 @@ function circuitLayout(variant, W, H) {
   side(true, H * 0.64, W * 0.09, H * 0.84, H * 0.75, W * 0.08);
   side(false, H * 0.90, W * 0.16, H * 0.82, null, 0);
   top(W * 0.74, H * 0.10, W * 0.88);
-  return { lines, pulses: [[0, 10, 0], [2, 12, -4], [3, 9, -2], [4, 11, -7]] };
+  // 芯片：贴着两侧边缘，只作装饰（不进 .trace / .pad，保持原来的稀疏线条数量）
+  const chips = [[0.035, 0.455, "U2", "and"], [0.835, 0.235, "U3", "or"], [0.035, 0.74, "U4", "not"], [0.835, 0.585, "U5", "xor"]].map(([fx, fy, ref, kind]) => [r(W * fx), r(H * fy), ref, kind]);
+  return { lines, chips, pulses: [[0, 10, 0], [2, 12, -4], [3, 9, -2], [4, 11, -7]] };
 }
 function fillCircuit(el, variant) {
   const W = Math.max(240, Math.round(window.innerWidth)); const H = Math.max(240, Math.round(window.innerHeight));
   el.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const c = circuitLayout(variant, W, H);
+  const bus = c.lines.flatMap((l) => (l.lane ? [-1, 1].map((k) => svg("path", { d: l.d, class: "bus", transform: `translate(${l.lane[0] * 4.5 * k} ${l.lane[1] * 4.5 * k})` })) : []));
+  // 背景里的逻辑门（与门/或门/非门/异或门）：身体 + 输入输出引脚 + 位号
+  const gate = (x, y, kind) => {
+    const body = { and: `M${x} ${y}h22a15 15 0 0 1 0 30h-22z`, or: `M${x} ${y}q9 15 0 30q24 0 40-15q-16-15-40-15z`, not: `M${x} ${y}v30l30-15z`,
+      xor: `M${x + 6} ${y}q9 15 0 30q24 0 40-15q-16-15-40-15z` }[kind];
+    const ins = kind === "not" ? [15] : [8, 22]; const outX = kind === "and" ? 37 : kind === "not" ? 38 : 46;
+    const stub = ins.map((iy) => `M${x - 7} ${y + iy}h${kind === "or" || kind === "xor" ? 11 : 7}`).join("") + `M${x + outX} ${y + 15}h8`;
+    return [
+      svg("path", { d: stub, class: "chip-pin" }),
+      svg("path", { d: body, class: "chip" }),
+      ...(kind === "xor" ? [svg("path", { d: `M${x} ${y}q9 15 0 30`, class: "chip-pin thin" })] : []),
+      ...(kind === "not" ? [svg("circle", { cx: String(x + 34), cy: String(y + 15), r: "3.5", class: "chip" })] : []),
+    ];
+  };
+  const chips = (c.chips || []).flatMap(([x, y, ref, kind]) => [
+    ...gate(x, y, kind),
+    svg("text", { x: String(x), y: String(y - 6), class: "chip-ref" }, ref),
+  ]);
+  const vias = c.lines.flatMap((l) => l.pads.slice(0, 1).map(([x, y]) => svg("circle", { cx: String(x), cy: String(y), r: "1.4", class: "via-dot" })));
   el.replaceChildren(
+    ...bus, ...chips,
     ...c.lines.map((l) => svg("path", { d: l.d, class: "trace" })),
     ...c.lines.flatMap((l) => l.pads.map(([x, y]) => svg("circle", { cx: String(x), cy: String(y), r: "3.5", class: "pad" }))),
+    ...vias,
     ...c.pulses.map(([i, dur, delay]) => svg("path", { d: c.lines[i].pulse, class: "pulse", pathLength: "100", style: `animation-duration:${dur}s;animation-delay:${delay}s` })),
   );
 }
@@ -155,9 +178,13 @@ function hexNode(st, review) {
   inner.setAttribute("x", "20"); inner.setAttribute("y", "20");
   const badge = st === "locked" && review ? icon("lock", { size: 16, cls: "hex-badge" }) : null;
   if (badge) { badge.setAttribute("x", "47"); badge.setAttribute("y", "46"); }
-  const el = svg("svg", { viewBox: "0 0 72 72", width: "72", height: "72", class: "hexnode", "aria-hidden": "true", "data-icon": kind },
+  const el = svg("svg", { viewBox: "0 0 72 80", width: "72", height: "80", class: "hexnode", "aria-hidden": "true", "data-icon": kind },
     st === "current" ? svg("polygon", { points: "36,1 67,19 67,53 36,71 5,53 5,19", class: "hex-ring" }) : null,
+    svg("ellipse", { cx: "36", cy: "73", rx: "27", ry: "5", class: "hex-shadow" }),
+    svg("polygon", { points: "9,51.5 36,67 63,51.5 63,59.5 36,75 9,59.5", class: "hex-side" }),
     svg("polygon", { points: "36,5 63,20.5 63,51.5 36,67 9,51.5 9,20.5", class: "hex-body" }),
+    svg("polygon", { points: "36,16 53.5,26 53.5,46 36,56 18.5,46 18.5,26", class: "hex-facet" }),
+    svg("polyline", { points: "9,20.5 36,5 63,20.5", class: "hex-hi" }),
     svg("circle", { cx: "36", cy: "5", r: "2.8", class: "hex-pad" }), svg("circle", { cx: "36", cy: "67", r: "2.8", class: "hex-pad" }),
     inner, badge,
   );
@@ -455,8 +482,11 @@ function renderPath() {
     }
     const lessons = UNITS[u.id].lessons;
     const unitDone = lessons.every((x) => state.done[x.id]);
+    const doneN = lessons.filter((x) => state.done[x.id]).length;
     return h("section", { class: "unit" + (unitDone ? " complete" : "") },
-      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元${unitDone ? " · 已完成" : ""}` }), h("h2", { text: u.title }), h("p", { text: u.subtitle })),
+      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元${unitDone ? " · 已完成" : ""}` }), h("h2", { text: u.title }), h("p", { text: u.subtitle }),
+        h("div", { class: "unit-prog", role: "img", "aria-label": `本单元已完成 ${doneN} / ${lessons.length} 关` },
+          h("span", { class: "unit-prog-bar" }, h("i", { style: `width:${Math.round((doneN / lessons.length) * 100)}%` })), h("b", { text: `${doneN}/${lessons.length}` }))),
       h("ol", { class: "path" }, lessons.map((l, i) => {
         const st = lessonStatus(l);
         const offset = [0, 1, 2, 1, 0, -1][i % 6];

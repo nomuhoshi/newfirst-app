@@ -8,6 +8,9 @@
   --g-bad: #A43C32; --g-bad-bg: #F8E4E0;
   --g-locked: #E4E0D6;
   --g-trace: #C5CDD2; /* 电路线：低对比度，不盖过课程节点 */
+  /* 立体感：侧面、高光、投影、按钮底座、凹进去的读数窗、芯片引脚 */
+  --g-side: #CFC8B8; --g-hi: rgba(255,255,255,.85); --g-shadow: rgba(23,43,58,.16); --g-well: #EFEBE1; --g-pin: #A9B4B9;
+  --g-lip-card: #CBC5B6; --g-lip-primary: #12293A; --g-lip-copper: #7E3A1F;
   --g-code-bg: #172B3A; --g-code-fg: #EAF0F3; --g-code-dim: #8FA3B0;
   --g-tk-str: #F3BA87; --g-tk-num: #9CC4E4; --g-tk-fn: #8ED7B8; --g-tk-op: #D5DEE4;
   --g-chip: #243D50; --g-chip-fg: #F3BA87;
@@ -24,6 +27,8 @@
     --g-bad: #FFB3A3; --g-bad-bg: #3F2421;
     --g-locked: #243845;
     --g-trace: #2F4A5B;
+    --g-side: #0D1B24; --g-hi: rgba(255,255,255,.14); --g-shadow: rgba(0,0,0,.5); --g-well: #0B1820; --g-pin: #3A5A6D;
+    --g-lip-card: #0A151C; --g-lip-primary: #5E8199; --g-lip-copper: #A56B3C;
     --g-code-bg: #0B1820; --g-code-fg: #EAF0F3; --g-code-dim: #7C93A1;
     --g-chip: #1F3646; --g-chip-fg: #F3BA87;
     --fn: #243845;
@@ -68,14 +73,14 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .stat.streak { color: var(--g-copper); } .stat.xp { color: var(--g-primary); } .stat.hearts { color: var(--g-bad); } .stat.shield { color: var(--g-primary); }
 .stat.hearts.lost .ico { animation: heart-lost .32s ease-out; }
 @keyframes heart-lost { 30% { transform: scale(1.25); } 100% { transform: scale(1); } }
-.tabbar { display: flex; border-top: 1.5px solid var(--g-line); padding-bottom: env(safe-area-inset-bottom); background: var(--g-bg); }
+.tabbar { --tb-pad: env(safe-area-inset-bottom); display: flex; border-top: 1.5px solid var(--g-line); padding-bottom: var(--tb-pad); background: var(--g-bg); }
 .tab { flex: 1; min-height: 56px; background: none; border: none; color: var(--g-muted); }
 .tab > span { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .tab small { display: block; font-size: 12px; font-weight: 700; }
 .tab.on { color: var(--g-primary); }
-.ios-browser .tabbar { padding-bottom: 70px; }
+.ios-browser .tabbar { --tb-pad: 70px; padding-bottom: 70px; }
 /* 手机横屏时 Safari 的底部工具栏很薄，不需要竖屏那样的 70px；仍保留系统安全区 */
-@media (orientation: landscape) and (max-height: 500px) { .ios-browser .tabbar { padding-bottom: max(env(safe-area-inset-bottom), 24px); } }
+@media (orientation: landscape) and (max-height: 500px) { .ios-browser .tabbar { --tb-pad: max(env(safe-area-inset-bottom), 24px); padding-bottom: max(env(safe-area-inset-bottom), 24px); } }
 
 /* 关卡地图：单元横幅 + 六边形电路节点 */
 .pathview { padding: 16px 16px 40px; }
@@ -352,3 +357,127 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .login-msg { min-height: 1.4em; font-size: 14px; margin: 4px 0; }
 .login-msg.bad { color: var(--g-bad); }
 .login-sheet .sheet { max-height: 92dvh; overflow: auto; }
+/* ============ 立体升级（墨蓝实验手账 v2）：厚度、层次、总线、芯片；颜色和逻辑不变 ============ */
+/* 六边形节点：有侧面厚度、投影和高光；完成的通电发绿，当前关发铜色光 */
+.node { height: 84px; }
+.hex-shadow { fill: var(--g-shadow); }
+.hex-side { fill: var(--g-side); stroke: var(--g-line); stroke-width: 1.5; stroke-linejoin: round; }
+.hex-facet { fill: none; stroke: currentColor; stroke-opacity: .22; stroke-width: 1.2; stroke-linejoin: round; }
+.hex-hi { fill: none; stroke: var(--g-hi); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.node.done .hex-body { fill: color-mix(in srgb, var(--g-ok) 16%, var(--g-card)); }
+.node.done .hex-side { fill: color-mix(in srgb, var(--g-ok) 22%, var(--g-side)); stroke: var(--g-ok); stroke-opacity: .45; }
+.node.done .hexnode { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--g-ok) 35%, transparent)); }
+.node.current .hex-body { stroke: var(--g-copper); fill: color-mix(in srgb, var(--g-primary) 22%, var(--g-card)); }
+.node.current .hex-side { fill: color-mix(in srgb, var(--g-copper) 26%, var(--g-side)); stroke: var(--g-copper); stroke-opacity: .55; }
+.node.current .hex-pad { fill: var(--g-copper); }
+.node.current .hexnode { filter: drop-shadow(0 0 9px color-mix(in srgb, var(--g-copper) 55%, transparent)); }
+.hex-ring { stroke: var(--g-copper); stroke-dasharray: 3 5; }
+.node.current { color: var(--g-copper); }
+
+/* 单元横幅：带引脚的芯片 */
+.unit { padding: 0 8px; }
+.unit-banner { position: relative; background: linear-gradient(180deg, color-mix(in srgb, var(--g-primary) 14%, var(--g-card)), var(--g-card)); color: var(--g-fg);
+  border: 1px solid var(--g-line); box-shadow: inset 0 1px 0 var(--g-hi), 0 10px 22px var(--g-shadow), 0 3px 0 var(--g-lip-card); }
+.unit-banner::before, .unit-banner::after { content: ""; position: absolute; top: 14px; width: 8px; height: 56px; background: repeating-linear-gradient(to bottom, var(--g-pin) 0 6px, transparent 6px 15px); }
+.unit-banner::before { left: -8px; border-radius: 2px 0 0 2px; }
+.unit-banner::after { right: -8px; border-radius: 0 2px 2px 0; }
+.unit-no { color: var(--g-copper); opacity: 1; font-family: ui-monospace, Menlo, monospace; letter-spacing: 1.2px; }
+.unit.locked .unit-banner { background: var(--g-locked); color: var(--g-muted); box-shadow: inset 0 1px 0 var(--g-hi), 0 6px 14px var(--g-shadow); }
+.unit.locked .unit-no { color: var(--g-muted); }
+.unit.locked .unit-banner::before, .unit.locked .unit-banner::after { opacity: .5; }
+
+/* 顶部状态：凹进去的读数窗；底部标签栏：当前页亮一条灯 */
+.stat { padding: 6px 14px; background: var(--g-well); border: 1px solid var(--g-line); border-radius: 10px; box-shadow: inset 0 2px 5px var(--g-shadow), 0 1px 0 var(--g-hi); font-variant-numeric: tabular-nums; }
+.tabbar { background: linear-gradient(180deg, color-mix(in srgb, var(--g-card) 55%, var(--g-bg)), var(--g-bg)); box-shadow: 0 -8px 20px var(--g-shadow); }
+.tab { position: relative; }
+.tab.on::before { content: ""; position: absolute; top: -2px; left: 30%; width: 40%; height: 3px; border-radius: 2px; background: var(--g-primary); box-shadow: 0 0 10px var(--g-primary); }
+
+/* 按钮和选项：有底座的立体键，按下去陷 3px */
+.btn3d { box-shadow: inset 0 1px 0 var(--g-hi), 0 4px 0 var(--g-lip-card), 0 9px 14px var(--g-shadow); margin-bottom: 4px; }
+.btn3d:active:not(:disabled) { transform: translateY(3px); box-shadow: inset 0 1px 0 var(--g-hi), 0 1px 0 var(--g-lip-card); }
+.btn3d.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--g-primary) 82%, #fff), var(--g-primary)); box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 4px 0 var(--g-lip-primary), 0 9px 14px var(--g-shadow); }
+.btn3d.primary:active:not(:disabled) { box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 1px 0 var(--g-lip-primary); }
+.btn3d.danger { box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 4px 0 color-mix(in srgb, var(--g-bad) 60%, #000), 0 9px 14px var(--g-shadow); }
+.btn3d.ghost, .btn3d.danger-ghost, .btn3d:disabled { box-shadow: none; margin-bottom: 0; }
+.choices { gap: 14px 10px; }
+.choice { background: linear-gradient(180deg, color-mix(in srgb, var(--g-card) 92%, #fff), var(--g-card)); margin-bottom: 4px;
+  box-shadow: inset 0 1px 0 var(--g-hi), 0 4px 0 var(--g-lip-card), 0 9px 12px var(--g-shadow); }
+.choice:active { transform: translateY(3px); box-shadow: inset 0 1px 0 var(--g-hi), 0 1px 0 var(--g-lip-card); }
+.choice.sel { transform: translateY(2px); box-shadow: inset 0 1px 0 var(--g-hi), 0 0 14px color-mix(in srgb, var(--g-primary) 40%, transparent), 0 2px 0 var(--g-lip-card); }
+.choice.right { box-shadow: inset 0 1px 0 var(--g-hi), 0 0 14px color-mix(in srgb, var(--g-ok) 40%, transparent), 0 2px 0 var(--g-lip-card); }
+.choice.wrong { box-shadow: inset 0 1px 0 var(--g-hi), 0 2px 0 var(--g-lip-card); }
+.kchip, .line-chip { box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 3px 0 rgba(0,0,0,.45); }
+.kchip:active, .line-chip:active { box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 1px 0 rgba(0,0,0,.45); transform: translateY(2px); }
+
+/* 代码块像一块凹进去的屏；进度条像一条走线；反馈条通电发光 */
+.codeblock { border: 1px solid #2F4A5B; background: linear-gradient(180deg, color-mix(in srgb, var(--g-code-bg) 94%, #fff), var(--g-code-bg));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), inset 0 -10px 18px rgba(0,0,0,.3), 0 10px 20px var(--g-shadow), 0 3px 0 rgba(0,0,0,.45); }
+.progress { background: var(--g-well); border: 1px solid var(--g-line); box-shadow: inset 0 2px 4px var(--g-shadow); box-sizing: border-box; }
+.progress-fill { box-shadow: 0 0 10px color-mix(in srgb, var(--g-copper) 70%, transparent); }
+.feedbar.ok { background: linear-gradient(180deg, color-mix(in srgb, var(--g-ok) 14%, var(--g-ok-bg)), var(--g-ok-bg)); border-top: 2px solid var(--g-ok);
+  box-shadow: 0 -4px 22px color-mix(in srgb, var(--g-ok) 28%, transparent), 0 -12px 30px var(--g-shadow), inset 0 1px 0 var(--g-hi); }
+.feedbar.bad { background: linear-gradient(180deg, color-mix(in srgb, var(--g-bad) 12%, var(--g-bad-bg)), var(--g-bad-bg)); border-top: 2px solid var(--g-bad);
+  box-shadow: 0 -4px 22px color-mix(in srgb, var(--g-bad) 24%, transparent), 0 -12px 30px var(--g-shadow), inset 0 1px 0 var(--g-hi); }
+.fs { background: var(--g-well); box-shadow: inset 0 2px 6px var(--g-shadow), 0 1px 0 var(--g-hi); }
+.me-card, .intro-panel { box-shadow: inset 0 1px 0 var(--g-hi), 0 3px 0 var(--g-lip-card), 0 8px 14px var(--g-shadow); }
+
+/* 电路背景：并行总线、芯片、过孔（用新类名，不计入原来的 .trace / .pad 数量限制） */
+.circuit-bg .bus { fill: none; stroke: var(--g-trace); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+.circuit-bg .chip { fill: var(--g-bg); stroke: var(--g-trace); stroke-width: 1.5; }
+.circuit-bg .chip-pin { fill: none; stroke: var(--g-trace); stroke-width: 2.2; stroke-linecap: round; }
+.circuit-bg .chip-dot, .circuit-bg .via-dot { fill: var(--g-trace); }
+.circuit-bg .chip-ref { fill: var(--g-trace); font: 700 9px ui-monospace, Menlo, monospace; }
+
+/* 矮屏（iPhone 横屏）：节点按比例缩小，入口 + 当前关仍要同时放得下（比立体升级前的 76px 还小，不会更挤） */
+@media (max-height: 500px) { .node { height: 72px; } .hexnode { width: 65px; height: 72px; } .stat { padding: 2px 12px; } .unit-banner { box-shadow: inset 0 1px 0 var(--g-hi), 0 6px 14px var(--g-shadow); } }
+@media (max-height: 360px) { .node { height: 66px; } .hexnode { width: 59px; height: 66px; } }
+
+/* ============ 参考 Brilliant：胶囊底栏、厚底边卡片、单元连线与进度、逻辑门背景、大号开关 ============ */
+/* 底栏：悬浮胶囊（胶囊在 ::before 里，底部留白仍由 .tabbar 的 padding-bottom 提供） */
+.tabbar { position: relative; border-top: none; box-shadow: none; background: transparent; padding: 8px 18px var(--tb-pad); }
+.tabbar::before { content: ""; position: absolute; z-index: 0; left: 18px; right: 18px; top: 8px; bottom: var(--tb-pad); border-radius: 30px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--g-card) 92%, #fff), var(--g-card)); border: 1.5px solid var(--g-line);
+  box-shadow: inset 0 1px 0 var(--g-hi), 0 4px 0 var(--g-lip-card), 0 12px 22px var(--g-shadow); }
+.tab { z-index: 1; margin: 5px 6px; min-height: 48px; border-radius: 22px; transition: background-color .15s; }
+.tab.on { background: color-mix(in srgb, var(--g-primary) 20%, var(--g-card)); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--g-primary) 55%, transparent); }
+.tab.on::before { display: none; }
+@media (max-height: 500px) { .tab { min-height: 40px; margin: 3px 6px; } }
+
+/* 单元卡：2px 边 + 更大的圆角 + 更厚的底边；单元之间用一小段走线连起来 */
+.unit { position: relative; margin-bottom: 40px; }
+.unit-banner { border-width: 2px; border-radius: 18px; padding: 16px 18px 14px; box-shadow: inset 0 1px 0 var(--g-hi), 0 10px 22px var(--g-shadow), 0 6px 0 var(--g-lip-card); margin-bottom: 6px; }
+.unit.locked .unit-banner { border-width: 2px; box-shadow: inset 0 1px 0 var(--g-hi), 0 6px 0 var(--g-lip-card); }
+.unit:not(:last-child)::after { content: ""; position: absolute; left: 50%; bottom: -34px; width: 4px; height: 28px; margin-left: -2px; border-radius: 2px;
+  background: repeating-linear-gradient(to bottom, var(--g-trace) 0 6px, transparent 6px 10px); }
+.unit-prog { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.unit-prog-bar { flex: 1; height: 10px; border-radius: 5px; background: var(--g-well); border: 1px solid var(--g-line); box-shadow: inset 0 2px 3px var(--g-shadow); overflow: hidden; display: block; }
+.unit-prog-bar i { display: block; height: 100%; border-radius: 5px; background: var(--g-ok); box-shadow: 0 0 8px color-mix(in srgb, var(--g-ok) 60%, transparent); }
+.unit-prog b { font: 700 13px ui-monospace, Menlo, monospace; color: var(--g-muted); font-variant-numeric: tabular-nums; }
+.unit.complete .unit-prog b { color: var(--g-ok); }
+
+/* 其它卡片也用 2px 边 + 厚底边 */
+.me-card, .intro-panel, .toggle-row { border-width: 2px; border-radius: 16px; }
+.me-card, .intro-panel { box-shadow: inset 0 1px 0 var(--g-hi), 0 5px 0 var(--g-lip-card), 0 10px 16px var(--g-shadow); margin-bottom: 5px; }
+.toggle-row { box-shadow: inset 0 1px 0 var(--g-hi), 0 4px 0 var(--g-lip-card); margin-bottom: 12px; }
+
+/* 开关：更大，打开是通电绿 */
+.switch { width: 60px; height: 36px; border-radius: 18px; border-width: 2px; background: var(--g-well); box-shadow: inset 0 2px 5px var(--g-shadow); }
+.switch .knob { top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 13px; background: linear-gradient(180deg, color-mix(in srgb, var(--g-card) 85%, #fff), var(--g-card)); box-shadow: 0 2px 0 var(--g-lip-card), 0 3px 6px var(--g-shadow); }
+.switch.on { background: var(--g-ok); border-color: var(--g-ok); box-shadow: inset 0 2px 4px rgba(0,0,0,.25), 0 0 10px color-mix(in srgb, var(--g-ok) 45%, transparent); }
+.switch.on .knob { transform: translateX(24px); border-color: var(--g-ok); }
+
+/* 底部弹层：更大的上圆角，按钮更圆更厚 */
+.sheet { border-radius: 26px 26px 0 0; border-top: 2px solid var(--g-line); box-shadow: 0 -10px 30px var(--g-shadow); }
+.overlay.full .sheet { border-radius: 0; border-top: none; box-shadow: none; }
+.sheet-head { border-bottom-width: 2px; padding-top: 14px; }
+.sheet .btn3d { min-height: 56px; border-radius: 18px; }
+.btn3d { border-radius: 16px; }
+
+/* 背景逻辑门的细线 */
+.circuit-bg .chip-pin.thin { stroke-width: 1.5; }
+.circuit-bg .chip { stroke-linejoin: round; }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active { transform: none; }
+}
+
