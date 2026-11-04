@@ -22,11 +22,25 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
   const writeAuth = () => { try { if (session) storage.setItem(AUTH_KEY, JSON.stringify({ session })); else storage.removeItem(AUTH_KEY); } catch {} };
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
 
+  // 同一浏览器的其他标签页共用这份凭证：别的标签页刷新令牌后会写回存储。
+  // 刷新令牌是一次性的，拿内存里的旧令牌再去刷新，Supabase 会当作令牌被盗、把整个会话作废（所有标签页都被退出）。
+  // 所以每次用令牌前先看存储里有没有同一账号、更新的凭证，有就换用。
+  function adoptStoredSession() {
+    const s = readAuth();
+    if (!s || s.userId !== userId || !s.refreshToken) return false;
+    if (session && (s.refreshToken === session.refreshToken || !(s.expiresAt > session.expiresAt))) return false;
+    session = s; email = s.email || email;
+    return true;
+  }
+
   async function ensureToken() {
+    adoptStoredSession();
     if (!session) return { ok: false, kind: "auth", message: "需要重新登录" };
     if (session.expiresAt - now() > 60000) return { ok: true };
     const r = await api.refresh(session);
     if (r.ok && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }
+    // 刷新失败，可能是另一个标签页刚好抢先刷新了：再看一次存储
+    if (!r.ok && r.kind === "auth" && adoptStoredSession() && session.expiresAt - now() > 60000) return { ok: true };
     return r.ok ? { ok: false, kind: "auth", message: "登录账号不一致" } : r;
   }
 
