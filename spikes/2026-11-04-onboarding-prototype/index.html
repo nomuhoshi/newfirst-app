@@ -239,7 +239,6 @@ function vQuestion(){
   app.replaceChildren(bar(0),h("main",{class:"lesson"},h("div",{class:"story",text:Q1.story}),h("p",{class:"prompt",text:Q1.prompt}),cb,choices),
     h("footer",{class:"lessonfoot"},slot,check));
   makeMascot(slot,"think",[{el:cb,mat:"glass"},{el:check,mat:"rubber"}]);
-  if(!S.said.hint){S.said.hint=1;setTimeout(()=>mascot&&mascot.b.isConnected&&say(LINES.hint),500)}
 }
 function submit(force){
   const i=force!=null?force:S.picked;const o=Q1.options[i];const ok=o.correct;
@@ -260,11 +259,13 @@ function submit(force){
   S.result=ok?"correct":"wrong";history.replaceState(null,"","#"+S.result);
 }
 function vNext(){
-  const slot=h("div",{class:"slot"});
-  app.replaceChildren(bar(25),h("main",{class:"lesson"},h("p",{class:"prompt",text:Q2.prompt}),code(Q2.code),
-    h("div",{class:"story",text:"这是第 2 题（填空题）。原型只做到这里：从欢迎页到下一题的流程已走完。点左上角 ✕ 可以从头再玩。"})),
-    h("footer",{class:"lessonfoot"},slot,h("button",{class:"btn3d primary",style:"flex:1",disabled:"",text:"检查"})));
-  makeMascot(slot,"happy",[]);
+  const slot=h("div",{class:"slot"}),cb=code(Q2.code),ck=h("button",{class:"btn3d primary",style:"flex:1",disabled:"",text:"检查"});
+  app.replaceChildren(bar(25),h("main",{class:"lesson"},h("p",{class:"prompt",text:Q2.prompt}),cb,
+    h("div",{class:"story",text:"这是第 2 题（填空题）。原型只做到这里，试玩结束。"}),
+    h("button",{class:"btn3d wide","data-act":"play",text:"体验三种变身",onclick:()=>{say("把我拖到代码上、按钮上试试，再点「去软木板」。");setTimeout(()=>{},0)}}),
+    h("button",{class:"btn3d wide","data-act":"to-cork",text:"去软木板",onclick:()=>go("cork")})),
+    h("footer",{class:"lessonfoot"},slot,ck));
+  makeMascot(slot,"happy",[{el:cb,mat:"glass"},{el:ck,mat:"rubber"}]);
 }
 function vCork(){
   const slot=h("div",{class:"slot"});
