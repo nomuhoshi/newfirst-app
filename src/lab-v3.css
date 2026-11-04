@@ -38,7 +38,7 @@ body.lab3 .unit-banner .unit-no { color: #E9A672; }
 body.lab3 .unit.locked .unit-banner .unit-no { color: var(--l-muted); }
 body.lab3 .path { align-items: stretch; gap: 0; padding: 14px 0 6px; }
 body.lab3 .path-item {
-  --line-x: 34px; transform: none; display: grid; grid-template-columns: 68px 1fr auto; grid-template-rows: auto auto;
+  --line-x: 38px; transform: none; display: grid; grid-template-columns: 76px 1fr auto; grid-template-rows: auto auto;
   align-items: center; column-gap: 8px; padding: 10px 10px 10px 0; position: relative; border-radius: 14px;
 }
 /* 铜线：每行上半段、下半段各画一次。走过的是实线铜色，没走到的是虚线 */
@@ -49,8 +49,8 @@ body.lab3 .path-item.st-done::before, body.lab3 .path-item.st-done::after, body.
 body.lab3 .path-item.st-current::after, body.lab3 .path-item.st-locked::before, body.lab3 .path-item.st-locked::after {
   background: repeating-linear-gradient(to bottom, var(--l-line) 0 6px, transparent 6px 11px); }
 body.lab3 .path-item:first-child::before, body.lab3 .path-item:last-child::after { display: none; }
-body.lab3 .node { grid-column: 1; grid-row: 1 / span 2; width: 68px; height: 68px; z-index: 1; justify-self: start; position: relative; }
-body.lab3 .node .hexnode { width: 48px; height: 48px; margin-left: 10px; }
+body.lab3 .node { grid-column: 1; grid-row: 1 / span 2; width: 76px; height: 68px; z-index: 1; justify-self: start; position: relative; }
+body.lab3 .node .hexnode { width: 48px; height: 48px; margin-left: 0; } /* 节点列 76px，六边形居中，中心 x=38，和铜线对齐 */
 body.lab3 .node-label { grid-column: 2; grid-row: 1; align-self: end; background: none; padding: 0; margin: 0; font-size: 16px; color: var(--l-ink); text-align: left; }
 body.lab3 .row-sub { grid-column: 2; grid-row: 2; align-self: start; font-size: 13px; line-height: 1.4; color: var(--l-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.lab3 .row-sub b { font-weight: 700; }
@@ -65,17 +65,17 @@ body.lab3 .path-item.st-done .row-sub b { color: var(--g-ok); }
 body.lab3 .path-item.st-locked .node { opacity: .5; } /* 只淡化图标，文字保持可读对比度 */
 body.lab3 .path-item.st-locked .node-label { color: var(--l-muted); }
 /* 当前：整行是一张铜边卡片，节点放大，最醒目 */
-body.lab3 .path-item.st-current { background: var(--l-card); border: 2px solid var(--l-copper); margin: 6px 0; padding: 14px 12px 14px 0; box-shadow: 0 6px 18px rgba(169, 79, 27, .14); }
+body.lab3 .path-item.st-current { background: var(--l-card); border: 2px solid var(--l-copper); margin: 6px -2px; padding: 14px 12px 14px 0; box-shadow: 0 6px 18px rgba(169, 79, 27, .14); }
 body.lab3 .path-item.st-current .node { width: 76px; height: 76px; }
-body.lab3 .path-item.st-current .node .hexnode { width: 60px; height: 60px; margin-left: 8px; }
+body.lab3 .path-item.st-current .node .hexnode { width: 60px; height: 60px; }
 body.lab3 .node.current { color: var(--l-copper); }
 body.lab3 .node.current .hex-body { stroke: var(--l-copper); }
 body.lab3 .node.current .hex-pad, body.lab3 .node.current .hex-ring { fill: var(--l-copper); }
 body.lab3 .path-item.st-current .node-label { font-size: 18px; }
 body.lab3 .path-item.st-current .row-sub b { color: var(--l-copper); }
-body.lab3 .path-item.st-current { --line-x: 38px; }
-body.lab3 .path-item.st-current::before { top: -6px; }
-body.lab3 .path-item.st-current::after { bottom: -6px; }
+body.lab3 .path-item.st-current::before { top: -8px; }
+body.lab3 .path-item.st-current::after { bottom: -8px; }
+body.lab3 .circuit-bg.full { display: none; } /* 地图上的背景电路线会和铜线打架，预览里去掉 */
 
 /* ---------- 答题页：题干 / 代码 / 选项 三块分清 ---------- */
 body.lab3 .lesson { padding: 10px 18px 24px; }

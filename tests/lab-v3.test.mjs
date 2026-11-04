@@ -76,7 +76,7 @@ for (const scheme of ["light", "dark"]) {
     const ex = await page.evaluate(() => window.__app.currentEx);
     check(`${T} 进入的是“选输出”题`, ex.type === "predict");
     const lay = await page.evaluate(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const q = r(".q"), c = r(".codeblock"), o = r(".choices"), f = r(".lessonfoot"); return { q, c, o, f, vh: window.innerHeight, foot: f && { top: f.top, bottom: f.bottom }, checkH: r("[data-check]")?.height, qLabel: getComputedStyle(document.querySelector(".q"), "::before").content, cLabel: getComputedStyle(document.querySelector(".codeblock"), "::before").content, oLabel: getComputedStyle(document.querySelector(".choices"), "::before").content, optBefore: getComputedStyle(document.querySelector(".choice"), "::before").content }; });
-    check(`${T} 答题页：题干、代码、选项三块自上而下分开，各有小标签`, lay.q.bottom <= lay.c.top + 1 && lay.c.bottom <= lay.o.top + 1 && /题干/.test(lay.qLabel) && /代码/.test(lay.cLabel) && /选项/.test(lay.oLabel) && /A/.test(lay.optBefore));
+    check(`${T} 答题页：题干、代码、选项三块自上而下分开，各有小标签`, lay.q.bottom <= lay.c.top + 1 && lay.c.bottom <= lay.o.top + 1 && /题干/.test(lay.qLabel) && /代码/.test(lay.cLabel) && /选项/.test(lay.oLabel) && /counter\(opt/.test(lay.optBefore));
     check(`${T} 答题页：底部栏固定在屏幕底部、检查按钮 ≥ 48px 高`, Math.abs(lay.f.bottom - lay.vh) <= 1 && lay.checkH >= 48, `bottom=${lay.f.bottom}/${lay.vh} h=${lay.checkH}`);
     check(`${T} 答题页：选项点得到（每个 ≥ 48px 高）`, await page.evaluate(() => [...document.querySelectorAll(".choice")].every((x) => x.getBoundingClientRect().height >= 48)));
     check(`${T} 答题页：没选之前“检查”不可点`, await page.locator("[data-check]").isDisabled());
@@ -85,13 +85,13 @@ for (const scheme of ["light", "dark"]) {
     await shot("2-question");
 
     const correctIdx = ex.options.findIndex((o) => o.correct), wrongIdx = ex.options.findIndex((o) => !o.correct);
-    await page.locator(".choice").nth(wrongIdx).tap();
+    await page.locator(".choice").nth(wrongIdx).tap(); await page.waitForTimeout(250); // 等边框颜色过渡结束
     check(`${T} 选中后：检查可点，选项有铜色选中态`, !(await page.locator("[data-check]").isDisabled()) && await page.evaluate(() => getComputedStyle(document.querySelector(".choice.sel")).borderTopColor !== getComputedStyle(document.querySelector(".choice:not(.sel)")).borderTopColor));
     // 按压反馈：按住时按钮缩小
     const box = await page.locator("[data-check]").boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(200); // 等 transform 过渡
     const pressed = await page.evaluate(() => getComputedStyle(document.querySelector("[data-check]")).transform);
-    await page.mouse.up();
+    await page.mouse.move(box.x + box.width / 2, box.y - 60); await page.mouse.up(); // 先移出按钮再松开，不触发点击
     check(`${T} 按压反馈：按住“检查”时按钮变形（缩小）`, pressed !== "none" && pressed !== "matrix(1, 0, 0, 1, 0, 0)", pressed);
     await shot("3-selected");
 
