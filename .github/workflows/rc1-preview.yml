@@ -20,7 +20,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: PREVIEW_ID=rc1 npm run build
+      - name: 构建（云端只连独立的测试 Supabase 项目；没配置就关闭云端，永远不连正式项目）
+        env:
+          PREVIEW_ID: rc1
+          TEST_SUPABASE_URL: ${{ vars.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY: ${{ vars.TEST_SUPABASE_ANON_KEY }}
+        run: npm run build
+      - name: 记录这次构建的云端模式（只看有没有配置，不打印密钥）
+        run: |
+          if [ -n "${{ vars.TEST_SUPABASE_URL }}" ] && [ -n "${{ vars.TEST_SUPABASE_ANON_KEY }}" ]; then echo "云端：已配置独立测试项目"; else echo "云端：未配置 → 本次构建云端关闭（只能在本机学习）"; fi
       - name: 检查隔离：构建里有 rc1 前缀、缓存前缀不是 suipian-
         run: |
           grep -q 'PREFIX = "rc1-suipian-"' dist/sw.js
