@@ -6,10 +6,12 @@
 // - 最多每 50 毫秒向主线程发一次输出（总量已被上限封顶，所以单条消息不会太大）
 
 import { LIMITS } from "./py-worker-limits.js";
+import { PY_TASK_HELPER } from "./py-task.js";
 
 let pyodide = null;
 let runPy = null;      // Python 里定义的 _run 函数
 let flushPy = null;    // Python 里定义的 _flush 函数
+let taskPy = null;     // Python 里定义的 _run_task 函数（判题 / 带 input、文件的运行）
 
 // 每次运行的输出状态
 let run = null;        // { id, bytes, lines, limitHit, pending: Uint8Array[] , lastSend }
@@ -107,6 +109,18 @@ def _run(src, data=None):
         _flush()                 # 没有换行的输出（如 print("a", end="")）也要刷出来
 `;
 
+// 只接住“Pyodide 加载阶段”的网络类失败（离线、资源取不到）：WebKit 会把它报成 Unhandled Promise Rejection。
+// 其他任何拒绝（包括加载完成之后的）原样放过，不屏蔽；接住的这类也会 console.error 保留诊断信息，并把原文带进加载失败提示。
+const LOAD_PHASE_ERR = /Load failed|Failed to fetch|NetworkError|fetch|Importing a module script failed|Failed to load|wasm|pyodide/i;
+self.addEventListener("unhandledrejection", (ev) => {
+  if (pyodide) return;
+  const msg = String((ev.reason && ev.reason.message) || ev.reason || "");
+  if (!LOAD_PHASE_ERR.test(msg)) return;
+  ev.preventDefault?.();
+  console.error("[py-worker] Pyodide 加载阶段的未处理拒绝：", ev.reason);
+  postMessage({ type: "loadError", msg: msg.slice(0, LIMITS.maxErrorChars) });
+});
+
 onmessage = async (e) => {
   const m = e.data;
   if (m.type === "init") {
@@ -117,6 +131,8 @@ onmessage = async (e) => {
       pyodide.setStdout({ write });
       pyodide.setStderr({ write });
       pyodide.runPython(PY_HELPER);
+      pyodide.runPython(PY_TASK_HELPER);
+      taskPy = pyodide.globals.get("_run_task");
       runPy = pyodide.globals.get("_run");
       flushPy = pyodide.globals.get("_flush");
       postMessage({ type: "ready", ms: Math.round(performance.now() - t0) });
@@ -130,20 +146,40 @@ onmessage = async (e) => {
     let err = null;
     let data = null;
     let res = null;
+    let files = null;
+    let opts = null;
     try {
-      data = m.data ? pyodide.toPy(m.data) : null;
-      res = data ? runPy(m.code, data) : runPy(m.code);
-      if (res) err = res.toJs({ dict_converter: Object.fromEntries });
+      if (m.task) {
+        // 任务运行：每次都是全新的变量空间和虚拟文件系统（见 py-task.js）
+        // 注意：Pyodide 把 JS 的 null 转成 JsNull（不是 None），所以任务参数里的 null 一律去掉（等于“没给”）；data 单独传
+        const t = JSON.parse(JSON.stringify({ ...m.task, id: m.id }, (k, v) => (v === null ? undefined : v)));
+        // code 是“入口文件”的简写：files 里没有入口文件时，用 code 补上（code 为空串则不补）
+        t.files = { ...(t.files || {}) };
+        const entry = t.entry || "main.py";
+        if (typeof m.code === "string" && m.code !== "" && !(entry in t.files)) t.files[entry] = m.code;
+        opts = pyodide.toPy(t);
+        data = m.data ? pyodide.toPy(m.data) : null;
+        res = data ? taskPy(opts, data) : taskPy(opts);
+        const r = res.toJs({ dict_converter: Object.fromEntries });
+        err = r.error || null;
+        // Python 的 None 转到 JS 是 undefined：统一成 null（文件不存在）
+        files = r.files ? Object.fromEntries(Object.entries(r.files).map(([k, v]) => [k, v ?? null])) : null;
+      } else {
+        data = m.data ? pyodide.toPy(m.data) : null;
+        res = data ? runPy(m.code, data) : runPy(m.code);
+        if (res) err = res.toJs({ dict_converter: Object.fromEntries });
+      }
     } catch (x) {
       err = { kind: "InternalError", line: null, msg: String((x && x.message) || x).slice(0, LIMITS.maxErrorChars) };
     } finally {
       if (res) res.destroy();
       if (data) data.destroy();
+      if (opts) opts.destroy();
       try { flushPy(); } catch { /* 已在上限时停止 */ }
     }
     const limitHit = run.limitHit;
     send(true);
-    postMessage({ type: "done", id: m.id, error: limitHit ? null : err, limitHit });
+    postMessage({ type: "done", id: m.id, error: limitHit ? null : err, limitHit, files: limitHit ? null : files });
     run = null;
   }
 };

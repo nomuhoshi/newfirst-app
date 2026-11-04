@@ -58,6 +58,16 @@ for (const [bn, bt] of [["WebKit", webkit], ["Chromium", chromium]].filter(([n])
   check(tag(`超时重启之后再判题：照常 pass（不误报 unavailable），重启加载不计入（墙钟 ${wall2b}ms，totalMs ${r.totalMs}ms）`), r.status === "pass" && r.settle && r.totalMs < 2500 && wall2b >= r.totalMs, `${wall2b} ${r.totalMs} ${r.status}`);
   r = await J({ code: "print(7)", tests: [T("a", "7")] });
   check(tag("超时之后再判题一次也正常"), r.status === "pass");
+  // 3. 新字段（真实 Pyodide）：input / 文件 / 多文件 / call
+  r = await J({ code: 'n = input("数量:")\nprint(int(n) * 15)', tests: [{ name: "a", expected: "数量:45", stdin: ["3"] }, { name: "b", expected: "数量:0", stdin: "0\n" }] });
+  check(tag("input：stdin 逐组传入"), r.status === "pass", JSON.stringify(r.cases));
+  r = await J({ files: [{ path: "main.py", content: "import shop\nprint(shop.total(2))\nopen('o.txt','w').write('x')" }, { path: "shop.py", content: "def total(n):\n    return n * 15" }], tests: [{ name: "a", expected: "30", expectedFiles: { "o.txt": "x" } }] });
+  check(tag("多文件 + 输出文件检查"), r.status === "pass", JSON.stringify(r.cases));
+  r = await J({ code: "def price(n):\n    return n * 15\n", checkMode: "call", tests: [{ name: "a", call: { fn: "price", args: [3] }, expectedReturn: 45 }, { name: "b", call: { fn: "price", args: [0] }, expectedReturn: 1 }] });
+  check(tag("call 模式：按返回值判"), r.status === "fail" && r.cases[0].ok && r.cases[1].kind === "wrong-return" && r.cases[1].actualReturn === "0", JSON.stringify(r.cases));
+  r = await J({ code: "input()", tests: [T("a", "")] });
+  check(tag("没有 stdin 却调用 input()：算答错（不是环境问题），提示没有输入数据"), r.status === "fail" && /没有输入数据/.test(r.cases[0].error.msg), JSON.stringify(r.cases));
+
   r = await J({ code: "for i in range(10**6):\n    print(i)", tests: [T("a", ""), T("b", "")] });
   check(tag("输出太多（真实 Worker 的 100 行 / 8 KiB 上限）：status=output-limit，不算作答，只跑了第一组"), r.status === "output-limit" && !r.attempt && !r.settle && r.cases.length === 1 && /检查循环或打印次数/.test(r.cases[0].message), JSON.stringify(r.cases.map((c) => c.kind)) + r.status);
   // 4. 默认限时（5 秒 / 10 秒）真实跑一次：死循环 → 约 5 秒后 case-timeout，提示写 5 秒

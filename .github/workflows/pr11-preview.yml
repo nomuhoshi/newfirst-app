@@ -1,0 +1,34 @@
+# #11 测试入口：用 PREVIEW_ID=pr11 构建（本地存储键前缀 pr11:、缓存前缀 pr11-suipian-），推到分支 preview-dist-pr11。
+# 只在 feat/account-data-layer 运行；不部署任何网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 pr11/ 目录。
+name: PR11 test entry
+on:
+  push:
+    branches: [feat/account-data-layer]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: pr11-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: PREVIEW_ID=pr11 npm run build
+      - name: 检查隔离：构建里有 pr11 前缀、缓存前缀不是 suipian-
+        run: |
+          grep -q 'PREFIX = "pr11-suipian-"' dist/sw.js
+          grep -rq 'pr11' dist/assets/main-*.js
+      - name: 推到 preview-dist-pr11
+        run: |
+          cd dist
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "pr11 test entry from ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist:preview-dist-pr11

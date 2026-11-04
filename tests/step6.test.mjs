@@ -11,7 +11,8 @@ import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffle
 const ROOT = resolve(new URL("..", import.meta.url).pathname);
 const DIST = join(ROOT, "dist");
 const course = JSON.parse(readFileSync(join(ROOT, "content/course.json"), "utf8"));
-const UNITS = { U1: JSON.parse(readFileSync(join(ROOT, "content/unit1.json"), "utf8")), U2: JSON.parse(readFileSync(join(ROOT, "content/unit2.json"), "utf8")) };
+// 已开放的单元都读进来（U3 起不再只有 U1、U2；新单元开放后不用再改这里）
+const UNITS = Object.fromEntries(course.units.filter((u) => u.available).map((u) => [u.id, JSON.parse(readFileSync(join(ROOT, `content/unit${u.id.slice(1)}.json`), "utf8"))]));
 const units = course.units.filter((u) => u.available).map((u) => ({ id: u.id, title: u.title, lessons: UNITS[u.id].lessons }));
 const lessonsOf = (uid) => UNITS[uid].lessons.map((l) => l.id);
 const countOf = (ids) => ids.reduce((n, id) => n + units.flatMap((u) => u.lessons).find((l) => l.id === id).exercises.length, 0);
@@ -121,7 +122,8 @@ async function answer(page, correct) {
     await page.locator(".choice").nth(idx).click();
   } else if (ex.type === "fill") {
     const want = [...ex.answer];
-    if (!correct) want[0] = ex.tokens.find((t) => t !== ex.answer[0]);
+    // 答错要换成“另一个能提交的错误词块”：不能选等于初始值的那个（U1L2#3 的初始值 Cups 本身就是错的；没改动时应用不让提交，检查按钮一直是灰的）
+    if (!correct) want[0] = ex.tokens.find((t) => t !== ex.answer[0] && !(ex.initial || []).includes(t)) ?? ex.tokens.find((t) => t !== ex.answer[0]);
     for (let k = 0; k < want.length; k++) {
       await page.locator(`[data-slot="${k}"]`).click();
       await page.evaluate((t) => [...document.querySelectorAll("[data-token]")].find((b) => b.dataset.token === t).click(), want[k]);
@@ -136,7 +138,12 @@ async function answer(page, correct) {
     for (const k of order) await page.locator(`.order-bank [data-line="${k}"]`).first().click();
   }
   await page.evaluate(() => { const b = document.querySelector("[data-check]"); b.click(); b.click(); }); // 连点检查只算一次
-  await page.locator("[data-continue]:not([disabled])").waitFor();
+  try { await page.locator("[data-continue]:not([disabled])").waitFor(); }
+  catch (e) { // 偶发超时时把现场打出来，方便定位（不改变通过/失败的判定：仍然抛出）
+    const dom = await page.evaluate(() => ({ cur: window.__app.currentPracticeItem, foot: document.querySelector(".lessonfoot, .feedbar")?.outerHTML.slice(0, 500), check: document.querySelector("[data-check]")?.outerHTML.slice(0, 200), body: document.querySelector("#app").innerText.slice(0, 500), renders: window.__app.renders })).catch(() => null);
+    console.log("⚠️ answer() 超时现场：", JSON.stringify({ type: ex.type, correct, ex: JSON.stringify(ex).slice(0, 600), dom }));
+    throw e;
+  }
   return ex.type;
 }
 

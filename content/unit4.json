@@ -1,0 +1,1472 @@
+{
+  "id": "U4",
+  "title": "重复",
+  "subtitle": "for、range、while、break",
+  "lessons": [
+    {
+      "id": "U4L1",
+      "title": "一次做好几杯",
+      "concept": "for 重复同一件事",
+      "story": "要重复做同一件事，不用把 print 抄好几遍。for i in range(3): 表示“重复 3 次”，下面缩进 4 格的行就是每次都做的事（叫循环体）。没缩进的行不重复，循环做完后才执行一次。",
+      "introCode": "for i in range(3):\n    print(\"做一杯奶茶\")\nprint(\"全部做好\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(3):\n    print(\"做一杯\")",
+          "options": [
+            {
+              "text": "做一杯\n做一杯\n做一杯",
+              "correct": true,
+              "why": "range(3) 让循环体执行 3 次。"
+            },
+            {
+              "text": "做一杯\n做一杯\n做一杯\n做一杯",
+              "correct": false,
+              "why": "range(3) 是 3 次，不是 4 次：数到 3 之前就停。"
+            },
+            {
+              "text": "做一杯",
+              "correct": false,
+              "why": "for 会重复循环体，不只执行一次。"
+            }
+          ],
+          "tip": "range(n) 重复 n 次。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(2):\n    print(\"摇匀\")\nprint(\"出杯\")",
+          "options": [
+            {
+              "text": "摇匀\n摇匀\n出杯",
+              "correct": true,
+              "why": "只有缩进的 摇匀 重复 2 次；出杯 没缩进，循环结束后执行一次。"
+            },
+            {
+              "text": "摇匀\n出杯\n摇匀\n出杯",
+              "correct": false,
+              "why": "没缩进的行不属于循环，不会每次都执行。"
+            },
+            {
+              "text": "摇匀\n出杯",
+              "correct": false,
+              "why": "range(2) 让缩进的行执行 2 次。"
+            }
+          ],
+          "tip": "缩进的行重复；没缩进的行只执行一次。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序。屏幕显示：\n开始做\n加冰\n加冰\n做好了",
+          "lines": [
+            "print(\"开始做\")",
+            "for i in range(2):",
+            "    print(\"加冰\")",
+            "print(\"做好了\")"
+          ],
+          "shuffled": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "开始做\n加冰\n加冰\n做好了",
+          "hint": "开始做 只出现一次，放最前；缩进的 加冰 紧跟 for；做好了 放最后。"
+        },
+        {
+          "type": "fill",
+          "prompt": "出餐铃要响 4 声，补全数字。屏幕显示 4 行：叮",
+          "code": "for i in range({0}):\n    print(\"叮\")",
+          "tokens": [
+            "4",
+            "3",
+            "5"
+          ],
+          "answer": [
+            "4"
+          ],
+          "expected": "叮\n叮\n叮\n叮",
+          "why": {
+            "3": "range(3) 只重复 3 次。",
+            "5": "range(5) 会重复 5 次，多了一声。"
+          },
+          "hint": "range(n) 正好重复 n 次。"
+        }
+      ]
+    },
+    {
+      "id": "U4L2",
+      "title": "从几数到几",
+      "concept": "range 的起点和步长",
+      "story": "循环变量 i 每次会换成 range 里的下一个数。range(3) 是 0、1、2；range(1, 4) 从 1 开始，到 4 之前停：1、2、3（不含 4）。range(0, 10, 3) 每次加 3；步长也可以是负数，用来倒数。",
+      "introCode": "for i in range(1, 4):\n    print(i)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(1, 4):\n    print(i)",
+          "options": [
+            {
+              "text": "1\n2\n3",
+              "correct": true,
+              "why": "从 1 开始，到 4 之前停，不含 4。"
+            },
+            {
+              "text": "1\n2\n3\n4",
+              "correct": false,
+              "why": "range(1, 4) 不包含结尾的 4。"
+            },
+            {
+              "text": "0\n1\n2\n3",
+              "correct": false,
+              "why": "写了起点 1，就从 1 开始。"
+            }
+          ],
+          "tip": "range(a, b)：包含 a，不包含 b。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(0, 10, 3):\n    print(i)",
+          "options": [
+            {
+              "text": "0\n3\n6\n9",
+              "correct": true,
+              "why": "从 0 开始每次加 3：0、3、6、9；下一个 12 超过了 10 之前的范围。"
+            },
+            {
+              "text": "0\n3\n6",
+              "correct": false,
+              "why": "9 还小于 10，也算在里面。"
+            },
+            {
+              "text": "3\n6\n9",
+              "correct": false,
+              "why": "起点是 0，第一个数就是 0。"
+            }
+          ],
+          "tip": "第三个数是步长：每次加多少。"
+        },
+        {
+          "type": "fill",
+          "prompt": "要显示 1 到 5 这五个数，补全结尾的数字。",
+          "code": "for i in range(1, {0}):\n    print(i)",
+          "tokens": [
+            "6",
+            "5",
+            "4"
+          ],
+          "answer": [
+            "6"
+          ],
+          "expected": "1\n2\n3\n4\n5",
+          "why": {
+            "5": "range(1, 5) 到 5 之前就停，只有 1 到 4。",
+            "4": "range(1, 4) 只有 1、2、3。"
+          },
+          "hint": "结尾的数字本身不包含在内，要比 5 多 1。"
+        },
+        {
+          "type": "fill",
+          "prompt": "倒数开门：屏幕依次显示 3、2、1。补全步长。",
+          "code": "for i in range(3, 0, {0}):\n    print(i)",
+          "tokens": [
+            "-1",
+            "1",
+            "0"
+          ],
+          "answer": [
+            "-1"
+          ],
+          "expected": "3\n2\n1",
+          "why": {
+            "1": "步长 1 是往上数，从 3 往上永远到不了 0，一个数也不显示。",
+            "0": "步长不能是 0，会报错。"
+          },
+          "hint": "倒着数，每次要减 1。"
+        }
+      ]
+    },
+    {
+      "id": "U4L3",
+      "title": "第几号订单",
+      "concept": "使用循环变量",
+      "story": "每一轮，循环变量 i 都是不同的数，可以拿来显示或计算。range(3) 里 i 从 0 开始；想从 1 开始显示，可以写 i + 1，或者用 range(1, 4)。循环结束后，i 还在，保留最后一轮的值。",
+      "introCode": "for i in range(1, 4):\n    print(\"订单\", i)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(3):\n    print(\"第\", i + 1, \"单\")",
+          "options": [
+            {
+              "text": "第 1 单\n第 2 单\n第 3 单",
+              "correct": true,
+              "why": "i 依次是 0、1、2，加 1 后是 1、2、3。"
+            },
+            {
+              "text": "第 0 单\n第 1 单\n第 2 单",
+              "correct": false,
+              "why": "显示的是 i + 1，不是 i。"
+            },
+            {
+              "text": "第 i + 1 单\n第 i + 1 单\n第 i + 1 单",
+              "correct": false,
+              "why": "i + 1 没加引号，会算出数字。"
+            }
+          ],
+          "tip": "range(3) 的 i 从 0 开始。"
+        },
+        {
+          "type": "fill",
+          "prompt": "显示每一杯的编号。屏幕显示：\n杯 1\n杯 2\n杯 3",
+          "code": "for i in range(1, 4):\n    print(\"杯\", {0})",
+          "tokens": [
+            "i",
+            "\"i\"",
+            "3"
+          ],
+          "answer": [
+            "i"
+          ],
+          "expected": "杯 1\n杯 2\n杯 3",
+          "why": {
+            "\"i\"": "加了引号就是文字 i，每行都会显示“杯 i”。",
+            "3": "写死 3，每行都是杯 3。要用每轮会变的 i。"
+          },
+          "hint": "每一轮会变的是循环变量。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序。屏幕显示：\n订单 1\n完成\n订单 2\n完成",
+          "lines": [
+            "for i in range(1, 3):",
+            "    print(\"订单\", i)",
+            "    print(\"完成\")"
+          ],
+          "shuffled": [
+            2,
+            0,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2
+            ]
+          ],
+          "expected": "订单 1\n完成\n订单 2\n完成",
+          "hint": "两行都缩进、都在循环里，每轮先显示订单号再显示完成。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(3):\n    print(\"做\")\nprint(i)",
+          "options": [
+            {
+              "text": "做\n做\n做\n2",
+              "correct": true,
+              "why": "循环结束后 i 还在，是最后一轮的值 2。"
+            },
+            {
+              "text": "做\n做\n做\n3",
+              "correct": false,
+              "why": "range(3) 最后一轮的 i 是 2，没有 3。"
+            },
+            {
+              "text": "做\n做\n做",
+              "correct": false,
+              "why": "最后一行没缩进，循环后会执行一次，i 仍然存在。"
+            }
+          ],
+          "tip": "循环做完，i 保留最后一轮的值。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "replaces": 2,
+          "plan": "改一改：把从 0 开始的编号改成从 1 开始",
+          "task": {
+            "id": "U4L3-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "要显示订单 1 到 n，但这段程序从“订单 0”开始。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(n):\n    print(\"订单\", i)\n",
+            "tests": [
+              {
+                "name": "3 单",
+                "data": {
+                  "n": 3
+                },
+                "expected": "订单 1\n订单 2\n订单 3"
+              },
+              {
+                "name": "1 单",
+                "data": {
+                  "n": 1
+                },
+                "expected": "订单 1"
+              },
+              {
+                "name": "5 单",
+                "data": {
+                  "n": 5
+                },
+                "expected": "订单 1\n订单 2\n订单 3\n订单 4\n订单 5",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "range(n) 的 i 从 0 开始。显示时能不能加点什么？",
+              "把 print(\"订单\", i) 改成 print(\"订单\", i + 1)（或者改用 range(1, n + 1)）。"
+            ],
+            "reference": "for i in range(n):\n    print(\"订单\", i + 1)\n",
+            "worked": {
+              "code": "for i in range(3):\n    print(\"第\", i + 1, \"单\")",
+              "output": "第 1 单\n第 2 单\n第 3 单",
+              "explain": "本关第 1 题：i 从 0 开始，显示 i + 1 就从 1 开始。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L3-M1-V1",
+              "prompt": "显示“号码 1”到“号码 n”，每个号码隔 2（1、3、5…，共 n 个）。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "3 个",
+                  "data": {
+                    "n": 3
+                  },
+                  "expected": "号码 1\n号码 3\n号码 5"
+                },
+                {
+                  "name": "1 个",
+                  "data": {
+                    "n": 1
+                  },
+                  "expected": "号码 1"
+                },
+                {
+                  "name": "4 个",
+                  "data": {
+                    "n": 4
+                  },
+                  "expected": "号码 1\n号码 3\n号码 5\n号码 7",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "第 i 个（i 从 0 开始）的号码是 i * 2 + 1。",
+                "for i in range(n): print(\"号码\", i * 2 + 1)。"
+              ],
+              "solution": "for i in range(n):\n    print(\"号码\", i * 2 + 1)\n"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "U4L4",
+      "title": "一共几杯",
+      "concept": "累加：total = 0",
+      "story": "要求和或计数，先在循环外准备一个变量 total = 0，每一轮用 total = total + … 往上加，循环结束后再显示。total = 0 要放在循环外面，否则每轮都会被清零。",
+      "introCode": "total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)",
+          "options": [
+            {
+              "text": "6",
+              "correct": true,
+              "why": "0 + 1 + 2 + 3 = 6；print 在循环外，只显示一次最后结果。"
+            },
+            {
+              "text": "1\n3\n6",
+              "correct": false,
+              "why": "print 没缩进，不在循环里，只在最后显示一次。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "total 是一轮轮加起来的，不是最后的 i。"
+            }
+          ],
+          "tip": "累加：每轮在原来的基础上加。"
+        },
+        {
+          "type": "order",
+          "prompt": "每单 2 杯，共 3 单。排好顺序。屏幕显示：总杯数 6",
+          "lines": [
+            "cups = 0",
+            "for i in range(3):",
+            "    cups = cups + 2",
+            "print(\"总杯数\", cups)"
+          ],
+          "shuffled": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "总杯数 6",
+          "hint": "cups = 0 放循环前面；缩进的累加紧跟 for；显示放最后。"
+        },
+        {
+          "type": "fill",
+          "prompt": "算 1 + 2 + 3 + 4。补全两处，屏幕显示：10",
+          "code": "total = {0}\nfor i in range(1, 5):\n    total = total {1} i\nprint(total)",
+          "tokens": [
+            "0",
+            "1",
+            "+",
+            "*"
+          ],
+          "answer": [
+            "0",
+            "+"
+          ],
+          "expected": "10",
+          "why": {
+            "1": "从 1 开始加会多出 1。求和要从 0 开始。",
+            "*": "* 是乘，这里要加起来。"
+          },
+          "hint": "求和：从 0 开始，每轮加上 i。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "total = 0\nfor i in range(1, 4):\n    total = i\nprint(total)",
+          "options": [
+            {
+              "text": "3",
+              "correct": true,
+              "why": "total = i 每轮都把 total 换成 i，没有加起来，最后是 3。"
+            },
+            {
+              "text": "6",
+              "correct": false,
+              "why": "要写 total = total + i 才是加起来；这里只是覆盖。"
+            },
+            {
+              "text": "0",
+              "correct": false,
+              "why": "循环里给 total 重新存了值，最后是 3。"
+            }
+          ],
+          "tip": "累加要写 total = total + i。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "replaces": 3,
+          "plan": "改一改：把 total = 0 从循环里移到循环外",
+          "task": {
+            "id": "U4L4-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "要算 1 + 2 + … + n（range(1, n + 1) 就是 1 到 n），但这段程序结果不对。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(1, n + 1):\n    total = 0\n    total = total + i\nprint(total)\n",
+            "tests": [
+              {
+                "name": "n = 3",
+                "data": {
+                  "n": 3
+                },
+                "expected": "6"
+              },
+              {
+                "name": "n = 4",
+                "data": {
+                  "n": 4
+                },
+                "expected": "10"
+              },
+              {
+                "name": "n = 1",
+                "data": {
+                  "n": 1
+                },
+                "expected": "1",
+                "hidden": true
+              },
+              {
+                "name": "n = 0",
+                "data": {
+                  "n": 0
+                },
+                "expected": "0",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "total = 0 在循环里，每一轮会发生什么？",
+              "把 total = 0 移到 for 的上面，并去掉缩进。"
+            ],
+            "reference": "total = 0\nfor i in range(1, n + 1):\n    total = total + i\nprint(total)\n",
+            "worked": {
+              "code": "total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)",
+              "output": "6",
+              "explain": "本关第 1 题：累加器放在循环外，每轮在原来的基础上加。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L4-M1-V1",
+              "prompt": "每单 3 元，算 n 单一共多少元：每轮加 3。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "n = 2",
+                  "data": {
+                    "n": 2
+                  },
+                  "expected": "6"
+                },
+                {
+                  "name": "n = 4",
+                  "data": {
+                    "n": 4
+                  },
+                  "expected": "12"
+                },
+                {
+                  "name": "n = 3",
+                  "data": {
+                    "n": 3
+                  },
+                  "expected": "9",
+                  "hidden": true
+                },
+                {
+                  "name": "n = 0",
+                  "data": {
+                    "n": 0
+                  },
+                  "expected": "0",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "累加器放循环外，每轮加 3。",
+                "total = 0 / for i in range(n): total = total + 3 / print(total)。"
+              ],
+              "solution": "total = 0\nfor i in range(n):\n    total = total + 3\nprint(total)\n"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "U4L5",
+      "title": "只数大单",
+      "concept": "for 里放 if",
+      "story": "循环里可以放 if：每一轮都检查一次，条件成立才做。if 在 for 里面，所以 if 要缩进 4 格，if 要做的事再缩进 4 格（共 8 格）。计数器 count = 0 放在循环外，循环结束后再显示。",
+      "introCode": "count = 0\nfor i in range(1, 6):\n    if i >= 4:\n        count = count + 1\nprint(\"大单数\", count)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(1, 6):\n    if i >= 4:\n        print(\"大单\", i)",
+          "options": [
+            {
+              "text": "大单 4\n大单 5",
+              "correct": true,
+              "why": "每一轮都检查：只有 i 是 4 和 5 时条件成立。"
+            },
+            {
+              "text": "大单 3\n大单 4\n大单 5",
+              "correct": false,
+              "why": "3 >= 4 不成立。"
+            },
+            {
+              "text": "大单 1\n大单 2\n大单 3\n大单 4\n大单 5",
+              "correct": false,
+              "why": "print 在 if 里（缩进 8 格），条件不成立的轮次不显示。"
+            }
+          ],
+          "tip": "for 里的 if 每一轮都会检查一次。"
+        },
+        {
+          "type": "fill",
+          "prompt": "数一数 1 到 5 号订单里，编号 3 以上（含 3）的有几单。屏幕显示：3",
+          "code": "count = 0\nfor i in range(1, 6):\n    if i {0} 3:\n        count = count + 1\nprint(count)",
+          "tokens": [
+            ">=",
+            ">",
+            "=="
+          ],
+          "answer": [
+            ">="
+          ],
+          "expected": "3",
+          "why": {
+            ">": "> 不含 3，只数到 4、5 两单。",
+            "==": "== 只数正好是 3 的那一单。"
+          },
+          "hint": "“3 以上（含 3）”用包含相等的符号。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：数 1 到 4 号里编号大于 2 的订单。屏幕显示：大单数 2",
+          "lines": [
+            "count = 0",
+            "for i in range(1, 5):",
+            "    if i > 2:",
+            "        count = count + 1",
+            "print(\"大单数\", count)"
+          ],
+          "shuffled": [
+            4,
+            3,
+            2,
+            1,
+            0
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4
+            ]
+          ],
+          "expected": "大单数 2",
+          "hint": "计数器放循环前；if 在 for 里；加 1 在 if 里；最后显示一次。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "count = 0\nfor i in range(1, 5):\n    if i > 2:\n        count = count + 1\n    print(count)",
+          "options": [
+            {
+              "text": "0\n0\n1\n2",
+              "correct": true,
+              "why": "print 缩进 4 格，在 for 里、if 外：每一轮都显示一次当前的 count。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "print 缩进了，在循环里，每轮都会显示。"
+            },
+            {
+              "text": "1\n2",
+              "correct": false,
+              "why": "print 不在 if 里，条件不成立的轮次也会显示。"
+            }
+          ],
+          "tip": "看缩进判断一行属于谁：0 格在循环外，4 格在 for 里，8 格在 if 里。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "replaces": 2,
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改：把放错位置的 count = 0（在循环里）移到循环外",
+          "task": {
+            "id": "U4L5-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "数一数 1 到 n 号订单里编号大于 2 的有几单，但这段程序结果总是 0 或 1。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(1, n + 1):\n    count = 0\n    if i > 2:\n        count = count + 1\nprint(\"大单数\", count)\n",
+            "tests": [
+              {
+                "name": "5 单",
+                "data": {
+                  "n": 5
+                },
+                "expected": "大单数 3"
+              },
+              {
+                "name": "4 单",
+                "data": {
+                  "n": 4
+                },
+                "expected": "大单数 2"
+              },
+              {
+                "name": "2 单",
+                "data": {
+                  "n": 2
+                },
+                "expected": "大单数 0",
+                "hidden": true
+              },
+              {
+                "name": "6 单",
+                "data": {
+                  "n": 6
+                },
+                "expected": "大单数 4",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "count = 0 在循环里，每一轮都会被清零。",
+              "把 count = 0 移到 for 上面，去掉缩进。"
+            ],
+            "reference": "count = 0\nfor i in range(1, n + 1):\n    if i > 2:\n        count = count + 1\nprint(\"大单数\", count)\n",
+            "worked": {
+              "code": "count = 0\nfor i in range(1, 6):\n    if i >= 4:\n        count = count + 1\nprint(\"大单数\", count)",
+              "output": "大单数 2",
+              "explain": "本关开头的示范：计数器放在循环外，if 成立才加 1。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L5-M1-V1",
+              "prompt": "数一数 1 到 n 号订单里编号小于 3 的有几单，输出“小单数 数量”。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "5 单",
+                  "data": {
+                    "n": 5
+                  },
+                  "expected": "小单数 2"
+                },
+                {
+                  "name": "1 单",
+                  "data": {
+                    "n": 1
+                  },
+                  "expected": "小单数 1"
+                },
+                {
+                  "name": "6 单",
+                  "data": {
+                    "n": 6
+                  },
+                  "expected": "小单数 2",
+                  "hidden": true
+                },
+                {
+                  "name": "2 单",
+                  "data": {
+                    "n": 2
+                  },
+                  "expected": "小单数 2",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "计数器放循环外，if i < 3 才加 1。",
+                "count = 0 / for i in range(1, n + 1): if i < 3: count = count + 1 / print(\"小单数\", count)。"
+              ],
+              "solution": "count = 0\nfor i in range(1, n + 1):\n    if i < 3:\n        count = count + 1\nprint(\"小单数\", count)\n"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "U4L6",
+      "title": "做到够为止",
+      "concept": "while",
+      "story": "while 和 if 很像，但不只执行一次：只要条件成立，就一遍遍执行下面缩进的行，每遍做完再回来检查。循环里一定要改变条件里的变量（比如 n = n + 1），否则条件永远成立，程序停不下来——点单屏会提示运行超时，这不算答错、不扣红心，改好再试。",
+      "introCode": "n = 1\nwhile n <= 3:\n    print(\"第\", n, \"杯\")\n    n = n + 1",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "n = 1\nwhile n <= 3:\n    print(n)\n    n = n + 1",
+          "options": [
+            {
+              "text": "1\n2\n3",
+              "correct": true,
+              "why": "n 是 1、2、3 时条件成立；n 变成 4 时不成立，循环结束。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "while 不是只执行一次：每遍做完会回来再检查条件。"
+            },
+            {
+              "text": "1\n2\n3\n4",
+              "correct": false,
+              "why": "n 是 4 时 4 <= 3 不成立，不会再显示。"
+            }
+          ],
+          "tip": "while：条件成立就再来一遍。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序。屏幕显示：\n做好第 1 杯\n做好第 2 杯\n做好第 3 杯",
+          "lines": [
+            "cups = 0",
+            "while cups < 3:",
+            "    cups = cups + 1",
+            "    print(\"做好第\", cups, \"杯\")"
+          ],
+          "shuffled": [
+            3,
+            1,
+            2,
+            0
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "做好第 1 杯\n做好第 2 杯\n做好第 3 杯",
+          "hint": "先存 cups；while 下面先加 1 再显示，第一杯才是 1。"
+        },
+        {
+          "type": "fill",
+          "prompt": "从 1 数到 3。补全条件，屏幕显示：\n1\n2\n3",
+          "code": "n = 1\nwhile n {0} 3:\n    print(n)\n    n = n + 1",
+          "tokens": [
+            "<=",
+            "<",
+            "=="
+          ],
+          "answer": [
+            "<="
+          ],
+          "expected": "1\n2\n3",
+          "why": {
+            "<": "n < 3 在 n 是 3 时不成立，只显示 1、2。",
+            "==": "n 一开始是 1，1 == 3 不成立，循环一遍也不执行。"
+          },
+          "hint": "要包含 3，用包含相等的符号。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "money = 10\nwhile money >= 4:\n    money = money - 4\nprint(money)",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "10 → 6 → 2；2 >= 4 不成立，停下，显示 2。"
+            },
+            {
+              "text": "6",
+              "correct": false,
+              "why": "while 会一遍遍执行，不是只减一次。"
+            },
+            {
+              "text": "-2",
+              "correct": false,
+              "why": "每遍开始前都检查：money 是 2 时不再减。"
+            }
+          ],
+          "tip": "每一遍开始前都检查条件。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "replaces": 3,
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改：给忘记更新变量的 while 加上 x = x + 1（运行会超时：不算作答、不扣红心）",
+          "task": {
+            "id": "U4L6-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "要算 1 + 2 + … + n，但这段程序停不下来（运行会超时，不算答错、不扣红心）。请改正。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "code": "total = 0\nx = 1\nwhile x <= n:\n    total = total + x\nprint(total)\n",
+            "tests": [
+              {
+                "name": "n = 3",
+                "data": {
+                  "n": 3
+                },
+                "expected": "6"
+              },
+              {
+                "name": "n = 4",
+                "data": {
+                  "n": 4
+                },
+                "expected": "10"
+              },
+              {
+                "name": "n = 1",
+                "data": {
+                  "n": 1
+                },
+                "expected": "1",
+                "hidden": true
+              },
+              {
+                "name": "n = 5",
+                "data": {
+                  "n": 5
+                },
+                "expected": "15",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "循环里有没有改变 x？条件 x <= n 会不会变成不成立？",
+              "在 total = total + x 下面加一行 x = x + 1（缩进 4 格）。"
+            ],
+            "reference": "total = 0\nx = 1\nwhile x <= n:\n    total = total + x\n    x = x + 1\nprint(total)\n",
+            "worked": {
+              "code": "n = 1\nwhile n <= 3:\n    print(n)\n    n = n + 1",
+              "output": "1\n2\n3",
+              "explain": "本关第 1 题：每遍都把 n 加 1，条件最终不成立，循环停下。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L6-M1-V1",
+              "prompt": "从 n 倒数到 1（每次减 1）。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "n = 3",
+                  "data": {
+                    "n": 3
+                  },
+                  "expected": "3\n2\n1"
+                },
+                {
+                  "name": "n = 1",
+                  "data": {
+                    "n": 1
+                  },
+                  "expected": "1"
+                },
+                {
+                  "name": "n = 4",
+                  "data": {
+                    "n": 4
+                  },
+                  "expected": "4\n3\n2\n1",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "while 的条件写 x >= 1，循环里要让 x 变小。",
+                "x = n / while x >= 1: print(x) / x = x - 1。"
+              ],
+              "solution": "x = n\nwhile x >= 1:\n    print(x)\n    x = x - 1\n"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "U4L7",
+      "title": "售罄就停",
+      "concept": "break 和 continue",
+      "story": "break：立刻结束整个循环，后面的轮次都不做了。continue：只跳过这一轮剩下的部分，直接进入下一轮。它们都写在循环里的 if 下面。",
+      "introCode": "for i in range(1, 6):\n    if i == 3:\n        break\n    print(i)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(1, 6):\n    if i == 3:\n        break\n    print(i)",
+          "options": [
+            {
+              "text": "1\n2",
+              "correct": true,
+              "why": "i 是 3 时 break，整个循环结束，4、5 都不做了。"
+            },
+            {
+              "text": "1\n2\n4\n5",
+              "correct": false,
+              "why": "break 不是只跳过一轮，而是结束整个循环。"
+            },
+            {
+              "text": "1\n2\n3",
+              "correct": false,
+              "why": "break 在 print 前面，3 来不及显示。"
+            }
+          ],
+          "tip": "break = 整个循环到此为止。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "for i in range(1, 6):\n    if i == 3:\n        continue\n    print(i)",
+          "options": [
+            {
+              "text": "1\n2\n4\n5",
+              "correct": true,
+              "why": "i 是 3 时 continue，跳过这一轮的 print，接着做 4、5。"
+            },
+            {
+              "text": "1\n2",
+              "correct": false,
+              "why": "continue 不结束循环，只跳过这一轮。"
+            },
+            {
+              "text": "1\n2\n3\n4\n5",
+              "correct": false,
+              "why": "i 是 3 那一轮的 print 被跳过了。"
+            }
+          ],
+          "tip": "continue = 这一轮不做了，下一轮继续。"
+        },
+        {
+          "type": "fill",
+          "prompt": "第 4 杯时原料卖完了，之后都不能再卖。补全，屏幕显示：\n卖出第 1 杯\n卖出第 2 杯\n卖出第 3 杯",
+          "code": "for i in range(1, 6):\n    if i == 4:\n        {0}\n    print(\"卖出第\", i, \"杯\")",
+          "tokens": [
+            "break",
+            "continue"
+          ],
+          "answer": [
+            "break"
+          ],
+          "expected": "卖出第 1 杯\n卖出第 2 杯\n卖出第 3 杯",
+          "why": {
+            "continue": "continue 只跳过第 4 杯，第 5 杯还会卖出。“之后都不能再卖”要结束整个循环。"
+          },
+          "hint": "要结束整个循环。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "n = 0\nwhile n < 10:\n    n = n + 1\n    if n == 3:\n        break\nprint(n)",
+          "options": [
+            {
+              "text": "3",
+              "correct": true,
+              "why": "n 加到 3 时 break，循环提前结束，显示 3。"
+            },
+            {
+              "text": "10",
+              "correct": false,
+              "why": "break 让循环在 n 是 3 时就结束了。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "n 先加 1 变成 3，然后才 break。"
+            }
+          ],
+          "tip": "while 里也能用 break。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "replaces": 4,
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改：把误用的 continue 改成 break（或反过来）",
+          "task": {
+            "id": "U4L7-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "第 stop 杯时原料卖完，之后都不能再卖。这段程序在卖完后还会继续卖。请改正。",
+            "given": [
+              "stop"
+            ],
+            "checkMode": "output",
+            "code": "for i in range(1, 6):\n    if i == stop:\n        continue\n    print(\"卖出第\", i, \"杯\")\n",
+            "tests": [
+              {
+                "name": "第 3 杯卖完",
+                "data": {
+                  "stop": 3
+                },
+                "expected": "卖出第 1 杯\n卖出第 2 杯"
+              },
+              {
+                "name": "第 5 杯卖完",
+                "data": {
+                  "stop": 5
+                },
+                "expected": "卖出第 1 杯\n卖出第 2 杯\n卖出第 3 杯\n卖出第 4 杯"
+              },
+              {
+                "name": "第 2 杯卖完",
+                "data": {
+                  "stop": 2
+                },
+                "expected": "卖出第 1 杯",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "continue 只跳过一轮。“之后都不能再卖”要怎样？",
+              "把 continue 改成 break。"
+            ],
+            "reference": "for i in range(1, 6):\n    if i == stop:\n        break\n    print(\"卖出第\", i, \"杯\")\n",
+            "worked": {
+              "code": "for i in range(1, 6):\n    if i == 3:\n        break\n    print(i)",
+              "output": "1\n2",
+              "explain": "本关第 1 题：break 结束整个循环。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L7-M1-V1",
+              "prompt": "第 skip 杯做坏了要跳过，其余照卖（共 5 杯）。",
+              "starter": "# skip 已经准备好\n",
+              "tests": [
+                {
+                  "name": "第 3 杯坏",
+                  "data": {
+                    "skip": 3
+                  },
+                  "expected": "卖出第 1 杯\n卖出第 2 杯\n卖出第 4 杯\n卖出第 5 杯"
+                },
+                {
+                  "name": "第 5 杯坏",
+                  "data": {
+                    "skip": 5
+                  },
+                  "expected": "卖出第 1 杯\n卖出第 2 杯\n卖出第 3 杯\n卖出第 4 杯"
+                },
+                {
+                  "name": "第 1 杯坏",
+                  "data": {
+                    "skip": 1
+                  },
+                  "expected": "卖出第 2 杯\n卖出第 3 杯\n卖出第 4 杯\n卖出第 5 杯",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "只跳过这一轮，后面继续：用哪个？",
+                "if i == skip: continue，然后 print。"
+              ],
+              "solution": "for i in range(1, 6):\n    if i == skip:\n        continue\n    print(\"卖出第\", i, \"杯\")\n"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "U4L8",
+      "title": "项目：批量订单统计",
+      "concept": "单元项目：循环 + 累加 + 判断",
+      "story": "单元项目：一共有 n 单，编号 1 到 n，每单 2 杯；第 3 号订单多要 1 杯。用循环算出总杯数。注意：累加器从 0 开始，range 要正好覆盖 1 到 n，特殊订单只加一次。",
+      "introCode": "n = 5\ntotal = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "n = 5\ntotal = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)",
+          "options": [
+            {
+              "text": "总杯数 11",
+              "correct": true,
+              "why": "5 单 × 2 杯 = 10，第 3 单多 1 杯，共 11。"
+            },
+            {
+              "text": "总杯数 10",
+              "correct": false,
+              "why": "i 是 3 那一轮会多加 1。"
+            },
+            {
+              "text": "总杯数 15",
+              "correct": false,
+              "why": "多加的 1 只在 i == 3 那一轮，不是每轮。"
+            }
+          ],
+          "tip": "特殊订单只在那一轮多加。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "n = 2\ntotal = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)",
+          "options": [
+            {
+              "text": "总杯数 4",
+              "correct": true,
+              "why": "只有 1、2 号订单，没有第 3 单，不多加。"
+            },
+            {
+              "text": "总杯数 5",
+              "correct": false,
+              "why": "n 是 2 时根本没有第 3 号订单。"
+            },
+            {
+              "text": "总杯数 6",
+              "correct": false,
+              "why": "range(1, 3) 只有 1、2 两轮。"
+            }
+          ],
+          "tip": "边界：没有第 3 单时不多加。"
+        },
+        {
+          "type": "fill",
+          "prompt": "补全 range，让编号正好是 1 到 n。n 是 3，屏幕显示：总杯数 7",
+          "code": "n = 3\ntotal = 0\nfor i in range({0}, {1}):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)",
+          "tokens": [
+            "1",
+            "0",
+            "n",
+            "n + 1"
+          ],
+          "answer": [
+            "1",
+            "n + 1"
+          ],
+          "expected": "总杯数 7",
+          "why": {
+            "0": "从 0 开始会多出一个 0 号订单。",
+            "n": "range 不含结尾，写 n 会少掉第 n 号订单。"
+          },
+          "hint": "从 1 开始；结尾要比 n 多 1。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：4 单，算总杯数。屏幕显示：总杯数 9",
+          "lines": [
+            "n = 4",
+            "total = 0",
+            "for i in range(1, n + 1):",
+            "    total = total + 2",
+            "    if i == 3:",
+            "        total = total + 1",
+            "print(\"总杯数\", total)"
+          ],
+          "shuffled": [
+            6,
+            3,
+            5,
+            0,
+            4,
+            2,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            [
+              0,
+              1,
+              2,
+              4,
+              5,
+              3,
+              6
+            ],
+            [
+              1,
+              0,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            [
+              1,
+              0,
+              2,
+              4,
+              5,
+              3,
+              6
+            ]
+          ],
+          "expected": "总杯数 9",
+          "hint": "先有 n 和 total = 0；循环里每单加 2；if 在循环里，多加的 1 在 if 里；最后显示一次。",
+          "equivCases": [
+            {
+              "n": 0
+            },
+            {
+              "n": 1
+            },
+            {
+              "n": 2
+            },
+            {
+              "n": 3
+            },
+            {
+              "n": 4
+            },
+            {
+              "n": 5
+            },
+            {
+              "n": 6
+            }
+          ]
+        }
+      ],
+      "pending": [
+        {
+          "type": "write",
+          "replaces": 4,
+          "keep": "第 2 题（n=2 没有第 3 单的边界）保留",
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "写一写：已给 n（订单数），编号 1…n，每单 2 杯，第 3 号订单多 1 杯，输出 总杯数 <数>。测试：n=5→总杯数 11；n=2→总杯数 4；n=3→总杯数 7",
+          "reference": "total = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)",
+          "tests": [
+            {
+              "data": {
+                "n": 5
+              },
+              "stdout": "总杯数 11"
+            },
+            {
+              "data": {
+                "n": 2
+              },
+              "stdout": "总杯数 4"
+            },
+            {
+              "data": {
+                "n": 3
+              },
+              "stdout": "总杯数 7"
+            }
+          ],
+          "task": {
+            "id": "U4L8-W1",
+            "version": 1,
+            "type": "write",
+            "prompt": "一共 n 单，编号 1 到 n，每单 2 杯；第 3 号订单多要 1 杯。输出“总杯数 数量”。",
+            "given": [
+              "n"
+            ],
+            "checkMode": "output",
+            "starter": "# n（订单数）已经准备好\n",
+            "tests": [
+              {
+                "name": "5 单",
+                "data": {
+                  "n": 5
+                },
+                "expected": "总杯数 11"
+              },
+              {
+                "name": "2 单",
+                "data": {
+                  "n": 2
+                },
+                "expected": "总杯数 4"
+              },
+              {
+                "name": "3 单",
+                "data": {
+                  "n": 3
+                },
+                "expected": "总杯数 7",
+                "hidden": true
+              },
+              {
+                "name": "0 单",
+                "data": {
+                  "n": 0
+                },
+                "expected": "总杯数 0",
+                "hidden": true
+              },
+              {
+                "name": "1 单",
+                "data": {
+                  "n": 1
+                },
+                "expected": "总杯数 2",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "total = 0 放循环外；for i in range(1, n + 1) 每轮加 2；i == 3 时再加 1。",
+              "total = 0 / for i in range(1, n + 1): / total = total + 2 / if i == 3: total = total + 1 / 最后 print(\"总杯数\", total)。"
+            ],
+            "reference": "total = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)\n",
+            "worked": {
+              "code": "n = 5\ntotal = 0\nfor i in range(1, n + 1):\n    total = total + 2\n    if i == 3:\n        total = total + 1\nprint(\"总杯数\", total)",
+              "output": "总杯数 11",
+              "explain": "本关第 1 题就是示范。"
+            },
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U4L8-W1-V1",
+              "prompt": "一共 n 单，每单 3 杯；第 2 号订单多要 2 杯。输出“总杯数 数量”。",
+              "starter": "# n 已经准备好\n",
+              "tests": [
+                {
+                  "name": "4 单",
+                  "data": {
+                    "n": 4
+                  },
+                  "expected": "总杯数 14"
+                },
+                {
+                  "name": "1 单",
+                  "data": {
+                    "n": 1
+                  },
+                  "expected": "总杯数 3"
+                },
+                {
+                  "name": "2 单",
+                  "data": {
+                    "n": 2
+                  },
+                  "expected": "总杯数 8",
+                  "hidden": true
+                },
+                {
+                  "name": "0 单",
+                  "data": {
+                    "n": 0
+                  },
+                  "expected": "总杯数 0",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "和父题一样的结构，换成每单 3 杯、第 2 单多 2 杯。",
+                "total = 0 / for i in range(1, n + 1): total = total + 3 / if i == 2: total = total + 2。"
+              ],
+              "solution": "total = 0\nfor i in range(1, n + 1):\n    total = total + 3\n    if i == 2:\n        total = total + 2\nprint(\"总杯数\", total)\n"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
