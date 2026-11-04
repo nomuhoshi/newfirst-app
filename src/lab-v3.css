@@ -127,3 +127,30 @@ body.lab3 .bank .kchip.tok { border-color: var(--l-copper); }
 body.lab3 .bank .kchip:active { transform: scale(.96); background: var(--l-copper-soft); }
 body.lab3 .bank .kchip.ctrl { color: var(--l-muted); }
 body.lab3 .reset { margin: 10px 0 0 auto; min-height: 44px; display: inline-flex; align-items: center; }
+
+/* ---------- 排序题：我的程序（放置区）和代码行（候选）分开，小屏也看得清顺序 ---------- */
+body.lab3 .order-label { font: 700 12px/1 system-ui, sans-serif; letter-spacing: .08em; color: var(--l-copper); margin: 14px 0 8px; }
+body.lab3 .order-label:first-child::after { content: " · 点已放好的行可以拿回去重排"; font-weight: 500; color: var(--l-muted); letter-spacing: 0; }
+body.lab3 .order-mine { background: var(--l-card); border: 2px dashed var(--l-copper); border-radius: 14px; padding: 10px; gap: 8px; min-height: 76px; }
+body.lab3 .order-mine.right { border: 2px solid var(--g-ok); background: var(--g-ok-bg); }
+body.lab3 .order-mine.wrong { border: 2px solid var(--g-bad); background: var(--g-bad-bg); }
+body.lab3 .order-empty { color: var(--l-muted) !important; font-size: 14px; margin: 8px 4px; }
+body.lab3 .line-chip { min-height: 48px; border-radius: 12px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; padding: 8px 12px; background: var(--g-code-bg); color: var(--g-code-fg); border: 1.5px solid #3A4048; transition: transform .09s ease; }
+body.lab3 .line-chip:active { transform: scale(.98); }
+body.lab3 .order-mine .line-chip.in { padding-left: 14px; border-color: var(--l-copper); }
+body.lab3 .order-mine .line-chip .ln { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 10px; border-radius: 50%; background: #E58F55; color: #14171B; font: 700 12px/1 system-ui, sans-serif; }
+body.lab3 .order-bank { gap: 8px; }
+
+/* ---------- 通关页：过了哪关、拿到多少 XP、下一步去哪 ---------- */
+body.lab3 .finish h1 { font-size: 30px; margin: 6px 0; }
+body.lab3 .finish > .muted { font-size: 16px; font-weight: 700; color: var(--l-ink); background: var(--l-copper-soft); padding: 6px 14px; border-radius: 999px; margin: 0 0 14px; }
+body.lab3 .finish-stats { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; width: 100%; }
+body.lab3 .finish-stats .fs { background: var(--l-card); border: 1.5px solid var(--l-line); border-radius: 14px; padding: 12px 8px; }
+body.lab3 .finish-stats .fs small { color: var(--l-muted); }
+body.lab3 .finish-stats .fs:first-child { background: var(--l-copper); border-color: var(--l-copper); color: var(--l-on-copper); }
+body.lab3 .finish-stats .fs:first-child small, body.lab3 .finish-stats .fs:first-child b { color: var(--l-on-copper); }
+body.lab3 .finish-stats .fs:first-child b { font-size: 26px; }
+body.lab3 .next-step { width: 100%; box-sizing: border-box; text-align: left; margin: 16px 0 6px; padding: 12px 14px; background: var(--l-card); border: 1.5px solid var(--l-line); border-left: 5px solid var(--l-copper); border-radius: 14px; display: flex; flex-direction: column; gap: 2px; }
+body.lab3 .next-step small { font: 700 12px/1.4 system-ui, sans-serif; letter-spacing: .08em; color: var(--l-copper); }
+body.lab3 .next-step b { font-size: 18px; color: var(--l-ink); }
+body.lab3 .next-step span { font-size: 14px; color: var(--l-muted); line-height: 1.5; }

@@ -168,6 +168,64 @@ for (const scheme of ["light", "dark"]) {
     await page.reload(); await page.waitForSelector(".pathview .path-item.st-current");
     const after = await page.evaluate(() => { const st = window.__app.getState(); return { xp: st.xp, hearts: st.hearts, cur: document.querySelector(".path-item.st-current .node")?.dataset.lesson, lab: document.body.classList.contains("lab3") }; });
     check(`${T} 刷新后继续可用：XP ${before.xp}、红心 ${before.hearts} 还在，当前关仍是 U1L2，仍是预览样式`, after.xp === before.xp && after.hearts === before.hearts && after.cur === "U1L2" && after.lab, JSON.stringify(after));
+    // ---- 排序题 + 通关页：整关做一遍（U1L3：选输出、选输出、排序、填空）----
+    await page.evaluate(() => { const st = window.__app.getState(); st.done = { ...st.done, U1L1: st.done.U1L1 || { stars: 3 }, U1L2: st.done.U1L2 || { stars: 3 } }; window.__app.setState(st); window.__app.persist(); window.__app.renderPath(); });
+    await page.waitForSelector('.path-item.st-current .node[data-lesson="U1L3"]');
+    await page.locator(".path-item.st-current .node").tap();
+    await page.locator(".overlay .btn3d.primary").tap(); await page.waitForSelector(".intro-title");
+    await page.getByRole("button", { name: "继续", exact: true }).tap(); await page.waitForSelector("[data-check]");
+    let didWrongOrder = false, guard = 0;
+    while (guard++ < 12 && !(await page.locator(".finish").count())) {
+      const e = await page.evaluate(() => window.__app.currentEx); if (!e) break;
+      if (e.type === "order" && !didWrongOrder) {
+        const lay2 = await page.evaluate(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const chips = [...document.querySelectorAll(".order-bank .line-chip")].map((x) => x.getBoundingClientRect()); return { chipMinH: Math.min(...chips.map((c) => c.height)), mineStyle: getComputedStyle(document.querySelector(".order-mine")).borderTopStyle, mineBottom: r(".order-mine").bottom, bankTop: r(".order-bank").top, foot: r(".lessonfoot").top, bankBottom: r(".order-bank").bottom, lines: chips.length, labels: [...document.querySelectorAll(".order-label")].map((x) => x.textContent) }; });
+        check(`${T} 排序页：代码行 ≥ 48px 高；放置区是铜色虚线框；两块分开且各有标签`, lay2.chipMinH >= 48 && lay2.mineStyle === "dashed" && lay2.bankTop > lay2.mineBottom && lay2.labels.length === 2, JSON.stringify(lay2));
+        await shot("5c-order");
+        // 故意排错：找一个不在 answers 里的排列
+        const perms = (a) => (a.length <= 1 ? [a] : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map((q) => [x, ...q])));
+        const good = new Set(e.answers.map((a) => a.join()));
+        const bad = perms(e.answers[0]).find((q) => !good.has(q.join()));
+        for (const k of bad) await page.locator(`.order-bank [data-line="${k}"]`).tap();
+        const mid = await page.evaluate(() => ({ placed: document.querySelectorAll(".order-mine .line-chip").length, left: document.querySelectorAll(".order-bank .line-chip").length }));
+        check(`${T} 排序页：点代码行放进“你的程序”，放完后候选区清空、“检查”可点`, mid.left === 0 && mid.placed === e.answers[0].length && !(await page.locator("[data-check]").isDisabled()), JSON.stringify(mid));
+        // 点已放好的第一行可以拿回去
+        await page.locator(".order-mine .line-chip").first().tap();
+        const back = await page.evaluate(() => ({ placed: document.querySelectorAll(".order-mine .line-chip").length, left: document.querySelectorAll(".order-bank .line-chip").length }));
+        check(`${T} 排序页：点已放好的行能拿回去重排`, back.left === 1 && back.placed === e.answers[0].length - 1, JSON.stringify(back));
+        await page.locator(`.order-bank [data-line="${bad[0]}"]`).tap();
+        const h0 = await page.evaluate(() => window.__app.getState().hearts);
+        await page.locator("[data-check]").tap(); await page.waitForSelector("[data-continue]:not([disabled])");
+        const ob = await page.evaluate(() => { const m = document.querySelector(".order-mine").getBoundingClientRect(), f = document.querySelector(".feedbar").getBoundingClientRect(); return { mineTop: m.top, mineBottom: m.bottom, fbTop: f.top, mineText: document.querySelector(".order-mine").innerText, cls: document.querySelector(".order-mine").className, text: document.querySelector(".feedbar").innerText, hearts: window.__app.getState().hearts }; });
+        check(`${T} 排序答错：自己的排序完整露在反馈栏上方，同时能看到反馈和正确答案`, ob.mineTop >= 0 && ob.mineBottom <= ob.fbTop + 1 && ob.cls.includes("wrong") && /不对哦/.test(ob.text) && /正确答案/.test(ob.text) && ob.mineText.trim().length > 0, JSON.stringify({ mineTop: ob.mineTop, mineBottom: ob.mineBottom, fbTop: ob.fbTop }));
+        check(`${T} 排序答错：扣 1 颗红心（规则没动）`, ob.hearts === h0 - 1);
+        await shot("6c-order-wrong");
+        didWrongOrder = true;
+      } else if (e.type === "order") { for (const k of e.answers[0]) await page.locator(`.order-bank [data-line="${k}"]`).tap(); await page.locator("[data-check]").tap(); }
+      else if (e.type === "fill") { for (let i = 0; i < e.answer.length; i++) { await page.locator(`[data-slot="${i}"]`).tap(); await page.locator(`[data-token="${e.answer[i].replace(/"/g, '\\"')}"]`).first().tap(); } await page.locator("[data-check]").tap(); }
+      else { await page.locator(".choice").nth(e.options.findIndex((o) => o.correct)).tap(); await page.locator("[data-check]").tap(); }
+      await page.waitForSelector("[data-continue]:not([disabled])"); await page.locator("[data-continue]").tap();
+      await page.waitForSelector("[data-check], .finish");
+    }
+    guard = 0;
+    while (guard++ < 12 && !(await page.locator(".finish").count())) {
+      const e = await page.evaluate(() => window.__app.currentEx); if (!e) break;
+      if (e.type === "order") { for (const k of e.answers[0]) await page.locator(`.order-bank [data-line="${k}"]`).tap(); }
+      else if (e.type === "fill") { for (let i = 0; i < e.answer.length; i++) { await page.locator(`[data-slot="${i}"]`).tap(); await page.locator(`[data-token="${e.answer[i].replace(/"/g, '\\"')}"]`).first().tap(); } }
+      else { await page.locator(".choice").nth(e.options.findIndex((o) => o.correct)).tap(); }
+      await page.locator("[data-check]").tap(); await page.waitForSelector("[data-continue]:not([disabled])"); await page.locator("[data-continue]").tap();
+      await page.waitForSelector("[data-check], .finish");
+    }
+    await page.waitForSelector(".finish");
+    const fin = await page.evaluate(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const c = r("[data-continue]"), f = document.querySelector(".finish"); const stats = [...document.querySelectorAll(".finish-stats .fs")].map((x) => x.innerText.replace(/\s+/g, " ")); return { title: document.querySelector(".finish > .muted")?.textContent || "", h1: document.querySelector(".finish h1")?.textContent || "", stats, next: document.querySelector(".next-step")?.innerText || "", contBottom: c?.bottom, vh: innerHeight, fits: f.scrollHeight <= f.clientHeight + 1, firstXpBg: getComputedStyle(document.querySelector(".finish-stats .fs")).backgroundColor }; });
+    check(`${T} 通关页：写明过了哪一关（关名）`, /通关|完成/.test(fin.title) && fin.title.includes("「") , fin.title);
+    check(`${T} 通关页：XP、正确率、连续天数三项都有，XP 在最前且最醒目（铜色卡）`, fin.stats.length === 3 && /\+\d+/.test(fin.stats[0]) && /%/.test(fin.stats[1]) && fin.firstXpBg !== "rgba(0, 0, 0, 0)", fin.stats.join(" | "));
+    check(`${T} 通关页：“下一步”写明下一关或单元完成，并告诉你点“继续”回地图`, /下一步/.test(fin.next) && /(下一关：|全部完成)/.test(fin.next) && /点“继续”/.test(fin.next), fin.next);
+    check(`${T} 通关页：一屏放得下（不用滚动），“继续”离屏幕底 ≥ 60px`, fin.fits && fin.contBottom <= fin.vh - 60 + 1, `fits=${fin.fits} contBottom=${Math.round(fin.contBottom)}`);
+    const cFin = [await contrastOf(page, ".finish-stats .fs:first-child b"), await contrastOf(page, ".finish-stats .fs:first-child small"), await contrastOf(page, ".next-step span"), await contrastOf(page, ".finish > .muted")];
+    check(`${T} 通关页：文字对比度 ≥ 4.5`, cFin.every((c) => c !== null && c >= 4.5), cFin.join("/"));
+    await shot("7c-finish");
+    await page.locator("[data-continue]").tap(); await page.waitForSelector(".pathview .path-item");
+    check(`${T} 通关后回到地图：U1L3 已完成`, await page.evaluate(() => !!document.querySelector('.path-item.st-done [data-lesson="U1L3"]')));
     check(`${T} 全程没有页面脚本错误`, errors.length === 0, errors.join(" | "));
   } catch (e) {
     check(`${T} 场景异常`, false, String(e.message).split("\n").slice(0, 3).join(" ")); await shot("error").catch(() => {});

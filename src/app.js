@@ -845,7 +845,7 @@ function renderExercise(run) {
       feel.play(ok ? "correct" : "wrong");
       appEl.querySelector(".lessonfoot").replaceWith(fb);
       // 预览：反馈栏会占掉下半屏，把选项滚到题区顶部，保证选项（含对错标记）不被反馈栏挡住
-      if (LAB) (appEl.querySelector(".choices") || appEl.querySelector(".codeblock.fill"))?.scrollIntoView({ block: "start" });
+      if (LAB) (appEl.querySelector(".choices") || appEl.querySelector(".codeblock.fill") || appEl.querySelector(".order-mine"))?.scrollIntoView({ block: "start" });
       // ---- 240 ms：红心 / 统计更新 ----
       setTimeout(() => {
         if (!fb.isConnected) return;
@@ -1001,6 +1001,7 @@ function renderFinish(run) {
       ),
       newDay ? h("p", { class: "streak-msg", text: currentStreak(state) > 1 ? `连续学习 ${currentStreak(state)} 天，保持住！` : "今天的学习完成了，明天再来续上连续天数！" }) : null,
       heartMsg ? h("p", { class: "heart-msg", text: heartMsg }) : null,
+      LAB ? (() => { const nx = firstUndone(); return h("div", { class: "next-step" }, h("small", { text: "下一步" }), h("b", { text: nx ? `下一关：${nx.title}` : "这一单元全部完成了" }), h("span", { text: nx ? "点“继续”回到地图，铜色亮着的那一关就是它。" : "点“继续”回到地图，看看走完的路线。" })); })() : null,
       button("继续", () => { feel.haptic(); renderPath(); }, "btn3d primary wide", { "data-continue": "" }),
     ),
   );
