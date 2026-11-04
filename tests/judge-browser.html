@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><base href="/"><title>judge 真实 Runner 测试页</title>
+<script type="module">
+import { Runner } from "/src/runner.js";
+import { judge, makeRunnerExecutor } from "/src/judge.js";
+window.ui = [];
+window.runner = new Runner({ onStatus: (s) => window.ui.push(s), onOutput: () => {} });
+window.ex = makeRunnerExecutor(window.runner);
+window.J = (args) => judge(args, window.ex);
+window.pageReady = true;
+</script>
