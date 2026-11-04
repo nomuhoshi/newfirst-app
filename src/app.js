@@ -117,7 +117,7 @@ function circuitLayout(variant, W, H) {
   side(false, H * 0.90, W * 0.16, H * 0.82, null, 0);
   top(W * 0.74, H * 0.10, W * 0.88);
   // 芯片：贴着两侧边缘，只作装饰（不进 .trace / .pad，保持原来的稀疏线条数量）
-  const chips = [[0.035, 0.455, "U2"], [0.835, 0.235, "U3"], [0.035, 0.74, "U4"], [0.835, 0.585, "U5"]].map(([fx, fy, ref]) => [r(W * fx), r(H * fy), ref]);
+  const chips = [[0.035, 0.455, "U2", "and"], [0.835, 0.235, "U3", "or"], [0.035, 0.74, "U4", "not"], [0.835, 0.585, "U5", "xor"]].map(([fx, fy, ref, kind]) => [r(W * fx), r(H * fy), ref, kind]);
   return { lines, chips, pulses: [[0, 10, 0], [2, 12, -4], [3, 9, -2], [4, 11, -7]] };
 }
 function fillCircuit(el, variant) {
@@ -125,11 +125,22 @@ function fillCircuit(el, variant) {
   el.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const c = circuitLayout(variant, W, H);
   const bus = c.lines.flatMap((l) => (l.lane ? [-1, 1].map((k) => svg("path", { d: l.d, class: "bus", transform: `translate(${l.lane[0] * 4.5 * k} ${l.lane[1] * 4.5 * k})` })) : []));
-  const chips = (c.chips || []).flatMap(([x, y, ref]) => [
-    svg("path", { d: [0, 1, 2, 3].map((i) => `M${x + 9 + i * 10} ${y - 4}v4M${x + 9 + i * 10} ${y + 30}v4`).join(""), class: "chip-pin" }),
-    svg("rect", { x: String(x), y: String(y), width: "48", height: "30", rx: "3", class: "chip" }),
-    svg("circle", { cx: String(x + 7), cy: String(y + 7), r: "1.6", class: "chip-dot" }),
-    svg("text", { x: String(x + 14), y: String(y + 20), class: "chip-ref" }, ref),
+  // 背景里的逻辑门（与门/或门/非门/异或门）：身体 + 输入输出引脚 + 位号
+  const gate = (x, y, kind) => {
+    const body = { and: `M${x} ${y}h22a15 15 0 0 1 0 30h-22z`, or: `M${x} ${y}q9 15 0 30q24 0 40-15q-16-15-40-15z`, not: `M${x} ${y}v30l30-15z`,
+      xor: `M${x + 6} ${y}q9 15 0 30q24 0 40-15q-16-15-40-15z` }[kind];
+    const ins = kind === "not" ? [15] : [8, 22]; const outX = kind === "and" ? 37 : kind === "not" ? 38 : 46;
+    const stub = ins.map((iy) => `M${x - 7} ${y + iy}h${kind === "or" || kind === "xor" ? 11 : 7}`).join("") + `M${x + outX} ${y + 15}h8`;
+    return [
+      svg("path", { d: stub, class: "chip-pin" }),
+      svg("path", { d: body, class: "chip" }),
+      ...(kind === "xor" ? [svg("path", { d: `M${x} ${y}q9 15 0 30`, class: "chip-pin thin" })] : []),
+      ...(kind === "not" ? [svg("circle", { cx: String(x + 34), cy: String(y + 15), r: "3.5", class: "chip" })] : []),
+    ];
+  };
+  const chips = (c.chips || []).flatMap(([x, y, ref, kind]) => [
+    ...gate(x, y, kind),
+    svg("text", { x: String(x), y: String(y - 6), class: "chip-ref" }, ref),
   ]);
   const vias = c.lines.flatMap((l) => l.pads.slice(0, 1).map(([x, y]) => svg("circle", { cx: String(x), cy: String(y), r: "1.4", class: "via-dot" })));
   el.replaceChildren(
@@ -418,8 +429,11 @@ function renderPath() {
     }
     const lessons = UNITS[u.id].lessons;
     const unitDone = lessons.every((x) => state.done[x.id]);
+    const doneN = lessons.filter((x) => state.done[x.id]).length;
     return h("section", { class: "unit" + (unitDone ? " complete" : "") },
-      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元${unitDone ? " · 已完成" : ""}` }), h("h2", { text: u.title }), h("p", { text: u.subtitle })),
+      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `第 ${course.units.indexOf(u) + 1} 单元${unitDone ? " · 已完成" : ""}` }), h("h2", { text: u.title }), h("p", { text: u.subtitle }),
+        h("div", { class: "unit-prog", role: "img", "aria-label": `本单元已完成 ${doneN} / ${lessons.length} 关` },
+          h("span", { class: "unit-prog-bar" }, h("i", { style: `width:${Math.round((doneN / lessons.length) * 100)}%` })), h("b", { text: `${doneN}/${lessons.length}` }))),
       h("ol", { class: "path" }, lessons.map((l, i) => {
         const st = lessonStatus(l);
         const offset = [0, 1, 2, 1, 0, -1][i % 6];

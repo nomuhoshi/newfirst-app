@@ -73,14 +73,14 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .stat.streak { color: var(--g-copper); } .stat.xp { color: var(--g-primary); } .stat.hearts { color: var(--g-bad); } .stat.shield { color: var(--g-primary); }
 .stat.hearts.lost .ico { animation: heart-lost .32s ease-out; }
 @keyframes heart-lost { 30% { transform: scale(1.25); } 100% { transform: scale(1); } }
-.tabbar { display: flex; border-top: 1.5px solid var(--g-line); padding-bottom: env(safe-area-inset-bottom); background: var(--g-bg); }
+.tabbar { --tb-pad: env(safe-area-inset-bottom); display: flex; border-top: 1.5px solid var(--g-line); padding-bottom: var(--tb-pad); background: var(--g-bg); }
 .tab { flex: 1; min-height: 56px; background: none; border: none; color: var(--g-muted); }
 .tab > span { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .tab small { display: block; font-size: 12px; font-weight: 700; }
 .tab.on { color: var(--g-primary); }
-.ios-browser .tabbar { padding-bottom: 70px; }
+.ios-browser .tabbar { --tb-pad: 70px; padding-bottom: 70px; }
 /* 手机横屏时 Safari 的底部工具栏很薄，不需要竖屏那样的 70px；仍保留系统安全区 */
-@media (orientation: landscape) and (max-height: 500px) { .ios-browser .tabbar { padding-bottom: max(env(safe-area-inset-bottom), 24px); } }
+@media (orientation: landscape) and (max-height: 500px) { .ios-browser .tabbar { --tb-pad: max(env(safe-area-inset-bottom), 24px); padding-bottom: max(env(safe-area-inset-bottom), 24px); } }
 
 /* 关卡地图：单元横幅 + 六边形电路节点 */
 .pathview { padding: 16px 16px 40px; }
@@ -412,6 +412,51 @@ body { background: var(--g-bg); color: var(--g-fg); }
 /* 矮屏（iPhone 横屏）：节点按比例缩小，入口 + 当前关仍要同时放得下（比立体升级前的 76px 还小，不会更挤） */
 @media (max-height: 500px) { .node { height: 72px; } .hexnode { width: 65px; height: 72px; } .stat { padding: 2px 12px; } .unit-banner { box-shadow: inset 0 1px 0 var(--g-hi), 0 6px 14px var(--g-shadow); } }
 @media (max-height: 360px) { .node { height: 66px; } .hexnode { width: 59px; height: 66px; } }
+
+/* ============ 参考 Brilliant：胶囊底栏、厚底边卡片、单元连线与进度、逻辑门背景、大号开关 ============ */
+/* 底栏：悬浮胶囊（胶囊在 ::before 里，底部留白仍由 .tabbar 的 padding-bottom 提供） */
+.tabbar { position: relative; border-top: none; box-shadow: none; background: transparent; padding: 8px 18px var(--tb-pad); }
+.tabbar::before { content: ""; position: absolute; z-index: 0; left: 18px; right: 18px; top: 8px; bottom: var(--tb-pad); border-radius: 30px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--g-card) 92%, #fff), var(--g-card)); border: 1.5px solid var(--g-line);
+  box-shadow: inset 0 1px 0 var(--g-hi), 0 4px 0 var(--g-lip-card), 0 12px 22px var(--g-shadow); }
+.tab { z-index: 1; margin: 5px 6px; min-height: 48px; border-radius: 22px; transition: background-color .15s; }
+.tab.on { background: color-mix(in srgb, var(--g-primary) 20%, var(--g-card)); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--g-primary) 55%, transparent); }
+.tab.on::before { display: none; }
+@media (max-height: 500px) { .tab { min-height: 40px; margin: 3px 6px; } }
+
+/* 单元卡：2px 边 + 更大的圆角 + 更厚的底边；单元之间用一小段走线连起来 */
+.unit { position: relative; margin-bottom: 40px; }
+.unit-banner { border-width: 2px; border-radius: 18px; padding: 16px 18px 14px; box-shadow: inset 0 1px 0 var(--g-hi), 0 10px 22px var(--g-shadow), 0 6px 0 var(--g-lip-card); margin-bottom: 6px; }
+.unit.locked .unit-banner { border-width: 2px; box-shadow: inset 0 1px 0 var(--g-hi), 0 6px 0 var(--g-lip-card); }
+.unit:not(:last-child)::after { content: ""; position: absolute; left: 50%; bottom: -34px; width: 4px; height: 28px; margin-left: -2px; border-radius: 2px;
+  background: repeating-linear-gradient(to bottom, var(--g-trace) 0 6px, transparent 6px 10px); }
+.unit-prog { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.unit-prog-bar { flex: 1; height: 10px; border-radius: 5px; background: var(--g-well); border: 1px solid var(--g-line); box-shadow: inset 0 2px 3px var(--g-shadow); overflow: hidden; display: block; }
+.unit-prog-bar i { display: block; height: 100%; border-radius: 5px; background: var(--g-ok); box-shadow: 0 0 8px color-mix(in srgb, var(--g-ok) 60%, transparent); }
+.unit-prog b { font: 700 13px ui-monospace, Menlo, monospace; color: var(--g-muted); font-variant-numeric: tabular-nums; }
+.unit.complete .unit-prog b { color: var(--g-ok); }
+
+/* 其它卡片也用 2px 边 + 厚底边 */
+.me-card, .intro-panel, .toggle-row { border-width: 2px; border-radius: 16px; }
+.me-card, .intro-panel { box-shadow: inset 0 1px 0 var(--g-hi), 0 5px 0 var(--g-lip-card), 0 10px 16px var(--g-shadow); margin-bottom: 5px; }
+.toggle-row { box-shadow: inset 0 1px 0 var(--g-hi), 0 4px 0 var(--g-lip-card); margin-bottom: 12px; }
+
+/* 开关：更大，打开是通电绿 */
+.switch { width: 60px; height: 36px; border-radius: 18px; border-width: 2px; background: var(--g-well); box-shadow: inset 0 2px 5px var(--g-shadow); }
+.switch .knob { top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 13px; background: linear-gradient(180deg, color-mix(in srgb, var(--g-card) 85%, #fff), var(--g-card)); box-shadow: 0 2px 0 var(--g-lip-card), 0 3px 6px var(--g-shadow); }
+.switch.on { background: var(--g-ok); border-color: var(--g-ok); box-shadow: inset 0 2px 4px rgba(0,0,0,.25), 0 0 10px color-mix(in srgb, var(--g-ok) 45%, transparent); }
+.switch.on .knob { transform: translateX(24px); border-color: var(--g-ok); }
+
+/* 底部弹层：更大的上圆角，按钮更圆更厚 */
+.sheet { border-radius: 26px 26px 0 0; border-top: 2px solid var(--g-line); box-shadow: 0 -10px 30px var(--g-shadow); }
+.overlay.full .sheet { border-radius: 0; border-top: none; box-shadow: none; }
+.sheet-head { border-bottom-width: 2px; padding-top: 14px; }
+.sheet .btn3d { min-height: 56px; border-radius: 18px; }
+.btn3d { border-radius: 16px; }
+
+/* 背景逻辑门的细线 */
+.circuit-bg .chip-pin.thin { stroke-width: 1.5; }
+.circuit-bg .chip { stroke-linejoin: round; }
 
 @media (prefers-reduced-motion: reduce) {
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active { transform: none; }
