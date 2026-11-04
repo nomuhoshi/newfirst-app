@@ -11,7 +11,8 @@ import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffle
 const ROOT = resolve(new URL("..", import.meta.url).pathname);
 const DIST = join(ROOT, "dist");
 const course = JSON.parse(readFileSync(join(ROOT, "content/course.json"), "utf8"));
-const UNITS = { U1: JSON.parse(readFileSync(join(ROOT, "content/unit1.json"), "utf8")), U2: JSON.parse(readFileSync(join(ROOT, "content/unit2.json"), "utf8")) };
+// 已开放的单元都读进来（U3 起不再只有 U1、U2；新单元开放后不用再改这里）
+const UNITS = Object.fromEntries(course.units.filter((u) => u.available).map((u) => [u.id, JSON.parse(readFileSync(join(ROOT, `content/unit${u.id.slice(1)}.json`), "utf8"))]));
 const units = course.units.filter((u) => u.available).map((u) => ({ id: u.id, title: u.title, lessons: UNITS[u.id].lessons }));
 const lessonsOf = (uid) => UNITS[uid].lessons.map((l) => l.id);
 const countOf = (ids) => ids.reduce((n, id) => n + units.flatMap((u) => u.lessons).find((l) => l.id === id).exercises.length, 0);
