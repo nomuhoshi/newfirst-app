@@ -122,6 +122,43 @@ for (const scheme of ["light", "dark"]) {
       await page.locator("[data-continue]").tap(); await page.waitForSelector("[data-check]");
     } else { check(`${T} 答对：第二题不是选输出，答对检查改由第 1 题的反馈区块覆盖`, true); }
 
+    // ---- 填空题（U1L2 的第 3、4 题是填空）----
+    const clickToken = async (t) => page.locator(`[data-token="${t.replace(/"/g, '\\"')}"]`).first().tap();
+    const fillWith = async (ex, pick) => { for (let i = 0; i < ex.answer.length; i++) { await page.locator(`[data-slot="${i}"]`).tap(); await clickToken(pick(i)); } };
+    ex2 = await page.evaluate(() => window.__app.currentEx);
+    if (ex2.type === "fill") {
+      const fl = await page.evaluate(() => { const r = (sel) => document.querySelector(sel)?.getBoundingClientRect(); const slots = [...document.querySelectorAll(".slot")].map((x) => x.getBoundingClientRect()); const toks = [...document.querySelectorAll(".bank .kchip")].map((x) => x.getBoundingClientRect()); const c = r(".codeblock.fill"), b = r(".bank"); return { cLabel: getComputedStyle(document.querySelector(".codeblock.fill"), "::before").content, bLabel: getComputedStyle(document.querySelector(".bank"), "::before").content, slotsMinH: Math.min(...slots.map((x) => x.height)), tokMinH: Math.min(...toks.map((x) => x.height)), tokMinW: Math.min(...toks.map((x) => x.width)), apart: b.top - c.bottom, activeBorder: getComputedStyle(document.querySelector(".slot.active")).borderTopColor, otherBorder: getComputedStyle(document.querySelector(".slot:not(.active)") || document.querySelector(".slot")).borderTopColor, nSlots: slots.length, foot: r(".lessonfoot").top, bankBottom: b.bottom }; });
+      check(`${T} 填空页：代码和候选词是两块（中间有间隔、各有标签）`, fl.apart >= 8 && /代码/.test(fl.cLabel) && /候选词/.test(fl.bLabel), `apart=${fl.apart}`);
+      check(`${T} 填空页：空格 ≥ 40px 高、候选词 ≥ 48px 高 × ≥ 48px 宽（好点）`, fl.slotsMinH >= 40 && fl.tokMinH >= 48 && fl.tokMinW >= 48, `${fl.slotsMinH}/${fl.tokMinH}/${fl.tokMinW}`);
+      check(`${T} 填空页：当前空格有铜色实线框，和其他空格一眼能分开`, fl.nSlots < 2 || fl.activeBorder !== fl.otherBorder, `${fl.activeBorder} vs ${fl.otherBorder}`);
+      const cF = [await contrastOf(page, ".bank .kchip.tok"), await contrastOf(page, ".slot")];
+      check(`${T} 填空页：候选词和空格文字对比度 ≥ 4.5`, cF.every((c) => c !== null && c >= 4.5), cF.join("/"));
+      await shot("5b-fill");
+      // 故意填错：每个空都放一个不是答案的词
+      const wrongPick = (i) => ex2.tokens.find((t) => t !== ex2.answer[i]);
+      await fillWith(ex2, wrongPick);
+      await page.waitForTimeout(150);
+      check(`${T} 填空页：全部填完后“检查”可点`, !(await page.locator("[data-check]").isDisabled()));
+      const hearts0 = await page.evaluate(() => window.__app.getState().hearts);
+      await page.locator("[data-check]").tap(); await page.waitForSelector("[data-continue]:not([disabled])");
+      const fb = await page.evaluate((ans) => { const slots = [...document.querySelectorAll(".slot")]; const f = document.querySelector(".feedbar").getBoundingClientRect(); const c = document.querySelector(".codeblock.fill").getBoundingClientRect(); return { filled: slots.map((x) => x.textContent), cls: slots.map((x) => x.className), text: document.querySelector(".feedbar").innerText, codeBottom: c.bottom, fbTop: f.top, codeTop: c.top, hearts: window.__app.getState().hearts }; });
+      check(`${T} 填空答错：每个空格还能看清自己填了什么，并标出对/错`, fb.filled.every((t) => t.length > 0) && fb.cls.some((c) => c.includes("wrong")) && fb.cls.every((c) => c.includes("wrong") || c.includes("right")), fb.filled.join(","));
+      check(`${T} 填空答错：代码块完整露在反馈栏上方，没被挡住`, fb.codeTop >= 0 && fb.codeBottom <= fb.fbTop + 1, `${Math.round(fb.codeBottom)} < ${Math.round(fb.fbTop)}`);
+      check(`${T} 填空答错：写“不对哦”、给出正确答案、扣 1 颗红心`, /不对哦/.test(fb.text) && /正确答案/.test(fb.text) && fb.hearts === hearts0 - 1);
+      await shot("6b-fill-wrong");
+      await page.locator("[data-continue]").tap(); await page.waitForSelector("[data-check]");
+      let ex3 = await page.evaluate(() => window.__app.currentEx);
+      if (ex3.type === "fill") {
+        await fillWith(ex3, (i) => ex3.answer[i]);
+        const xp1 = await page.evaluate(() => window.__app.getState().xp);
+        await page.locator("[data-check]").tap(); await page.waitForSelector("[data-continue]:not([disabled])");
+        const ok3 = await page.evaluate(() => ({ text: document.querySelector(".feedbar").innerText, cls: [...document.querySelectorAll(".slot")].map((x) => x.className), xp: window.__app.getState().xp }));
+        check(`${T} 填空答对：全部空格标绿、写“答对了”+10 XP 和下一步`, ok3.cls.every((c) => c.includes("right")) && /答对了/.test(ok3.text) && /\+10 XP/.test(ok3.text) && /点“继续”/.test(ok3.text) && ok3.xp === xp1 + 10);
+        await shot("7b-fill-ok");
+        await page.locator("[data-continue]").tap(); await page.waitForSelector("[data-check]");
+      } else { check(`${T} 填空答对：第 4 题不是填空（本题库变化），答对检查跳过`, true); }
+    } else { check(`${T} 填空页：第 3 题不是填空（本题库变化）`, false, ex2.type); }
+
     // ---- 回到地图 ----
     await page.getByRole("button", { name: "退出本关" }).tap();
     await page.getByRole("button", { name: "退出", exact: true }).tap(); await page.waitForSelector(".pathview .path-item");

@@ -109,3 +109,21 @@ body.lab3 .feedbar .btn3d:disabled { opacity: .7; }
 /* 预览提示：在页面流里（不盖住状态栏、不挡内容） */
 body.lab3 .lab-tag { margin: 0 0 12px; padding: 6px 12px; border-radius: 10px; background: var(--l-copper-soft); color: var(--l-ink); font-size: 13px; line-height: 1.4; }
 body.lab3 .lab-tag b { color: var(--l-copper); }
+
+/* ---------- 填空题：空格好找、候选词好点、反馈后看得清自己填了什么 ---------- */
+body.lab3 .codeblock.fill::before { content: "代码 · 铜色框是当前要填的空格"; }
+body.lab3 .slot { min-width: 64px; height: 40px; margin: 0 3px; border-radius: 10px; border: 2px dashed #8C99A3; background: #0E1114; color: #F3EEE5; font: 17px ui-monospace, Menlo, monospace; transition: transform .09s ease, border-color .1s, background-color .1s; }
+body.lab3 .slot:active { transform: scale(.96); }
+body.lab3 .slot.filled { border-style: solid; border-color: #9AA5AD; }
+body.lab3 .slot.active { border-style: solid; border-width: 2.5px; border-color: #E58F55; background: #3A2A1F; box-shadow: 0 0 0 3px rgba(229, 143, 85, .28); }
+body.lab3 .slot.right { border-color: #7FD1AE; background: #17342B; }
+body.lab3 .slot.wrong { border-color: #FFB3A3; background: #3F2421; }
+/* 候选词：独立的一块（浅色卡片），不再贴在代码块上 */
+body.lab3 .bank { margin-top: 14px; border-radius: 14px; padding: 34px 12px 12px; background: var(--l-card); border: 1.5px solid var(--l-line); position: relative; }
+body.lab3 .bank::before { content: "候选词 · 点一下填进铜色空格"; position: absolute; left: 14px; top: 10px; font: 700 12px/1 system-ui, sans-serif; letter-spacing: .08em; color: var(--l-copper); }
+body.lab3 .bank-ctrl { margin-bottom: 10px; }
+body.lab3 .bank .kchip { min-height: 48px; min-width: 48px; border-radius: 12px; border: 1.5px solid var(--l-line); background: var(--l-paper); color: var(--l-ink); font-size: 17px; padding: 0 14px; }
+body.lab3 .bank .kchip.tok { border-color: var(--l-copper); }
+body.lab3 .bank .kchip:active { transform: scale(.96); background: var(--l-copper-soft); }
+body.lab3 .bank .kchip.ctrl { color: var(--l-muted); }
+body.lab3 .reset { margin: 10px 0 0 auto; min-height: 44px; display: inline-flex; align-items: center; }
