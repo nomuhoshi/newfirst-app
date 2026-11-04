@@ -225,7 +225,14 @@ let currentView = "path"; // 地图 "path" / 我的 "me" / 其他（做题等）
 // 别的设备用“覆盖云端”换掉了这个账号的进度，而这台设备还有没上传的学习内容：同步层发出 replaced 通知（docs/15 §5）。
 // 只在地图页或“我的”页提示，做题中不打断；等回到这两个页面时再显示，显示过就清掉（同一次替换只提示一次）。
 const REPLACED_TEXT = "这个账号的进度已在别的设备上被替换，这台设备上还没上传的学习内容没有保留。";
-let pendingReplaced = false;
+let pendingReplaced = false; // 提示还没显示
+let replacedOn = null; // 提示正在哪个页面显示（"path" / "me"）：同一页面被同步刷新时保留，离开该页面（换页、进入做题）后清除
+// 页面渲染时调用：返回该页面要不要显示替换提示
+function replacedFor(view) {
+  if (pendingReplaced) { pendingReplaced = false; replacedOn = view; }
+  else if (replacedOn !== view) replacedOn = null;
+  return replacedOn === view ? REPLACED_TEXT : null;
+}
 const sync = safeStorage ? createSync({
   storage: safeStorage, api: cloudApi,
   onStatus: () => accountUi?.refreshStatus(),
@@ -438,7 +445,7 @@ function tabBar(active) {
 // ---------- 关卡地图 ----------
 function renderPath() {
   currentView = "path";
-  if (pendingReplaced) { notice = REPLACED_TEXT; pendingReplaced = false; }
+  { const r = replacedFor("path"); if (r) notice = r; }
   regenHearts(state);
   currentRun = null;
   const units = course.units.map((u) => {
@@ -699,7 +706,7 @@ function keyLab() {
 function renderMe() {
   currentView = "me";
   currentRun = null;
-  const replacedMsg = pendingReplaced ? REPLACED_TEXT : null; pendingReplaced = false;
+  const replacedMsg = replacedFor("me");
   let confirmBox = null;
   const clearBtn = button("清除学习记录", () => {
     if (confirmBox) return;
@@ -751,7 +758,7 @@ function renderMe() {
 
 // ---------- 做题 ----------
 function startLesson(l, { review = false } = {}) {
-  currentView = "lesson";
+  currentView = "lesson"; replacedOn = null;
   regenHearts(state);
   if (!review && state.hearts <= 0) return openNoHearts(l);
   const run = {
@@ -1063,7 +1070,7 @@ function practiceEntry() {
 }
 
 function renderPracticeSetup(prev) {
-  currentView = "practice";
+  currentView = "practice"; replacedOn = null;
   currentRun = null; currentPractice = null;
   const scope = clearedScope(availableUnits(), state.done);
   if (!scope.length) {

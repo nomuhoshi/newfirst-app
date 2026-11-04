@@ -69,6 +69,7 @@ async function device(name, { guest = null, viewport = { width: 390, height: 844
   await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   return { name, ctx, page, errors, shot: (n) => shot(page, `acct-${name}-${n}`) };
 }
+const toPathTab = async (d) => { await d.page.getByRole("button", { name: "学习" }).tap().catch(async () => { await d.page.evaluate(() => window.__app.renderPath()); }); await d.page.waitForSelector(".pathview"); };
 const toMe = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.waitForSelector("[data-account]"); };
 async function loginUi(d, email, { choice = null } = {}) {
   await toMe(d);
@@ -137,9 +138,13 @@ try {
   check("同步后本机进度换成云端的（XP 10），那一关的进度没有保留", (await xpOnPage(A)) === 10);
   await A.shot("6-replaced-notice-map");
   await A.page.evaluate(() => window.__app.renderPath());
-  check("同一次替换只提示一次：再回到地图不再显示", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 0);
+  check("同一页面被刷新（比如又同步了一次）：提示还在，不会一闪而过", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 1);
   await syncNow(A);
-  check("之后正常同步：不再提示", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 0);
+  check("之后正常同步：提示仍留在这一页，没有重复出现第二条", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 1);
+  await toMe(A);
+  check("离开这一页（去“我的”）：不会再在那里重复提示", (await A.page.locator("[data-replaced-notice]").count()) === 0);
+  await toPathTab(A);
+  check("回到地图：同一次替换不再提示（只提示一次）", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 0);
 
   // 2) 没有未上传内容时被换代：不提示
   await overwriteCloud("a@example.com", 20);
@@ -155,13 +160,13 @@ try {
   await A.page.getByRole("button", { name: "继续", exact: true }).tap(); await A.page.waitForSelector("[data-check]");
   A.ctx.__off = false; await A.ctx.setOffline(false);
   await syncNow(A);
-  const inLesson = await A.page.evaluate(() => ({ notice: !!document.querySelector(".notice"), toast: !!document.querySelector(".toast"), hasCheck: !!document.querySelector("[data-check]") }));
+  const inLesson = await A.page.evaluate(() => ({ notice: !!document.querySelector(".notice"), toast: document.querySelector(".toast")?.textContent || false, hasCheck: !!document.querySelector("[data-check]") }));
   check("做题中发生替换：不弹提示、不打断做题", !inLesson.notice && !inLesson.toast && inLesson.hasCheck, JSON.stringify(inLesson));
   await A.page.getByRole("button", { name: "退出本关" }).tap(); await A.page.getByRole("button", { name: "退出", exact: true }).tap();
   await A.page.waitForSelector(".pathview");
   check("退出做题回到地图后：显示一次替换提示", REPLACED.test(await A.page.locator(".notice").first().innerText().catch(() => "")));
-  await A.page.evaluate(() => window.__app.renderPath());
-  check("再刷新地图：提示不再出现", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 0);
+  await toMe(A); await toPathTab(A);
+  check("换页再回来：提示不再出现", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 0);
 
   // 4) 在“我的”页
   await A.ctx.setOffline(true); A.ctx.__off = true;
@@ -173,8 +178,8 @@ try {
   await A.page.waitForSelector("[data-replaced-notice]");
   check("“我的”页：显示替换提示", REPLACED.test(await A.page.locator("[data-replaced-notice]").innerText()));
   await A.shot("7-replaced-notice-me");
-  await toMe(A);
-  check("“我的”页再进入：不再提示", (await A.page.locator("[data-replaced-notice]").count()) === 0);
+  await toPathTab(A); await toMe(A);
+  check("“我的”页离开再进入：不再提示", (await A.page.locator("[data-replaced-notice]").count()) === 0);
   check("全程没有脚本错误", A.errors.length === 0, A.errors.join(" | "));
 } catch (e) { check("流程跑完", false, String(e.message).split("\n").slice(0, 3).join(" ¦ ") + " @ " + String(e.stack).split("\n").find((l) => l.includes("account-replaced.test"))); }
 await browser.close(); srv.closeAllConnections?.(); srv.close();
