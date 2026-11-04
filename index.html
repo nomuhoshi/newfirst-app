@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#F7F5F0" />
+  <meta name="description" content="碎片编程：每天几分钟，用手机从零学 Python。" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="碎片编程" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icon-180.png" />
+  <link rel="icon" href="./icon-192.png" />
+  <title>碎片编程</title>
+  <script type="module" crossorigin src="./assets/main-Cd46H80d.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/errors-DQXCMQzz.js">
+  <link rel="stylesheet" crossorigin href="./assets/errors-DE9dolOj.css">
+  <link rel="stylesheet" crossorigin href="./assets/main-CkJaQj19.css">
+</head>
+<body>
+  <div id="app"></div>
+  <!-- 兜底提示：用最老的语法写、不依赖主程序。主程序没能显示内容（网络、浏览器太旧、微信内置浏览器等）时，说明原因并给“重新加载”按钮；正常加载时不会出现。 -->
+  <script>
+  (function () {
+    var MS = window.__fallbackMs || 8000, box = null, lastErr = "", timer = null;
+    function ready() { var a = document.getElementById("app"); return !!(a && a.childNodes.length); }
+    function remove() { if (box && box.parentNode) box.parentNode.removeChild(box); box = null; }
+    function add(parent, tag, text, css) {
+      var el = document.createElement(tag); el.textContent = text; if (css) el.style.cssText = css; parent.appendChild(el); return el;
+    }
+    function show() {
+      if (box || ready()) return;
+      var ua = navigator.userAgent || "";
+      var wx = /MicroMessenger|QQ\//i.test(ua);
+      var m = ua.match(/OS (\d+)[_.](\d+)/);
+      document.documentElement.style.colorScheme = "light dark";
+      box = document.createElement("div");
+      box.id = "load-fallback";
+      box.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;overflow:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box;background:Canvas;font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;padding:32px 20px;color:CanvasText";
+      add(box, "h1", "页面没有正常加载", "font-size:20px;margin:0 0 12px");
+      add(box, "p", "可能的原因（按可能性排列）：", "margin:0 0 8px");
+      var ul = add(box, "ul", "", "padding-left:20px;margin:0 0 16px");
+      var tips = [
+        ["微信或 QQ 里打开：", "点右上角“···”，选“在浏览器打开”（iPhone 选“在 Safari 中打开”），再试一次。"],
+        ["网络不稳定：", "换 Wi-Fi 或移动网络，然后点下面的“重新加载”。"],
+        ["系统或浏览器版本太旧：", "升级 iOS 或浏览器后再试。"]
+      ];
+      if (!wx) tips.push(tips.shift());
+      for (var i = 0; i < tips.length; i++) { var li = add(ul, "li", "", "margin-bottom:6px"); add(li, "b", tips[i][0]); li.appendChild(document.createTextNode(tips[i][1])); }
+      var b = add(box, "button", "重新加载", "font:inherit;padding:10px 20px;border-radius:10px;border:1px solid currentColor;background:transparent;color:inherit");
+      b.id = "load-fallback-reload";
+      b.onclick = function () { location.reload(); };
+      var info = (m ? "iOS " + m[1] + "." + m[2] + " · " : "") + (wx ? "微信/QQ · " : "") + (lastErr ? lastErr + " · " : "") + ua.slice(0, 120);
+      add(box, "p", "给开发者的信息：" + info, "margin-top:20px;font-size:12px;opacity:.65;word-break:break-all");
+      document.body.appendChild(box);
+    }
+    function onErr(e) {
+      var t = e && e.target && e.target.src ? "无法加载 " + String(e.target.src).split("/").pop() : (e && e.message) || (e && e.reason && String(e.reason)) || "";
+      if (t && !lastErr) lastErr = String(t).slice(0, 100);
+      setTimeout(show, 1500);
+    }
+    window.addEventListener("error", onErr, true);
+    window.addEventListener("unhandledrejection", onErr);
+    setTimeout(show, MS);
+    // 页面后来还是加载出来了（网络慢）：把提示收起来
+    timer = setInterval(function () { if (ready()) { remove(); clearInterval(timer); } }, 500);
+  })();
+  </script>
+</body>
+</html>
