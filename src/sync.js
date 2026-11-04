@@ -11,7 +11,7 @@ import { getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccoun
 
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
 
-export function createSync({ storage, api, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {} }) {
+export function createSync({ storage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {} }) {
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "";
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
@@ -19,8 +19,18 @@ export function createSync({ storage, api, now = () => Date.now(), today = () =>
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
 
   const setStatus = (s, msg = "") => { status = s; lastError = msg; try { onStatus(s, msg); } catch {} };
-  const readAuth = () => { try { const r = JSON.parse(storage.getItem(AUTH_KEY)); return r && r.session && r.session.userId ? r.session : null; } catch { return null; } };
-  const writeAuth = () => { try { if (session) storage.setItem(AUTH_KEY, JSON.stringify({ session })); else storage.removeItem(AUTH_KEY); } catch {} };
+  // 登录凭证跟着“Supabase 项目”走：凭证里记着它是从哪个项目拿到的（主机名）。项目换了（比如测试入口从正式库换到独立测试库），
+  // 旧凭证在别的库里没有意义，读到时直接作废并要求重新登录；本机学习记录（游客记录、账号本机副本）一概不动。
+  // 没记项目的旧凭证只可能来自正式库（项目标记是后加的），所以按 legacyProject（正式库主机名）处理。projectId 没给 = 不检查（旧测试用）。
+  const readAuth = () => {
+    try {
+      const r = JSON.parse(storage.getItem(AUTH_KEY));
+      if (!r || !r.session || !r.session.userId) return null;
+      if (projectId && (r.project || legacyProject) !== projectId) { try { storage.removeItem(AUTH_KEY); } catch {} return null; }
+      return r.session;
+    } catch { return null; }
+  };
+  const writeAuth = () => { try { if (session) storage.setItem(AUTH_KEY, JSON.stringify(projectId ? { session, project: projectId } : { session })); else storage.removeItem(AUTH_KEY); } catch {} };
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
 
   // 同一浏览器的其他标签页共用这份凭证：别的标签页刷新令牌后会写回存储。

@@ -27,6 +27,18 @@ const sameRef = await load({ id: "pr11", test: { url: "https://aqlcunkmggzzvyavl
 check("网址只是多了个斜杠也认得出是正式项目：被拒绝", sameRef.url === "");
 const bad = await load({ id: "rc1", test: { url: 123, anonKey: null } });
 check("配置格式不对：云端关闭，不抛错", bad.url === "" && bad.anonKey === "");
+const upper = await load({ id: "rc1", test: { url: "HTTPS://AQLCUNKMGGZZVYAVLKJG.Supabase.CO", anonKey: "x" } });
+check("正式项目主机名写成大写：照样认出，被拒绝", upper.url === "");
+const port = await load({ id: "rc1", test: { url: "https://user:pw@AqlCunkmggzzvyavlkjg.supabase.co:443/rest/v1?x=1", anonKey: "x" } });
+check("带端口 / 用户信息 / 路径的正式网址：被拒绝", port.url === "");
+const junk = await load({ id: "rc1", test: { url: "not a url", anonKey: "x" } });
+check("网址解析不了：当作不安全，云端关闭", junk.url === "");
+const ftp = await load({ id: "rc1", test: { url: "ftp://abcdefgh.supabase.co", anonKey: "x" } });
+check("不是 http(s) 的网址：云端关闭", ftp.url === "");
+const spaced = await load({ id: "rc1", test: { url: "  https://AbCdEfGh.supabase.co  ", anonKey: " k " } });
+check("测试项目网址前后有空格、含大写：去掉空格后照常使用", spaced.url === "https://AbCdEfGh.supabase.co" && spaced.anonKey === "k");
+const m = await import("../src/cloud-config.js?case=host");
+check("hostOf 小写化主机名；解析不了返回空", m.hostOf("https://ABC.supabase.co/x") === "abc.supabase.co" && m.hostOf("zzz") === "" && m.PROD_HOST === "aqlcunkmggzzvyavlkjg.supabase.co");
 const failed = results.filter((r) => !r).length;
 console.log(`\n共 ${results.length} 项，失败 ${failed} 项`);
 process.exit(failed ? 1 : 0);
