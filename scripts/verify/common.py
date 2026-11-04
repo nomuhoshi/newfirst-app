@@ -21,7 +21,7 @@ def run(code):
     return (out[:-1] if out.endswith("\n") else out), err
 
 # 已知问题：在别的 PR 里修，单独列出，不算失败。修好合并后删掉。
-KNOWN = {"U1L5-Q4": "干扰项 60 本身就能输出正确结果，PR #16 修复"}
+KNOWN = {}
 
 class Check:
     """每个检查模块一个：自己的 检查/跳过/失败/已知 计数。"""

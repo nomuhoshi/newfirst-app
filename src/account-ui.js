@@ -152,7 +152,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     async function doLogout(then) {
       const r = await sync.logout();
       if (r.ok) { onSwitchedOut(); showToast("已退出登录。"); if (then) then(); return; }
-      if (r.pending) sheetConfirm("有进度还没上传", "现在连不上云端，退出后这些没上传的进度会丢失。建议联网后再退出。", "仍然退出", async () => { await sync.logout({ force: true }); onSwitchedOut(); showToast("已退出登录。"); if (then) then(); }, true);
+      if (r.pending) sheetConfirm("有进度还没上传", "现在连不上云端。退出后这些进度会先留在这台设备上，用同一个账号重新登录时会接着上传；建议联网后再退出。", "仍然退出", async () => { await sync.logout({ force: true }); onSwitchedOut(); showToast("已退出登录。"); if (then) then(); }, true);
       else showToast(errorText(r));
     }
     card.append(h("h3", { text: "账号" }), h("p", { class: "acct-email", text: acc.email || "已登录" }), st,
