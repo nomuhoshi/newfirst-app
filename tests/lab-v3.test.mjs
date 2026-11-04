@@ -89,8 +89,8 @@ for (const scheme of ["light", "dark"]) {
     check(`${T} 选中后：检查可点，选项有铜色选中态`, !(await page.locator("[data-check]").isDisabled()) && await page.evaluate(() => getComputedStyle(document.querySelector(".choice.sel")).borderTopColor !== getComputedStyle(document.querySelector(".choice:not(.sel)")).borderTopColor));
     // 按压反馈：按住时按钮缩小
     const box = await page.locator("[data-check]").boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.waitForTimeout(200); // 等 transform 过渡
-    const pressed = await page.evaluate(() => getComputedStyle(document.querySelector("[data-check]")).transform);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    let pressed = "none"; for (let i = 0; i < 10 && (pressed === "none" || pressed === "matrix(1, 0, 0, 1, 0, 0)"); i++) { await page.waitForTimeout(100); pressed = await page.evaluate(() => getComputedStyle(document.querySelector("[data-check]")).transform); } // 轮询：等 :active 和 transform 过渡
     await page.mouse.move(box.x + box.width / 2, box.y - 60); await page.mouse.up(); // 先移出按钮再松开，不触发点击
     check(`${T} 按压反馈：按住“检查”时按钮变形（缩小）`, pressed !== "none" && pressed !== "matrix(1, 0, 0, 1, 0, 0)", pressed);
     await shot("3-selected");
@@ -141,9 +141,10 @@ for (const scheme of ["light", "dark"]) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "allow" });
   const page = await ctx.newPage();
   try {
-    await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    await page.evaluate(async () => { await caches.open("suipian-prod-decoy"); await (await caches.open("suipian-prod-decoy")).put("/x", new Response("prod")); });
-    await page.reload(); await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 20000 });
+    await page.goto(BASE + "manifest.webmanifest"); // 同源但不是应用页，不会注册 SW：先放一个“正式版”的假缓存
+    await page.evaluate(async () => { await (await caches.open("suipian-prod-decoy")).put("/x", new Response("prod")); });
+    await page.goto(BASE); await page.waitForSelector(".statsbar, .onboard");
+    await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 30000 });
     await page.waitForFunction(async () => (await caches.keys()).some((k) => k.startsWith("lab3-suipian-")), null, { timeout: 20000 });
     await page.waitForTimeout(1500);
     const keys = await page.evaluate(() => caches.keys());
