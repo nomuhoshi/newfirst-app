@@ -18,19 +18,28 @@
     {
       "id": "U3",
       "title": "比较与判断",
-      "subtitle": "True/False、if/else",
-      "available": false
+      "subtitle": "比较、if/else/elif、and/or/not",
+      "available": true,
+      "file": "unit3.json"
     },
     {
       "id": "U4",
       "title": "循环",
-      "subtitle": "for、range",
-      "available": false
+      "subtitle": "for、range、while、break",
+      "available": true,
+      "file": "unit4.json"
     },
     {
       "id": "U5",
-      "title": "列表与数据",
-      "subtitle": "list、sum、len",
+      "title": "列表与序列",
+      "subtitle": "列表、下标、append、切片",
+      "available": true,
+      "file": "unit5.json"
+    },
+    {
+      "id": "U6",
+      "title": "字典与集合",
+      "subtitle": "dict、set",
       "available": false
     }
   ]

@@ -8,10 +8,11 @@
     "dev": "npm run copy-pyodide && vite --host",
     "build": "npm run copy-pyodide && vite build",
     "preview": "vite preview --host",
-    "test": "node tests/step1.test.mjs && node tests/step2.test.mjs && node tests/step3.test.mjs && node tests/step4.test.mjs && node tests/step6.test.mjs && node tests/step7.test.mjs && node tests/a11y-sheet.test.mjs && node tests/judge.test.mjs && npm run copy-pyodide && node tests/judge-browser.test.mjs",
+    "test": "node tests/step1.test.mjs && node tests/step2.test.mjs && node tests/step3.test.mjs && node tests/step4.test.mjs && node tests/step8-u3.test.mjs && node tests/step8-u4.test.mjs && node tests/step8-u5.test.mjs && node tests/step6.test.mjs && node tests/step7.test.mjs && node tests/a11y-sheet.test.mjs && node tests/judge.test.mjs && npm run copy-pyodide && node tests/judge-browser.test.mjs",
     "test:setup": "playwright install chromium",
     "test:judge-browser": "npm run copy-pyodide && node tests/judge-browser.test.mjs",
-    "test:mobile": "node tests/webkit/run.mjs"
+    "test:mobile": "node tests/webkit/run.mjs",
+    "verify:content": "python3 scripts/verify-content.py"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.4",
