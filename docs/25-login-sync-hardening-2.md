@@ -107,7 +107,14 @@ PLAYWRIGHT_BROWSERS_PATH=... npm run build
 PLAYWRIGHT_BROWSERS_PATH=... npm test
 ```
 
-本机结果：`npm test` **1022 项全绿**（各套件“共 N 项”相加；含 119 项专项和 7 项反向验证）。Chromium 移动端套件也在本机跑过；WebKit 由 CI 跑。结果和远端 CI 链接见文末。
+本机结果：`npm test` **1022 项全绿**（各套件“共 N 项”相加；含 119 项专项和 7 项反向验证）。Chromium 移动端套件也在本机跑过。
+
+远端 CI（代码提交 `6d2e566`）：<https://github.com/nomuhoshi/newfirst-app/actions/runs/42027618179>
+
+- `build`：success（完整 `npm test`）。
+- `mobile (chromium)`：success。
+- `mobile (webkit)`：success；WebKit 日志里 `[webkit] 真实构建隔离验证：共 14 项，失败 0 项`。
+- `deploy`：skipped（只在 main 部署）。
 
 CI 触发说明：本仓库当前的 GitHub OAuth 凭证没有 `workflow` scope，不能推送 `.github/workflows/` 的修改，所以这次没有改 CI 触发配置。推送 `dsh/login-sync-hardening-2` 后，用已有的 `workflow_dispatch` 入口在**这个分支的同一提交**上跑完整工作流：
 
@@ -158,9 +165,9 @@ npm run build -- --outDir dist-login-sync --emptyOutDir
 ## 7. 七项汇报
 
 1. **分支**：`dsh/login-sync-hardening-2`，基线 `dsh/login-sync-hardening-1@b1aa1e0`。
-2. **提交**：见本文件所在提交；远端提交号在最终交接里给出。
+2. **提交**：代码与测试提交 `6d2e566`；本文件补 CI 链接的文档提交见远端分支 HEAD。
 3. **修改文件**：见 §3。
-4. **测试证据**：§4；CI 链接：待补。
+4. **测试证据**：§4；CI：<https://github.com/nomuhoshi/newfirst-app/actions/runs/42027618179>（build / Chromium / WebKit 全绿，deploy skipped）。
 5. **真实缺陷**：§1.1，旧 `imported=true` 静默忽略游客新增关卡 / XP。
 6. **未验证项**：§6。
 7. **是否触碰正式环境**：没有。没有连接真实 Supabase、没有读 secret / service_role、没有部署、没有 merge、没有改正式分支、没有开 PR、没有在 GitHub 留言。
