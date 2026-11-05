@@ -102,7 +102,7 @@ B 带着自己的身份：
 ### 2.1 候选版补审：`cloud-config.js`
 读了 9d1b4cb 相对 58fdd77 的 diff。新增的规则：构建时设了 `PREVIEW_ID`（测试入口）就**不用**写死的正式配置，只用构建时给的 `TEST_SUPABASE_URL / ANON_KEY`；没给或网址指向正式项目就关闭云端。判断是否正式项目按**解析后的主机名**（小写；解析不了按“可能是正式”处理；主机名里含正式项目编号一律拒绝）。正式构建不读测试配置。`deploy.yml` 的两处 `npm run build` 都没有设 `PREVIEW_ID`，所以正式站走写死的配置。
 **对抗测试**（`tests/cloud-adversarial.test.mjs`，纯 Node）：把正式网址写成末尾多一个点、全角字符、百分号编码的点、大写协议加反斜杠、项目编号当子域前缀 / 嵌在别的主机名里、`javascript:`、`data:`、协议相对网址、纯空白——全部被拒绝、云端关闭；合法的独立测试项目照常放行；正式构建忽略测试配置；非 localhost 的线上域名（含 `localhost.evil.example`）不接受浏览器里的覆盖。
-**发现（低风险，未改源码）**：`pick()` 里「localhost 用浏览器设置覆盖」在「测试入口屏蔽正式项目」**之前**生效，覆盖值不经过 `isProdUrl`。也就是说：在本机 localhost 打开一个测试入口构建，再手动往 `localStorage["suipian.cloudConfig"]` 写正式网址，就能连上正式项目。利用条件是**本机操作者**自己动手，线上域名上无效；但它与“测试入口绝不连正式项目”的承诺不一致。建议（由产品官决定）：测试入口构建里，覆盖值也走 `isProdUrl` 检查。当前测试里只作为“记录项”输出，不算通过也不算失败。
+**发现（低风险，未改源码）**：`pick()` 里「localhost 用浏览器设置覆盖」在「测试入口屏蔽正式项目」**之前**生效，覆盖值不经过 `isProdUrl`。也就是说：在本机 localhost 打开一个测试入口构建，再手动往 `localStorage["suipian.cloudConfig"]` 写正式网址，就能连上正式项目。利用条件是**本机操作者**自己动手，线上域名上无效；但它与“测试入口绝不连正式项目”的承诺不一致。**处理（17:14 产品官决定）**：测试构建无论从哪里读取配置，都要检查正式项目地址，命中就关闭云端。已在独立分支 `fix/cloud-config-localhost-override`（e9b7acb，基于 9d1b4cb）修复，并把此处的“记录项”改成强制断言（8 种写法 × localhost / 127.0.0.1），保留合法配置的对照；还原修复后 17 项变红。本分支的 `tests/cloud-adversarial.test.mjs` 仍是修复前的版本（保留“记录项”），以修复分支为准。
 
 ### 2.2 候选版补审：`sync.js` 与 `account-ui.js`
 - **凭证按项目分开**：测试项目的 `AUTH` / 当前账号 / 账号副本键带 `proj:<主机名>:` 前缀，正式项目沿用原键。对抗测试确认：测试库登录后，令牌只出现在带前缀的键里，正式版的键（账号副本、当前账号、凭证）一个字没变，测试库请求里没有带过正式版令牌。
@@ -138,7 +138,7 @@ B 带着自己的身份：
 1. **FORCE RLS**：产品官 16:58 决定**暂时保留**；等测试库确认实际属主权限和 RPC 写入结果后再决定是否调整。本次未改。
 2. **数据库 CI**：产品官同意接入，条件是先加固脚本——已按要求加固并接入（见 1.10）。
 3. **真实测试库检查**：由有权限的人在 `suipian-test` 执行（项目尚未创建）。本机模拟身份**不能算**真实令牌认证通过。
-4. **待产品官决定**：2.1 的 localhost 覆盖是否也走 `isProdUrl`（低风险）。
+4. **localhost 覆盖**：产品官 17:14 决定必须检查正式项目地址；37 项对抗测试保留在 `npm test`。已在 `fix/cloud-config-localhost-override` 修复（见 2.1）。
 
 ## 附：本次新增文件
 `supabase/tests/review-1.sql`、`review-2.sh`、`schema-old-v1.sql`、`run-all.sh`（重写）、`concurrency.sh`（加固）；`supabase/check-readonly.sql` 追加第 8–11 段（只读）；`tests/cloud-adversarial.test.mjs`；`.github/workflows/db-tests.yml`；`package.json` 的 `test` 链末尾加入对抗测试。分支 `review/db-permissions-rc1`（基于 9d1b4cb）；旧的 `review/db-permissions`（fff5c44，基于 58fdd77）保留不动。
