@@ -492,7 +492,7 @@
             "id": "U4L4-M1",
             "version": 1,
             "type": "modify",
-            "prompt": "要算 1 + 2 + … + n（range(1, n + 1) 就是 1 到 n），但这段程序结果不对。请改正。",
+            "prompt": "要算 1 + 2 + … + n（range(1, n + 1) 就是 1 到 n），但这段程序结果不对。请改正；结果要显示成整数，比如 n = 3 时显示 6。",
             "given": [
               "n"
             ],
@@ -535,6 +535,25 @@
               "把 total = 0 移到 for 的上面，并去掉缩进。"
             ],
             "reference": "total = 0\nfor i in range(1, n + 1):\n    total = total + i\nprint(total)\n",
+            "alternatives": [
+              "total = 0\ni = 1\nwhile i <= n:\n    total = total + i\n    i = i + 1\nprint(total)\n",
+              "print(n * (n + 1) // 2)\n",
+              "print(sum(range(1, n + 1)))\n"
+            ],
+            "wrongAnswers": [
+              {
+                "code": "print(n * (n + 1) / 2)\n",
+                "why": "数值对，但 / 的结果是小数：显示 6.0，不是题目要的整数 6；用 // 才得到整数"
+              },
+              {
+                "code": "total = 0\nfor i in range(n):\n    total = total + i\nprint(total)\n",
+                "why": "range(n) 少加了最后一个数（从 0 到 n-1）"
+              },
+              {
+                "code": "print(n * (n - 1) // 2)\n",
+                "why": "公式写错，少加了 n"
+              }
+            ],
             "worked": {
               "code": "total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)",
               "output": "6",
