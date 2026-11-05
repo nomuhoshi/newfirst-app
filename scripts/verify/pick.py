@@ -19,6 +19,11 @@ def check(items):
         opts = ex["options"]
         cor = [o for o in opts if o["correct"]]
         c.ok(len(cor) == 1, w, f"正确选项有 {len(cor)} 个")
+        if ex.get("key") == "fix" and not ex.get("checks"):  # 没有报错的“怎么改”题（比如把调试 print 放哪）：只用 fixed 真实运行核对
+            for o in opts:
+                out, err = run(o["fixed"]); good = err is None and out == ex["expected"]
+                c.ok(good == o["correct"], w, f"选项 {o['text']!r}：真实运行{'报错 ' + str(err) if err else '输出 ' + repr(out)}，期望 {ex['expected']!r}，correct={o['correct']}")
+            continue
         real = []
         for k in ex.get("checks", []):
             r = real_error(k["program"])

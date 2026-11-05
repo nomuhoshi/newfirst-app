@@ -514,6 +514,424 @@
           "tip": "输出必须恰好是 13：不是 13.0，也不是 121。"
         }
       ]
+    },
+    {
+      "id": "U6L5",
+      "title": "用 print 找 bug",
+      "concept": "在中间加 print，看变量的值",
+      "story": "有时程序不报错，结果却不对。这时在中间加几行 print，把变量当时的值显示出来，从上往下看，找到第一处和你预想不一样的地方，错就在它附近。加在哪里很重要：想看每一轮更新后的值，print 就要放在更新那一行的下面。",
+      "introCode": "total = 0\nfor i in range(1, 4):\n    total = total + i\n    print(\"第\", i, \"轮\", total)\nprint(total)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "小码想算 3 杯 12 元的总价 36，在中间加了一行 print 看看。屏幕上会显示什么？",
+          "code": "price = 12\ncups = 3\ntotal = price + cups\nprint(\"total:\", total)\nprint(\"应付\", total)",
+          "options": [
+            {
+              "text": "total: 15\n应付 15",
+              "correct": true,
+              "why": "中间的 total 显示 15，不是想要的 36：第 3 行写成了 +，应该是 *。找 bug 就是找第一处和预想不一样的值。"
+            },
+            {
+              "text": "total: 36\n应付 36",
+              "correct": false,
+              "why": "第 3 行是 price + cups，12 + 3 得 15，不是 36。"
+            },
+            {
+              "text": "total: 15\n应付 36",
+              "correct": false,
+              "why": "两行显示的是同一个变量 total，值一样，都是 15。"
+            }
+          ],
+          "tip": "先预想每个变量应该是多少，再对照 print 显示的值。"
+        },
+        {
+          "type": "predict",
+          "prompt": "想算 1 + 2 + 3 = 6，小码加了 print 看每一轮。屏幕上会显示什么？",
+          "code": "total = 0\nfor i in range(1, 4):\n    total = 0\n    total = total + i\n    print(\"第\", i, \"轮\", total)\nprint(total)",
+          "options": [
+            {
+              "text": "第 1 轮 1\n第 2 轮 2\n第 3 轮 3\n3",
+              "correct": true,
+              "why": "每一轮 total 都先被 total = 0 清零，再加 i，所以显示的是 i 本身，最后是 3。bug 在循环里的 total = 0。"
+            },
+            {
+              "text": "第 1 轮 1\n第 2 轮 3\n第 3 轮 6\n6",
+              "correct": false,
+              "why": "这是把 total = 0 放在循环外面时才有的结果；这里每一轮都会被清零。"
+            },
+            {
+              "text": "第 1 轮 1\n第 2 轮 2\n第 3 轮 3\n6",
+              "correct": false,
+              "why": "最后的 print(total) 显示的也是被清零后加上 3 的结果：3，不是 6。"
+            }
+          ],
+          "tip": "每一轮开头 total 是多少？"
+        },
+        {
+          "type": "fill",
+          "prompt": "想看每一轮累加后的 total，print 里填什么？",
+          "code": "total = 0\nfor i in range(1, 4):\n    total = total + i\n    print(\"第\", i, \"轮\", {0})\nprint(total)",
+          "tokens": [
+            "total",
+            "i",
+            "\"total\""
+          ],
+          "answer": [
+            "total"
+          ],
+          "expected": "第 1 轮 1\n第 2 轮 3\n第 3 轮 6\n6",
+          "why": {
+            "i": "i 是第几轮的数，显示出来是 1、2、3，看不到累加的值。",
+            "\"total\"": "加了引号就是文字 total，显示的是单词，不是变量的值。"
+          },
+          "hint": "要看变量的值，print 里写变量名，不加引号。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想在循环里加一行 print(\"total:\", total)，看每一轮更新后的值。放在哪一行才对？",
+          "key": "fix",
+          "code": "total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)",
+          "checks": [],
+          "expected": "total: 1\ntotal: 3\ntotal: 6\n6",
+          "options": [
+            {
+              "text": "放在 total = 0 的下面，循环外面",
+              "correct": false,
+              "why": "不在循环里，只会显示一次更新之前的值。",
+              "fixed": "total = 0\nprint(\"total:\", total)\nfor i in range(1, 4):\n    total = total + i\nprint(total)"
+            },
+            {
+              "text": "放在 total = total + i 的下面，缩进和它一样",
+              "correct": true,
+              "why": "在更新之后、同一个循环里，每一轮都会显示更新后的值。",
+              "fixed": "total = 0\nfor i in range(1, 4):\n    total = total + i\n    print(\"total:\", total)\nprint(total)"
+            },
+            {
+              "text": "放在 total = total + i 的上面，缩进和它一样",
+              "correct": false,
+              "why": "在循环里，但在更新之前，显示的是上一轮的值，第一轮还是 0。",
+              "fixed": "total = 0\nfor i in range(1, 4):\n    print(\"total:\", total)\n    total = total + i\nprint(total)"
+            },
+            {
+              "text": "放在最后一行 print(total) 的下面",
+              "correct": false,
+              "why": "在循环外面，只显示最后一次。",
+              "fixed": "total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)\nprint(\"total:\", total)"
+            }
+          ],
+          "tip": "更新之后，在同一个循环里。"
+        }
+      ]
+    }
+  ],
+  "heldLessons": [
+    {
+      "id": "U6L6",
+      "title": "修好收银程序",
+      "concept": "一处一处修，每次重新读报错",
+      "story": "项目：收银程序有好几处错。price 和 cups 是从点单屏读来的、表示整数的文字，比如 \"10\" 和 \"5\"。修的办法：先运行，读最后一行和 line 几；修好一处，再运行，看有没有新的报错；全部不报错了，也要拿几组数据对一对结果，因为有的错不会报错，只会算错。下面三个报错，是按示例的修法逐处修改时可能看到的顺序，你的写法不同，看到的顺序也可能不同。",
+      "introCode": "price = \"10\"\ncups = \"5\"\ntotal = price * cups\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+      "exercises": [
+        {
+          "type": "pick",
+          "prompt": "price 是 \"10\"、cups 是 \"5\"，要先算总价 total = 单价 × 杯数。程序先出了下面这个报错，第 3 行怎么改？",
+          "key": "fix",
+          "code": "price = \"10\"\ncups = \"5\"\ntotal = price * cups\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    total = price * cups\nTypeError: can't multiply sequence by non-int of type 'str'",
+          "checks": [
+            {
+              "program": "price = \"10\"\ncups = \"5\"\ntotal = price * cups\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "can't multiply sequence by non-int of type 'str'"
+            }
+          ],
+          "expected": "应付：45",
+          "options": [
+            {
+              "text": "第 3 行改成：total = int(price) * int(cups)",
+              "correct": true,
+              "why": "price 和 cups 都是表示整数的文字，先分别用 int() 转成整数再乘：10 × 5 = 50。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            },
+            {
+              "text": "第 3 行改成：total = int(price) * cups",
+              "correct": false,
+              "why": "cups 还是文字，整数 × 文字还是类型搭配不对，报错 TypeError。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * cups\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            },
+            {
+              "text": "第 3 行改成：total = price * int(cups)",
+              "correct": false,
+              "why": "price 还是文字：文字 × 整数不是乘法，是把文字重复 5 遍，后面减 5 又会出错，报错 TypeError。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = price * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            },
+            {
+              "text": "第 3 行改成：total = str(price) * str(cups)",
+              "correct": false,
+              "why": "两个都变成文字，文字 × 文字没有意思，报错 TypeError。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = str(price) * str(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            }
+          ],
+          "tip": "两个都是表示整数的文字，乘之前都要转成整数。"
+        },
+        {
+          "type": "pick",
+          "prompt": "第 3 行修好之后，按示例的修法，下一步会看到下面这个报错。第 4 行怎么改？",
+          "key": "fix",
+          "code": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 4, in <module>\n    if cups > 5:\nTypeError: '>' not supported between instances of 'str' and 'int'",
+          "checks": [
+            {
+              "program": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+              "type": "TypeError",
+              "line": 4,
+              "msg": "'>' not supported between instances of 'str' and 'int'"
+            }
+          ],
+          "expected": "应付：45",
+          "options": [
+            {
+              "text": "第 4 行改成：if int(cups) >= 5:",
+              "correct": true,
+              "why": "cups 先转成整数再比较；正好 5 杯也要减 5 元，所以用 >=。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            },
+            {
+              "text": "第 4 行改成：if int(cups) > 5:",
+              "correct": false,
+              "why": "不报错了，但显示 应付：50，应该是应付：45：正好 5 杯没有减 5 元，边界要用 >=。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            },
+            {
+              "text": "第 4 行改成：if cups >= 5:",
+              "correct": false,
+              "why": "cups 还是文字，文字和整数不能比较大小，报错 TypeError。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif cups >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            },
+            {
+              "text": "第 4 行改成：if int(cups) >= \"5\":",
+              "correct": false,
+              "why": "整数和文字不能比较大小，报错 TypeError。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= \"5\":\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            }
+          ],
+          "tip": "正好 5 杯也要减 5 元；cups 还是文字。"
+        },
+        {
+          "type": "pick",
+          "prompt": "前面两处修好之后，按示例的修法，最后一行会看到下面这个报错。第 6 行怎么改？",
+          "key": "fix",
+          "code": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 6, in <module>\n    print(\"应付：\" + total)\nTypeError: can only concatenate str (not \"int\") to str",
+          "checks": [
+            {
+              "program": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+              "type": "TypeError",
+              "line": 6,
+              "msg": "can only concatenate str (not \"int\") to str"
+            }
+          ],
+          "expected": "应付：45",
+          "options": [
+            {
+              "text": "第 6 行改成：print(\"应付：\" + str(total))",
+              "correct": true,
+              "why": "total 是整数，拼进文字之前先用 str() 变成文字。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+            },
+            {
+              "text": "第 6 行改成：print(\"应付：\" + int(total))",
+              "correct": false,
+              "why": "int(total) 还是整数，整数和文字还是不能用 + 接，报错 TypeError。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + int(total))"
+            },
+            {
+              "text": "第 6 行改成：print(\"应付：\", total)",
+              "correct": false,
+              "why": "不报错了，但显示 应付： 45：逗号会在中间加一个空格，和要求的“应付：45”不一样。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\", total)"
+            },
+            {
+              "text": "第 6 行改成：print(\"应付：\" + total)",
+              "correct": false,
+              "why": "没有改：整数 total 不能直接和文字用 + 接，报错 TypeError。",
+              "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + total)"
+            }
+          ],
+          "tip": "拼进文字之前，整数要先变成文字；输出要和题目的写法一模一样。"
+        },
+        {
+          "type": "predict",
+          "prompt": "三处都改好了。price 是 \"8\"、cups 是 \"6\"，屏幕上会显示什么？",
+          "code": "price = \"8\"\ncups = \"6\"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+          "options": [
+            {
+              "text": "应付：43",
+              "correct": true,
+              "why": "8 × 6 = 48，满 5 杯减 5 元，得 43。"
+            },
+            {
+              "text": "应付：48",
+              "correct": false,
+              "why": "忘了减 5 元：6 杯已经满 5 杯。"
+            },
+            {
+              "text": "应付：53",
+              "correct": false,
+              "why": "满 5 杯是减 5 元，不是加 5 元。"
+            }
+          ],
+          "tip": "先算总价，再看有没有满 5 杯。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "replaces": 4,
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改（项目）：price、cups 是表示整数的文字；一处一处修好，满 5 杯减 5 元，输出“应付：金额”",
+          "task": {
+            "id": "U6L6-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "收银程序有好几处错。price 和 cups 是表示整数的文字（比如 \"12\" 和 \"3\"）。要求：算出总价（单价 × 杯数），满 5 杯（正好 5 杯也算）减 5 元，输出“应付：金额”。请一处一处改好，每改一处就重新运行。",
+            "given": [
+              "price",
+              "cups"
+            ],
+            "checkMode": "output",
+            "code": "total = price * cups\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)\n",
+            "tests": [
+              {
+                "name": "3 杯",
+                "data": {
+                  "price": "12",
+                  "cups": "3"
+                },
+                "expected": "应付：36"
+              },
+              {
+                "name": "正好 5 杯",
+                "data": {
+                  "price": "10",
+                  "cups": "5"
+                },
+                "expected": "应付：45"
+              },
+              {
+                "name": "6 杯",
+                "data": {
+                  "price": "8",
+                  "cups": "6"
+                },
+                "expected": "应付：43",
+                "hidden": true
+              },
+              {
+                "name": "1 杯",
+                "data": {
+                  "price": "15",
+                  "cups": "1"
+                },
+                "expected": "应付：15",
+                "hidden": true
+              },
+              {
+                "name": "4 杯",
+                "data": {
+                  "price": "9",
+                  "cups": "4"
+                },
+                "expected": "应付：36",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "先运行，读最后一行的错误类型和 line 几；修好一处再运行，看有没有新的报错。",
+              "price、cups 是文字：乘法和比较之前先用 int() 转成整数；拼进“应付：”之前用 str() 把整数变成文字。边界“满 5 杯”要用 >=。"
+            ],
+            "reference": "total = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))\n",
+            "worked": {
+              "code": "width = \"20\"\nheight = \"3\"\nw = int(width)\nh = int(height)\narea = w * h\nprint(\"面积：\" + str(area))",
+              "output": "面积：60",
+              "explain": "三步：先把表示整数的文字用 int() 转成整数，再计算，最后输出时用 str() 把整数变回文字拼进句子。"
+            },
+            "alternatives": [
+              "cups = int(cups)\nprice = int(price)\ntotal = price * cups\nif cups >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+              "total = int(price) * int(cups)\nif int(cups) > 4:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+              "total = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\", total, sep=\"\")"
+            ],
+            "wrongAnswers": [
+              {
+                "code": "total = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+                "why": "正好 5 杯没有减 5 元（边界）"
+              },
+              {
+                "code": "total = price * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+                "why": "price 还是文字，文字 × 整数是重复，不是乘法"
+              }
+            ],
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U6L6-M1-V1",
+              "prompt": "满 4 杯（正好 4 杯也算）减 3 元，其他不变，输出“应付：金额”。",
+              "starter": "# price、cups 是表示整数的文字，已经准备好\n",
+              "tests": [
+                {
+                  "name": "4 杯",
+                  "data": {
+                    "price": "6",
+                    "cups": "4"
+                  },
+                  "expected": "应付：21"
+                },
+                {
+                  "name": "3 杯",
+                  "data": {
+                    "price": "7",
+                    "cups": "3"
+                  },
+                  "expected": "应付：21"
+                },
+                {
+                  "name": "8 杯",
+                  "data": {
+                    "price": "5",
+                    "cups": "8"
+                  },
+                  "expected": "应付：37",
+                  "hidden": true
+                },
+                {
+                  "name": "1 杯",
+                  "data": {
+                    "price": "9",
+                    "cups": "1"
+                  },
+                  "expected": "应付：9",
+                  "hidden": true
+                },
+                {
+                  "name": "正好 4 杯",
+                  "data": {
+                    "price": "10",
+                    "cups": "4"
+                  },
+                  "expected": "应付：37",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "先转成整数再算；满额的界线这次是 4 杯。",
+                "total = int(price) * int(cups) / if int(cups) >= 4: total = total - 3 / print(\"应付：\" + str(total))。"
+              ],
+              "solution": "total = int(price) * int(cups)\nif int(cups) >= 4:\n    total = total - 3\nprint(\"应付：\" + str(total))\n"
+            }
+          }
+        }
+      ]
     }
   ]
 }
