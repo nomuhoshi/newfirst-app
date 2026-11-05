@@ -436,7 +436,7 @@ function renderPath() {
           h("span", { class: "unit-prog-bar" }, h("i", { style: `width:${Math.round((doneN / lessons.length) * 100)}%` })), h("b", { text: `${doneN}/${lessons.length}` }))),
       h("ol", { class: "path" }, lessons.map((l, i) => {
         const st = lessonStatus(l);
-        const offset = [0, 1, 2, 1, 0, -1][i % 6];
+        const offset = [0, 1.75, 0, -1.75][i % 4]; // 中间→右→中间→左：左右来回的蛇形（单位 44px，最大 ±77px；iPhone SE 375 宽里节点和关名仍完整在屏内）
         const node = button(
           h("span", { class: "node-face", "aria-hidden": "true" }, hexNode(st, !!l.review)),
           () => openLessonSheet(l), `node ${st}${l.review ? " review" : ""}`,
