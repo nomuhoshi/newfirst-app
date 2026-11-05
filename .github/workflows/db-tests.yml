@@ -1,0 +1,24 @@
+# 数据库权限测试（docs/35）：在 CI 里自建一个专用的临时 PostgreSQL（只开 Unix 套接字、不监听网络），跑 supabase/tests/run-all.sh。
+# 不连接任何 Supabase 项目，不需要任何密钥。任何一步失败 = 整个任务失败。
+name: db-tests
+on:
+  push:
+    branches: ["review/**", "feat/account-data-layer", "release/**"]
+    paths: ["supabase/**", ".github/workflows/db-tests.yml"]
+  pull_request:
+    paths: ["supabase/**", ".github/workflows/db-tests.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 确认有 PostgreSQL 程序（没有就装）
+        run: |
+          if ! ls -d /usr/lib/postgresql/*/bin >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y postgresql; fi
+          ls -d /usr/lib/postgresql/*/bin
+      - name: 数据库权限测试（跨账号 / 身份校验 / FORCE RLS / 旧版升级 / 并发）
+        run: bash supabase/tests/run-all.sh
