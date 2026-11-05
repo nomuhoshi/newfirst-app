@@ -1,4 +1,4 @@
-// 第 6 单元（U6L1–U6L4，第 1、2 部分）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
+// 第 6 单元（U6L1–U6L5 可玩；U6L6 项目待开放）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
 // 运行：npm run build && node tests/step8-u6.test.mjs [chromium|webkit]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -8,6 +8,7 @@ import { chromium, webkit } from "playwright";
 const ROOT = new URL("..", import.meta.url).pathname, DIST = join(ROOT, "dist");
 const PORT = 4385 + (process.argv[2] === "webkit" ? 1 : 0), BASE = `http://localhost:${PORT}/`;
 const unitN = JSON.parse(readFileSync(join(ROOT, "content/unit6.json")));
+const document_has_held = (u) => u.lessons.some((l) => (u.heldLessons || []).some((h) => h.id === l.id));
 const prev = ["unit1", "unit2", "unit3", "unit4", "unit5"].flatMap((u) => JSON.parse(readFileSync(join(ROOT, `content/${u}.json`))).lessons).map((l) => l.id);
 let pass = 0, fail = 0;
 const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "✅" : "❌"} ${n}${ok || !d ? "" : "  — " + d}`); };
@@ -27,7 +28,7 @@ const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 
-check("U1–U5 通关后 U6L1 是当前关，U6L2–U6L4 锁定（共 4 关）", unitN.lessons.length === 4 && await page.evaluate(() => document.querySelector('[data-lesson="U6L1"]')?.classList.contains("current") && ["U6L2", "U6L3", "U6L4"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
+check("U1–U5 通关后 U6L1 是当前关，U6L2–U6L5 锁定（共 5 关可玩；U6L6 项目待开放，不在地图上）", unitN.lessons.length === 5 && !document_has_held(unitN) && await page.evaluate(() => document.querySelector('[data-lesson="U6L1"]')?.classList.contains("current") && ["U6L2", "U6L3", "U6L4", "U6L5"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
 check("第 7 单元仍显示即将推出", (await page.locator(".unit.locked").count()) === 1);
 
 async function answer(ex, right) {

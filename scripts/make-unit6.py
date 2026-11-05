@@ -29,7 +29,7 @@ def pick(prompt, key, options, code=None, trace=None, checks=None, expected=None
     d = {"type": "pick", "prompt": prompt, "key": key}
     if code: d["code"] = code
     if trace: d["trace"] = trace
-    d["checks"] = checks or [chk(code)]
+    d["checks"] = [chk(code)] if checks is None else checks
     if expected is not None: d["expected"] = expected
     d["options"] = options
     if tip: d["tip"] = tip
@@ -103,6 +103,69 @@ Q44_OPTS = [
     fixopt("把 age + 1 改成 float(age) + 1", "age + 1", "float(age) + 1", P44, "13", None, lambda o, e: f"不报错了，但{_shows(o, e)}：数值和 13 相同，但 float() 得到的是小数，显示成 13.0，格式不符合题目要求的“恰好 13”。"),
     fixopt("把 age + 1 改成 str(age) + 1", "age + 1", "str(age) + 1", P44, "13", None, lambda o, e: f"str(age) 本来就是文字，文字加 1 还是类型搭配不对，{_shows(o, e)}。"),
 ]
+
+# ---- U6L5 / U6L6 用到的程序 ----
+C51 = 'price = 12\ncups = 3\ntotal = price + cups\nprint("total:", total)\nprint("应付", total)'
+C52 = 'total = 0\nfor i in range(1, 4):\n    total = 0\n    total = total + i\n    print("第", i, "轮", total)\nprint(total)'
+C53 = 'total = 0\nfor i in range(1, 4):\n    total = total + i\n    print("第", i, "轮", {0})\nprint(total)'
+P54 = 'total = 0\nfor i in range(1, 4):\n    total = total + i\nprint(total)'
+_p = P54.split("\n"); _pr = '    print("total:", total)'
+INS_A = "\n".join([_p[0], 'print("total:", total)'] + _p[1:])
+INS_B = "\n".join(_p[:3] + [_pr] + _p[3:])
+INS_C = "\n".join(_p[:2] + [_pr] + _p[2:])
+INS_D = P54 + '\nprint("total:", total)'
+# 项目：按示例的修法逐处出现的三个报错；所有改法选项 = 参考答案里只换一行，真实运行
+REF6 = ['price = "10"', 'cups = "5"', 'total = int(price) * int(cups)', 'if int(cups) >= 5:', '    total = total - 5', 'print("应付：" + str(total))']
+P6 = "\n".join(REF6[:2] + ['total = price * cups', 'if cups > 5:', '    total = total - 5', 'print("应付：" + total)'])
+P6B = "\n".join(REF6[:3] + ['if cups > 5:', '    total = total - 5', 'print("应付：" + total)'])
+P6C = "\n".join(REF6[:5] + ['print("应付：" + total)'])
+P6FIN = 'price = "8"\ncups = "6"\ntotal = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint("应付：" + str(total))'
+def lineopt(idx, line, ok_why, bad_why):
+    prog = "\n".join(REF6[:idx] + [line] + REF6[idx + 1:])
+    out, err = run(prog); good = err is None and out == "应付：45"
+    return opt(f"第 {idx + 1} 行改成：{line.strip()}", good, ok_why if good else bad_why(out, err), fixed=prog)
+L6_O1 = [
+    lineopt(2, 'total = int(price) * int(cups)', "price 和 cups 都是表示整数的文字，先分别用 int() 转成整数再乘：10 × 5 = 50。", None),
+    lineopt(2, 'total = int(price) * cups', None, lambda o, e: f"cups 还是文字，整数 × 文字还是类型搭配不对，{_shows(o, e)}。"),
+    lineopt(2, 'total = price * int(cups)', None, lambda o, e: f"price 还是文字：文字 × 整数不是乘法，是把文字重复 5 遍，后面减 5 又会出错，{_shows(o, e)}。"),
+    lineopt(2, 'total = str(price) * str(cups)', None, lambda o, e: f"两个都变成文字，文字 × 文字没有意思，{_shows(o, e)}。"),
+]
+L6_O2 = [
+    lineopt(3, 'if int(cups) >= 5:', "cups 先转成整数再比较；正好 5 杯也要减 5 元，所以用 >=。", None),
+    lineopt(3, 'if int(cups) > 5:', None, lambda o, e: f"不报错了，但{_shows(o, e)}，应该是应付：45：正好 5 杯没有减 5 元，边界要用 >=。"),
+    lineopt(3, 'if cups >= 5:', None, lambda o, e: f"cups 还是文字，文字和整数不能比较大小，{_shows(o, e)}。"),
+    lineopt(3, 'if int(cups) >= "5":', None, lambda o, e: f"整数和文字不能比较大小，{_shows(o, e)}。"),
+]
+L6_O3 = [
+    lineopt(5, 'print("应付：" + str(total))', "total 是整数，拼进文字之前先用 str() 变成文字。", None),
+    lineopt(5, 'print("应付：" + int(total))', None, lambda o, e: f"int(total) 还是整数，整数和文字还是不能用 + 接，{_shows(o, e)}。"),
+    lineopt(5, 'print("应付：", total)', None, lambda o, e: f"不报错了，但{_shows(o, e)}：逗号会在中间加一个空格，和要求的“应付：45”不一样。"),
+    lineopt(5, 'print("应付：" + total)', None, lambda o, e: f"没有改：整数 total 不能直接和文字用 + 接，{_shows(o, e)}。"),
+]
+def _T(name, data, expected, hidden=False):
+    d = {"name": name, "data": data, "expected": expected}
+    if hidden: d["hidden"] = True
+    return d
+L6_TASK = {"id": "U6L6-M1", "version": 1, "type": "modify",
+ "prompt": "收银程序有好几处错。price 和 cups 是表示整数的文字（比如 \"12\" 和 \"3\"）。要求：算出总价（单价 × 杯数），满 5 杯（正好 5 杯也算）减 5 元，输出“应付：金额”。请一处一处改好，每改一处就重新运行。",
+ "given": ["price", "cups"], "checkMode": "output",
+ "code": "total = price * cups\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)\n",
+ "tests": [_T("3 杯", {"price": "12", "cups": "3"}, "应付：36"), _T("正好 5 杯", {"price": "10", "cups": "5"}, "应付：45"),
+          _T("6 杯", {"price": "8", "cups": "6"}, "应付：43", True), _T("1 杯", {"price": "15", "cups": "1"}, "应付：15", True), _T("4 杯", {"price": "9", "cups": "4"}, "应付：36", True)],
+ "hints": ["先运行，读最后一行的错误类型和 line 几；修好一处再运行，看有没有新的报错。", "price、cups 是文字：乘法和比较之前先用 int() 转成整数；拼进“应付：”之前用 str() 把整数变成文字。边界“满 5 杯”要用 >=。"],
+ "reference": "total = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))\n",
+ "worked": {"code": "width = \"20\"\nheight = \"3\"\nw = int(width)\nh = int(height)\narea = w * h\nprint(\"面积：\" + str(area))", "output": "面积：60", "explain": "三步：先把表示整数的文字用 int() 转成整数，再计算，最后输出时用 str() 把整数变回文字拼进句子。"},
+ "alternatives": ["cups = int(cups)\nprice = int(price)\ntotal = price * cups\nif cups >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+                  "total = int(price) * int(cups)\nif int(cups) > 4:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+                  "total = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\", total, sep=\"\")"],
+ "wrongAnswers": [{"code": "total = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + str(total))", "why": "正好 5 杯没有减 5 元（边界）"},
+                  {"code": "total = price * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))", "why": "price 还是文字，文字 × 整数是重复，不是乘法"}],
+ "requiresVariationAfterSolution": True,
+ "variation": {"id": "U6L6-M1-V1", "prompt": "满 4 杯（正好 4 杯也算）减 3 元，其他不变，输出“应付：金额”。", "starter": "# price、cups 是表示整数的文字，已经准备好\n",
+   "tests": [_T("4 杯", {"price": "6", "cups": "4"}, "应付：21"), _T("3 杯", {"price": "7", "cups": "3"}, "应付：21"),
+             _T("8 杯", {"price": "5", "cups": "8"}, "应付：37", True), _T("1 杯", {"price": "9", "cups": "1"}, "应付：9", True), _T("正好 4 杯", {"price": "10", "cups": "4"}, "应付：37", True)],
+   "hints": ["先转成整数再算；满额的界线这次是 4 杯。", "total = int(price) * int(cups) / if int(cups) >= 4: total = total - 3 / print(\"应付：\" + str(total))。"],
+   "solution": "total = int(price) * int(cups)\nif int(cups) >= 4:\n    total = total - 3\nprint(\"应付：\" + str(total))\n"}}
 
 lessons = [
  {"id": "U6L1", "title": "它是什么类型", "concept": "type() 和四种类型",
@@ -198,9 +261,59 @@ lessons = [
         Q44_OPTS[0], Q44_OPTS[1], Q44_OPTS[2], Q44_OPTS[3],
     ], code=P44, trace=trace_of(P44), expected="13", tip="输出必须恰好是 13：不是 13.0，也不是 121。"),
   ]},
+ {"id": "U6L5", "title": "用 print 找 bug", "concept": "在中间加 print，看变量的值",
+  "story": "有时程序不报错，结果却不对。这时在中间加几行 print，把变量当时的值显示出来，从上往下看，找到第一处和你预想不一样的地方，错就在它附近。加在哪里很重要：想看每一轮更新后的值，print 就要放在更新那一行的下面。",
+  "introCode": "total = 0\nfor i in range(1, 4):\n    total = total + i\n    print(\"第\", i, \"轮\", total)\nprint(total)",
+  "exercises": [
+    pred("小码想算 3 杯 12 元的总价 36，在中间加了一行 print 看看。屏幕上会显示什么？", C51, [
+        ("total: 15\n应付 15", T, "中间的 total 显示 15，不是想要的 36：第 3 行写成了 +，应该是 *。找 bug 就是找第一处和预想不一样的值。"),
+        ("total: 36\n应付 36", F, "第 3 行是 price + cups，12 + 3 得 15，不是 36。"),
+        ("total: 15\n应付 36", F, "两行显示的是同一个变量 total，值一样，都是 15。")],
+        tip="先预想每个变量应该是多少，再对照 print 显示的值。"),
+    pred("想算 1 + 2 + 3 = 6，小码加了 print 看每一轮。屏幕上会显示什么？", C52, [
+        ("第 1 轮 1\n第 2 轮 2\n第 3 轮 3\n3", T, "每一轮 total 都先被 total = 0 清零，再加 i，所以显示的是 i 本身，最后是 3。bug 在循环里的 total = 0。"),
+        ("第 1 轮 1\n第 2 轮 3\n第 3 轮 6\n6", F, "这是把 total = 0 放在循环外面时才有的结果；这里每一轮都会被清零。"),
+        ("第 1 轮 1\n第 2 轮 2\n第 3 轮 3\n6", F, "最后的 print(total) 显示的也是被清零后加上 3 的结果：3，不是 6。")],
+        tip="每一轮开头 total 是多少？"),
+    fill("想看每一轮累加后的 total，print 里填什么？", C53, ["total", "i", "\"total\""], ["total"],
+        "第 1 轮 1\n第 2 轮 3\n第 3 轮 6\n6",
+        {"i": "i 是第几轮的数，显示出来是 1、2、3，看不到累加的值。", "\"total\"": "加了引号就是文字 total，显示的是单词，不是变量的值。"},
+        "要看变量的值，print 里写变量名，不加引号。"),
+    pick("想在循环里加一行 print(\"total:\", total)，看每一轮更新后的值。放在哪一行才对？", "fix", [
+        opt("放在 total = 0 的下面，循环外面", F, "不在循环里，只会显示一次更新之前的值。", fixed=INS_A),
+        opt("放在 total = total + i 的下面，缩进和它一样", T, "在更新之后、同一个循环里，每一轮都会显示更新后的值。", fixed=INS_B),
+        opt("放在 total = total + i 的上面，缩进和它一样", F, "在循环里，但在更新之前，显示的是上一轮的值，第一轮还是 0。", fixed=INS_C),
+        opt("放在最后一行 print(total) 的下面", F, "在循环外面，只显示最后一次。", fixed=INS_D),
+    ], code=P54, checks=[], expected="total: 1\ntotal: 3\ntotal: 6\n6", tip="更新之后，在同一个循环里。"),
+  ]},
 ]
 
-unit = {"id": "U6", "title": "类型与报错", "subtitle": "type、int()/str()、读报错", "lessons": lessons}
+held = [
+ {"id": "U6L6", "title": "修好收银程序", "concept": "一处一处修，每次重新读报错",
+  "story": "项目：收银程序有好几处错。price 和 cups 是从点单屏读来的、表示整数的文字，比如 \"10\" 和 \"5\"。修的办法：先运行，读最后一行和 line 几；修好一处，再运行，看有没有新的报错；全部不报错了，也要拿几组数据对一对结果，因为有的错不会报错，只会算错。下面三个报错，是按示例的修法逐处修改时可能看到的顺序，你的写法不同，看到的顺序也可能不同。",
+  "introCode": P6,
+  "exercises": [
+    pick("price 是 \"10\"、cups 是 \"5\"，要先算总价 total = 单价 × 杯数。程序先出了下面这个报错，第 3 行怎么改？", "fix", [
+        L6_O1[0], L6_O1[1], L6_O1[2], L6_O1[3],
+    ], code=P6, trace=trace_of(P6), expected="应付：45", tip="两个都是表示整数的文字，乘之前都要转成整数。"),
+    pick("第 3 行修好之后，按示例的修法，下一步会看到下面这个报错。第 4 行怎么改？", "fix", [
+        L6_O2[0], L6_O2[1], L6_O2[2], L6_O2[3],
+    ], code=P6B, trace=trace_of(P6B), expected="应付：45", tip="正好 5 杯也要减 5 元；cups 还是文字。"),
+    pick("前面两处修好之后，按示例的修法，最后一行会看到下面这个报错。第 6 行怎么改？", "fix", [
+        L6_O3[0], L6_O3[1], L6_O3[2], L6_O3[3],
+    ], code=P6C, trace=trace_of(P6C), expected="应付：45", tip="拼进文字之前，整数要先变成文字；输出要和题目的写法一模一样。"),
+    pred("三处都改好了。price 是 \"8\"、cups 是 \"6\"，屏幕上会显示什么？", P6FIN, [
+        ("应付：43", T, "8 × 6 = 48，满 5 杯减 5 元，得 43。"),
+        ("应付：48", F, "忘了减 5 元：6 杯已经满 5 杯。"),
+        ("应付：53", F, "满 5 杯是减 5 元，不是加 5 元。")],
+        tip="先算总价，再看有没有满 5 杯。"),
+  ],
+  "pending": [{"type": "modify", "replaces": 4, "status": "待 Claude 的代码题运行器，暂不开放",
+    "plan": "改一改（项目）：price、cups 是表示整数的文字；一处一处修好，满 5 杯减 5 元，输出“应付：金额”",
+    "task": L6_TASK}]}
+]
+
+unit = {"id": "U6", "title": "类型与报错", "subtitle": "type、int()/str()、读报错", "lessons": lessons, "heldLessons": held}
 p = pathlib.Path(__file__).resolve().parent.parent / "content/unit6.json"
 p.write_text(json.dumps(unit, ensure_ascii=False, indent=2) + "\n")
 print("写入", p, "关卡", len(lessons), "题目", sum(len(l["exercises"]) for l in lessons))
