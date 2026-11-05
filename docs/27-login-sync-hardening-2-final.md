@@ -78,20 +78,31 @@
 
 ## 5. 远端 CI
 
-推送后由 GitHub Actions 跑完整 `npm test`、build、Chromium / WebKit。结果链接在代码提交后补到本节；本文件不把“本地专项绿”等同于“远端全量绿”。
+代码与测试提交 `eaea3c3` 已触发 GitHub Actions（`workflow_dispatch`，ref = `dsh/login-sync-hardening-2`）：
+
+<https://github.com/nomuhoshi/newfirst-app/actions/runs/42061798504>
+
+| Job | 结果 |
+|---|---|
+| `build`（真实 Python 验证 + build + 完整 `npm test`） | **success** |
+| `mobile (chromium)` | **success** |
+| `mobile (webkit)` | **success** |
+| `deploy` | **skipped**（ref 不是 `main`，不部署） |
+
+CI 的完整 `npm test` 0 失败，日志里专项为 **176/176**、反向验证为 **16/16**。本次没有改 `.github/workflows/`，没有开 PR、没有 merge、没有部署。
 
 ## 6. 未验证项
 
 - 没有连接真实 Supabase，没有真实邮箱 / 验证码 / 生产数据；RLS、邮件送达、令牌过期仍需独立测试项目人工验收。
 - 没有 iPhone / iPad 真机验证；远端 Chromium / WebKit 也只是 Playwright 模拟。
-- 没有本地运行完整 `npm test`，也没有本地运行 `account-ui`、`account-replaced`、`progress-file`、`preview-storage` 等 Playwright 测试；这些交给远端 CI。
+- 没有本地运行完整 `npm test`，也没有本地运行 `account-ui`、`account-replaced`、`progress-file`、`preview-storage` 等 Playwright 测试；远端 CI 已跑完整 `npm test` 与 Chromium / WebKit，但不是本地重复验证。
 - 没有覆盖真实网络抖动、服务端限流、Supabase 项目闲置暂停。
 - 没有部署、没有 merge、没有开 PR、没有强推、没有碰正式 Supabase。
 
 ## 7. 七项汇报
 
 1. **分支**：`dsh/login-sync-hardening-2`，在 `5567fe0` 后追加提交；没有开新分支。
-2. **提交**：代码与测试提交见远端分支 HEAD；CI 结果补录提交另计。
+2. **提交**：代码与测试 `eaea3c3`；本文件补 CI 结果的提交另计（分支 HEAD）。
 3. **改动**：`src/sync.js`、`src/account-data.js`、`src/account-store.js`、`tests/login-sync-hardening.test.mjs`、`tests/sync-mutation.test.mjs`、`docs/26` 说明、本文件。
 4. **专项测试数字**：专项 176/176、反向验证 16/16、相关单测 244/244，合计 436 项 0 失败；`npm run build` 成功。
 5. **反向验证**：15 个故障注入全部被抓到，见 §4。
