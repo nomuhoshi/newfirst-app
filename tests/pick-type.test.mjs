@@ -4,7 +4,8 @@ import { shuffleExercise } from "../src/practice.js";
 const unit = JSON.parse(readFileSync(new URL("../content/unit6.json", import.meta.url)));
 let pass = 0, fail = 0;
 const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "✅" : "❌"} ${n}${ok || !d ? "" : "  — " + d}`); };
-const picks = unit.lessons.flatMap((l) => l.exercises.map((e, i) => ({ id: `${l.id}-Q${i + 1}`, e }))).filter((x) => x.e.type === "pick");
+const picks = [...unit.lessons, ...(unit.heldLessons || [])].flatMap((l) => l.exercises.map((e, i) => ({ id: `${l.id}-Q${i + 1}`, e }))).filter((x) => x.e.type === "pick");
+check("U6L6 项目只在 heldLessons 里（待开放），不在可玩的 lessons 里，且带待开放的代码题", !!unit.heldLessons?.length && unit.heldLessons.every((h) => !unit.lessons.some((l) => l.id === h.id)) && unit.heldLessons[0].pending?.[0]?.task?.id === "U6L6-M1");
 check("U6 有读报错选择题", picks.length >= 6, String(picks.length));
 for (const { id, e } of picks) {
   check(`${id}：恰好一个正确选项，每个选项都有解释`, e.options.filter((o) => o.correct).length === 1 && e.options.every((o) => o.why && o.text));

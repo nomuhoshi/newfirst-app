@@ -11,7 +11,8 @@ course = json.loads((ROOT / "content/course.json").read_text())
 items, lessons = [], []
 for u in course["units"]:
     if not u.get("file"): continue
-    for l in json.loads((ROOT / "content" / u["file"]).read_text())["lessons"]:
+    data = json.loads((ROOT / "content" / u["file"]).read_text())
+    for l in data["lessons"] + data.get("heldLessons", []):  # heldLessons：已写好、已验证，但还没开放给学生的关（app 只读 lessons）
         lessons.append(l)
         for qi, ex in enumerate(l["exercises"], 1): items.append((f"{l['id']}-Q{qi}({ex['type']})", l, ex))
 known_types = {"predict", "fill", "order", "pick"}
