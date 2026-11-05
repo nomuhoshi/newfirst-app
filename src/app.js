@@ -13,6 +13,7 @@ import unit3 from "../content/unit3.json";
 import unit4 from "../content/unit4.json";
 import unit5 from "../content/unit5.json";
 import unit6 from "../content/unit6.json";
+import unit7 from "../content/unit7.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
 import { makeRunnerExecutor } from "./judge.js";
@@ -31,7 +32,7 @@ import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
-const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6 };
+const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6, U7: unit7 };
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;
@@ -198,17 +199,20 @@ function mascot(size = 96, mood = "happy") {
 }
 
 // 简单的代码着色（只用于显示）
+// .lc 是 inline-flex：裸文本节点若只含空格（缩进、两个符号之间的空格）会被当作空白丢掉。
+// 所以普通文本也包进 span（继承 white-space: pre），缩进和空格才会保留。
+const plain = (t) => h("span", { class: "tk-txt", text: t });
 function codeLine(text) {
   const frag = [];
   const re = /("[^"]*"?)|(\b\d+(?:\.\d+)?\b)|(\bprint\b)|([=+\-*/()])/g;
   let last = 0; let m;
   while ((m = re.exec(text))) {
-    if (m.index > last) frag.push(document.createTextNode(text.slice(last, m.index)));
+    if (m.index > last) frag.push(plain(text.slice(last, m.index)));
     const cls = m[1] ? "tk-str" : m[2] ? "tk-num" : m[3] ? "tk-fn" : "tk-op";
     frag.push(h("span", { class: cls, text: m[0] }));
     last = m.index + m[0].length;
   }
-  if (last < text.length) frag.push(document.createTextNode(text.slice(last)));
+  if (last < text.length) frag.push(plain(text.slice(last)));
   return frag;
 }
 function codeBlock(code, cls = "") {

@@ -1,0 +1,35 @@
+# U7「字典」5 关的独立课程预览入口（U7L6 留在 heldLessons，不可玩）：用 PREVIEW_ID=u7 构建（本地存储键前缀 u7:、缓存前缀 u7-suipian-），推到分支 preview-dist-u7。
+# 只在 preview/u7 分支手动运行（源码 = 课程分支 preview/u6-part1 + U7 内容 + 空格修复）；不部署任何网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 u7/ 目录。
+name: U7 preview
+on:
+  workflow_dispatch:   # 只手动运行：先在同一提交上跑完整 CI（deploy.yml），通过后再构建预览
+permissions:
+  contents: write
+concurrency:
+  group: u7-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 构建（云端关闭：不传任何 Supabase 配置，预览构建默认不连任何云端）
+        env:
+          PREVIEW_ID: u7
+        run: npm run build
+      - name: 检查隔离：构建里有 u7 前缀、缓存前缀不是 suipian-
+        run: |
+          grep -q 'PREFIX = "u7-suipian-"' dist/sw.js
+          grep -rq 'u7' dist/assets/main-*.js
+      - name: 推到 preview-dist-u7
+        run: |
+          cd dist
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "u7 test entry from ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist:preview-dist-u7

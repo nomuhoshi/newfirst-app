@@ -47,6 +47,13 @@
       "id": "U7",
       "title": "字典",
       "subtitle": "dict：按名字存取",
+      "available": true,
+      "file": "unit7.json"
+    },
+    {
+      "id": "U8",
+      "title": "函数",
+      "subtitle": "def、参数、return",
       "available": false
     }
   ]
