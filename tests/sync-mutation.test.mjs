@@ -65,18 +65,6 @@ try {
       to: 'if (prev === true) return "same";',
     },
     {
-      name: "保留云端不重读最新（弹窗期间其他设备新增会丢）",
-      file: "sync.js",
-      from: "let latest = await readLatestCloud(sess);",
-      to: "let latest = { ok: true, row: ctx.remote.row ? { doc: ctx.remoteDoc, rev: ctx.remote.row.rev } : null };",
-    },
-    {
-      name: "安全合并不重读最新（弹窗期间其他设备新增会丢）",
-      file: "sync.js",
-      from: "let current = await readLatestCloud(sess);",
-      to: "let current = { ok: true, row: ctx.remote.row ? { doc: ctx.remoteDoc, rev: ctx.remote.row.rev } : null };",
-    },
-    {
       name: "安全合并改回 gen+1 整份覆盖（清掉其他设备数据）",
       file: "account-data.js",
       from: "const out = clone(c.doc);",
@@ -89,10 +77,55 @@ try {
       to: "doc.imported = imported;",
     },
     {
-      name: "读回不校验（读回失败/不一致也删游客）",
+      name: "保留云端失败时把带新指纹的文档存成本机干净副本（提前标完成）",
       file: "sync.js",
-      from: "const guestCleared = verified && clearGuestAfterVerified(storage, { userChoseTransfer: true, uploadOk: true, uploaded: doc, readBack, guestSnapshotRaw: ctx.guest.raw });",
-      to: "const guestCleared = clearGuestAfterVerified(storage, { userChoseTransfer: true, uploadOk: true, uploaded: doc, readBack: doc, guestSnapshotRaw: ctx.guest.raw });",
+      from: "const localDoc = p.ok ? p.doc : base;",
+      to: "const localDoc = p.ok ? doc : base;",
+    },
+    {
+      name: "专用待办重开 / 重连后不重试（只靠普通同步）",
+      file: "sync.js",
+      from: "if (pi.record) {",
+      to: "if (false && pi.record) {",
+    },
+    {
+      name: "重试成功后不清专用待办（永远停在待同步）",
+      file: "sync.js",
+      from: "if (!clearPendingImport(storage, uid)) {",
+      to: "if (false && !clearPendingImport(storage, uid)) {",
+    },
+    {
+      name: "旧 true 覆盖待上传的新指纹（下次登录重复弹窗）",
+      file: "account-data.js",
+      from: `  out.imported = { ...L.imported };
+  for (const [k, v] of Object.entries(R.imported)) {
+    const prev = out.imported[k];
+    if (typeof prev === "string" && FP_RE.test(prev) && v === true) continue; // 旧 true 不覆盖有效指纹
+    out.imported[k] = v;
+  }`,
+      to: "  out.imported = { ...L.imported, ...R.imported };",
+    },
+    {
+      name: "保留云端读回不校验（没读回就标完成）",
+      file: "sync.js",
+      from: `    if (!verified) {
+      const p = preserveLocalChanges(uid, doc, lastCloud);`,
+      to: `    if (false) {
+      const p = preserveLocalChanges(uid, doc, lastCloud);`,
+    },
+    {
+      name: "安全合并上传失败也谎报已同步",
+      file: "sync.js",
+      from: `synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind, error: error || "合并冲突太多次，请稍后再试"`,
+      to: `synced: true, verified: true, guestCleared: false, saved: true, pending: false, kind, error: ""`,
+    },
+    {
+      name: "安全合并读回不校验（读回不一致也删游客）",
+      file: "sync.js",
+      from: `    if (!verified) {
+      const localDoc = withoutGuestImport(doc, guestId, lastCloud);`,
+      to: `    if (false) {
+      const localDoc = withoutGuestImport(doc, guestId, lastCloud);`,
     },
   ];
 

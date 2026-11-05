@@ -127,7 +127,14 @@ export function mergeDocs(local, remote, opts = {}) {
   out.days = [...new Set([...L.days, ...R.days])].sort();
   out.hearts = clone(opts.localHeartsDirty ? L.hearts : R.hearts);
   out.prefs = clone(opts.localPrefsDirty ? L.prefs : R.prefs);
-  out.imported = { ...L.imported, ...R.imported };
+  // imported 的记录也是“谁更具体谁保留”：字符串指纹比旧格式 true 多一个信息，
+  // 不能让云端残留的旧 true 把本机刚写入 / 还没上传成功的新指纹盖掉（否则下次登录会重复弹窗）。
+  out.imported = { ...L.imported };
+  for (const [k, v] of Object.entries(R.imported)) {
+    const prev = out.imported[k];
+    if (typeof prev === "string" && FP_RE.test(prev) && v === true) continue; // 旧 true 不覆盖有效指纹
+    out.imported[k] = v;
+  }
   return { doc: out, outcome: "merged" };
 }
 

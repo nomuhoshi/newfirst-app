@@ -443,6 +443,9 @@ const stateOf = (st) => {
   const r = loadAccount(st, "uLegacy", { now: NOW });
   return r.ok && r.copy ? r.copy : null;
 };
+// 专用“游客导入待办”在账号相关的独立键里；不靠 doc.imported 或“脏标记”猜。
+const pendingImportKeys = (st) => [...st._m.keys()].filter((k) => k.includes("suipian.acct.import."));
+const pendingRecordOf = (st) => { const k = pendingImportKeys(st)[0]; if (!k) return null; try { return JSON.parse(st.getItem(k)); } catch { return null; } };
 
 // ---- I.0 Case 10 硬断言（原 gemini/login-sync-edge-tests-1 Case 10，不再软红）----
 {
@@ -597,6 +600,7 @@ const stateOf = (st) => {
   check("I.10 上传失败：登录完成但明确未同步，不谎报成功", r.ok && r.synced === false && r.guestCleared !== true, JSON.stringify(r));
   check("I.10 上传失败：云端仍是 70，游客记录逐字保留", xpOf(c.cloud, c.email) === 70 && c.st.getItem(GUEST_KEY) === c.raw);
   check("I.10 上传失败：本机账号副本保留合并后的 80 XP 并标记待上传（没有回退到 70）", sumXp(copy.doc) === 80 && copy.dirty.content === true, JSON.stringify(copy && { xp: sumXp(copy.doc), dirty: copy.dirty }));
+  check("I.10 上传失败：状态是待同步、有专用待办，不得显示已同步", sy.status().pending === true && sy.status().status === "pending" && pendingImportKeys(c.st).length === 1, JSON.stringify({ status: sy.status(), keys: pendingImportKeys(c.st) }));
 }
 
 // ---- I.11 读回失败：上传成功也不删游客 ----
@@ -608,9 +612,10 @@ const stateOf = (st) => {
   const origGet = c.cloud.getProgress; let gets = 0;
   c.cloud.getProgress = async (s) => { gets++; return gets === 2 ? { ok: false, kind: "network", message: "读回失败（测试注入）" } : origGet(s); };
   const r = await sy.finishChoice("transfer");
-  check("I.11 读回失败：上传本身成功（云端 80），但不把“写成功”当成“读回一致”", r.ok && r.synced === true && xpOf(c.cloud, c.email) === 80, JSON.stringify({ r, xp: xpOf(c.cloud, c.email), gets }));
+  check("I.11 读回失败：上传本身成功（云端 80），但只算待同步，不把“写成功”当成“读回一致”", r.ok && r.synced === false && r.verified !== true && xpOf(c.cloud, c.email) === 80, JSON.stringify({ r, xp: xpOf(c.cloud, c.email), gets }));
   check("I.11 读回失败：游客记录逐字保留，不删除", r.guestCleared !== true && c.st.getItem(GUEST_KEY) === c.raw);
   check("I.11 读回失败：本机账号副本是刚上传的 80，没有回退", sumXp(stateOf(c.st).doc) === 80);
+  check("I.11 读回失败：状态是待同步、有专用待办，不得显示已同步", sy.status().pending === true && sy.status().status === "pending" && pendingImportKeys(c.st).length === 1, JSON.stringify({ status: sy.status(), keys: pendingImportKeys(c.st) }));
 }
 
 // ---- I.12 读回不一致：保留游客，本机副本不用错误读回覆盖 ----
@@ -630,8 +635,9 @@ const stateOf = (st) => {
     return origGet(s);
   };
   const r = await sy.finishChoice("transfer");
-  check("I.12 读回不一致：上传成功但读回文档与预期不同 → 不删游客", r.ok && r.synced === true && r.guestCleared !== true && c.st.getItem(GUEST_KEY) === c.raw);
+  check("I.12 读回不一致：上传成功但读回文档与预期不同 → 待同步、不删游客", r.ok && r.synced === false && r.guestCleared !== true && c.st.getItem(GUEST_KEY) === c.raw, JSON.stringify(r));
   check("I.12 读回不一致：本机账号副本仍是上传的 80，不被错误读回（999）污染", sumXp(stateOf(c.st).doc) === 80 && stateOf(c.st).doc.xp.devGhost === undefined);
+  check("I.12 读回不一致：状态是待同步、有专用待办，不得显示已同步", sy.status().pending === true && sy.status().status === "pending" && pendingImportKeys(c.st).length === 1, JSON.stringify({ status: sy.status(), keys: pendingImportKeys(c.st) }));
 }
 
 // ---- I.13 读回一致：才删除游客 ----
@@ -697,6 +703,154 @@ const stateOf = (st) => {
   check("I.16 对照：imported 记录了相同指纹且游客未变 → 不弹窗", v.ok && !v.needChoice && v.state.xp === 70, JSON.stringify(v));
 }
 
+
+// ======================================================================
+// J. 选择结果写云失败后的待同步与重试（产品官 2026-11-05 第二次验收）
+//    硬要求：
+//    - 保留云端写指纹失败：本机不得提前把新指纹标成“已完成”；游客保留；有专用待办；
+//      重连 / 重开后自动重试；指纹成功写入且读回一致后才标记完成，下次登录不重复弹窗。
+//    - 云端旧 imported=true 不得覆盖待上传的新指纹。
+//    - 安全合并上传失败 / 读回失败 / 读回不一致：游客保留、状态待同步、不得显示已同步。
+//    - 失败后重试成功只合并一次：XP / 完成次数 / 日期不重复，游客只删除一次。
+// ======================================================================
+
+// ---- J.1 保留云端写指纹失败：不提前标完成，留专用待办，游客保留 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-keepfail", xp: 500, runs: 20 }), legacy: true });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("J.1 准备：保留云端的弹窗已挂起", v.ok && v.needChoice === true, JSON.stringify(v));
+  const origSave = c.cloud.saveProgress;
+  c.cloud.saveProgress = async () => ({ ok: false, kind: "network", message: "写指纹失败（测试注入）" });
+  const r = await sy.finishChoice("cloud");
+  const copy = stateOf(c.st);
+  const fp = guestFingerprint(g80);
+  check("J.1 写指纹失败：登录完成但明确未同步、游客未清", r.ok && r.synced === false && r.guestCleared !== true, JSON.stringify(r));
+  check("J.1 写指纹失败：本机不提前写入新指纹（不把“已完成”存成干净状态）", copy && copy.doc.imported[c.gid] !== fp && copy.dirty.content === false, JSON.stringify({ imported: copy?.doc.imported, dirty: copy?.dirty }));
+  check("J.1 写指纹失败：游客记录逐字保留，云端旧 true 也没被改", c.st.getItem(GUEST_KEY) === c.raw && rowOfCase(c).doc.imported[c.gid] === true, JSON.stringify({ guest: c.st.getItem(GUEST_KEY) === c.raw, cloud: rowOfCase(c).doc.imported[c.gid] }));
+  const pr = pendingRecordOf(c.st);
+  check("J.1 写指纹失败：状态待同步、有专用待办，不得显示已同步", sy.status().pending === true && sy.status().status === "pending" && !!pr, JSON.stringify({ status: sy.status(), record: pr }));
+  check("J.1 专用待办写明选择 / 游客编号 / 当时的指纹和游客原文", pr && pr.choice === "cloud" && pr.guestId === c.gid && pr.fingerprint === guestFingerprint(g80) && pr.guestRaw === c.raw, JSON.stringify(pr));
+  c.cloud.saveProgress = origSave;
+}
+
+// ---- J.2 重开后自动重试 J.1 的专用待办；成功读回后才标完成，下次登录不弹 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-keepretry", xp: 500, runs: 20 }), legacy: true });
+  const sy = makeSync(c.st, c.cloud);
+  await sy.verify(c.email, "123456", g80);
+  const origSave = c.cloud.saveProgress;
+  c.cloud.saveProgress = async () => ({ ok: false, kind: "network", message: "写指纹失败（测试注入）" });
+  await sy.finishChoice("cloud");
+  c.cloud.saveProgress = origSave;
+  const sy2 = makeSync(c.st, c.cloud);
+  const restored = sy2.restore(freshState());
+  check("J.2 重开：能恢复登录，并知道有专用待办（不是普通“已同步”）", restored && sy2.status().pending === true && sy2.status().status === "pending", JSON.stringify({ restored: !!restored, status: sy2.status() }));
+  let writes = 0;
+  const origSave2 = c.cloud.saveProgress;
+  c.cloud.saveProgress = async (s, rev, doc) => { writes++; return origSave2(s, rev, doc); };
+  const rr = await sy2.syncNow();
+  const row = rowOfCase(c);
+  const copy = stateOf(c.st);
+  const fp = guestFingerprint(g80);
+  check("J.2 重连后自动重试：指纹写入云端且读回一致", rr.ok && writes === 1 && row.doc.imported[c.gid] === fp, JSON.stringify({ rr, writes, imported: row.doc.imported[c.gid] }));
+  check("J.2 重试成功：本机副本才写入指纹并标为干净，待办清空", copy.doc.imported[c.gid] === fp && copy.dirty.content === false && pendingImportKeys(c.st).length === 0, JSON.stringify({ imported: copy.doc.imported[c.gid], dirty: copy.dirty, keys: pendingImportKeys(c.st) }));
+  check("J.2 重试成功：游客记录原样保留（保留云端本来就不删）", c.st.getItem(GUEST_KEY) === c.raw);
+  check("J.2 重试成功：状态已同步，不再显示待同步", sy2.status().pending === false && sy2.status().status === "synced", JSON.stringify(sy2.status()));
+  await sy2.logout();
+  const sy3 = makeSync(c.st, c.cloud);
+  const v3 = await sy3.verify(c.email, "123456", g80);
+  check("J.2 指纹写入并读回后：同一游客再次登录不重复弹窗，XP 仍是云端的 500（不重复加游客）", v3.ok && !v3.needChoice && v3.state.xp === 500, JSON.stringify(v3));
+}
+
+// ---- J.3 云端旧 imported=true 不得覆盖待上传的新指纹 ----
+{
+  const local = bigCloud({ gen: 3, lineage: "L-pending-fp" });
+  local.imported.Gpending = "deadbeef";
+  const remote = bigCloud({ gen: 3, lineage: "L-pending-fp" });
+  remote.imported.Gpending = true; // 云端还是旧格式
+  const m = mergeDocs(local, remote);
+  check("J.3 合并时旧 true 不能盖掉本机已有的字符串指纹（待上传的新指纹保留）", m.doc?.imported.Gpending === "deadbeef", JSON.stringify(m.doc?.imported));
+  check("J.3 对照：云端没有这项时，本机指纹照常保留", mergeDocs(local, bigCloud({ gen: 3, lineage: "L-pending-fp" })).doc.imported.Gpending === "deadbeef");
+}
+
+// ---- J.4 保留云端“上传成功但读回失败/不一致”：仍待同步、本机不标完成 ----
+async function keepReadBackCase(label, badReadBack) {
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-keepread", xp: 500, runs: 20 }), legacy: true });
+  const sy = makeSync(c.st, c.cloud);
+  await sy.verify(c.email, "123456", g80);
+  const origGet = c.cloud.getProgress;
+  let gets = 0;
+  c.cloud.getProgress = async (s) => {
+    gets++;
+    if (gets === 2) return badReadBack(c, origGet);
+    return origGet(s);
+  };
+  const r = await sy.finishChoice("cloud");
+  const copy = stateOf(c.st);
+  const fp = guestFingerprint(g80);
+  check(`J.4 ${label}：写云成功但读回没确认 → 不能标完成`, r.ok && r.synced === false && r.verified !== true && rowOfCase(c).doc.imported[c.gid] === fp, JSON.stringify({ r, cloud: rowOfCase(c).doc.imported[c.gid] }));
+  const pr = pendingRecordOf(c.st);
+  check(`J.4 ${label}：本机不写新指纹、不标干净，游客保留，待办还在`, copy.doc.imported[c.gid] !== fp && !!pr && c.st.getItem(GUEST_KEY) === c.raw, JSON.stringify({ imported: copy.doc.imported[c.gid], record: pr }));
+  check(`J.4 ${label}：专用待办仍是“保留云端”且指纹是本次选择的游客快照`, pr && pr.choice === "cloud" && pr.fingerprint === guestFingerprint(g80) && pr.guestId === c.gid, JSON.stringify(pr));
+  check(`J.4 ${label}：状态待同步，不得显示已同步`, sy.status().pending === true && sy.status().status === "pending", JSON.stringify(sy.status()));
+  // 恢复读回接口后重试成功：才写本机指纹、清待办
+  c.cloud.getProgress = origGet;
+  const sy2 = makeSync(c.st, c.cloud);
+  sy2.restore(freshState());
+  const rr = await sy2.syncNow();
+  const copy2 = stateOf(c.st);
+  check(`J.4 ${label}：重试读回一致后才标完成`, rr.ok && copy2.doc.imported[c.gid] === fp && copy2.dirty.content === false && pendingImportKeys(c.st).length === 0 && sy2.status().status === "synced", JSON.stringify({ rr, imported: copy2.doc.imported[c.gid], keys: pendingImportKeys(c.st), status: sy2.status() }));
+}
+await keepReadBackCase("读回失败", () => ({ ok: false, kind: "network", message: "读回失败（测试注入）" }));
+await keepReadBackCase("读回不一致", (c, origGet) => ({ ok: true, row: { doc: { ...rowOfCase(c).doc, xp: { ...rowOfCase(c).doc.xp, devGhost: 999 } }, rev: rowOfCase(c).rev } }));
+
+// ---- J.5 安全合并“上传成功但读回失败”后重试：只合并一次，不重复 XP / 次数 / 日期，游客只删一次 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-mergeonce", device: DEVICE, xp: 70, runs: 4 }), legacy: true });
+  const sy = makeSync(c.st, c.cloud);
+  await sy.verify(c.email, "123456", g80);
+  const origGet = c.cloud.getProgress;
+  let gets = 0;
+  c.cloud.getProgress = async (s) => { gets++; return gets === 2 ? { ok: false, kind: "network", message: "读回失败（测试注入）" } : origGet(s); };
+  const r1 = await sy.finishChoice("transfer");
+  const row1 = rowOfCase(c);
+  check("J.5 第一次上传成功但读回失败：待同步、游客保留", r1.ok && r1.synced === false && c.st.getItem(GUEST_KEY) === c.raw && pendingImportKeys(c.st).length === 1, JSON.stringify(r1));
+  check("J.5 第一次上传后云端只合并一次（本机设备 80 XP / 5 次）", row1.doc.xp[DEVICE] === 80 && row1.doc.runs[DEVICE] === 5, JSON.stringify({ xp: row1.doc.xp, runs: row1.doc.runs }));
+  c.cloud.getProgress = origGet;
+  const sy2 = makeSync(c.st, c.cloud);
+  sy2.restore(freshState());
+  const rr = await sy2.syncNow();
+  const row2 = rowOfCase(c);
+  const days = row2.doc.days;
+  check("J.5 重试成功：XP / 次数没有被再加一次", rr.ok && row2.doc.xp[DEVICE] === 80 && row2.doc.runs[DEVICE] === 5 && sumXp(row2.doc) === 80, JSON.stringify({ xp: row2.doc.xp, runs: row2.doc.runs, sum: sumXp(row2.doc) }));
+  check("J.5 重试成功：日期不重复、游客只删一次", days.length === new Set(days).size && c.st.getItem(GUEST_KEY) === null && pendingImportKeys(c.st).length === 0, JSON.stringify({ days, guest: c.st.getItem(GUEST_KEY), keys: pendingImportKeys(c.st) }));
+  const before = JSON.stringify(row2.doc);
+  await sy2.syncNow(); await sy2.syncNow();
+  check("J.5 再同步两次：云端文档不变，不重复合并 / 不重复加 XP", JSON.stringify(rowOfCase(c).doc) === before && sumXp(rowOfCase(c).doc) === 80, JSON.stringify({ xp: sumXp(rowOfCase(c).doc) }));
+}
+
+// ---- J.6 待办重试时保留用户期间新学的进度（不被“保留云端”或重试覆盖）----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-keeplearn", xp: 500, runs: 20 }), legacy: true });
+  const sy = makeSync(c.st, c.cloud);
+  await sy.verify(c.email, "123456", g80);
+  const origSave = c.cloud.saveProgress;
+  c.cloud.saveProgress = async () => ({ ok: false, kind: "network", message: "写指纹失败（测试注入）" });
+  const r = await sy.finishChoice("cloud");
+  check("J.6 准备：保留云端写失败，登录完成且是待同步", r.ok && r.synced === false && sy.status().status === "pending", JSON.stringify(r));
+  const dev = { sync: sy, state: r.state };
+  learn(dev, "U2L9", 20); // 待办还没重试时，用户又学了一关
+  const local = stateOf(c.st);
+  check("J.6 待办期间新学的 20 XP 先保存在本机", local.doc.xp[DEVICE] === 20 && sumXp(local.doc) === 520 && local.doc.done.U2L9 && local.dirty.content === true, JSON.stringify({ xp: local.doc.xp, sum: sumXp(local.doc), done: local.doc.done }));
+  c.cloud.saveProgress = origSave;
+  const sy2 = makeSync(c.st, c.cloud);
+  sy2.restore(freshState());
+  const rr = await sy2.syncNow();
+  const row = rowOfCase(c);
+  check("J.6 重试写指纹时保留新学的 20 XP 和关卡，没被云端旧文档覆盖", rr.ok && sumXp(row.doc) === 520 && row.doc.xp[DEVICE] === 20 && row.doc.done.U2L9 && row.doc.imported[c.gid] === guestFingerprint(g80), JSON.stringify({ rr, xp: row.doc.xp, sum: sumXp(row.doc), done: row.doc.done }));
+  check("J.6 保留云端仍然不合并游客：没有把游客 80 XP 加进来", sumXp(row.doc) === 520 && c.st.getItem(GUEST_KEY) === c.raw);
+}
 
 const failed = results.filter((r) => !r).length;
 console.log(`\n登录/同步加固专项：共 ${results.length} 项，失败 ${failed} 项`);

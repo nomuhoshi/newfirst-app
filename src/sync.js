@@ -6,11 +6,13 @@
 //  - 写云端必须带版本号（save_progress 的 expected_rev）；被抢先就重新读取、合并、再写。
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
-import { emptyDoc, mergeDocs, docsEquivalent, docToState, syncStateIntoDoc, guestHasLearning, guestImportStatus, markGuestImported, mergeGuestProgress, normalizeDoc, sumXp, isId } from "./account-data.js";
-import { SESSION_KEY, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified } from "./account-store.js";
+import { emptyDoc, mergeDocs, docsEquivalent, docToState, syncStateIntoDoc, guestHasLearning, guestImportStatus, guestFingerprint, markGuestImported, mergeGuestProgress, normalizeDoc, sumXp, isId } from "./account-data.js";
+import { SESSION_KEY, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
+
+const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // 账号相关的键（当前账号、账号本机副本、登录凭证、换项目标记）按 Supabase 项目分开存：
 //  - 正式项目（和云端关闭时）沿用原来的键，朋友们现有的存档、登录状态一个字不变；
@@ -110,7 +112,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     userId = uid; email = session?.email || "";
     const state = docToState(L.copy.doc, baseState ? { ...baseState, onboarded: true } : { ...freshState(), onboarded: true }, now());
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
-    pending = isUnsent(L.copy); // 只有本机副本里真有没上传的内容才算“有进度没上传”；打开页面本身不算
+    // 专用待办也算“还有没上传的东西”：不能因为本机副本看起来干净就当成已完成。
+    const pi = loadPendingImport(storage, uid);
+    pending = isUnsent(L.copy) || (pi.ok && !!pi.record);
     setStatus(session ? "pending" : "need-login");
     return { userId, email, state };
   }
@@ -151,7 +155,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           again = false; r = await syncOnce();
           if (r.replacedLocal) replaced = true;
           if (r.ok) { netFails = 0; if (again) continue; break; }
-          if (r.kind === "network") {
+          if (r.kind === "network" || r.retryable) {
             // 联网了但这一轮因为“断网时发出的请求”失败：如果期间有人又要求同步（again），立刻再试一次，不能把旧的失败当成结果还给他
             if (again && joinedRetry++ < 1) continue;
             scheduleRetry(); // 否则退避重试，不要停在“离线”等下一次用户操作
@@ -178,6 +182,18 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     const t = await ensureToken();
     if (!t.ok) { setStatus(statusFromFailure(t), t.message); return t; }
+    // 先重试“游客导入”专用待办，再跑普通同步。否则普通合并可能把云端旧 true 当成最新，
+    // 让用户已经做过的选择永远写不上去。
+    const pi = loadPendingImport(storage, userId);
+    if (!pi.ok) { setStatus("error", pi.message); return { ok: false, kind: "local", message: pi.message }; }
+    if (pi.record) {
+      const pr = await runPendingImport(pi.record, session, { notify: true });
+      if (!pr.ok || pr.pending) {
+        pending = true;
+        setStatus(pr.kind === "auth" ? "need-login" : "pending", pr.error || pr.message || "游客导入还没同步完，联网后会自动重试");
+        return { ok: false, kind: pr.kind || "verify", message: pr.error || pr.message || "游客导入还没同步完", pendingImport: true, retryable: pr.kind !== "local" && pr.kind !== "data" && pr.kind !== "conflict" && pr.kind !== "auth" };
+      }
+    }
     for (let attempt = 0; attempt < 5; attempt++) {
       const remote = await api.getProgress(session);
       if (!remote.ok) { setStatus(statusFromFailure(remote), remote.message); return remote; }
@@ -316,83 +332,177 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     return saveAccount(storage, uid, { doc, base, dirty }, { now: now(), expectEmpty });
   }
 
-  // 选“保留云端”：重读最新云端 → 只写 imported[游客编号] = 当前指纹 → CAS 保存。
-  // 冲突就重新读、重新写；云端其他字段逐字保留，游客记录不动，也不删。
-  async function writeKeepCloud(ctx, uid, deviceId, guestId, sess) {
+  // 把本机副本里尚未上传的改动并进“基于最新云端算出的文档”，避免重试待办时把用户期间新学的进度覆盖掉。
+  // 只合并同一代 / 同一 lineage；账号在别处被替换时返回 conflict，让用户重新选择，绝不静默覆盖。
+  function preserveLocalChanges(uid, doc, baseDoc) {
+    const L = loadAccount(storage, uid, { now: now() });
+    if (!L.ok) return { ok: false, kind: "local", message: L.message || "本机账号记录读取失败" };
+    if (!L.copy) return { ok: true, doc };
+    if (baseDoc && docsEquivalent(L.copy.doc, baseDoc)) return { ok: true, doc };
+    if (L.copy.doc.gen !== doc.gen || L.copy.doc.lineage !== doc.lineage) {
+      return { ok: false, kind: "conflict", message: "这个账号在别处被替换过，游客导入需要重新选择" };
+    }
+    const m = mergeDocs(L.copy.doc, doc, { localHeartsDirty: L.copy.dirty.hearts, localPrefsDirty: L.copy.dirty.prefs });
+    if (!m.doc || m.outcome === "conflict") return { ok: false, kind: "conflict", message: "这个账号在别处被替换过，游客导入需要重新选择" };
+    return { ok: true, doc: m.doc };
+  }
+  // 失败时本机副本不能带上“还没确认写进云端”的新指纹；把这一项还原成云端原来的值（旧 true / 旧指纹 / 没有）。
+  function withoutGuestImport(doc, guestId, baseDoc) {
+    const out = clone(doc);
+    const prev = baseDoc?.imported?.[guestId];
+    if (prev) out.imported[guestId] = prev;
+    else delete out.imported[guestId];
+    return out;
+  }
+
+  // 选“保留云端”：重读最新云端 → 只写 imported[游客编号] = 当前指纹 → CAS 保存 → 读回一致。
+  // 关键：在“写入成功 + 读回确认”之前，本机副本绝不保存新指纹，也不标成干净；失败时专用待办留在本机。
+  async function writeKeepCloud(uid, guestId, guestState, fingerprint, sess) {
+    const first = loadAccount(storage, uid, { now: now() });
+    if (!first.ok) return { ok: false, kind: "local", message: first.message || "本机账号记录读取失败" };
     let latest = await readLatestCloud(sess);
-    if (!latest.ok) return latest;
-    let doc = null, rev = null, saved = false, synced = false, error = "", kind = null;
+    if (!latest.ok) return { ...latest, pending: true };
+    let doc = null, rev = null, uploaded = false, error = "", kind = null, lastBase = null, lastCloud = null;
     for (let attempt = 0; attempt < 5; attempt++) {
-      const raw = latest.row ? (latest.rawDoc ?? latest.row.doc) : emptyDoc();
-      const m = markGuestImported(raw, guestId, ctx.guest.state);
+      // 云端还没有记录时，用本机已有副本（如果有）当底，保证重试时代数 / lineage 不变。
+      lastCloud = latest.row ? latest.row.doc : (first.copy?.doc ?? null);
+      lastBase = latest.row ? latest.row.rev : null;
+      const raw = latest.row ? (latest.rawDoc ?? latest.row.doc) : (first.copy?.doc ?? emptyDoc());
+      const m = markGuestImported(raw, guestId, guestState);
       if (!m.ok) return { ok: false, kind: "data", code: m.code, message: m.message };
-      doc = m.doc;
-      const base = latest.row ? latest.row.rev : null;
-      if (!saveLoginCopy(uid, doc, base, cleanDirty, !saved)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-      saved = true;
+      const p = preserveLocalChanges(uid, m.doc, lastCloud);
+      if (!p.ok) return { ...p, pending: true };
+      doc = p.doc;
       if (!latest.row) {
         const c = await api.createProgress(sess, doc);
         if (!c.ok) { error = c.message || "保存失败"; kind = c.kind; break; }
-        if (c.rev === null) { latest = await readLatestCloud(sess); if (!latest.ok) return latest; continue; } // 被抢先创建：重读
-        rev = c.rev; synced = true; break;
+        if (c.rev === null) { latest = await readLatestCloud(sess); if (!latest.ok) return { ...latest, pending: true }; continue; } // 被抢先创建：重读
+        rev = c.rev; uploaded = true; break;
       }
       const s = await api.saveProgress(sess, latest.row.rev, doc);
       if (!s.ok) { error = s.message || "保存失败"; kind = s.kind; break; }
-      if (s.rev === null) { latest = await readLatestCloud(sess); if (!latest.ok) return latest; continue; } // CAS 冲突：重读再写
-      rev = s.rev; synced = true; break;
+      if (s.rev === null) { latest = await readLatestCloud(sess); if (!latest.ok) return { ...latest, pending: true }; continue; } // CAS 冲突：重读再写
+      rev = s.rev; uploaded = true; break;
     }
-    if (!synced) {
-      // 写指纹失败：登录仍可完成，但明确未同步；云端原数据和游客记录都没动，下次再写。
-      if (!saved) {
-        doc = latest.row ? latest.row.doc : emptyDoc();
-        if (!saveLoginCopy(uid, doc, latest.row ? latest.row.rev : null, cleanDirty, true)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-      }
-      return { ok: true, doc, rev: latest.row ? latest.row.rev : null, synced: false, verified: false, guestCleared: false, saved: true, kind, error: error || "保存游客指纹失败" };
+    if (!uploaded) {
+      // 写指纹失败：云端原样、游客原样；本机副本只保存“最新云端 + 本机新学的”，不带新指纹。
+      const base = lastCloud ?? (first.copy?.doc ?? emptyDoc());
+      const p = preserveLocalChanges(uid, base, lastCloud);
+      const localDoc = p.ok ? p.doc : base;
+      const dirty = first.copy ? first.copy.dirty : cleanDirty;
+      if (!saveLoginCopy(uid, localDoc, lastBase, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
+      return { ok: true, doc: localDoc, rev: lastBase, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind, error: error || "保存游客指纹失败" };
     }
-    if (!saveLoginCopy(uid, doc, rev, cleanDirty, false)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-    return { ok: true, doc, rev, synced: true, verified: true, guestCleared: false, saved: true, error: "" };
+    // 上传成功不等于完成：必须重新读回，确认文档一致且新指纹确实在云端。
+    let verified = false, readBack = null, rbKind = null, rbError = "";
+    const rb = await api.getProgress(sess);
+    if (!rb.ok) { rbKind = rb.kind; rbError = rb.message || "读回失败"; }
+    else if (!rb.row) { rbKind = "data"; rbError = "读回时云端记录不见了"; }
+    else {
+      const n = normalizeDoc(rb.row.doc);
+      if (!n.ok) { rbKind = "data"; rbError = "云端记录：" + n.message; }
+      else { readBack = n.doc; verified = docsEquivalent(doc, n.doc) && n.doc.imported[guestId] === fingerprint; }
+    }
+    if (!verified) {
+      const p = preserveLocalChanges(uid, doc, lastCloud);
+      const localDoc = withoutGuestImport(p.ok ? p.doc : doc, guestId, lastCloud);
+      const dirty = first.copy ? first.copy.dirty : cleanDirty;
+      if (!saveLoginCopy(uid, localDoc, rev, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
+      return { ok: true, doc: localDoc, rev, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind: rbKind || "verify", error: rbError || "上传成功，但读回校验失败，游客记录已保留" };
+    }
+    if (!saveLoginCopy(uid, readBack, rev, cleanDirty, false)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
+    return { ok: true, doc: readBack, rev, synced: true, verified: true, guestCleared: false, saved: true, pending: false, error: "" };
   }
 
   // 选“安全合并”：重读最新云端 → 以云端为底合并游客 XP/次数（按设备取较大值）、关卡/日期并集 →
   // CAS 写入 → 读回与上传文档一致才允许删游客。冲突重读再合并再写，绝不 gen + 1 整份覆盖。
-  async function writeMergeGuest(ctx, uid, deviceId, guestId, sess) {
+  async function writeMergeGuest(uid, deviceId, record, sess) {
+    const guestId = record.guestId, guestState = record.guestState;
+    const first = loadAccount(storage, uid, { now: now() });
+    if (!first.ok) return { ok: false, kind: "local", message: first.message || "本机账号记录读取失败" };
     let current = await readLatestCloud(sess);
-    if (!current.ok) return current;
-    let doc = null, rev = null, saved = false, synced = false, error = "", kind = null;
+    if (!current.ok) return { ...current, pending: true };
+    let doc = null, rev = null, uploaded = false, error = "", kind = null, lastBase = null, lastCloud = null;
     for (let attempt = 0; attempt < 5; attempt++) {
-      const m = mergeGuestProgress(ctx.guest.state, { deviceId, guestId, cloudDoc: current.row ? current.row.doc : null, now: now() });
+      // 云端没有记录时用本机副本当底（重试保持 lineage）；mergeGuestProgress 对同一份游客快照是幂等的。
+      lastCloud = current.row ? current.row.doc : (first.copy?.doc ?? null);
+      lastBase = current.row ? current.row.rev : null;
+      const m = mergeGuestProgress(guestState, { deviceId, guestId, cloudDoc: lastCloud, now: now() });
       if (!m.ok) return { ok: false, kind: "data", code: m.code, message: m.message };
-      doc = m.doc;
-      const base = current.row ? current.row.rev : null;
-      // 先落本机副本再上传：上传失败 / 冲突 / 读回失败时，本机仍有合并后的完整结果，不会退回旧云端。
-      if (!saveLoginCopy(uid, doc, base, { hearts: false, prefs: false, content: true }, !saved)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-      saved = true;
+      const p = preserveLocalChanges(uid, m.doc, lastCloud);
+      if (!p.ok) return { ...p, pending: true };
+      doc = p.doc;
       if (!current.row) {
         const c = await api.createProgress(sess, doc);
         if (!c.ok) { error = c.message || "上传失败"; kind = c.kind; break; }
-        if (c.rev === null) { current = await readLatestCloud(sess); if (!current.ok) return current; continue; } // 被抢先创建：重读、重新合并
-        rev = c.rev; synced = true; break;
+        if (c.rev === null) { current = await readLatestCloud(sess); if (!current.ok) return { ...current, pending: true }; continue; } // 被抢先创建：重读、重新合并
+        rev = c.rev; uploaded = true; break;
       }
       const s = await api.saveProgress(sess, current.row.rev, doc);
       if (!s.ok) { error = s.message || "上传失败"; kind = s.kind; break; }
-      if (s.rev === null) { current = await readLatestCloud(sess); if (!current.ok) return current; continue; } // CAS 冲突：重读、重新合并
-      rev = s.rev; synced = true; break;
+      if (s.rev === null) { current = await readLatestCloud(sess); if (!current.ok) return { ...current, pending: true }; continue; } // CAS 冲突：重读、重新合并
+      rev = s.rev; uploaded = true; break;
     }
-    if (!synced) {
-      // 上传失败 / 冲突太多次：保留游客原文；本机副本保留刚算出的合并结果并标记待上传。
-      return { ok: true, doc, rev: current.row ? current.row.rev : null, synced: false, verified: false, guestCleared: false, saved: true, kind, error: error || "合并冲突太多次，请稍后再试" };
+    if (!uploaded) {
+      // 上传失败 / 冲突太多次：游客原文保留；本机副本保留合并结果（不带未确认的新指纹）并标记待上传。
+      const localDoc = withoutGuestImport(doc, guestId, lastCloud);
+      const dirty = { hearts: !!first.copy?.dirty.hearts, prefs: !!first.copy?.dirty.prefs, content: true };
+      if (!saveLoginCopy(uid, localDoc, lastBase, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
+      return { ok: true, doc: localDoc, rev: lastBase, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind, error: error || "合并冲突太多次，请稍后再试" };
     }
     // 上传成功不等于读回一致：必须重新读云端，文档与刚上传的完全一致才删游客。
-    let verified = false, readBack = null;
+    let verified = false, readBack = null, rbKind = null, rbError = "";
     const rb = await api.getProgress(sess);
-    if (rb.ok && rb.row) {
+    if (!rb.ok) { rbKind = rb.kind; rbError = rb.message || "读回失败"; }
+    else if (!rb.row) { rbKind = "data"; rbError = "读回时云端记录不见了"; }
+    else {
       const n = normalizeDoc(rb.row.doc);
-      if (n.ok) { readBack = n.doc; verified = docsEquivalent(doc, n.doc); }
+      if (!n.ok) { rbKind = "data"; rbError = "云端记录：" + n.message; }
+      else { readBack = n.doc; verified = docsEquivalent(doc, n.doc); }
+    }
+    if (!verified) {
+      const localDoc = withoutGuestImport(doc, guestId, lastCloud);
+      const dirty = { hearts: !!first.copy?.dirty.hearts, prefs: !!first.copy?.dirty.prefs, content: true };
+      if (!saveLoginCopy(uid, localDoc, rev, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
+      return { ok: true, doc: localDoc, rev, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind: rbKind || "verify", error: rbError || "上传成功，但读回校验失败，游客记录已保留" };
     }
     // 先确保本机副本落盘，再删游客；两步都成功才清游客原文。
-    if (!saveLoginCopy(uid, doc, rev, cleanDirty, false)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-    const guestCleared = verified && clearGuestAfterVerified(storage, { userChoseTransfer: true, uploadOk: true, uploaded: doc, readBack, guestSnapshotRaw: ctx.guest.raw });
-    return { ok: true, doc, rev, synced: true, verified, guestCleared, saved: true, error: verified ? "" : "上传成功，但读回校验失败，游客记录已保留" };
+    if (!saveLoginCopy(uid, readBack, rev, cleanDirty, false)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
+    let guestCleared = false, pending = false, clearError = "";
+    const gnow = readGuest(storage);
+    if (gnow.status === "ok" && gnow.raw === record.guestRaw) {
+      guestCleared = clearGuestAfterVerified(storage, { userChoseTransfer: true, uploadOk: true, uploaded: doc, readBack, guestSnapshotRaw: record.guestRaw });
+      if (!guestCleared) { pending = true; clearError = "云端已写入并读回一致，但游客记录删除失败，将重试"; }
+    } else if (gnow.status === "read-failed") {
+      pending = true; clearError = "云端已写入，但游客记录读取失败，暂不删除，将重试";
+    }
+    // 游客记录已变化：这份旧快照的导入已完成，但绝不能删掉游客新学的内容；下次登录会按新指纹提示。
+    return { ok: true, doc: readBack, rev, synced: true, verified: true, guestCleared, saved: true, pending, error: clearError };
+  }
+
+  // 执行一条专用待办：选中“保留云端”或“安全合并”，写云 + 读回确认。成功才清待办。
+  async function runPendingImport(record, sess, { notify = false } = {}) {
+    const uid = record.userId;
+    let r;
+    if (record.choice === "cloud") {
+      r = await writeKeepCloud(uid, record.guestId, record.guestState, record.fingerprint, sess);
+    } else {
+      const d = getDeviceId(storage);
+      if (!d.ok) return { ok: false, kind: "local", message: d.message };
+      r = await writeMergeGuest(uid, d.id, record, sess);
+    }
+    if (!r.ok) return r;
+    if (r.pending) { pending = true; return r; }
+    if (!clearPendingImport(storage, uid)) {
+      pending = true;
+      return { ...r, pending: true, synced: false, error: "游客导入已完成，但待办清除失败，将重试" };
+    }
+    if (notify && r.doc) {
+      const ns = docToState(r.doc, null, now());
+      baseline = { xp: ns.xp, lessonsCompleted: ns.lessonsCompleted };
+      try { onState(r.doc); } catch {}
+    }
+    return r;
   }
 
   async function finish(ctx, choice) {
@@ -400,20 +510,26 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const d = getDeviceId(storage), g = getGuestId(storage);
     if (!d.ok) return { ok: false, kind: "local", message: d.message };
     const mergeChoice = choice === "transfer" || choice === "merge";
+    const wantedImport = choice === "cloud" ? "cloud" : mergeChoice ? "merge" : null;
     let doc, base = ctx.remote.row ? ctx.remote.row.rev : null, result = null, transferred = false;
-    if (ctx.copy) {
+    if (ctx.guestHas && wantedImport) {
+      // 先落一条专用待办：即使写云失败 / 页面被关掉，重开或联网后也知道用户选过什么、该用哪份游客快照。
+      if (!g.ok || ctx.guest.status !== "ok") return { ok: false, kind: "local", message: wantedImport === "cloud" ? "游客记录读取失败，没有保存游客指纹" : "游客记录读取失败，没有合并" };
+      const existing = loadPendingImport(storage, uid);
+      if (!existing.ok) return { ok: false, kind: "local", message: existing.message || "无法读取游客导入待办" };
+      let record = existing.record;
+      if (!record || record.userId !== uid || record.guestId !== g.id || record.choice !== wantedImport) {
+        const fp = guestFingerprint(ctx.guest.state);
+        if (!fp) return { ok: false, kind: "data", message: "游客记录无法生成指纹" };
+        record = { version: 1, userId: uid, guestId: g.id, choice: wantedImport, fingerprint: fp, guestState: clone(ctx.guest.state), guestRaw: ctx.guest.raw, createdAt: now() };
+        if (!savePendingImport(storage, uid, record)) return { ok: false, kind: "local", message: "无法保存游客导入待办，登录没有完成" };
+      }
+      result = await runPendingImport(record, ctx.session);
+      if (!result.ok) return result;
+      doc = result.doc; base = result.rev; transferred = wantedImport === "merge";
+    } else if (ctx.copy) {
       // 这台设备以前登录过这个账号：沿用本机副本，随后正常合并。
       doc = ctx.copy.doc; base = ctx.copy.base ?? base;
-    } else if (mergeChoice && ctx.guestHas) {
-      if (!g.ok || ctx.guest.status !== "ok") return { ok: false, kind: "local", message: "游客记录读取失败，没有合并" };
-      result = await writeMergeGuest(ctx, uid, d.id, g.id, ctx.session);
-      if (!result.ok) return result;
-      doc = result.doc; base = result.rev; transferred = true;
-    } else if (choice === "cloud" && ctx.guestHas) {
-      if (!g.ok || ctx.guest.status !== "ok") return { ok: false, kind: "local", message: "游客记录读取失败，没有保存游客指纹" };
-      result = await writeKeepCloud(ctx, uid, d.id, g.id, ctx.session);
-      if (!result.ok) return result;
-      doc = result.doc; base = result.rev;
     } else {
       doc = ctx.remoteDoc ?? emptyDoc();
     }
@@ -428,10 +544,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     let synced = false, guestCleared = false, syncError = "";
     if (result) {
       synced = result.synced; guestCleared = !!result.guestCleared; syncError = result.error || "";
-      pending = !synced;
+      pending = !synced || !!result.pending;
       if (synced && result.verified !== false) setStatus("synced");
       else if (synced) setStatus("error", syncError);
-      else setStatus(statusFromFailure(result), syncError);
+      else setStatus("pending", syncError || result.message || "游客导入还没同步完，联网后会自动重试");
     } else {
       pending = true;
       const r = await syncNow();
@@ -442,7 +558,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const L2 = loadAccount(storage, uid, { now: now() });
     const finalState = L2.ok && L2.copy ? docToState(L2.copy.doc, ctx.baseState ? { ...ctx.baseState, onboarded: true } : { ...freshState(), onboarded: true }, now()) : state;
     baseline = { xp: finalState.xp, lessonsCompleted: finalState.lessonsCompleted };
-    return { ok: true, state: finalState, account: { userId, email }, synced, syncError, guestCleared, transferred };
+    return { ok: true, state: finalState, account: { userId, email }, synced, syncError, guestCleared, transferred, pending: !synced };
   }
 
   // ---------- 退出 / 删除 ----------
@@ -472,6 +588,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (!r.ok) return r;
     const uid = userId;
     logoutLocal(storage, uid);
+    clearPendingImport(storage, uid);
     session = null; userId = null; email = ""; baseline = null; pending = false;
     writeAuth(); setStatus(null);
     return { ok: true };

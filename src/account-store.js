@@ -9,8 +9,11 @@ export const GUEST_ID_KEY = "suipian.guestId";     // 这份游客记录的随�
 export const DEVICE_KEY = "suipian.device";        // 这台设备的随机编号（浏览器数据被清除就会丢，丢了会生成新的）
 export const SESSION_KEY = "suipian.session";      // 当前登录的账号编号（没有 = 游客）
 const ACCT_PREFIX = "suipian.acct.";
+export const PENDING_IMPORT_PREFIX = ACCT_PREFIX + "import."; // 游客导入写云失败后的专用待办（按账号分开，跟着 Supabase 项目命名空间走）
 
 const acctKey = (userId) => ACCT_PREFIX + userId;
+const pendingImportKey = (userId) => PENDING_IMPORT_PREFIX + userId;
+const FP_RE = /^[0-9a-f]{8}$/;
 
 // 读取结果区分三种情况：{ ok:true, value:null } 没有记录；{ ok:true, value } 有记录；{ ok:false } 读取失败（绝不能当成“没有记录”）
 function safeRead(storage, key) { try { return { ok: true, value: storage.getItem(key) }; } catch { return { ok: false }; } }
@@ -89,7 +92,40 @@ export function removeAccountCopy(storage, userId) {
   return isId(userId) ? safeRemove(storage, acctKey(userId)) : false;
 }
 
+// ---------- 游客导入的专用待办 ----------
+// 用户已经做出选择（保留云端 / 安全合并），但指纹还没成功写入并读回时，不能只靠 doc.imported 或 dirty 猜。
+// 这里单独按账号记一条：游客编号、选择、当时的指纹与游客原文快照。写云成功且读回一致后由同步层清掉。
+// 失败时这条记录留在本机，重开页面 / 联网 / 手动同步都会先重试它，不会把“失败”当成“已完成”。
+export function loadPendingImport(storage, userId) {
+  if (!isId(userId)) return { ok: false, code: "bad-user", message: "账号编号无效" };
+  const r = safeRead(storage, pendingImportKey(userId));
+  if (!r.ok) return { ok: false, code: "read-failed", message: "无法读取游客导入待办" };
+  if (r.value === null) return { ok: true, record: null };
+  let p;
+  try { p = JSON.parse(r.value); } catch { return { ok: false, code: "corrupt", message: "游客导入待办损坏" }; }
+  const ok = p && p.version === 1 && p.userId === userId && isId(p.guestId)
+    && (p.choice === "cloud" || p.choice === "merge")
+    && typeof p.fingerprint === "string" && FP_RE.test(p.fingerprint)
+    && typeof p.guestRaw === "string" && p.guestState && typeof p.guestState === "object" && !Array.isArray(p.guestState);
+  if (!ok) return { ok: false, code: "corrupt", message: "游客导入待办损坏" };
+  return { ok: true, record: { version: 1, userId, guestId: p.guestId, choice: p.choice, fingerprint: p.fingerprint, guestRaw: p.guestRaw, guestState: p.guestState, createdAt: Number.isFinite(p.createdAt) ? p.createdAt : 0 } };
+}
+export function savePendingImport(storage, userId, record) {
+  if (!isId(userId) || !record || record.userId !== userId) return false;
+  if (!isId(record.guestId) || (record.choice !== "cloud" && record.choice !== "merge")) return false;
+  if (typeof record.fingerprint !== "string" || !FP_RE.test(record.fingerprint)) return false;
+  if (typeof record.guestRaw !== "string" || !record.guestState || typeof record.guestState !== "object") return false;
+  const payload = JSON.stringify({ version: 1, userId, guestId: record.guestId, choice: record.choice, fingerprint: record.fingerprint, guestRaw: record.guestRaw, guestState: record.guestState, createdAt: Number.isFinite(record.createdAt) ? record.createdAt : 0 });
+  if (!safeSet(storage, pendingImportKey(userId), payload)) return false;
+  const back = safeRead(storage, pendingImportKey(userId));
+  return back.ok && back.value === payload;
+}
+export function clearPendingImport(storage, userId) {
+  return isId(userId) ? safeRemove(storage, pendingImportKey(userId)) : false;
+}
+
 // 退出登录：删除这个账号在本机的副本，回到游客。云端不动。
+// 注意：不删除“游客导入待办”。强制退出时它要留着，同账号再登录才能继续重试。
 export function logoutLocal(storage, userId) {
   const a = removeAccountCopy(storage, userId);
   const b = setCurrentAccount(storage, null);
