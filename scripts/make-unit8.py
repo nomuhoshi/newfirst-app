@@ -356,7 +356,7 @@ assert run(Q20_FIX_C)[1] == "SyntaxError"                           # 有默认�
 assert run(Q20_FIX_D) == ("", "NameError")                          # cups 没有了，函数体里还在用
 
 # ---------------- U8L6：作用域 ----------------
-# 产品官 15:59：L6 处理作用域。只教：函数里新建的变量（含参数）只在函数里有效；函数里给同名变量赋值，不会改动函数外面的那个。
+# 产品官 15:59：L6 处理作用域；16:14 收窄说法：只说“这些例子中，函数里定义的名字（含参数）不能在函数外直接使用”和“本题给参数 price 重新赋值，不会改变外面的 price”，不概括成通用规则（列表、字典的内容在函数里被修改，可能影响外面）。
 # 不教：global 关键字、在函数里读外面的变量（UnboundLocalError 之类的坑）、嵌套函数。
 L6_INTRO = 'price = 8\ndef double(price):\n    price = price * 2\n    return price\nprint(double(price))\nprint(price)'
 Q21 = 'def make_order():\n    drink = "奶茶"\n    print("做好了", drink)\nmake_order()\nprint(drink)'
@@ -412,33 +412,33 @@ lessons += [
         opt("把第 1 行改成 def total(price):", F, "cups 不再是参数了，但函数体里还在用它，调用时会报 NameError（用到了没有定义的名字）。", fixed=Q20_FIX_D),
     ], code=Q20, trace=trace_of(Q20), expected="8", tip="不想每次都传的值，给它一个默认值；有默认值的参数写在后面。"),
   ]},
- {"id": "U8L6", "title": "函数里的变量", "concept": "作用域：函数里的变量只在函数里有效",
-  "story": "在函数里新建的变量，只在这个函数里有效，函数运行完就没有了，函数外面用不了。参数也一样。如果函数里的变量和函数外面的变量同名，它们是两个互不相干的变量：函数里给它赋新值，不会改动函数外面的那个。想把函数里算出来的结果拿到外面用，要用 return 交回来，再存进变量或 print。",
+ {"id": "U8L6", "title": "函数里的变量", "concept": "作用域：这些例子中，函数里定义的名字不能在函数外直接使用",
+  "story": "这一关的例子里：在函数里定义的名字（包括参数），不能在函数外面直接使用，外面用会报 NameError。如果函数里和函数外面有同名的 price，函数里给 price 重新赋值（price = 100、price = price * 2），不会改变函数外面的 price。想把函数里算出来的结果拿到外面用，要用 return 交回来，再存进变量或 print。",
   "introCode": L6_INTRO,
   "exercises": [
     pick("程序报了 NameError: name 'drink' is not defined（drink 这个名字没有定义）。drink 明明在函数里赋过值，出错的是哪一行？", "line", [
-        opt("print(drink)", T, "最后一行报错。drink 是在 make_order() 里面新建的变量，函数运行完它就没有了，函数外面不认识 drink。"),
+        opt("print(drink)", T, "最后一行报错。drink 是在 make_order() 里面定义的名字，这个例子里它不能在函数外面直接使用，外面的 print(drink) 就找不到它。"),
         opt("drink = \"奶茶\"", F, "给变量赋值没有问题，函数里的这一行正常运行了。"),
         opt("make_order()", F, "调用没有问题：函数体运行了，屏幕上已经显示了“做好了 奶茶”。"),
         opt("print(\"做好了\", drink)", F, "这一行在函数里面，drink 在函数里有值，它正常运行了，已经显示了“做好了 奶茶”。"),
-    ], code=Q21, trace=trace_of(Q21), tip="函数里新建的变量，函数外面用不了。"),
+    ], code=Q21, trace=trace_of(Q21), tip="这些例子中，函数里定义的名字不能在函数外直接使用。"),
     pred(SHOW, Q22, [
-        ("100\n8", T, "函数里的 price = 100 是函数里自己的变量，只在 change() 里有效。函数里 print 显示 100；函数外面的 price 还是 8，最后一行显示 8。"),
-        ("100\n100", F, "函数里给 price 赋值，不会改动函数外面的 price。它们是两个同名但互不相干的变量。"),
+        ("100\n8", T, "本题在函数里给 price 重新赋值（price = 100），函数里的 print 显示 100；这不会改变函数外面的 price，最后一行显示 8。"),
+        ("100\n100", F, "本题函数里的 price = 100 不会改变函数外面的 price，最后一行还是 8。"),
         ("8\n8", F, "函数里有自己的 price = 100，函数里的 print 显示的是 100。"),
         ("8\n100", F, "顺序反了：先调用 change()，函数里的 print 先显示 100；最后一行是函数外面的 price，还是 8。")],
-        tip="函数里和函数外的同名变量是两个变量，互不影响。"),
+        tip="本题在函数里给 price 重新赋值，不会改变函数外面的 price。"),
     pred(SHOW, Q23, [
-        ("16\n8", T, "price 传给函数的参数 price，函数里 price = price * 2 改的是函数里这个参数，交回 16。函数外面的 price 还是 8，最后一行显示 8。"),
-        ("16\n16", F, "函数里改参数，不会改动函数外面的变量 price。想让它变，要自己把交回的结果存回去，比如 price = double(price)。"),
+        ("16\n8", T, "8 传给参数 price；本题在函数里给参数 price 重新赋值（price = price * 2），交回 16，但不会改变函数外面的 price，最后一行显示 8。"),
+        ("16\n16", F, "本题给参数 price 重新赋值，不会改变函数外面的 price，最后一行还是 8。想让外面的 price 变，要自己把交回的结果存回去，比如 price = double(price)。"),
         ("8\n8", F, "第 5 行 print(double(price)) 显示的是函数交回的结果，函数里的 price 已经乘了 2，是 16。"),
         ("8\n16", F, "顺序反了：第 5 行先显示函数交回的 16，最后一行才是函数外面没变的 price，也就是 8。")],
-        tip="传进函数的是值；函数里改参数，不会改动函数外面的变量。"),
+        tip="本题给参数 price 重新赋值，不会改变外面的 price。"),
     pick("想让屏幕显示 16。现在最后一行报了 NameError: name 'result' is not defined（result 这个名字没有定义）。怎么改，屏幕才会显示 16？", "fix", [
-        opt("在函数里加一行 return result，最后一行改成 print(calc(8))", T, "result 只在 calc 里有效。用 return 把它交回来，外面用 print(calc(8)) 接住，就显示 16 了。", fixed=Q24_FIX_A),
-        opt("把最后一行改成 print(price)", F, "price 也是 calc 的参数，只在函数里有效，函数外面用它还是 NameError。", fixed=Q24_FIX_B),
+        opt("在函数里加一行 return result，最后一行改成 print(calc(8))", T, "result 是在 calc 里定义的名字，不能在函数外直接使用。用 return 把它交回来，外面用 print(calc(8)) 接住，就显示 16 了。", fixed=Q24_FIX_A),
+        opt("把最后一行改成 print(price)", F, "price 是 calc 的参数，这个例子里它也不能在函数外直接使用，外面用它还是 NameError。", fixed=Q24_FIX_B),
         opt("在最后一行前面加 result = 0", F, "不报错了，但这是函数外面新建的另一个 result，里面是 0，显示的是 0，不是 16。", fixed=Q24_FIX_C),
-        opt("把 calc(8) 多调用一次", F, "不管调用几次，函数里的 result 在函数结束后都没有了，函数外面还是用不了，仍然是 NameError。", fixed=Q24_FIX_D),
+        opt("把 calc(8) 多调用一次", F, "不管调用几次，result 都是在 calc 里定义的名字，函数外面不能直接使用，仍然是 NameError。", fixed=Q24_FIX_D),
     ], code=Q24, trace=trace_of(Q24), expected="16", tip="想把函数里算出的结果拿到外面，用 return 交回来。"),
   ]},
 ]
