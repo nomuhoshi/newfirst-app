@@ -121,8 +121,18 @@ console.log("=== 数据兼容与产品决策复核边界 ===\n");
   );
 }
 
-const hardFail = results.filter((r) => !r.ok && !r.expectedRed).length;
-const softRed = results.filter((r) => !r.ok && r.expectedRed).length;
-const pass = results.filter((r) => r.ok).length;
-console.log(`\n完成：${results.length} 项，通过 ${pass}，硬失败 ${hardFail}，expected-red ${softRed}`);
-process.exit(hardFail ? 1 : 0);
+const hardPass = results.filter((r) => !r.expectedRed && r.ok);
+const hardFail = results.filter((r) => !r.expectedRed && !r.ok);
+const redPass = results.filter((r) => r.expectedRed && r.ok);
+const redFail = results.filter((r) => r.expectedRed && !r.ok);
+console.log("\n—— 分类汇总（软红不计全绿）——");
+console.log(`当前通过: ${hardPass.length}`);
+hardPass.forEach((r) => console.log(`  ✅ ${r.name}`));
+console.log(`预期红(靶点): ${redFail.length} 红 + ${redPass.length} 意外转绿`);
+redFail.forEach((r) => console.log(`  🔴 ${r.name}`));
+redPass.forEach((r) => console.log(`  ✅ unexpected-green ${r.name}`));
+console.log(`硬失败: ${hardFail.length}`);
+hardFail.forEach((r) => console.log(`  ❌ ${r.name}`));
+console.log(`合计断言: ${results.length}（硬断言通过 ${hardPass.length}/${hardPass.length + hardFail.length}；软红不计入全绿）`);
+console.log("尚未验证: 无（Case 9/10 已用 expected-red 覆盖靶点；DB-2/DB-3 落地后改为硬断言）");
+process.exit(hardFail.length ? 1 : 0);
