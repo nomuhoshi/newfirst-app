@@ -58,8 +58,7 @@ def check(items):
             for o in opts: c.ok((o["value"] == real[0]["stdout"]) == o["correct"], w, f"选项 {o['text']!r} value={o['value']!r}，真实出错前输出 {real[0]['stdout']!r}")
         elif key == "fix":
             for o in opts:
-                r = real_error(o["fixed"])
-                out, err = run(o["fixed"])
+                out, err = run(o["fixed"])   # run() 能处理编译期错误（SyntaxError / IndentationError）；这里不需要 real_error 的详细报错
                 good = err is None and out == ex["expected"]
                 c.ok(good == o["correct"], w, f"选项 {o['text']!r}：真实运行{'报错 ' + str(err) if err else '输出 ' + repr(out)}，期望 {ex['expected']!r}，correct={o['correct']}")
         else:

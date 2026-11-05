@@ -492,6 +492,281 @@
           "tip": "本关要把算出的数字交给后续计算，所以用 return 返回数字；函数里的 print 只是显示。"
         }
       ]
+    },
+    {
+      "id": "U8L5",
+      "title": "两个参数和默认值",
+      "concept": "多个参数、按顺序传值、默认值",
+      "story": "价格计算器要两个数：单价和杯数。参数可以有好几个，括号里用逗号隔开：def total(price, cups):。调用时按顺序传值：total(8, 3) 把 8 传给 price，把 3 传给 cups，传的个数要和参数一样多，顺序也要对。如果某个参数大多数时候用同一个值，可以给它一个默认值：def total(price, cups=1): 调用时不传 cups，就用 1；传了，就用传进去的值。有默认值的参数要写在没有默认值的参数后面。",
+      "introCode": "def total(price, cups=1):\n    return price * cups\nprint(total(8, 3))\nprint(total(8))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def order(drink, cups):\n    print(cups, \"杯\", drink)\norder(\"奶茶\", 2)\norder(\"果茶\", 1)",
+          "options": [
+            {
+              "text": "2 杯 奶茶\n1 杯 果茶",
+              "correct": true,
+              "why": "两个值按顺序传：第 3 行 order(\"奶茶\", 2)，奶茶传给第一个参数 drink，2 传给第二个参数 cups。函数里 print(cups, \"杯\", drink) 先写 cups，所以先显示 2，再是“杯”，最后是奶茶。第 4 行同理。"
+            },
+            {
+              "text": "奶茶 杯 2\n果茶 杯 1",
+              "correct": false,
+              "why": "显示的顺序由函数里 print 的写法决定：print(cups, \"杯\", drink) 先显示 cups。传值的顺序和显示的顺序不一定一样。"
+            },
+            {
+              "text": "2 杯 奶茶\n2 杯 奶茶",
+              "correct": false,
+              "why": "每次调用都会重新传值。第 4 行传的是 \"果茶\" 和 1，drink、cups 这次就是果茶和 1。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "不会报错：调用时传了 2 个值，def 里正好有 2 个参数，个数是对得上的。"
+            }
+          ],
+          "tip": "按顺序对应：第一个值给第一个参数，第二个值给第二个参数。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：24（函数 total 的第一行，括号里该怎么写）",
+          "code": "def total({0}):\n    return price * cups\nprint(total(8, 3))",
+          "tokens": [
+            "price, cups",
+            "price cups",
+            "price + cups",
+            "price"
+          ],
+          "answer": [
+            "price, cups"
+          ],
+          "expected": "24",
+          "why": {
+            "price cups": "两个参数之间要用逗号隔开。漏了逗号，会报 SyntaxError（写法不符合语法）。",
+            "price + cups": "括号里写的是参数的名字，不能做运算，会报 SyntaxError（写法不符合语法）。",
+            "price": "只有一个参数 price，调用时却传了 8 和 3 两个值，个数对不上，会报 TypeError（值的个数不对）。函数体里用了 cups，就要在括号里也写上它。"
+          },
+          "hint": "有两个参数：名字写在括号里，用逗号隔开。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def total(price, cups=1):\n    return price * cups\nprint(total(8))\nprint(total(8, 3))\nprint(total(5))",
+          "options": [
+            {
+              "text": "8\n24\n5",
+              "correct": true,
+              "why": "cups=1 是默认值。第 3 行 total(8) 没传 cups，用默认的 1：8 × 1 = 8；第 4 行 total(8, 3) 传了 3，就用 3：8 × 3 = 24；第 5 行 total(5) 又没传，5 × 1 = 5。"
+            },
+            {
+              "text": "8\n8\n5",
+              "correct": false,
+              "why": "默认值只在没有传值时才用。第 4 行传了 3，cups 就是 3，不是默认的 1。"
+            },
+            {
+              "text": "0\n24\n0",
+              "correct": false,
+              "why": "没传 cups 时用的是它的默认值 1，不是 0，所以 8 × 1 = 8，5 × 1 = 5。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "cups 有默认值，调用时可以不传，不会报错。只有没有默认值的参数，漏传才会报 TypeError。"
+            }
+          ],
+          "tip": "传了值就用传的值；没传，才用默认值。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想让 total(8) 也能用（只买 1 杯，不用写杯数），屏幕要显示 8。现在运行报了错：TypeError: total() missing 1 required positional argument: 'cups'（调用时少了 1 个必须给的参数 cups）。怎么改，屏幕才会显示 8？",
+          "key": "fix",
+          "code": "def total(price, cups):\n    return price * cups\nprint(total(8))",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    print(total(8))\nTypeError: total() missing 1 required positional argument: 'cups'",
+          "checks": [
+            {
+              "program": "def total(price, cups):\n    return price * cups\nprint(total(8))",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "total() missing 1 required positional argument: 'cups'"
+            }
+          ],
+          "expected": "8",
+          "options": [
+            {
+              "text": "把第 1 行改成 def total(price, cups=1):",
+              "correct": true,
+              "why": "给 cups 一个默认值 1：total(8) 没传 cups，就用 1，8 × 1 = 8。",
+              "fixed": "def total(price, cups=1):\n    return price * cups\nprint(total(8))"
+            },
+            {
+              "text": "把第 1 行改成 def total(price, cups=0):",
+              "correct": false,
+              "why": "不报错了，但没传 cups 时它是 0，8 × 0 = 0，显示的是 0，不是 8。",
+              "fixed": "def total(price, cups=0):\n    return price * cups\nprint(total(8))"
+            },
+            {
+              "text": "把第 1 行改成 def total(price=1, cups):",
+              "correct": false,
+              "why": "有默认值的参数要写在没有默认值的参数后面。这样写，Python 一行都不会运行，直接报 SyntaxError（写法不符合语法）。",
+              "fixed": "def total(price=1, cups):\n    return price * cups\nprint(total(8))"
+            },
+            {
+              "text": "把第 1 行改成 def total(price):",
+              "correct": false,
+              "why": "cups 不再是参数了，但函数体里还在用它，调用时会报 NameError（用到了没有定义的名字）。",
+              "fixed": "def total(price):\n    return price * cups\nprint(total(8))"
+            }
+          ],
+          "tip": "不想每次都传的值，给它一个默认值；有默认值的参数写在后面。"
+        }
+      ]
+    },
+    {
+      "id": "U8L6",
+      "title": "函数里的变量",
+      "concept": "作用域：函数里的变量只在函数里有效",
+      "story": "在函数里新建的变量，只在这个函数里有效，函数运行完就没有了，函数外面用不了。参数也一样。如果函数里的变量和函数外面的变量同名，它们是两个互不相干的变量：函数里给它赋新值，不会改动函数外面的那个。想把函数里算出来的结果拿到外面用，要用 return 交回来，再存进变量或 print。",
+      "introCode": "price = 8\ndef double(price):\n    price = price * 2\n    return price\nprint(double(price))\nprint(price)",
+      "exercises": [
+        {
+          "type": "pick",
+          "prompt": "程序报了 NameError: name 'drink' is not defined（drink 这个名字没有定义）。drink 明明在函数里赋过值，出错的是哪一行？",
+          "key": "line",
+          "code": "def make_order():\n    drink = \"奶茶\"\n    print(\"做好了\", drink)\nmake_order()\nprint(drink)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 5, in <module>\n    print(drink)\nNameError: name 'drink' is not defined",
+          "checks": [
+            {
+              "program": "def make_order():\n    drink = \"奶茶\"\n    print(\"做好了\", drink)\nmake_order()\nprint(drink)",
+              "type": "NameError",
+              "line": 5,
+              "msg": "name 'drink' is not defined"
+            }
+          ],
+          "options": [
+            {
+              "text": "print(drink)",
+              "correct": true,
+              "why": "最后一行报错。drink 是在 make_order() 里面新建的变量，函数运行完它就没有了，函数外面不认识 drink。"
+            },
+            {
+              "text": "drink = \"奶茶\"",
+              "correct": false,
+              "why": "给变量赋值没有问题，函数里的这一行正常运行了。"
+            },
+            {
+              "text": "make_order()",
+              "correct": false,
+              "why": "调用没有问题：函数体运行了，屏幕上已经显示了“做好了 奶茶”。"
+            },
+            {
+              "text": "print(\"做好了\", drink)",
+              "correct": false,
+              "why": "这一行在函数里面，drink 在函数里有值，它正常运行了，已经显示了“做好了 奶茶”。"
+            }
+          ],
+          "tip": "函数里新建的变量，函数外面用不了。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "price = 8\ndef change():\n    price = 100\n    print(price)\nchange()\nprint(price)",
+          "options": [
+            {
+              "text": "100\n8",
+              "correct": true,
+              "why": "函数里的 price = 100 是函数里自己的变量，只在 change() 里有效。函数里 print 显示 100；函数外面的 price 还是 8，最后一行显示 8。"
+            },
+            {
+              "text": "100\n100",
+              "correct": false,
+              "why": "函数里给 price 赋值，不会改动函数外面的 price。它们是两个同名但互不相干的变量。"
+            },
+            {
+              "text": "8\n8",
+              "correct": false,
+              "why": "函数里有自己的 price = 100，函数里的 print 显示的是 100。"
+            },
+            {
+              "text": "8\n100",
+              "correct": false,
+              "why": "顺序反了：先调用 change()，函数里的 print 先显示 100；最后一行是函数外面的 price，还是 8。"
+            }
+          ],
+          "tip": "函数里和函数外的同名变量是两个变量，互不影响。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def double(price):\n    price = price * 2\n    return price\nprice = 8\nprint(double(price))\nprint(price)",
+          "options": [
+            {
+              "text": "16\n8",
+              "correct": true,
+              "why": "price 传给函数的参数 price，函数里 price = price * 2 改的是函数里这个参数，交回 16。函数外面的 price 还是 8，最后一行显示 8。"
+            },
+            {
+              "text": "16\n16",
+              "correct": false,
+              "why": "函数里改参数，不会改动函数外面的变量 price。想让它变，要自己把交回的结果存回去，比如 price = double(price)。"
+            },
+            {
+              "text": "8\n8",
+              "correct": false,
+              "why": "第 5 行 print(double(price)) 显示的是函数交回的结果，函数里的 price 已经乘了 2，是 16。"
+            },
+            {
+              "text": "8\n16",
+              "correct": false,
+              "why": "顺序反了：第 5 行先显示函数交回的 16，最后一行才是函数外面没变的 price，也就是 8。"
+            }
+          ],
+          "tip": "传进函数的是值；函数里改参数，不会改动函数外面的变量。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想让屏幕显示 16。现在最后一行报了 NameError: name 'result' is not defined（result 这个名字没有定义）。怎么改，屏幕才会显示 16？",
+          "key": "fix",
+          "code": "def calc(price):\n    result = price * 2\ncalc(8)\nprint(result)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 4, in <module>\n    print(result)\nNameError: name 'result' is not defined",
+          "checks": [
+            {
+              "program": "def calc(price):\n    result = price * 2\ncalc(8)\nprint(result)",
+              "type": "NameError",
+              "line": 4,
+              "msg": "name 'result' is not defined"
+            }
+          ],
+          "expected": "16",
+          "options": [
+            {
+              "text": "在函数里加一行 return result，最后一行改成 print(calc(8))",
+              "correct": true,
+              "why": "result 只在 calc 里有效。用 return 把它交回来，外面用 print(calc(8)) 接住，就显示 16 了。",
+              "fixed": "def calc(price):\n    result = price * 2\n    return result\ncalc(8)\nprint(calc(8))"
+            },
+            {
+              "text": "把最后一行改成 print(price)",
+              "correct": false,
+              "why": "price 也是 calc 的参数，只在函数里有效，函数外面用它还是 NameError。",
+              "fixed": "def calc(price):\n    result = price * 2\ncalc(8)\nprint(price)"
+            },
+            {
+              "text": "在最后一行前面加 result = 0",
+              "correct": false,
+              "why": "不报错了，但这是函数外面新建的另一个 result，里面是 0，显示的是 0，不是 16。",
+              "fixed": "def calc(price):\n    result = price * 2\ncalc(8)\nresult = 0\nprint(result)"
+            },
+            {
+              "text": "把 calc(8) 多调用一次",
+              "correct": false,
+              "why": "不管调用几次，函数里的 result 在函数结束后都没有了，函数外面还是用不了，仍然是 NameError。",
+              "fixed": "def calc(price):\n    result = price * 2\ncalc(8)\ncalc(8)\nprint(result)"
+            }
+          ],
+          "tip": "想把函数里算出的结果拿到外面，用 return 交回来。"
+        }
+      ]
     }
   ],
   "heldLessons": []

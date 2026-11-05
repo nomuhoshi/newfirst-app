@@ -1,4 +1,4 @@
-# 生成 content/unit8.json（第 8 单元「函数」草稿：U8L1 定义与调用、U8L2 一个参数、U8L3 返回结果、U8L4 组合调用）。
+# 生成 content/unit8.json（第 8 单元「函数」草稿：U8L1 定义与调用、U8L2 一个参数、U8L3 返回结果、U8L4 组合调用、U8L5 两个参数和默认值、U8L6 作用域）。
 # 草稿（产品官 2026-11-05 15:21 任务）：L1 分清“定义函数”和“执行函数”，L2 一个参数（传入不同的值，结果不同）。return 留到 L3。
 # 只出现在 content/unit8.json，还没挂进 content/course.json（U8 仍是“即将推出”占位），app 读不到。
 # 内容在这里改，再运行：python3 scripts/make-unit8.py && python3 scripts/verify-content.py --extra content/unit8.json
@@ -317,6 +317,129 @@ lessons += [
         opt("删掉最后一行 print(total)", F, "报错发生在第 3 行 total = two(8) + 3，和最后一行无关，删掉它还是同样的 TypeError。", fixed=Q16_FIX_C),
         opt("把 3 改成文字 \"3\"", F, "two(8) 得到的还是 None，None 和文字 \"3\" 也不能用 + 相加，仍然是 TypeError。", fixed=Q16_FIX_D),
     ], code=Q16, trace=trace_of(Q16), expected="19", tip="本关要把算出的数字交给后续计算，所以用 return 返回数字；函数里的 print 只是显示。"),
+  ]},
+]
+
+
+# ---------------- U8L5：两个参数、默认值 ----------------
+# 产品官 15:59：L5 先教两个参数，再教默认值，暂不拆关；默认参数单个也有意义，按计算器项目（价格 × 杯数）的需求安排顺序。
+# 本关不教：关键字传参 total(8, cups=3)、默认值写成可变对象、*args。
+L5_INTRO = 'def total(price, cups=1):\n    return price * cups\nprint(total(8, 3))\nprint(total(8))'
+Q17 = 'def order(drink, cups):\n    print(cups, "杯", drink)\norder("奶茶", 2)\norder("果茶", 1)'
+Q18_CODE = 'def total({0}):\n    return price * cups\nprint(total(8, 3))'
+def q18_prog(tok): return Q18_CODE.replace("{0}", tok)
+Q19 = 'def total(price, cups=1):\n    return price * cups\nprint(total(8))\nprint(total(8, 3))\nprint(total(5))'
+Q20 = 'def total(price, cups):\n    return price * cups\nprint(total(8))'
+Q20_FIX_A = 'def total(price, cups=1):\n    return price * cups\nprint(total(8))'
+Q20_FIX_B = 'def total(price, cups=0):\n    return price * cups\nprint(total(8))'
+Q20_FIX_C = 'def total(price=1, cups):\n    return price * cups\nprint(total(8))'
+Q20_FIX_D = 'def total(price):\n    return price * cups\nprint(total(8))'
+
+assert real_out(L5_INTRO) == "24\n8"
+assert real_out(Q17) == "2 杯 奶茶\n1 杯 果茶"
+assert real_out('def order(drink, cups):\n    print(cups, "杯", drink)\norder(2, "奶茶")') == "奶茶 杯 2"       # 两个值的顺序反了：drink 得到 2、cups 得到“奶茶”
+assert real_out('def order(drink, cups):\n    print(cups, "杯", drink)\norder("奶茶", 2)\norder("奶茶", 2)') == "2 杯 奶茶\n2 杯 奶茶"
+assert real_out('def order(drink, cups):\n    print(drink, "杯", cups)\norder("奶茶", 2)\norder("果茶", 1)') == "奶茶 杯 2\n果茶 杯 1"   # print 里先写 drink 才会这样显示
+assert Q17.split("\n")[1] == '    print(cups, "杯", drink)'
+assert real_out(q18_prog("price, cups")) == "24"
+assert run(q18_prog("price cups")) == ("", "SyntaxError")          # 两个参数之间漏了逗号
+assert run(q18_prog("price + cups")) == ("", "SyntaxError")        # 括号里写的是名字，不能做运算
+r18 = real_error(q18_prog("price"))                                 # 只有一个参数，却传了两个值
+assert (r18["type"], r18["msg"]) == ("TypeError", "total() takes 1 positional argument but 2 were given")
+assert real_out(Q19) == "8\n24\n5"
+assert real_out(Q19.replace("cups=1", "cups=0")) == "0\n24\n0"                                               # 以为不传就是 0
+assert real_out(Q19.replace("print(total(8, 3))", "print(total(8, 1))")) == "8\n8\n5"                        # 传了 3 却被默认值盖掉
+assert run(Q20_FIX_A) == ("8", None) and run(Q20_FIX_B) == ("0", None)
+r20 = real_error(Q20)
+assert (r20["type"], r20["line"], r20["code_line"], r20["msg"], r20["stdout"]) == ("TypeError", 3, "print(total(8))", "total() missing 1 required positional argument: 'cups'", "")
+assert run(Q20_FIX_C)[1] == "SyntaxError"                           # 有默认值的参数写在没有默认值的前面
+assert run(Q20_FIX_D) == ("", "NameError")                          # cups 没有了，函数体里还在用
+
+# ---------------- U8L6：作用域 ----------------
+# 产品官 15:59：L6 处理作用域。只教：函数里新建的变量（含参数）只在函数里有效；函数里给同名变量赋值，不会改动函数外面的那个。
+# 不教：global 关键字、在函数里读外面的变量（UnboundLocalError 之类的坑）、嵌套函数。
+L6_INTRO = 'price = 8\ndef double(price):\n    price = price * 2\n    return price\nprint(double(price))\nprint(price)'
+Q21 = 'def make_order():\n    drink = "奶茶"\n    print("做好了", drink)\nmake_order()\nprint(drink)'
+Q22 = 'price = 8\ndef change():\n    price = 100\n    print(price)\nchange()\nprint(price)'
+Q23 = 'def double(price):\n    price = price * 2\n    return price\nprice = 8\nprint(double(price))\nprint(price)'
+Q24 = 'def calc(price):\n    result = price * 2\ncalc(8)\nprint(result)'
+Q24_FIX_A = 'def calc(price):\n    result = price * 2\n    return result\ncalc(8)\nprint(calc(8))'
+Q24_FIX_B = 'def calc(price):\n    result = price * 2\ncalc(8)\nprint(price)'
+Q24_FIX_C = 'def calc(price):\n    result = price * 2\ncalc(8)\nresult = 0\nprint(result)'
+Q24_FIX_D = 'def calc(price):\n    result = price * 2\ncalc(8)\ncalc(8)\nprint(result)'
+
+assert real_out(L6_INTRO) == "16\n8"
+r21 = real_error(Q21)
+assert (r21["type"], r21["line"], r21["code_line"], r21["msg"], r21["stdout"]) == ("NameError", 5, "print(drink)", "name 'drink' is not defined", "做好了 奶茶")
+assert Q21.split("\n")[4] == "print(drink)" and Q21.split("\n")[3] == "make_order()"
+assert real_out(Q22) == "100\n8"
+assert real_out(Q22.replace("    price = 100\n", "")) == "8\n8"                  # 对照：函数里没有赋值，用的就是外面的 8
+assert real_out(Q23) == "16\n8"
+assert real_out(Q23.replace("print(price)", "print(double(price))")) == "16\n16"
+r24 = real_error(Q24)
+assert (r24["type"], r24["line"], r24["code_line"], r24["msg"], r24["stdout"]) == ("NameError", 4, "print(result)", "name 'result' is not defined", "")
+assert real_out(Q24_FIX_A) == "16" and real_out(Q24_FIX_C) == "0"
+assert run(Q24_FIX_B) == ("", "NameError") and run(Q24_FIX_D) == ("", "NameError")
+assert real_error(Q24_FIX_B)["msg"] == "name 'price' is not defined"
+
+lessons += [
+ {"id": "U8L5", "title": "两个参数和默认值", "concept": "多个参数、按顺序传值、默认值",
+  "story": "价格计算器要两个数：单价和杯数。参数可以有好几个，括号里用逗号隔开：def total(price, cups):。调用时按顺序传值：total(8, 3) 把 8 传给 price，把 3 传给 cups，传的个数要和参数一样多，顺序也要对。如果某个参数大多数时候用同一个值，可以给它一个默认值：def total(price, cups=1): 调用时不传 cups，就用 1；传了，就用传进去的值。有默认值的参数要写在没有默认值的参数后面。",
+  "introCode": L5_INTRO,
+  "exercises": [
+    pred(SHOW, Q17, [
+        ("2 杯 奶茶\n1 杯 果茶", T, "两个值按顺序传：第 3 行 order(\"奶茶\", 2)，奶茶传给第一个参数 drink，2 传给第二个参数 cups。函数里 print(cups, \"杯\", drink) 先写 cups，所以先显示 2，再是“杯”，最后是奶茶。第 4 行同理。"),
+        ("奶茶 杯 2\n果茶 杯 1", F, "显示的顺序由函数里 print 的写法决定：print(cups, \"杯\", drink) 先显示 cups。传值的顺序和显示的顺序不一定一样。"),
+        ("2 杯 奶茶\n2 杯 奶茶", F, "每次调用都会重新传值。第 4 行传的是 \"果茶\" 和 1，drink、cups 这次就是果茶和 1。"),
+        ("报错", F, "不会报错：调用时传了 2 个值，def 里正好有 2 个参数，个数是对得上的。")],
+        tip="按顺序对应：第一个值给第一个参数，第二个值给第二个参数。"),
+    {**fill("屏幕要显示：24（函数 total 的第一行，括号里该怎么写）", Q18_CODE,
+        ["price, cups", "price cups", "price + cups", "price"], ["price, cups"], "24",
+        {"price cups": "两个参数之间要用逗号隔开。漏了逗号，会报 SyntaxError（写法不符合语法）。",
+         "price + cups": "括号里写的是参数的名字，不能做运算，会报 SyntaxError（写法不符合语法）。",
+         "price": "只有一个参数 price，调用时却传了 8 和 3 两个值，个数对不上，会报 TypeError（值的个数不对）。函数体里用了 cups，就要在括号里也写上它。"},
+        "有两个参数：名字写在括号里，用逗号隔开。")},
+    pred(SHOW, Q19, [
+        ("8\n24\n5", T, "cups=1 是默认值。第 3 行 total(8) 没传 cups，用默认的 1：8 × 1 = 8；第 4 行 total(8, 3) 传了 3，就用 3：8 × 3 = 24；第 5 行 total(5) 又没传，5 × 1 = 5。"),
+        ("8\n8\n5", F, "默认值只在没有传值时才用。第 4 行传了 3，cups 就是 3，不是默认的 1。"),
+        ("0\n24\n0", F, "没传 cups 时用的是它的默认值 1，不是 0，所以 8 × 1 = 8，5 × 1 = 5。"),
+        ("报错", F, "cups 有默认值，调用时可以不传，不会报错。只有没有默认值的参数，漏传才会报 TypeError。")],
+        tip="传了值就用传的值；没传，才用默认值。"),
+    pick("想让 total(8) 也能用（只买 1 杯，不用写杯数），屏幕要显示 8。现在运行报了错：TypeError: total() missing 1 required positional argument: 'cups'（调用时少了 1 个必须给的参数 cups）。怎么改，屏幕才会显示 8？", "fix", [
+        opt("把第 1 行改成 def total(price, cups=1):", T, "给 cups 一个默认值 1：total(8) 没传 cups，就用 1，8 × 1 = 8。", fixed=Q20_FIX_A),
+        opt("把第 1 行改成 def total(price, cups=0):", F, "不报错了，但没传 cups 时它是 0，8 × 0 = 0，显示的是 0，不是 8。", fixed=Q20_FIX_B),
+        opt("把第 1 行改成 def total(price=1, cups):", F, "有默认值的参数要写在没有默认值的参数后面。这样写，Python 一行都不会运行，直接报 SyntaxError（写法不符合语法）。", fixed=Q20_FIX_C),
+        opt("把第 1 行改成 def total(price):", F, "cups 不再是参数了，但函数体里还在用它，调用时会报 NameError（用到了没有定义的名字）。", fixed=Q20_FIX_D),
+    ], code=Q20, trace=trace_of(Q20), expected="8", tip="不想每次都传的值，给它一个默认值；有默认值的参数写在后面。"),
+  ]},
+ {"id": "U8L6", "title": "函数里的变量", "concept": "作用域：函数里的变量只在函数里有效",
+  "story": "在函数里新建的变量，只在这个函数里有效，函数运行完就没有了，函数外面用不了。参数也一样。如果函数里的变量和函数外面的变量同名，它们是两个互不相干的变量：函数里给它赋新值，不会改动函数外面的那个。想把函数里算出来的结果拿到外面用，要用 return 交回来，再存进变量或 print。",
+  "introCode": L6_INTRO,
+  "exercises": [
+    pick("程序报了 NameError: name 'drink' is not defined（drink 这个名字没有定义）。drink 明明在函数里赋过值，出错的是哪一行？", "line", [
+        opt("print(drink)", T, "最后一行报错。drink 是在 make_order() 里面新建的变量，函数运行完它就没有了，函数外面不认识 drink。"),
+        opt("drink = \"奶茶\"", F, "给变量赋值没有问题，函数里的这一行正常运行了。"),
+        opt("make_order()", F, "调用没有问题：函数体运行了，屏幕上已经显示了“做好了 奶茶”。"),
+        opt("print(\"做好了\", drink)", F, "这一行在函数里面，drink 在函数里有值，它正常运行了，已经显示了“做好了 奶茶”。"),
+    ], code=Q21, trace=trace_of(Q21), tip="函数里新建的变量，函数外面用不了。"),
+    pred(SHOW, Q22, [
+        ("100\n8", T, "函数里的 price = 100 是函数里自己的变量，只在 change() 里有效。函数里 print 显示 100；函数外面的 price 还是 8，最后一行显示 8。"),
+        ("100\n100", F, "函数里给 price 赋值，不会改动函数外面的 price。它们是两个同名但互不相干的变量。"),
+        ("8\n8", F, "函数里有自己的 price = 100，函数里的 print 显示的是 100。"),
+        ("8\n100", F, "顺序反了：先调用 change()，函数里的 print 先显示 100；最后一行是函数外面的 price，还是 8。")],
+        tip="函数里和函数外的同名变量是两个变量，互不影响。"),
+    pred(SHOW, Q23, [
+        ("16\n8", T, "price 传给函数的参数 price，函数里 price = price * 2 改的是函数里这个参数，交回 16。函数外面的 price 还是 8，最后一行显示 8。"),
+        ("16\n16", F, "函数里改参数，不会改动函数外面的变量 price。想让它变，要自己把交回的结果存回去，比如 price = double(price)。"),
+        ("8\n8", F, "第 5 行 print(double(price)) 显示的是函数交回的结果，函数里的 price 已经乘了 2，是 16。"),
+        ("8\n16", F, "顺序反了：第 5 行先显示函数交回的 16，最后一行才是函数外面没变的 price，也就是 8。")],
+        tip="传进函数的是值；函数里改参数，不会改动函数外面的变量。"),
+    pick("想让屏幕显示 16。现在最后一行报了 NameError: name 'result' is not defined（result 这个名字没有定义）。怎么改，屏幕才会显示 16？", "fix", [
+        opt("在函数里加一行 return result，最后一行改成 print(calc(8))", T, "result 只在 calc 里有效。用 return 把它交回来，外面用 print(calc(8)) 接住，就显示 16 了。", fixed=Q24_FIX_A),
+        opt("把最后一行改成 print(price)", F, "price 也是 calc 的参数，只在函数里有效，函数外面用它还是 NameError。", fixed=Q24_FIX_B),
+        opt("在最后一行前面加 result = 0", F, "不报错了，但这是函数外面新建的另一个 result，里面是 0，显示的是 0，不是 16。", fixed=Q24_FIX_C),
+        opt("把 calc(8) 多调用一次", F, "不管调用几次，函数里的 result 在函数结束后都没有了，函数外面还是用不了，仍然是 NameError。", fixed=Q24_FIX_D),
+    ], code=Q24, trace=trace_of(Q24), expected="16", tip="想把函数里算出的结果拿到外面，用 return 交回来。"),
   ]},
 ]
 
