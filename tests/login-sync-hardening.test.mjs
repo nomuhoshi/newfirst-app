@@ -337,8 +337,11 @@ await noNetworkCase("凭证没有用户编号", JSON.stringify({ session: { acce
   const off = await sy.syncNow();
   check("离线时完成两关：进度保存在本机，同步失败但不丢", off.ok === false && dev.state.xp === 40 && sy.status().status === "offline");
   cloud.state.online = true;
+  const writesBefore = cloud.calls.filter((c) => c[0] === "createProgress" || c[0] === "saveProgress").length;
   for (let i = 0; i < 3; i++) await sy.syncNow();
+  const writesAfter = cloud.calls.filter((c) => c[0] === "createProgress" || c[0] === "saveProgress").length;
   check("重连后连续同步 3 次：云端 XP 只加一次（40）", xpOf(cloud, "offline@example.com") === 40, String(xpOf(cloud, "offline@example.com")));
+  check("重连后只发生一次云端写入，后续同步不重复上传", writesAfter - writesBefore === 1, `新增写入 ${writesAfter - writesBefore} 次`);
   check("重连后本机仍是 40 XP，没有重复加", dev.state.xp === 40 && sumXp(rowOf(cloud, "offline@example.com").doc) === 40);
 }
 

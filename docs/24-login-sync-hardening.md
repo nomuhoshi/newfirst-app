@@ -23,11 +23,11 @@
 node tests/login-sync-hardening.test.mjs
 ```
 
-本次专项 **88 项**；现有登录/同步相关套件也一起跑，数量如下：
+本次专项 **89 项**；现有登录/同步相关套件也一起跑，数量如下：
 
 | 套件 | 项数 |
 |---|---:|
-| `tests/login-sync-hardening.test.mjs`（本次新增） | 88 |
+| `tests/login-sync-hardening.test.mjs`（本次新增） | 89 |
 | `tests/sync-mutation.test.mjs`（本次新增，反向验证） | 6 |
 | `tests/cloud-sync.test.mjs` | 40 |
 | `tests/cloud-sync-tabs.test.mjs` | 6 |
@@ -37,7 +37,7 @@ node tests/login-sync-hardening.test.mjs
 | `tests/cloud-sync-switch.test.mjs` | 27 |
 | `tests/data-compat.test.mjs` | 30 |
 
-本次 88 项覆盖：
+本次 89 项覆盖：
 
 - 不同 Supabase 项目、同一个用户 ID：正式 / 测试项目的本机副本、当前账号、凭证不串。
 - 不同邮箱：A 强制退出后 B 登录，B 从 0 开始，不合并 A 的 40 XP 本机副本。
@@ -95,7 +95,7 @@ PLAYWRIGHT_BROWSERS_PATH=/path/to/playwright-browsers npm test
 ## 3. 没有验证的内容
 
 - 没有连接真实 Supabase，也没有用真实邮箱 / 真实用户数据；验证码、令牌签名、过期、退出登录后的服务端失效、真实 RLS 属主权限都只能在独立测试项目上人工验收。
-- 数据库测试用的是本机临时 PostgreSQL 17.11，不是 Supabase 的 PostgREST / 真实 `auth.uid()` 环境；`FORCE RLS` 下真实 `postgres` 属主是否有 `BYPASSRLS` 仍要按 `supabase/check-readonly.sql` 第 8 段在测试库确认。
+- 数据库测试用的是本机临时 PostgreSQL 17.11，不是 Supabase 的 PostgREST / 真实 `auth.uid()` 环境；`FORCE RLS` 下真实 `postgres` 属主是否有 `BYPASSRLS`，仍要在独立测试库人工确认（本机只验证了模拟属主）。
 - 没有跑 WebKit / 真机 / iPhone / iPad；`npm test` 里的浏览器部分是 Chromium 模拟。
 - 没有测试服务端限流、邮件送达、真实网络抖动下的重试时序。
 
