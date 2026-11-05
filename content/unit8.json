@@ -249,6 +249,249 @@
           "tip": "missing 1 required argument：少了 1 个必须给的值（必填参数）。看看调用那一行括号里有没有东西。"
         }
       ]
+    },
+    {
+      "id": "U8L3",
+      "title": "返回结果",
+      "concept": "return、print 和 return 的区别、None",
+      "story": "到现在函数只会“显示”：函数里的 print 把东西显示在屏幕上，显示完就没了。想让函数把结果交回给调用它的地方，用 return：def two(price): return price * 2，调用 two(8) 的地方就变成交回来的 16，可以存进变量、拿去计算、再显示。return 自己不显示任何东西：想看到结果，要把它存下来再 print，或者直接 print(two(8))。没有 return 的函数不交回任何东西，得到的是 None（什么都没有）。",
+      "introCode": "def two(price):\n    return price * 2\ntotal = two(8)\nprint(total)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def show_two(price):\n    print(price * 2)\ndef two(price):\n    return price * 2\nshow_two(8)\ntwo(8)",
+          "options": [
+            {
+              "text": "16",
+              "correct": true,
+              "why": "show_two(8) 里的 print 把 16 显示在屏幕上；two(8) 用的是 return，只是把 16 交回来，这里没有变量接它，也没有 print，16 就丢掉了，不会显示，也不会报错。"
+            },
+            {
+              "text": "16\n16",
+              "correct": false,
+              "why": "return 不会显示。two(8) 交回的 16 没有被存起来，也没有被 print，屏幕上不会出现。"
+            },
+            {
+              "text": "什么都不显示",
+              "correct": false,
+              "why": "show_two(8) 里的 print 会运行，在屏幕上显示 16。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "单独写一行 two(8) 不会报错：它交回 16，没人接，就丢掉了。"
+            }
+          ],
+          "tip": "print 把东西显示出来；return 把值交回给调用的地方，不显示。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def two(price):\n    return price * 2\ntotal = two(8)\nprint(total)\nprint(total + 1)",
+          "options": [
+            {
+              "text": "16\n17",
+              "correct": true,
+              "why": "第 3 行 total = two(8)：two(8) 交回 16，存进 total。第 4 行显示 16，第 5 行 total + 1 是 17。"
+            },
+            {
+              "text": "16\n16",
+              "correct": false,
+              "why": "第 5 行是 print(total + 1)，要把 1 加上：16 + 1 = 17。"
+            },
+            {
+              "text": "8\n9",
+              "correct": false,
+              "why": "total 里存的是 two(8) 交回来的结果 16，不是传进去的 8。"
+            },
+            {
+              "text": "16",
+              "correct": false,
+              "why": "第 5 行 print(total + 1) 也会运行，再显示一行 17。"
+            }
+          ],
+          "tip": "total = two(8)：先调用，再把交回来的值存进 total。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def say(drink):\n    print(\"来一杯\", drink)\nx = say(\"奶茶\")\nprint(x)",
+          "options": [
+            {
+              "text": "来一杯 奶茶\nNone",
+              "correct": true,
+              "why": "第 3 行调用 say(\"奶茶\")：函数里的 print 显示“来一杯 奶茶”。say 没有 return，什么也没交回，x 得到的是 None，第 4 行 print(x) 就显示 None。"
+            },
+            {
+              "text": "来一杯 奶茶\n来一杯 奶茶",
+              "correct": false,
+              "why": "函数里 print 显示出来的文字不会被交回来存进 x。x 得到的是 None（什么都没有），不是那句话。"
+            },
+            {
+              "text": "来一杯 奶茶",
+              "correct": false,
+              "why": "第 4 行 print(x) 也会运行，会再显示一行：x 里是 None。"
+            },
+            {
+              "text": "来一杯 奶茶\n奶茶",
+              "correct": false,
+              "why": "没有 return，函数不会把 drink 交回来。x 得到的是 None，不是奶茶。"
+            }
+          ],
+          "tip": "函数里没有 return，调用它得到的就是 None。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：20（函数 two 的第二行该怎么写）",
+          "code": "def two(price):\n    {0}\nprint(two(10))",
+          "tokens": [
+            "return price * 2",
+            "print(price * 2)",
+            "price * 2",
+            "show(price * 2)"
+          ],
+          "answer": [
+            "return price * 2"
+          ],
+          "expected": "20",
+          "why": {
+            "print(price * 2)": "函数里的 print 先把 20 显示出来，但函数没有交回任何东西，外面的 print(two(10)) 就把 None 又显示了一遍：先 20，再 None，不是只显示 20。",
+            "price * 2": "只算了一下就丢掉了，没有 return，函数什么也没交回，外面的 print(two(10)) 显示的是 None。",
+            "show(price * 2)": "show 这个名字没有定义过，Python 找不到它，会报 NameError（用到了没有定义的名字）。要把结果交回去，用 return。"
+          },
+          "hint": "要把 price * 2 交回给调用它的 print(two(10))：用 return。"
+        }
+      ]
+    },
+    {
+      "id": "U8L4",
+      "title": "组合调用",
+      "concept": "返回结果参与计算、嵌套调用",
+      "story": "return 交回来的值，和平时的数一样用：存进变量 total = two(8)，参与计算 two(8) + 3，再传给另一个函数 coupon(two(10))。碰到 f(g(x)) 这样套着的写法，先算里面的：two(10) 先得 20，20 再传给 coupon，得 15。注意：只有 return 的函数才能这样用。函数里只 print、没有 return，调用它的结果是 None，拿去做加法会报 TypeError。",
+      "introCode": "def two(price):\n    return price * 2\ndef coupon(price):\n    return price - 5\ntotal = coupon(two(10))\nprint(total)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def two(price):\n    return price * 2\nprint(two(8) + 3)\nprint(two(8) + two(5))",
+          "options": [
+            {
+              "text": "19\n26",
+              "correct": true,
+              "why": "two(8) 交回 16，两个 print 里的 two(…) 都换成它交回来的值：16 + 3 = 19；two(8) 是 16，two(5) 是 10，16 + 10 = 26。"
+            },
+            {
+              "text": "11\n13",
+              "correct": false,
+              "why": "two(8) 不是 8：函数交回的是 8 × 2 = 16。11、13 是没有经过函数、直接用 8 算出来的。"
+            },
+            {
+              "text": "16\n26",
+              "correct": false,
+              "why": "第 3 行是 print(two(8) + 3)，要把 3 也加上：16 + 3 = 19。"
+            },
+            {
+              "text": "19\n13",
+              "correct": false,
+              "why": "two(5) 也要经过函数：5 × 2 = 10，所以是 16 + 10 = 26，不是 8 + 5。"
+            }
+          ],
+          "tip": "先把每个 two(…) 换成它交回的值，再算加法。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def two(price):\n    return price * 2\ndef coupon(price):\n    return price - 5\nprint(coupon(two(10)))",
+          "options": [
+            {
+              "text": "15",
+              "correct": true,
+              "why": "套着的调用先算里面：two(10) 交回 20，20 再传给 coupon，20 - 5 = 15。"
+            },
+            {
+              "text": "10",
+              "correct": false,
+              "why": "顺序反了：这是先 coupon(10)（得 5）再 two(5)（得 10）的结果。题里是 coupon(two(10))，括号里面的 two(10) 先算，得 20，再减 5。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "5 是 coupon(10) 的结果。题里传给 coupon 的是 two(10) 交回的 20，不是 10。"
+            },
+            {
+              "text": "20",
+              "correct": false,
+              "why": "20 是 two(10) 的结果，还要把它传给 coupon，再减 5。"
+            }
+          ],
+          "tip": "f(g(x))：先算里面的 g(x)，再把结果交给 f。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：24",
+          "code": "def two(price):\n    return price * 2\na = two(8)\nb = two({0})\nprint(a + b)",
+          "tokens": [
+            "4",
+            "8",
+            "a",
+            "b"
+          ],
+          "answer": [
+            "4"
+          ],
+          "expected": "24",
+          "why": {
+            "8": "b = two(8) 是 16，a 也是 16，a + b 是 32，不是 24。",
+            "a": "a 里是 16，two(a) 是 two(16) = 32，a + b 是 16 + 32 = 48，不是 24。",
+            "b": "第 4 行等号右边先算，这时 b 还没有值，用到 b 会报 NameError（用到了没有定义的名字）。"
+          },
+          "hint": "a 已经是 16，要让 a + b = 24，b 就得是 8，也就是 two(?) 要交回 8。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想算“两杯的价钱再加 3 元”，屏幕要显示 19。运行后先显示了 16，又报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加；None 就是“什么都没有”）。怎么改，屏幕才会显示 19？",
+          "key": "fix",
+          "code": "def two(price):\n    print(price * 2)\ntotal = two(8) + 3\nprint(total)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    total = two(8) + 3\nTypeError: unsupported operand type(s) for +: 'NoneType' and 'int'",
+          "checks": [
+            {
+              "program": "def two(price):\n    print(price * 2)\ntotal = two(8) + 3\nprint(total)",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "unsupported operand type(s) for +: 'NoneType' and 'int'"
+            }
+          ],
+          "expected": "19",
+          "options": [
+            {
+              "text": "把 two 里的 print(price * 2) 改成 return price * 2",
+              "correct": true,
+              "why": "two(8) 本来什么也没交回，得到 None，None + 3 报错。改成 return 后，two(8) 交回 16，16 + 3 = 19，最后 print(total) 显示 19。",
+              "fixed": "def two(price):\n    return price * 2\ntotal = two(8) + 3\nprint(total)"
+            },
+            {
+              "text": "把第 3 行的 + 3 去掉",
+              "correct": false,
+              "why": "两杯的价钱要再加 3，不能去掉。去掉后不报错了，但 two 里的 print 先显示 16，total 得到的还是 None，最后显示 16 和 None，不是 19。",
+              "fixed": "def two(price):\n    print(price * 2)\ntotal = two(8)\nprint(total)"
+            },
+            {
+              "text": "删掉最后一行 print(total)",
+              "correct": false,
+              "why": "报错发生在第 3 行 total = two(8) + 3，和最后一行无关，删掉它还是同样的 TypeError。",
+              "fixed": "def two(price):\n    print(price * 2)\ntotal = two(8) + 3"
+            },
+            {
+              "text": "把 3 改成文字 \"3\"",
+              "correct": false,
+              "why": "two(8) 得到的还是 None，None 和文字 \"3\" 也不能用 + 相加，仍然是 TypeError。",
+              "fixed": "def two(price):\n    print(price * 2)\ntotal = two(8) + \"3\"\nprint(total)"
+            }
+          ],
+          "tip": "只有 return 才会把结果交回来；函数里 print 只是显示。"
+        }
+      ]
     }
   ],
   "heldLessons": []

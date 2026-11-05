@@ -1,4 +1,4 @@
-# 生成 content/unit8.json（第 8 单元「函数」前两关草稿：U8L1 定义与调用、U8L2 一个参数）。
+# 生成 content/unit8.json（第 8 单元「函数」草稿：U8L1 定义与调用、U8L2 一个参数、U8L3 返回结果、U8L4 组合调用）。
 # 草稿（产品官 2026-11-05 15:21 任务）：L1 分清“定义函数”和“执行函数”，L2 一个参数（传入不同的值，结果不同）。return 留到 L3。
 # 只出现在 content/unit8.json，还没挂进 content/course.json（U8 仍是“即将推出”占位），app 读不到。
 # 内容在这里改，再运行：python3 scripts/make-unit8.py && python3 scripts/verify-content.py --extra content/unit8.json
@@ -7,7 +7,7 @@
 #   U8L1 def 名字():、缩进的函数体、调用 名字()（括号不能省）、先定义后调用、调用几次就执行几次；
 #   U8L2 一个参数：def 名字(参数):、调用时传入值、函数体里用参数、传入不同的值得到不同的结果、传入变量里的值、漏传值报 TypeError。
 # 口径（产品官 15:39）：L2 只说“本关 pay(price) 定义了一个必填参数，调用时漏传会报 TypeError”，不概括成“函数的参数都必须传”（以后教默认参数时不用推翻）。
-# 本部分不用：return（下一关）、多个参数、默认参数、作用域（函数里外的同名变量）、函数里改列表 / 字典、递归、f-string、函数调用函数。
+# 本部分（L1–L2）不用：return（L3 才教）、多个参数、默认参数、作用域（函数里外的同名变量）、函数里改列表 / 字典、递归、f-string、函数调用函数。
 # 函数体里只用 print 显示；这样“定义不执行、调用才执行”能直接在屏幕上看出来。
 import json, pathlib, sys, itertools, io, contextlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -192,6 +192,130 @@ lessons = [
         opt("def 那一行少了冒号", F, "少冒号是 SyntaxError，程序一行都不会运行。这里 def 写得没问题，函数体都定义好了，是第 3 行调用时才出的错。", value="SyntaxError"),
         opt("函数体没有缩进", F, "那是 IndentationError。这里函数体的缩进是对的；最后一行写的是 TypeError，说的是调用时少了一个值。", value="IndentationError"),
     ], code=Q8, trace=trace_of(Q8), tip="missing 1 required argument：少了 1 个必须给的值（必填参数）。看看调用那一行括号里有没有东西。"),
+  ]},
+]
+
+# ---------------- U8L3：返回结果（print 和 return 的区别）----------------
+# 产品官 15:39：L3「返回结果」、L4「组合调用」。重点分清函数里的 print 与 return，再练把返回结果存进变量、参与计算。
+# 两关的函数都只有一个参数（价格），函数体一行；L3 的 two = “买两杯的价钱”，L4 加 coupon = “减 5 元的优惠券”。
+D_SHOW2 = 'def show_two(price):\n    print(price * 2)'
+D_TWO = 'def two(price):\n    return price * 2'
+D_COUPON = 'def coupon(price):\n    return price - 5'
+L3_INTRO = D_TWO + '\ntotal = two(8)\nprint(total)'
+Q9 = D_SHOW2 + '\n' + D_TWO + '\nshow_two(8)\ntwo(8)'
+Q10 = D_TWO + '\ntotal = two(8)\nprint(total)\nprint(total + 1)'
+Q11 = 'def say(drink):\n    print("来一杯", drink)\nx = say("奶茶")\nprint(x)'
+Q12_CODE = 'def two(price):\n    {0}\nprint(two(10))'
+def q12_prog(tok): return Q12_CODE.replace("{0}", tok)
+
+assert real_out(L3_INTRO) == "16"
+assert real_out(Q9) == "16"                        # show_two 里的 print 显示了 16；two(8) 交回的 16 没人接，丢掉了，不报错
+assert real_out(D_TWO + '\ntwo(8)') == ""          # 单独调用 return 的函数：什么都不显示
+assert real_out(Q10) == "16\n17"
+assert real_out(D_TWO + '\ntotal = two(8)\nprint(total)\nprint(total)') == "16\n16"
+assert real_out(D_TWO + '\ntotal = 8\nprint(total)\nprint(total + 1)') == "8\n9"            # 把 8（传进去的值）当成结果
+assert Q10.split("\n")[3] == "print(total)" and Q10.split("\n")[4] == "print(total + 1)"
+assert Q11.split("\n")[2] == 'x = say("奶茶")' and Q11.split("\n")[3] == "print(x)"   # 解释里的“第 3 行 / 第 4 行”
+assert Q10.split("\n")[2] == "total = two(8)"                                            # 解释里的“第 3 行”
+assert real_out(Q11) == "来一杯 奶茶\nNone"
+assert real_out('def say(drink):\n    print("来一杯", drink)\nsay("奶茶")') == "来一杯 奶茶"   # 对照：不接结果、不再 print，只显示一行
+assert real_out('def say(drink):\n    return drink\nx = say("奶茶")\nprint(x)') == "奶茶"       # 对照：交回的是 drink，才会是“奶茶”
+assert real_out(q12_prog("return price * 2")) == "20"
+assert real_out(q12_prog("print(price * 2)")) == "20\nNone"                             # 函数里 print 显示 20，函数什么也没交回，外面的 print 再显示 None
+assert real_out(q12_prog("price * 2")) == "None"                                        # 只算了一下，没有 return：交回 None
+assert run(q12_prog("show(price * 2)")) == ("", "NameError")                            # show 没有定义过
+
+# ---------------- U8L4：组合调用 ----------------
+L4_INTRO = D_TWO + '\n' + D_COUPON + '\ntotal = coupon(two(10))\nprint(total)'
+Q13 = D_TWO + '\nprint(two(8) + 3)\nprint(two(8) + two(5))'
+Q14 = D_TWO + '\n' + D_COUPON + '\nprint(coupon(two(10)))'
+Q15_CODE = D_TWO + '\na = two(8)\nb = two({0})\nprint(a + b)'
+def q15_prog(tok): return Q15_CODE.replace("{0}", tok)
+Q16 = 'def two(price):\n    print(price * 2)\ntotal = two(8) + 3\nprint(total)'
+Q16_FIX_A = 'def two(price):\n    return price * 2\ntotal = two(8) + 3\nprint(total)'
+Q16_FIX_B = 'def two(price):\n    print(price * 2)\ntotal = two(8)\nprint(total)'
+Q16_FIX_C = 'def two(price):\n    print(price * 2)\ntotal = two(8) + 3'
+Q16_FIX_D = 'def two(price):\n    print(price * 2)\ntotal = two(8) + "3"\nprint(total)'
+
+assert real_out(L4_INTRO) == "15"
+assert real_out(Q13) == "19\n26"
+assert real_out(D_TWO + '\nprint(two(8))\nprint(two(8) + 3)') == "16\n19"
+assert real_out(D_TWO + '\nprint(8 + 3)\nprint(8 + 5)') == "11\n13"                      # 没经过函数
+assert real_out(D_TWO + '\nprint(two(8) + two(5))') == "26"
+assert real_out(Q14) == "15"                                                             # 先 two(10)=20，再 coupon(20)=15
+assert real_out(D_TWO + '\n' + D_COUPON + '\nprint(two(coupon(10)))') == "10"            # 顺序反了：先 coupon(10)=5，再 two(5)=10
+assert real_out(D_TWO + '\n' + D_COUPON + '\nprint(coupon(10))') == "5"
+assert real_out(D_TWO + '\n' + D_COUPON + '\nprint(two(10))') == "20"
+assert Q13.split("\n")[2] == "print(two(8) + 3)"                                        # 解释里的“第 3 行”
+assert Q15_CODE.split("\n")[3] == "b = two({0})"                                         # 解释里的“第 4 行”
+assert real_out(q15_prog("4")) == "24"
+assert real_out(q15_prog("8")) == "32" and real_out(q15_prog("a")) == "48"               # a 是 16，two(16) = 32，16 + 32
+assert run(q15_prog("b")) == ("", "NameError")                                           # 第 4 行 b 还没有值
+r16 = real_error(Q16)
+assert (r16["type"], r16["line"], r16["code_line"], r16["msg"], r16["stdout"]) == ("TypeError", 3, "total = two(8) + 3", "unsupported operand type(s) for +: 'NoneType' and 'int'", "16")
+assert real_out(Q16_FIX_A) == "19" and real_out(Q16_FIX_B) == "16\nNone"
+assert run(Q16_FIX_C) == ("16", "TypeError") and run(Q16_FIX_D) == ("16", "TypeError")
+assert real_error(Q16_FIX_C)["msg"] == real_error(Q16)["msg"]                            # 删掉最后一行：还是同一个报错
+assert Q16.split("\n")[2] == "total = two(8) + 3"                                        # 解释里的“第 3 行”
+
+lessons += [
+ {"id": "U8L3", "title": "返回结果", "concept": "return、print 和 return 的区别、None",
+  "story": "到现在函数只会“显示”：函数里的 print 把东西显示在屏幕上，显示完就没了。想让函数把结果交回给调用它的地方，用 return：def two(price): return price * 2，调用 two(8) 的地方就变成交回来的 16，可以存进变量、拿去计算、再显示。return 自己不显示任何东西：想看到结果，要把它存下来再 print，或者直接 print(two(8))。没有 return 的函数不交回任何东西，得到的是 None（什么都没有）。",
+  "introCode": L3_INTRO,
+  "exercises": [
+    pred(SHOW, Q9, [
+        ("16", T, "show_two(8) 里的 print 把 16 显示在屏幕上；two(8) 用的是 return，只是把 16 交回来，这里没有变量接它，也没有 print，16 就丢掉了，不会显示，也不会报错。"),
+        ("16\n16", F, "return 不会显示。two(8) 交回的 16 没有被存起来，也没有被 print，屏幕上不会出现。"),
+        ("什么都不显示", F, "show_two(8) 里的 print 会运行，在屏幕上显示 16。"),
+        ("报错", F, "单独写一行 two(8) 不会报错：它交回 16，没人接，就丢掉了。")],
+        tip="print 把东西显示出来；return 把值交回给调用的地方，不显示。"),
+    pred(SHOW, Q10, [
+        ("16\n17", T, "第 3 行 total = two(8)：two(8) 交回 16，存进 total。第 4 行显示 16，第 5 行 total + 1 是 17。"),
+        ("16\n16", F, "第 5 行是 print(total + 1)，要把 1 加上：16 + 1 = 17。"),
+        ("8\n9", F, "total 里存的是 two(8) 交回来的结果 16，不是传进去的 8。"),
+        ("16", F, "第 5 行 print(total + 1) 也会运行，再显示一行 17。")],
+        tip="total = two(8)：先调用，再把交回来的值存进 total。"),
+    pred(SHOW, Q11, [
+        ("来一杯 奶茶\nNone", T, "第 3 行调用 say(\"奶茶\")：函数里的 print 显示“来一杯 奶茶”。say 没有 return，什么也没交回，x 得到的是 None，第 4 行 print(x) 就显示 None。"),
+        ("来一杯 奶茶\n来一杯 奶茶", F, "函数里 print 显示出来的文字不会被交回来存进 x。x 得到的是 None（什么都没有），不是那句话。"),
+        ("来一杯 奶茶", F, "第 4 行 print(x) 也会运行，会再显示一行：x 里是 None。"),
+        ("来一杯 奶茶\n奶茶", F, "没有 return，函数不会把 drink 交回来。x 得到的是 None，不是奶茶。")],
+        tip="函数里没有 return，调用它得到的就是 None。"),
+    {**fill("屏幕要显示：20（函数 two 的第二行该怎么写）", Q12_CODE,
+        ["return price * 2", "print(price * 2)", "price * 2", "show(price * 2)"], ["return price * 2"], "20",
+        {"print(price * 2)": "函数里的 print 先把 20 显示出来，但函数没有交回任何东西，外面的 print(two(10)) 就把 None 又显示了一遍：先 20，再 None，不是只显示 20。",
+         "price * 2": "只算了一下就丢掉了，没有 return，函数什么也没交回，外面的 print(two(10)) 显示的是 None。",
+         "show(price * 2)": "show 这个名字没有定义过，Python 找不到它，会报 NameError（用到了没有定义的名字）。要把结果交回去，用 return。"},
+        "要把 price * 2 交回给调用它的 print(two(10))：用 return。")},
+  ]},
+ {"id": "U8L4", "title": "组合调用", "concept": "返回结果参与计算、嵌套调用",
+  "story": "return 交回来的值，和平时的数一样用：存进变量 total = two(8)，参与计算 two(8) + 3，再传给另一个函数 coupon(two(10))。碰到 f(g(x)) 这样套着的写法，先算里面的：two(10) 先得 20，20 再传给 coupon，得 15。注意：只有 return 的函数才能这样用。函数里只 print、没有 return，调用它的结果是 None，拿去做加法会报 TypeError。",
+  "introCode": L4_INTRO,
+  "exercises": [
+    pred(SHOW, Q13, [
+        ("19\n26", T, "two(8) 交回 16，两个 print 里的 two(…) 都换成它交回来的值：16 + 3 = 19；two(8) 是 16，two(5) 是 10，16 + 10 = 26。"),
+        ("11\n13", F, "two(8) 不是 8：函数交回的是 8 × 2 = 16。11、13 是没有经过函数、直接用 8 算出来的。"),
+        ("16\n26", F, "第 3 行是 print(two(8) + 3)，要把 3 也加上：16 + 3 = 19。"),
+        ("19\n13", F, "two(5) 也要经过函数：5 × 2 = 10，所以是 16 + 10 = 26，不是 8 + 5。")],
+        tip="先把每个 two(…) 换成它交回的值，再算加法。"),
+    pred(SHOW, Q14, [
+        ("15", T, "套着的调用先算里面：two(10) 交回 20，20 再传给 coupon，20 - 5 = 15。"),
+        ("10", F, "顺序反了：这是先 coupon(10)（得 5）再 two(5)（得 10）的结果。题里是 coupon(two(10))，括号里面的 two(10) 先算，得 20，再减 5。"),
+        ("5", F, "5 是 coupon(10) 的结果。题里传给 coupon 的是 two(10) 交回的 20，不是 10。"),
+        ("20", F, "20 是 two(10) 的结果，还要把它传给 coupon，再减 5。")],
+        tip="f(g(x))：先算里面的 g(x)，再把结果交给 f。"),
+    {**fill("屏幕要显示：24", Q15_CODE,
+        ["4", "8", "a", "b"], ["4"], "24",
+        {"8": "b = two(8) 是 16，a 也是 16，a + b 是 32，不是 24。",
+         "a": "a 里是 16，two(a) 是 two(16) = 32，a + b 是 16 + 32 = 48，不是 24。",
+         "b": "第 4 行等号右边先算，这时 b 还没有值，用到 b 会报 NameError（用到了没有定义的名字）。"},
+        "a 已经是 16，要让 a + b = 24，b 就得是 8，也就是 two(?) 要交回 8。")},
+    pick("想算“两杯的价钱再加 3 元”，屏幕要显示 19。运行后先显示了 16，又报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加；None 就是“什么都没有”）。怎么改，屏幕才会显示 19？", "fix", [
+        opt("把 two 里的 print(price * 2) 改成 return price * 2", T, "two(8) 本来什么也没交回，得到 None，None + 3 报错。改成 return 后，two(8) 交回 16，16 + 3 = 19，最后 print(total) 显示 19。", fixed=Q16_FIX_A),
+        opt("把第 3 行的 + 3 去掉", F, "两杯的价钱要再加 3，不能去掉。去掉后不报错了，但 two 里的 print 先显示 16，total 得到的还是 None，最后显示 16 和 None，不是 19。", fixed=Q16_FIX_B),
+        opt("删掉最后一行 print(total)", F, "报错发生在第 3 行 total = two(8) + 3，和最后一行无关，删掉它还是同样的 TypeError。", fixed=Q16_FIX_C),
+        opt("把 3 改成文字 \"3\"", F, "two(8) 得到的还是 None，None 和文字 \"3\" 也不能用 + 相加，仍然是 TypeError。", fixed=Q16_FIX_D),
+    ], code=Q16, trace=trace_of(Q16), expected="19", tip="只有 return 才会把结果交回来；函数里 print 只是显示。"),
   ]},
 ]
 
