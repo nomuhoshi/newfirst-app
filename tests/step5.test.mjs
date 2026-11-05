@@ -107,7 +107,11 @@ const base = () => ({ ...emptyDoc({ lineage: "LIN" }) });
   const lo = { ...base(), gen: 1, xp: { devA: 500 } }, hi = { ...base(), gen: 2, lineage: "NEW", xp: { devB: 10 } };
   const r1 = mergeDocs(lo, hi), r2 = mergeDocs(hi, lo);
   check("重置后：云端代数更高，整份用云端的，旧一代的 XP 不会回来", r1.outcome === "remote-newer" && sumXp(r1.doc) === 10 && r1.doc.gen === 2);
-  check("重置后：本机代数更高，整份用本机的", r2.outcome === "local-newer" && sumXp(r2.doc) === 10);
+  // 2026-11-06：旧备份只把 gen 抬高、lineage 却不同，不能再整份盖掉云端。学习内容要留下来，身份留在云端那份。
+  check("本机代数更高但 lineage 不同：不得覆盖云端，500 XP 和本机 10 XP 都在，身份仍是云端", r2.outcome === "merged" && r2.doc.xp.devA === 500 && r2.doc.xp.devB === 10 && sumXp(r2.doc) === 510 && r2.doc.gen === 1 && r2.doc.lineage === "LIN");
+  const hiSame = { ...base(), gen: 2, lineage: "LIN", xp: { devA: 10 } };
+  const r3 = mergeDocs(hiSame, lo);
+  check("同一 lineage、本机代数更高：整份用本机", r3.outcome === "local-newer" && sumXp(r3.doc) === 10 && r3.doc.gen === 2);
   const x = { ...base(), gen: 2, lineage: "AAA", xp: { devA: 100 } }, y = { ...base(), gen: 2, lineage: "BBB", xp: { devB: 100 } };
   const cf = mergeDocs(x, y);
   check("同一代、编号不同（两次独立的覆盖）：不自动合并，也不把 XP 相加", cf.outcome === "conflict" && sumXp(cf.doc) === 100);

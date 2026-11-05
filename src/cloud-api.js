@@ -52,7 +52,10 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
       const s = toSession(r.data);
       return s ? { ok: true, session: s } : { ok: false, kind: "server", message: "刷新登录返回的内容无法识别" };
     },
-    async signOut(session) { await req("/auth/v1/logout", { method: "POST", token: session.accessToken }); return { ok: true }; },
+    async signOut(session) {
+      const r = await req("/auth/v1/logout", { method: "POST", token: session.accessToken });
+      return r.ok ? { ok: true } : r;
+    },
     // 读自己的进度（行级权限只会返回自己的那一行）：{ ok:true, row:null | { doc, rev } }
     async getProgress(session) {
       const r = await req("/rest/v1/progress", { token: session.accessToken, query: "select=doc,rev&limit=2" });

@@ -421,10 +421,11 @@ function makeCase({ guest = g80, doc, legacy = true, email = "legacy@example.com
   st.setItem(DEVICE_KEY, DEVICE);
   st.setItem(GUEST_KEY, JSON.stringify(guest));
   const gid = getGuestId(st).id;
-  if (legacy !== null) doc.imported[gid] = legacy;
+  const docIn = clone(doc); // 每个场景用自己的文档，不改调用方手里的那份
+  if (legacy !== null) docIn.imported[gid] = legacy;
   const cloud = fakeCloud();
   cloud.users.set(email, userId);
-  cloud.rows.set(userId, { doc: clone(doc), rev });
+  cloud.rows.set(userId, { doc: clone(docIn), rev });
   return { st, cloud, gid, email, userId, guest, raw: JSON.stringify(guest), before: clone(doc) };
 }
 // 云端 500 XP 的大记录：总 XP / 总次数 / 日期都远大于游客，用来证明“总量推断”会遮蔽新进度。
@@ -568,24 +569,25 @@ const pendingRecordOf = (st) => { const k = pendingImportKeys(st)[0]; if (!k) re
 }
 
 // ---- I.9 安全合并：其他设备 XP / 关卡 / 红心 / 设置完整保留 ----
+// 场景 9 自己造数据（111/22 XP、U9L9），不借用 I.11 或共享的 g80。
 {
-  const cloudDoc = emptyDoc({ gen: 5, lineage: "L-five" });
-  cloudDoc.xp = { devA: 100, devB: 40 }; cloudDoc.runs = { devA: 6, devB: 2 };
-  cloudDoc.done = { U1L1: "2026-09-01", U1L2: "2026-09-02" };
-  cloudDoc.days = ["2026-09-01", "2026-09-02"];
+  const cloudDoc = emptyDoc({ gen: 5, lineage: "L-scene9" });
+  cloudDoc.xp = { devA: 111, devB: 22 }; cloudDoc.runs = { devA: 6, devB: 2 };
+  cloudDoc.done = { U9L1: "2026-09-01", U9L9: "2026-09-09" };
+  cloudDoc.days = ["2026-09-01", "2026-09-09"];
   cloudDoc.hearts = { n: 3, msToNext: 90000 };
   cloudDoc.prefs = { sound: false, haptics: false, soundStyle: "A" };
   cloudDoc.imported = { Gother: "deadbeef" };
-  const c = makeCase({ guest: guestWith({ xp: 70, lessons: 3, done: { U1L3: true } }), doc: cloudDoc, legacy: null });
+  const c = makeCase({ guest: guestWith({ xp: 70, lessons: 3, done: { U9L3: true } }), doc: cloudDoc, legacy: null });
   const sy = makeSync(c.st, c.cloud);
   const v = await sy.verify(c.email, "123456", c.guest);
   check("I.9 准备：新游客编号（没有 imported 记录）→ 弹窗", v.ok && v.needChoice === true);
   const r = await sy.finishChoice("transfer");
   const row = rowOfCase(c);
-  check("I.9 安全合并：其他设备 XP / 次数完整保留（devA=100, devB=40）", row.doc.xp.devA === 100 && row.doc.xp.devB === 40 && row.doc.runs.devA === 6 && row.doc.runs.devB === 2, JSON.stringify(row.doc.xp));
-  check("I.9 安全合并：其他设备关卡和日期取并集，不覆盖", row.doc.done.U1L1 === "2026-09-01" && row.doc.done.U1L2 === "2026-09-02" && Object.hasOwn(row.doc.done, "U1L3") && row.doc.days.includes("2026-09-02") && row.doc.days.includes(TODAY), JSON.stringify({ done: row.doc.done, days: row.doc.days }));
+  check("I.9 安全合并：其他设备 XP / 次数完整保留（devA=111, devB=22）", row.doc.xp.devA === 111 && row.doc.xp.devB === 22 && row.doc.runs.devA === 6 && row.doc.runs.devB === 2, JSON.stringify(row.doc.xp));
+  check("I.9 安全合并：其他设备关卡和日期取并集，不覆盖", row.doc.done.U9L1 === "2026-09-01" && row.doc.done.U9L9 === "2026-09-09" && Object.hasOwn(row.doc.done, "U9L3") && row.doc.days.includes("2026-09-09") && row.doc.days.includes(TODAY), JSON.stringify({ done: row.doc.done, days: row.doc.days }));
   check("I.9 安全合并：红心 / 设置保留云端最新值", row.doc.hearts.n === 3 && row.doc.hearts.msToNext === 90000 && row.doc.prefs.sound === false && row.doc.prefs.soundStyle === "A", JSON.stringify({ hearts: row.doc.hearts, prefs: row.doc.prefs }));
-  check("I.9 安全合并：gen / lineage 不变，其他游客的 imported 记录保留", row.doc.gen === 5 && row.doc.lineage === "L-five" && row.doc.imported.Gother === "deadbeef" && row.doc.imported[c.gid] === guestFingerprint(c.guest));
+  check("I.9 安全合并：gen / lineage 不变，其他游客的 imported 记录保留", row.doc.gen === 5 && row.doc.lineage === "L-scene9" && row.doc.imported.Gother === "deadbeef" && row.doc.imported[c.gid] === guestFingerprint(c.guest), JSON.stringify({ gen: row.doc.gen, lineage: row.doc.lineage, imported: row.doc.imported }));
 }
 
 // ---- I.10 上传失败：保留游客原文，本机账号副本不回退 ----
@@ -604,17 +606,19 @@ const pendingRecordOf = (st) => { const k = pendingImportKeys(st)[0]; if (!k) re
 }
 
 // ---- I.11 读回失败：上传成功也不删游客 ----
+// 场景 11 自己造数据（云端 41 XP、游客 64 XP、关卡 U11L2），不跟场景 9 共用文档。
 {
-  const c = makeCase({ guest: g80, doc: bigCloud({ device: DEVICE, xp: 70, runs: 4 }) });
+  const guest11 = guestWith({ xp: 64, lessons: 2, done: { U11L2: true }, lastDay: "2026-11-11" });
+  const c = makeCase({ guest: guest11, doc: bigCloud({ device: DEVICE, xp: 41, runs: 3, lineage: "L-scene11" }) });
   const sy = makeSync(c.st, c.cloud);
-  const v = await sy.verify(c.email, "123456", g80);
+  const v = await sy.verify(c.email, "123456", guest11);
   check("I.11 准备：弹窗已挂起", v.ok && v.needChoice === true);
   const origGet = c.cloud.getProgress; let gets = 0;
   c.cloud.getProgress = async (s) => { gets++; return gets === 2 ? { ok: false, kind: "network", message: "读回失败（测试注入）" } : origGet(s); };
   const r = await sy.finishChoice("transfer");
-  check("I.11 读回失败：上传本身成功（云端 80），但只算待同步，不把“写成功”当成“读回一致”", r.ok && r.synced === false && r.verified !== true && xpOf(c.cloud, c.email) === 80, JSON.stringify({ r, xp: xpOf(c.cloud, c.email), gets }));
+  check("I.11 读回失败：上传本身成功（云端 64，含 U11L2），但只算待同步，不把“写成功”当成“读回一致”", r.ok && r.synced === false && r.verified !== true && xpOf(c.cloud, c.email) === 64 && Object.hasOwn(rowOfCase(c).doc.done, "U11L2"), JSON.stringify({ r, xp: xpOf(c.cloud, c.email), gets, done: rowOfCase(c).doc.done }));
   check("I.11 读回失败：游客记录逐字保留，不删除", r.guestCleared !== true && c.st.getItem(GUEST_KEY) === c.raw);
-  check("I.11 读回失败：本机账号副本是刚上传的 80，没有回退", sumXp(stateOf(c.st).doc) === 80);
+  check("I.11 读回失败：本机账号副本是刚上传的 64，没有回退到云端原来的 41", sumXp(stateOf(c.st).doc) === 64 && stateOf(c.st).doc.xp[DEVICE] === 64);
   check("I.11 读回失败：状态是待同步、有专用待办，不得显示已同步", sy.status().pending === true && sy.status().status === "pending" && pendingImportKeys(c.st).length === 1, JSON.stringify({ status: sy.status(), keys: pendingImportKeys(c.st) }));
 }
 
@@ -1077,6 +1081,221 @@ for (const kind of ["network", "server", "auth"]) {
   check("K.6 缺读回 / 缺上传 / 非用户选择转存 / 上传未成功 / 缺快照 → 全都不删", [{ readBack: null }, { uploaded: null }, { userChoseTransfer: false }, { uploadOk: false }, { guestSnapshotRaw: undefined }].every((o) => clearGuestAfterVerified(st, { ...base, ...o }) === false) && st.getItem(GUEST_KEY) === raw);
   const flaky = { getItem: () => { throw new Error("read denied"); }, setItem() {}, removeItem() { throw new Error("must not be called"); } };
   check("K.6 游客记录读取失败 → 不删（不把读不到当成可以删）", clearGuestAfterVerified(flaky, base) === false);
+}
+
+// ======================================================================
+// L. 退出 / 删号 / 冲突停止 / 429 冷却（2026-11-06）
+//    Case 10 的最终硬断言等 DB-2 验收，本段不加。
+//    全部用假接口，不连接 Supabase，不发送验证码。
+// ======================================================================
+{
+  const st = mem(), cloud = fakeCloud(), timers = [];
+  const sy = makeSync(st, cloud, { schedule: (fn, ms) => { timers.push({ fn, ms }); return timers.length; } });
+  const logged = await login(sy, "cas5@example.com", freshState());
+  const dev = { sync: sy, state: logged.state };
+  learn(dev, "U5L2", 10);
+  const origSave = cloud.saveProgress;
+  let saves = 0;
+  cloud.saveProgress = async (s, expected, doc) => {
+    saves++;
+    if (saves <= 5) return { ok: true, rev: null };
+    return origSave(s, expected, doc);
+  };
+  const beforeTimers = timers.length;
+  const first = await sy.syncNow();
+  const copy = loadAccount(st, sy.account().userId, { now: NOW }).copy;
+  const added = timers.slice(beforeTimers).filter((t) => t.ms > 0);
+  check("Case 5a：连续被抢先 5 次后停止，不返回成功", saves === 5 && first.ok === false && first.retryable === false && /冲突太多次/.test(first.message || ""), JSON.stringify({ saves, first }));
+  check("Case 5b：停止后本机仍是脏的、待同步（10 XP），不是只看错误状态", !!copy && sumXp(copy.doc) === 10 && copy.dirty.content === true && sy.status().pending === true && !!copy.doc.done.U5L2, JSON.stringify({ xp: copy && sumXp(copy.doc), dirty: copy?.dirty, status: sy.status() }));
+  check("Case 5c：停止后没有盲目重试定时器", added.length === 0 && saves === 5, JSON.stringify(added));
+  const second = await sy.syncNow();
+  check("Case 5b：之后再同步可以上传这 10 XP", second.ok === true && saves === 6 && xpOf(cloud, "cas5@example.com") === 10, JSON.stringify({ second, saves, xp: xpOf(cloud, "cas5@example.com") }));
+}
+{
+  const st = mem(), cloud = fakeCloud();
+  const sy = makeSync(st, cloud);
+  const logged = await login(sy, "stay@example.com", freshState());
+  const dev = { sync: sy, state: logged.state };
+  learn(dev, "U1L1", 40);
+  await sy.syncNow();
+  const authBefore = st.getItem(AUTH_KEY);
+  const copyBefore = sumXp(loadAccount(st, sy.account().userId, { now: NOW }).copy.doc);
+  cloud.signOut = async () => { throw new Error("500 Internal Server Error"); };
+  const out = await sy.logout();
+  check("Case 7a：普通退出时 signOut 失败 → 保持登录", out.ok === false && out.stayed === true && sy.account() !== null && st.getItem(AUTH_KEY) === authBefore, JSON.stringify(out));
+  check("Case 7a：signOut 失败时本机副本还在", sumXp(loadAccount(st, sy.account().userId, { now: NOW }).copy.doc) === copyBefore);
+}
+{
+  const st = mem(), cloud = fakeCloud();
+  const sy = makeSync(st, cloud);
+  const logged = await login(sy, "unsent@example.com", freshState());
+  const dev = { sync: sy, state: logged.state };
+  learn(dev, "U1L1", 15);
+  await sy.syncNow();
+  learn(dev, "U9L2", 15);
+  const uid = sy.account().userId;
+  const xpBefore = sumXp(loadAccount(st, uid, { now: NOW }).copy.doc);
+  const realSet = st.setItem.bind(st);
+  st.setItem = (k, v) => { if (String(k).includes("suipian.acct.")) throw new Error("full"); return realSet(k, v); };
+  let signed = 0;
+  cloud.signOut = async () => { signed++; return { ok: true }; };
+  const synced = await sy.syncNow();
+  const out = await sy.logout();
+  check("普通退出：本机还没写上已同步副本时，不退出、不调用 signOut、未上传进度还在", synced.ok === true && out.ok === false && out.pending === true && signed === 0 && sy.account() !== null && sumXp(loadAccount(st, uid, { now: NOW }).copy.doc) === xpBefore, JSON.stringify({ synced, out, signed, xpBefore }));
+}
+{
+  const st = mem(), cloud = fakeCloud();
+  const sy = makeSync(st, cloud);
+  const logged = await login(sy, "force-local@example.com", freshState());
+  const dev = { sync: sy, state: logged.state };
+  learn(dev, "U1L1", 40);
+  const uid = sy.account().userId;
+  cloud.signOut = async () => { throw new Error("500 Internal Server Error"); };
+  const out = await sy.forceLocalLogout();
+  const copy = loadAccount(st, uid, { now: NOW }).copy;
+  check("Case 7b：强制本机退出清凭证，并说明云端会话可能仍有效", typeof sy.forceLocalLogout === "function" && out.ok === true && out.cloudSessionMaybeValid === true && out.warning === "cloud-session-maybe-valid" && /云端会话/.test(out.message || "") && sy.account() === null && st.getItem(AUTH_KEY) === null, JSON.stringify(out));
+  check("Case 7b：强制退出仍留下未上传副本（40 XP）", !!copy && sumXp(copy.doc) === 40 && copy.dirty.content === true, JSON.stringify(copy && { xp: sumXp(copy.doc), dirty: copy.dirty }));
+}
+{
+  const st = mem(), cloud = fakeCloud();
+  const sy = makeSync(st, cloud);
+  await login(sy, "cleanup@example.com", freshState());
+  const uid = sy.account().userId;
+  learn({ sync: sy, state: (await sy.syncNow(), docToState(loadAccount(st, uid, { now: NOW }).copy.doc, freshState(), NOW)) }, "U1L1", 40);
+  await sy.syncNow();
+  const beforeCopy = [...st._m.keys()].filter((k) => k.includes("suipian.acct." + uid)).map((k) => st.getItem(k)).join("|");
+  st.removeItem = () => { throw new Error("Disk Fail"); };
+  const out = await sy.deleteAccount();
+  const afterCopy = [...st._m.keys()].filter((k) => k.includes("suipian.acct." + uid)).map((k) => st.getItem(k)).join("|");
+  check("Case 8：删号已成功但本机清理失败 → 不宣称成功", out.ok !== true && out.pendingLocalCleanup === true && out.kind === "local-cleanup" && out.tokenRevokedLocally === true && out.copyIsolated === true, JSON.stringify(out));
+  check("Case 8：状态是待本机清理，旧副本还在，内存里不再是登录态", sy.status().status === "pending-local-cleanup" && afterCopy === beforeCopy && beforeCopy.length > 0 && sy.account() === null, JSON.stringify({ status: sy.status(), same: afterCopy === beforeCopy }));
+  const callsBefore = cloud.calls.length;
+  await sy.syncNow();
+  check("Case 8：清理失败后不再拿旧令牌发同步请求", cloud.calls.length === callsBefore, JSON.stringify(cloud.calls.slice(callsBefore)));
+}
+{
+  const cloud = emptyDoc({ gen: 1, lineage: "A" });
+  cloud.xp.devA = 500;
+  cloud.done = { U1L1: "2026-11-01", U1L2: "2026-11-02" };
+  cloud.runs.devA = 10;
+  const backup = emptyDoc({ gen: 99, lineage: "B" });
+  backup.xp.devA = 10;
+  backup.done = { U1L1: "2026-11-01" };
+  backup.runs.devA = 1;
+  const m = mergeDocs(backup, cloud);
+  check("Case 9：旧备份抬高 gen 不得覆盖较新云端（500 XP 和 U1L2 都在，身份仍是云端）", m.outcome === "merged" && sumXp(m.doc) >= 500 && !!m.doc.done.U1L2 && m.doc.gen === 1 && m.doc.lineage === "A" && m.doc.xp.devA === 500, JSON.stringify({ outcome: m.outcome, xp: m.doc && sumXp(m.doc), gen: m.doc?.gen, lineage: m.doc?.lineage }));
+}
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-stop-retry", xp: 500, runs: 20 }), legacy: true });
+  const timers = [];
+  const sy = makeSync(c.st, c.cloud, { schedule: (fn, ms) => { timers.push(ms); return timers.length; } });
+  await sy.verify(c.email, "123456", g80);
+  const origSave = c.cloud.saveProgress;
+  let saves = 0;
+  c.cloud.saveProgress = async () => { saves++; return { ok: true, rev: null }; };
+  await sy.finishChoice("cloud");
+  const afterChoice = saves;
+  const before = timers.length;
+  const again = await sy.syncNow();
+  check("五次冲突后停止盲目重试：再同步一轮也只再试 5 次，不安排退避", again.ok === false && again.kind === "conflict" && again.retryable === false && saves - afterChoice === 5 && timers.length === before, JSON.stringify({ again, saves, afterChoice, timers }));
+  c.cloud.saveProgress = origSave;
+  const ok = await sy.syncNow();
+  check("五次冲突停止后，云端恢复时可以再同步完成", ok.ok === true && sy.status().status === "synced" && rowOfCase(c).doc.imported[c.gid] === guestFingerprint(g80), JSON.stringify({ ok, status: sy.status(), imported: rowOfCase(c).doc.imported[c.gid] }));
+}
+{
+  const clock = { t: NOW };
+  const calls = [];
+  const api = {
+    async sendCode(email) { calls.push(["sendCode", email]); return { ok: false, kind: "rate-limit", message: "Too Many Requests" }; },
+    async verifyCode() { calls.push(["verifyCode"]); return { ok: false, kind: "auth" }; },
+    async getProgress() { calls.push(["getProgress"]); return { ok: false, kind: "rate-limit", message: "Too Many Requests" }; },
+    async refresh() { return { ok: true, session: sess() }; },
+    async signOut() { return { ok: true }; },
+  };
+  const sy = makeSync(mem(), api, { now: () => clock.t, schedule: () => 0 });
+  const a = await sy.sendCode("cooldown@example.com");
+  const b = await sy.sendCode("cooldown@example.com");
+  check("429 冷却：第一次发信被限流后，冷却期内不再调用发信接口", a.kind === "rate-limit" && b.kind === "rate-limit" && calls.filter((c) => c[0] === "sendCode").length === 1, JSON.stringify(calls));
+  clock.t += 60_000;
+  await sy.sendCode("cooldown@example.com");
+  check("429 冷却：过了一分钟才允许再调用发信接口（仍是假接口，没有真实验证码）", calls.filter((c) => c[0] === "sendCode").length === 2 && calls.every((c) => c[0] !== "verifyCode"), JSON.stringify(calls));
+}
+{
+  const st = mem(), cloud = fakeCloud();
+  const clock = { t: NOW };
+  const timers = [];
+  const sy = makeSync(st, cloud, { now: () => clock.t, schedule: (fn, ms) => { timers.push(ms); return timers.length; } });
+  await login(sy, "limit@example.com", freshState());
+  let gets = 0;
+  cloud.getProgress = async () => { gets++; return { ok: false, kind: "rate-limit", message: "Too Many Requests" }; };
+  const first = await sy.syncNow();
+  const getsAfter = gets;
+  const before = timers.length;
+  const second = await sy.syncNow();
+  check("429 冷却：同步被限流后不按网络退避重试，冷却期内不再读云端", first.kind === "rate-limit" && first.retryable === false && second.kind === "rate-limit" && gets === getsAfter && timers.length === before, JSON.stringify({ first, second, gets, timers }));
+  clock.t += 60_000;
+  cloud.getProgress = async (s) => { gets++; return { ok: true, row: cloud.rows.get(cloud.users.get("limit@example.com")) || null }; };
+  const third = await sy.syncNow();
+  check("429 冷却结束：可以再同步", third.ok === true && gets === getsAfter + 1, JSON.stringify({ third, gets }));
+}
+{
+  let logoutCalls = 0;
+  const api = createApi({
+    url: "https://example.test/",
+    anonKey: "pub",
+    fetchFn: async (url) => {
+      logoutCalls++;
+      return { ok: false, status: 500, text: async () => JSON.stringify({ msg: "down" }) };
+    },
+  });
+  const so = await api.signOut(sess());
+  check("signOut 失败会把服务器错误交回去，不再假装成功", so.ok === false && so.kind === "server" && logoutCalls === 1 && !String(so.message || "").includes("supabase.co"), JSON.stringify(so));
+}
+{
+  // 场景 9：自己的假服务器和自己的账号（scene9@example.com / 19 XP），不读场景 11 的行。
+  // 客户端没有“直接 PATCH progress 表”的方法；保存只走 save_progress。真库的行级拒绝仍以 isolation.sql 为准，这里不连任何 Supabase。
+  const calls = [];
+  const api = createApi({
+    url: "https://example.test/",
+    anonKey: "pub",
+    fetchFn: async (url, opt) => {
+      calls.push({ url: String(url), method: opt?.method || "GET" });
+      if (String(url).includes("/rest/v1/rpc/save_progress")) return { ok: true, status: 200, text: async () => "2" };
+      return { ok: false, status: 401, text: async () => JSON.stringify({ message: "permission denied" }) };
+    },
+  });
+  const saved = await api.saveProgress(sess("u-scene9", "scene9@example.com"), 1, { schema: 1, xp: { devScene9: 19 } });
+  check("场景9：保存只请求 save_progress，不直接写 /rest/v1/progress", saved.ok === true && saved.rev === 2 && calls.length === 1 && calls[0].url.endsWith("/rest/v1/rpc/save_progress") && calls[0].method === "POST", JSON.stringify(calls));
+  const cloud = fakeCloud();
+  const st = mem();
+  const sy = makeSync(st, cloud);
+  const logged = await login(sy, "scene9@example.com", freshState());
+  const dev = { sync: sy, state: logged.state };
+  learn(dev, "U9L1", 19);
+  await sy.syncNow();
+  const uid = cloud.users.get("scene9@example.com");
+  learn(dev, "U9L2", 4);
+  const again = await sy.syncNow();
+  check("场景9：这套自己的数据同步后是 23 XP，含 U9L2", again.ok === true && sumXp(cloud.rows.get(uid).doc) === 23 && cloud.rows.get(uid).doc.done.U9L1 && cloud.rows.get(uid).doc.done.U9L2, JSON.stringify(cloud.rows.get(uid).doc.xp));
+}
+{
+  // 场景 11：另一套服务器和另一对设备，不读场景 9 的行。
+  const cloud = fakeCloud();
+  const aSt = mem(), bSt = mem();
+  const a = makeSync(aSt, cloud);
+  const b = makeSync(bSt, cloud);
+  const la = await login(a, "scene11@example.com", freshState());
+  const lb = await login(b, "scene11@example.com", freshState());
+  const da = { sync: a, state: la.state };
+  const db = { sync: b, state: lb.state };
+  cloud.state.online = false;
+  learn(da, "U11A", 15);
+  learn(db, "U11B", 17);
+  cloud.state.online = true;
+  const ra = await a.syncNow();
+  const rb = await b.syncNow();
+  const row = cloud.rows.get(cloud.users.get("scene11@example.com"));
+  check("场景11：两台设备各自的离线进度都在，总数 32，不丢关卡", ra.ok && rb.ok && sumXp(row.doc) === 32 && row.doc.done.U11A && row.doc.done.U11B, JSON.stringify({ ra, rb, xp: row.doc.xp, done: row.doc.done }));
 }
 
 const failed = results.filter((r) => !r).length;
