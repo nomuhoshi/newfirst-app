@@ -141,6 +141,34 @@ export function guestFingerprint(state) {
   for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return h.toString(16).padStart(8, "0");
 }
+// 旧格式 imported[游客编号] = true 没有指纹。不能直接判断“有没有新进度”，
+// 只能检查当前游客记录的学习内容是否已经全部包含在云端文档里。任何一项超出（多一关、多 XP、
+// 多完成次数、多学习日期）都算 changed；宁可在不确定时提示用户，也不能静默丢进度。
+function guestCoveredByCloud(state, doc) {
+  if (!state || typeof state !== "object") return false;
+  const done = Object.keys(state.done ?? {}).filter((k) => state.done[k]);
+  if (done.some((k) => !isId(k) || !(k in doc.done))) return false;
+  if (natural(state.xp) > sumXp(doc)) return false;
+  if (natural(state.lessonsCompleted) > sumRuns(doc)) return false;
+  const days = streakDays(state);
+  if (validDay(state.lastDay) && !days.includes(state.lastDay)) days.push(state.lastDay);
+  if (days.some((d) => !doc.days.includes(d))) return false;
+  return true;
+}
+// 云端 imported[游客编号] 的三种状态：
+//   "new"     没导入过；
+//   "same"    导入过，且当前游客记录没有超出云端（新指纹直接比较；旧 true 用内容覆盖判断）；
+//   "changed" 导入过，但游客记录又有新内容（或旧 true 无法确认全部覆盖），必须让用户选择。
+export function guestImportStatus(cloudDoc, guestId, guestState) {
+  if (!cloudDoc || !isId(guestId)) return "new";
+  const c = normalizeDoc(cloudDoc);
+  if (!c.ok) return "new"; // 无效文档由调用方按数据处理错误处理，这里不冒充“已导入”
+  const prev = c.doc.imported[guestId];
+  if (!prev) return "new";
+  if (prev === true) return guestCoveredByCloud(guestState, c.doc) ? "same" : "changed";
+  const fp = guestFingerprint(guestState);
+  return typeof prev === "string" && prev === fp ? "same" : "changed";
+}
 // 连续天数换算成日期：lastDay 往前 streak 天（含 lastDay）
 function streakDays(state) {
   if (!validDay(state?.lastDay) || !Number.isInteger(state.streak) || state.streak < 1) return [];
@@ -235,11 +263,9 @@ export function replaceWithGuest(guestState, { deviceId, guestId, cloudDoc = nul
   if (cloudDoc) {
     const c = normalizeDoc(cloudDoc);
     if (!c.ok) return { ok: false, code: c.code, message: c.message };
-    const prev = c.doc.imported[guestId];
-    if (prev) {
-      const fp = guestFingerprint(guestState);
-      const same = prev === true ? true : prev === fp; // 旧数据只记了 true，无法比较，按已导入处理
-      if (same) return { ok: true, doc: c.doc, outcome: "already-imported" };
+    const status = guestImportStatus(c.doc, guestId, guestState);
+    if (status !== "new") {
+      if (status === "same") return { ok: true, doc: c.doc, outcome: "already-imported" };
       if (choice === "keep-cloud") return { ok: true, doc: c.doc, outcome: "kept-cloud" };
       if (choice !== "replace") return { ok: true, doc: c.doc, outcome: "guest-changed", choices: ["keep-cloud", "replace"], message: "这份游客记录导入后又有新的学习进度，请选择保留云端，或用新的游客记录替换" };
     }

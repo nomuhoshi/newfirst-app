@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { createSync, AUTH_KEY, STALE_KEY, scopedStorage, projectNamespace } from "../src/sync.js";
 import { createApi } from "../src/cloud-api.js";
 import { saveAccount, setCurrentAccount, loadAccount, getCurrentAccount, GUEST_KEY, getGuestId } from "../src/account-store.js";
-import { emptyDoc, docToState, sumXp, guestToDoc, normalizeDoc, mergeDocs, docsEquivalent } from "../src/account-data.js";
+import { emptyDoc, docToState, sumXp, guestToDoc, guestFingerprint, normalizeDoc, mergeDocs, docsEquivalent } from "../src/account-data.js";
 import { freshState } from "../src/storage.js";
 
 const results = [];
@@ -390,6 +390,95 @@ await noNetworkCase("凭证没有用户编号", JSON.stringify({ session: { acce
   const r2 = v2.needChoice ? await sy2.finishChoice("transfer") : v2;
   check("用户明确选择转存：云端变成 80 XP（不是 70 + 80，也不是丢掉 10）", r2.ok && xpOf(cloud, "guest@example.com") === 80, String(xpOf(cloud, "guest@example.com")));
   check("转存读回一致后游客记录才清除", r2.guestCleared === true && st.getItem(GUEST_KEY) === null);
+}
+
+// ======================================================================
+// I. 旧 true 格式 / 新指纹格式：导入后游客又学了新内容
+//    云端 imported[游客编号] 有两种历史格式：旧数据只有 true（没有内容指纹），新数据是 8 位指纹。
+//    旧格式不能直接比较指纹，只能看“当前游客内容是否已经被云端覆盖”；只要游客多出关卡 / XP / 日期，
+//    就必须像新格式一样提示选择，绝不静默用云端。
+// ======================================================================
+const DONE70 = { U1L1: true, U1L2: true, U1L3: true, U1L4: true };
+const guest70 = { ...freshState(), onboarded: true, xp: 70, lessonsCompleted: 4, done: DONE70, streak: 1, lastDay: TODAY, prefs: { sound: true, haptics: true, soundStyle: "C" } };
+const guest80 = { ...guest70, xp: 80, lessonsCompleted: 5, done: { ...DONE70, U1L5: true } };
+// 造一份“云端已经导入过这份游客记录”的账号：legacy=true 用旧格式，false 用新指纹格式。
+// 云端的进度快照固定是游客 70 时的内容（导入那一刻的样子）。
+function seedImported({ legacy, guest = guest80, email = "legacy@example.com", userId = "uLegacy" }) {
+  const st = mem(), cloud = fakeCloud();
+  st.setItem(GUEST_KEY, JSON.stringify(guest));
+  const gid = getGuestId(st).id;
+  const seed = guestToDoc(guest70, { deviceId: "devLegacy", guestId: gid, now: NOW });
+  const doc = seed.doc;
+  doc.imported[gid] = legacy ? true : guestFingerprint(guest70);
+  cloud.users.set(email, userId);
+  cloud.rows.set(userId, { doc, rev: 7 });
+  return { st, cloud, gid, doc, guest: guest, email, userId };
+}
+async function verifyAndExpectChoice({ st, cloud, guest, email }, label) {
+  const sy = makeSync(st, cloud);
+  const v = await sy.verify(email, "123456", guest);
+  check(`${label}：登录必须提示用户选择（不能静默使用云端的 70）`, v.ok && v.needChoice === true && v.cloudHasData === true && v.guest.xp === 80, JSON.stringify(v));
+  return { sy, v };
+}
+
+// 对照：旧 true 但游客内容没有变化（仍是 70）→ 不应每登录一次都重复问
+{
+  const c = seedImported({ legacy: true, guest: guest70 });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", guest70);
+  check("旧 true 格式 + 游客没有新进度：不重复提示，直接用云端 70", v.ok && !v.needChoice && v.state.xp === 70, JSON.stringify(v));
+  check("旧 true 格式 + 游客没变：游客记录逐字保留，云端没有多写", c.st.getItem(GUEST_KEY) === JSON.stringify(guest70) && xpOf(c.cloud, c.email) === 70);
+}
+
+for (const [label, legacy] of [["旧 true 格式", true], ["新指纹格式", false]]) {
+  // 路径 1：提示后选云端
+  {
+    const c = seedImported({ legacy });
+    const raw80 = JSON.stringify(guest80);
+    const { sy } = await verifyAndExpectChoice(c, `${label} + 游客新增关卡和 XP`);
+    const r = await sy.finishChoice("cloud");
+    check(`${label} 选云端：页面和云端都停在 70，不把游客的 80 偷偷加进去`, r.ok && r.state.xp === 70 && xpOf(c.cloud, c.email) === 70 && r.guestCleared !== true);
+    check(`${label} 选云端：游客记录逐字保留（以后还能再选一次）`, c.st.getItem(GUEST_KEY) === raw80, String(c.st.getItem(GUEST_KEY)));
+  }
+  // 路径 2：提示后选游客（覆盖云端）
+  {
+    const c = seedImported({ legacy });
+    const raw80 = JSON.stringify(guest80);
+    const { sy } = await verifyAndExpectChoice(c, `${label} + 游客新增关卡和 XP`);
+    const r = await sy.finishChoice("transfer");
+    const row = rowOf(c.cloud, c.email);
+    check(`${label} 选游客：云端用游客 80 覆盖（不是 70 + 80），代数 +1`, r.ok && xpOf(c.cloud, c.email) === 80 && row.doc.gen === c.doc.gen + 1 && r.state.xp === 80, JSON.stringify({ xp: xpOf(c.cloud, c.email), gen: row.doc.gen }));
+    check(`${label} 选游客：上传成功且读回一致后，游客记录才删除`, r.guestCleared === true && c.st.getItem(GUEST_KEY) === null);
+  }
+  // 路径 3：上传失败
+  {
+    const c = seedImported({ legacy });
+    const raw80 = JSON.stringify(guest80);
+    const { sy } = await verifyAndExpectChoice(c, `${label} + 游客新增关卡和 XP`);
+    const origSave = c.cloud.saveProgress;
+    c.cloud.saveProgress = async () => ({ ok: false, kind: "network", message: "上传失败（测试注入）" });
+    const r = await sy.finishChoice("transfer");
+    const copy = loadAccount(c.st, c.userId, { now: NOW }).copy;
+    check(`${label} 上传失败：登录完成但明确未同步，不谎报成功`, r.ok && r.synced === false && r.guestCleared !== true, JSON.stringify(r));
+    check(`${label} 上传失败：云端仍是 70，游客记录逐字保留`, xpOf(c.cloud, c.email) === 70 && c.st.getItem(GUEST_KEY) === raw80);
+    check(`${label} 上传失败：本机账号副本已是 80，并标记为待上传`, sumXp(copy.doc) === 80 && copy.dirty.content === true, JSON.stringify(copy && copy.dirty));
+    c.cloud.saveProgress = origSave;
+    await sy.syncNow();
+    check(`${label} 恢复网络后补传：云端变成 80；游客记录仍保留（这一轮没有重新做读回校验）`, xpOf(c.cloud, c.email) === 80 && c.st.getItem(GUEST_KEY) === raw80, String(c.st.getItem(GUEST_KEY)));
+  }
+  // 路径 4：上传成功但读回失败
+  {
+    const c = seedImported({ legacy });
+    const raw80 = JSON.stringify(guest80);
+    const { sy } = await verifyAndExpectChoice(c, `${label} + 游客新增关卡和 XP`);
+    const origGet = c.cloud.getProgress;
+    let gets = 0;
+    c.cloud.getProgress = async (s) => { gets++; return gets === 2 ? { ok: false, kind: "network", message: "读回失败（测试注入）" } : origGet(s); };
+    const r = await sy.finishChoice("transfer");
+    check(`${label} 读回失败：上传本身成功（云端 80），但不把“写成功”当成“读回一致”`, r.ok && r.synced === true && xpOf(c.cloud, c.email) === 80, JSON.stringify({ r, xp: xpOf(c.cloud, c.email), gets }));
+    check(`${label} 读回失败：游客记录逐字保留，不删除`, r.guestCleared !== true && c.st.getItem(GUEST_KEY) === raw80, String(c.st.getItem(GUEST_KEY)));
+    c.cloud.getProgress = origGet;
+  }
 }
 
 const failed = results.filter((r) => !r).length;

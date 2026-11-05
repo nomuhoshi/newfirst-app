@@ -58,6 +58,12 @@ try {
       from: 'if (IS_PREVIEW && isProdUrl(url)) return { url: "", anonKey: "" };',
       to: 'if (false) return { url: "", anonKey: "" };',
     },
+    {
+      name: "旧 true 格式一律当作已导入（游客新增进度被静默忽略）",
+      file: "account-data.js",
+      from: 'if (prev === true) return guestCoveredByCloud(guestState, c.doc) ? "same" : "changed";',
+      to: 'if (prev === true) return "same";',
+    },
   ];
 
   for (const m of mutations) {

@@ -3,3 +3,7 @@ dist/
 public/pyodide/
 __pycache__/
 *.pyc
+
+dist-login-sync/
+.dsh-*.log
+.pw-browsers/

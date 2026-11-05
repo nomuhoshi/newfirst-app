@@ -309,7 +309,9 @@ const base = () => ({ ...emptyDoc({ lineage: "LIN" }) });
 {
   const app = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
   const storage = readFileSync(new URL("../src/storage.js", import.meta.url), "utf8");
-  check("现有游客流程：app.js 和 storage.js 没有引用账号模块（本阶段不接入）", !/account-(data|store)/.test(app) && !/account-(data|store)/.test(storage));
+  // 2026-11-05 后账号模块已接入 app.js；这条旧断言改为验证“接入后游客模式仍不迁移、不改键”：
+  // 游客记录还是 storage.js 的第 3 版 suipian.progress，账号只在已登录时接管保存。
+  check("账号模块已接入，但游客模式仍是第 3 版、仍用 suipian.progress，storage.js 不引用账号模块", /from "\.\/account-data\.js"/.test(app) && /from "\.\/sync\.js"/.test(app) && /const KEY = "suipian\.progress"/.test(storage) && DATA_VERSION === 3 && /if \(sync && sync\.account\(\)\)/.test(app) && !/account-(data|store)/.test(storage));
   check("本机记录仍是第 3 版；新增模块不使用游客记录的存储键以外的东西写游客记录", DATA_VERSION === 3 && !/setItem\(GUEST_KEY|setItem\("suipian\.progress"/.test(readFileSync(new URL("../src/account-store.js", import.meta.url), "utf8")));
   check("新 ID 生成：不重复且格式合法", new Set(Array.from({ length: 500 }, () => newId())).size === 500 && /^[A-Za-z0-9_-]{1,64}$/.test(newId()));
 }

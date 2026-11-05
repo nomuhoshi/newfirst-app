@@ -6,7 +6,7 @@
 //  - 写云端必须带版本号（save_progress 的 expected_rev）；被抢先就重新读取、合并、再写。
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
-import { emptyDoc, mergeDocs, docsEquivalent, replaceWithGuest, docToState, syncStateIntoDoc, guestFingerprint, normalizeDoc, sumXp, isId } from "./account-data.js";
+import { emptyDoc, mergeDocs, docsEquivalent, replaceWithGuest, docToState, syncStateIntoDoc, guestFingerprint, guestImportStatus, normalizeDoc, sumXp, isId } from "./account-data.js";
 import { SESSION_KEY, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
@@ -265,10 +265,12 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const guestFp = guest.status === "ok" ? guestFingerprint(guest.state) : null;
     const guestHas = guest.status === "ok" && guestFp !== guestFingerprint(freshState());
     const gid = getGuestId(storage);
-    // 只有“同一个游客编号 + 同一个内容指纹”才算已经导入过。导入之后游客又学了新内容（指纹变了）时，
-    // 不能让 already-imported 把新进度静默挡掉：重新交给用户选择保留云端还是用新的游客记录覆盖。
-    const imported = remoteDoc && gid.ok ? remoteDoc.doc.imported[gid.id] : undefined;
-    const alreadyImported = imported === true || (typeof imported === "string" && imported === guestFp);
+    // 只有“同一个游客编号 + 当前内容确实已经包含在云端”才算已经导入过：
+    //  - 新格式：比较 8 位内容指纹；
+    //  - 旧格式 true：没有指纹，只能检查云端是否已包含游客当前的全部关卡 / XP / 日期。
+    // 导入之后游客又学了新内容时，不能让 already-imported 把新进度静默挡掉：重新交给用户选择。
+    const importStatus = remoteDoc && gid.ok ? guestImportStatus(remoteDoc.doc, gid.id, guest.state) : "new";
+    const alreadyImported = importStatus === "same";
     const ctx = { session: newSession, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, baseState, leaveStale };
     if (guestHas && !L.copy && !alreadyImported) {
       waiting = ctx;
