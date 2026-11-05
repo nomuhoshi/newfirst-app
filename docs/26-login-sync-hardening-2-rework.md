@@ -129,7 +129,16 @@
 
 ### 6.5 GitHub CI
 
-【CI】
+代码提交 `5567fe0` 已触发 GitHub Actions（`workflow_dispatch`，ref = `dsh/login-sync-hardening-2`）：
+
+<https://github.com/nomuhoshi/newfirst-app/actions/runs/42038692292>
+
+- `build`：success（完整 `npm test`）。
+- `mobile (chromium)`：success。
+- `mobile (webkit)`：success。
+- `deploy`：skipped（只在 `refs/heads/main` 部署；没有开 PR、没有 merge、没有部署）。
+
+本次没有改 `.github/workflows/`，用的是已有的 `workflow_dispatch` 入口；同一提交上 build / Chromium / WebKit 三个 job 全绿。
 
 ## 7. 没验证的内容
 
@@ -141,7 +150,7 @@
 ## 8. 七项汇报
 
 1. **分支**：`dsh/login-sync-hardening-2`，在基线 `6d2e566` 后追加提交；没有开新分支。
-2. **提交**：【COMMIT】
+2. **提交**：代码与测试 `5567fe0`；本文件补 CI 链接的文档提交见远端分支 HEAD。
 3. **修改文件**：见 §4。
 4. **测试证据**：见 §6（专项 140/140、mutation 12/12、完整 `npm test`、数据库测试、CI 三绿 / deploy skipped）。
 5. **真实缺陷**：§1 的 4 个 P0；修复前专项 21 项红，修复后 0 项红。
