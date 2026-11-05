@@ -49,8 +49,8 @@ try {
     {
       name: "强制退出也删除未上传的本机副本",
       file: "sync.js",
-      from: "if (force && pending) setCurrentAccount(storage, null); else logoutLocal(storage, uid);",
-      to: "logoutLocal(storage, uid);",
+      from: "const localOk = (force && pending) ? setCurrentAccount(storage, null) : logoutLocal(storage, uid);",
+      to: "const localOk = logoutLocal(storage, uid);",
     },
     {
       name: "测试入口的 localhost 覆盖不检查正式项目",
@@ -126,6 +126,32 @@ try {
       const localDoc = withoutGuestImport(doc, guestId, lastCloud);`,
       to: `    if (false) {
       const localDoc = withoutGuestImport(doc, guestId, lastCloud);`,
+    },
+    {
+      name: "普通退出在 signOut 失败时仍清掉登录",
+      file: "sync.js",
+      from: "if (signOutFailed && !force && !forceLocal) {",
+      to: "if (false && signOutFailed && !force && !forceLocal) {",
+    },
+    {
+      name: "五次冲突后仍盲目重试",
+      file: "sync.js",
+      from: 'return { ok: false, kind: "server", retryable: false, message: "同步冲突太多次，请稍后再试" };',
+      to: 'return { ok: false, kind: "server", retryable: true, message: "同步冲突太多次，请稍后再试" };',
+    },
+    {
+      name: "冲突用尽后仍当成可重试的网络错误",
+      file: "sync.js",
+      from: 'if (!kind) kind = "conflict";',
+      to: 'if (!kind) kind = "server";',
+    },
+    {
+      name: "删号后本机清理失败仍宣称成功",
+      file: "sync.js",
+      from: `        ok: false,
+        kind: "local-cleanup",`,
+      to: `        ok: true,
+        kind: "local-cleanup",`,
     },
   ];
 
