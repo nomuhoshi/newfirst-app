@@ -12,7 +12,8 @@
     "test:setup": "playwright install chromium",
     "test:judge-browser": "npm run copy-pyodide && node tests/judge-browser.test.mjs",
     "test:mobile": "node tests/webkit/run.mjs",
-    "verify:content": "python3 scripts/verify-content.py"
+    "verify:content": "python3 scripts/verify-content.py",
+    "test:u8l7": "node tests/u8l7-flow.test.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.4",

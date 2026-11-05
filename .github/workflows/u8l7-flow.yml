@@ -1,0 +1,32 @@
+# U8L7 真实运行器流程验收（独立于 npm test 和部署流程）：Chromium 和 WebKit 各跑一遍 tests/u8l7-flow.test.mjs。
+# 只在 test/u8l7-flow 分支运行；不部署任何网站，不发布预览，不碰正式版。日志里打印构建提交号和界面上实际看到的提示原文（SHOW=1）。
+name: U8L7 flow
+on:
+  push:
+    branches: [test/u8l7-flow]
+permissions:
+  contents: read
+jobs:
+  flow:
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [webkit, chromium]
+    name: u8l7 (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 安装浏览器和系统依赖
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run build
+      - name: U8L7 流程验收（${{ matrix.browser }}）
+        env:
+          BUILD_SHA: ${{ github.sha }}
+          MOBILE_BROWSER: ${{ matrix.browser }}
+          SHOW: "1"
+        run: npm run test:u8l7
