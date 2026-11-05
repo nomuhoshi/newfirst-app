@@ -44,7 +44,7 @@
 | U1–U5 | 7 / 6 / 8 / 8 / 7 | 以 §1 的盘点表为准（U1 6 关、U2 5 关已上线，U1L7、U2L6 项目未做；U3、U4 做完未合并；U5 L1–L4 做完、L5–L7 在 #38 草稿） | main、#20–#25、#38 |
 | U6 类型与报错 | 6 | L1–L5 可玩（独立预览已发，云功能关闭）；L6 项目写好并验证，放 `heldLessons`（待代码题运行器）；未合并 | `content/u6-part3`；独立预览 `u6/` |
 | U7 字典 | 6 | L1–L5 内容已审；L6 项目内容已审（题面已补输入范围）；L6 浏览器流程：Chromium 本地入口已验（`test/u7l6-flow` 4d65b73，33/33），WebKit、iPhone 真机待验，代码题运行器未开放；**已发独立预览 `newfirst-app-preview/u7/`（`preview/u7` 68fbf31，云端关闭；5 关可玩，L6 留在 heldLessons），未并入主线** | `content/u7-part1`（`docs/28`–`docs/30`） |
-| U8 函数 | 7 | L1–L2 内容已审，已发独立预览 `newfirst-app-preview/u8/`（`preview/u8` faac4c7，云端关闭，WebKit / Chromium 都从地图走过两关）；L3–L4 草稿待审（`content/u8-part1`，`docs/32`）；L5–L7 未开始 | `content/u8-part1`、`preview/u8` |
+| U8 函数 | 7 | L1–L4 内容已审，前四关已发独立预览 `newfirst-app-preview/u8/`（`preview/u8` 8cf1131，CI 全绿，云端关闭）；L5（两个参数 + 默认值）题目答案已审、L6（作用域）说明已按 16:14 意见改准待确认（`content/u8-part1`，`docs/33`）；L7 价格计算器项目（call 模式）草稿待审（`docs/34`），等代码题运行器 | `content/u8-part1`、`preview/u8` |
 | U9 | 3 | 未开始（地图上是“即将推出”占位） | — |
 
 ## 2. 首发课程地图
