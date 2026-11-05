@@ -330,6 +330,14 @@
                 },
                 "expected": "订单 1\n订单 2\n订单 3\n订单 4\n订单 5",
                 "hidden": true
+              },
+              {
+                "name": "8 单",
+                "data": {
+                  "n": 8
+                },
+                "expected": "订单 1\n订单 2\n订单 3\n订单 4\n订单 5\n订单 6\n订单 7\n订单 8",
+                "hidden": true
               }
             ],
             "hints": [
@@ -1121,6 +1129,14 @@
                   "stop": 2
                 },
                 "expected": "卖出第 1 杯",
+                "hidden": true
+              },
+              {
+                "name": "第 1 杯就卖完",
+                "data": {
+                  "stop": 1
+                },
+                "expected": "",
                 "hidden": true
               }
             ],
