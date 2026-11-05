@@ -49,7 +49,7 @@ export function drawRound(pool, size, rand = Math.random) {
 // 打乱一道题的展示：选项（正确标记和解释跟着选项对象一起移动）、词块、排序题的初始排列。判分数据不变。
 export function shuffleExercise(ex, rand = Math.random) {
   const copy = JSON.parse(JSON.stringify(ex));
-  if (copy.type === "predict") copy.options = shuffle(copy.options, rand);
+  if (copy.type === "predict" || copy.type === "pick") copy.options = shuffle(copy.options, rand);
   else if (copy.type === "fill") copy.tokens = shuffle(copy.tokens, rand);
   else if (copy.type === "order") copy.shuffled = shuffle(copy.shuffled, rand);
   return copy;

@@ -885,7 +885,7 @@ function renderExercise(run) {
   let submitted = false; // 一道题只能提交一次
 
   const isCode = isCodeTask(ex); // 写代码 / 改代码题：运行结果和判题结果都在答题区里，没有单独的“运行结果”面板
-  const outPanel = isCode ? null : h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
+  const outPanel = isCode || ex.type === "pick" ? null : h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
   const checkBtn = button("检查", () => check(), "btn3d primary grow", { "data-check": "" });
   checkBtn.disabled = true;
   const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
@@ -893,6 +893,7 @@ function renderExercise(run) {
   // 各题型的答题区，返回 { node, ready(), lock(), mark(), isCorrect(), why(), whyWrong(), code() }
   const area = isCode ? createCodeArea(ex, { exec: codeExec, runner, onChange, ui: { sheet, button }, pythonUnavailable: () => (typeof pythonUnavailableText === "function" ? pythonUnavailableText() : undefined) })
     : ex.type === "predict" ? predictArea(ex, onChange)
+    : ex.type === "pick" ? pickArea(ex, onChange)
     : ex.type === "fill" ? fillArea(ex, onChange)
     : orderArea(ex, onChange);
   currentArea = isCode ? area : null;
@@ -912,6 +913,7 @@ function renderExercise(run) {
     h("main", { class: "lesson" },
       ex.tip ? h("p", { class: "tip-line" }, h("b", { text: "提示 " }), ex.tip) : null,
       h("h2", { class: "q", text: ex.prompt }),
+      ex.trace ? traceBlock(ex.trace) : null,
       area.node,
       outPanel,
     ),
@@ -963,7 +965,7 @@ function renderExercise(run) {
     const outOfHearts = !ok && !run.review && state.hearts <= 0;
 
     // 显示真实运行结果：选输出题跑原程序，其他题跑你拼出来的程序
-    if (!isCode) showRun(outPanel, ex.type === "predict" ? ex.code : area.code());
+    if (!isCode && outPanel) showRun(outPanel, ex.type === "predict" ? ex.code : area.code());
 
     let continued = false;
     const contBtn = button(outOfHearts ? "红心用完了" : "继续", () => {
@@ -1001,7 +1003,7 @@ function renderExercise(run) {
 }
 
 function correctAnswerText(ex) {
-  if (ex.type === "predict") return ex.options.find((o) => o.correct).text;
+  if (ex.type === "predict" || ex.type === "pick") return ex.options.find((o) => o.correct).text;
   if (ex.type === "fill") { let c = ex.code; ex.answer.forEach((t, i) => (c = c.replace(`{${i}}`, t))); return c; }
   return ex.answers[0].map((k) => ex.lines[k]).join("\n");
 }
@@ -1029,6 +1031,17 @@ function predictArea(ex, onChange) {
     whyWrong: () => ex.options[picked].why,
     code: () => ex.code,
   };
+}
+
+// 读报错选择题：只展示程序（可选）和真实报错，让学生读了再选；不运行任何程序
+function pickArea(ex, onChange) {
+  const a = predictArea({ ...ex, code: ex.code || "" }, onChange);
+  if (!ex.code) a.node = h("div", {}, a.node.lastChild); // 没有程序时只留选项
+  a.code = () => ex.code || "";
+  return a;
+}
+function traceBlock(text) {
+  return h("div", { class: "trace", role: "group", "aria-label": "Python 的报错信息" }, h("div", { class: "trace-cap", text: "Python 的报错" }), h("pre", { class: "trace-pre", text }));
 }
 
 // 点词块填空 / 修程序
@@ -1255,11 +1268,11 @@ function renderPracticeExercise(pr) {
   window.__app.currentEx = ex; // 给自动测试用（已打乱的版本）
   window.__app.currentPracticeItem = { id: item.id, retry };
   let submitted = false;
-  const outPanel = h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
+  const outPanel = ex.type === "pick" ? null : h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
   const checkBtn = button("检查", () => check(), "btn3d primary grow", { "data-check": "" });
   checkBtn.disabled = true;
   const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
-  const area = ex.type === "predict" ? predictArea(ex, onChange) : ex.type === "fill" ? fillArea(ex, onChange) : orderArea(ex, onChange);
+  const area = ex.type === "predict" ? predictArea(ex, onChange) : ex.type === "pick" ? pickArea(ex, onChange) : ex.type === "fill" ? fillArea(ex, onChange) : orderArea(ex, onChange);
   appEl.replaceChildren(
     circuit("edge"),
     practiceHeader(pr),
@@ -1267,6 +1280,7 @@ function renderPracticeExercise(pr) {
       h("p", { class: "tip-line practice-src" }, h("b", { text: retry ? "重练 " : "随机练习 " }), lessonTitle(item.lessonId)),
       ex.tip ? h("p", { class: "tip-line" }, h("b", { text: "提示 " }), ex.tip) : null,
       h("h2", { class: "q", text: ex.prompt }),
+      ex.trace ? traceBlock(ex.trace) : null,
       area.node,
       outPanel,
     ),
@@ -1287,7 +1301,7 @@ function renderPracticeExercise(pr) {
     pr.queue.shift();
     if (!ok && !retry) pr.queue.push({ i, retry: true }); // 答错：本轮末尾重练一次
     const reason = ok ? area.why() : area.whyWrong();
-    showRun(outPanel, ex.type === "predict" ? ex.code : area.code());
+    if (outPanel) showRun(outPanel, ex.type === "predict" ? ex.code : area.code());
     let continued = false;
     const contBtn = button("继续", () => { if (continued) return; continued = true; renderPracticeExercise(pr); }, "btn3d " + (ok ? "primary" : "danger") + " wide", { "data-continue": "" });
     contBtn.disabled = true;
