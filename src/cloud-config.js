@@ -28,7 +28,11 @@ function pick() {
   try {
     if (typeof location !== "undefined" && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
       const o = JSON.parse(localStorage.getItem("suipian.cloudConfig"));
-      if (o && typeof o.url === "string" && typeof o.anonKey === "string") return { url: o.url, anonKey: o.anonKey };
+      if (o && typeof o.url === "string" && typeof o.anonKey === "string") {
+        // 测试入口无论配置从哪里读取（构建时的测试配置、本机浏览器设置），都不能连正式项目：覆盖值同样检查，命中（或解析不了）就关闭云端。
+        if (IS_PREVIEW && isProdUrl(o.url.trim())) return { url: "", anonKey: "" };
+        return { url: o.url, anonKey: o.anonKey };
+      }
     }
   } catch { /* 忽略 */ }
   return IS_PREVIEW ? testCloud() : DEFAULT;
