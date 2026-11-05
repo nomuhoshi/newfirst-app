@@ -53,12 +53,22 @@
 - `gh workflow list` 能列出 “Test and deploy”。`deploy` 的条件仍是 `github.ref == refs/heads/main` 且不是 pull request。本分支不会因此发布。
 - 上一分支 `dsh/login-sync-hardening-2` 最近一次完整成功：<https://github.com/nomuhoshi/newfirst-app/actions/runs/42061798504>（`eaea3c3` 那一轮，build / chromium / webkit 成功，deploy skipped）。那次不覆盖本轮提交。
 
+本轮 PR #44 已跑完（`pull_request`，head `1edd503`）：
+
+<https://github.com/nomuhoshi/newfirst-app/actions/runs/42100193984>
+
+| Job | 结果 |
+|---|---|
+| `build`（含完整 `npm test`） | success |
+| `mobile (chromium)` | success |
+| `mobile (webkit)` | success |
+| `deploy` | **skipped**（PR 不是 main，不部署） |
+
 缺口（没有权限或没有环境，本轮不做）：
 
-- `gh api user` 返回 403 `Resource not accessible by integration`，不能用这个令牌查账号身份。
-- 本轮提交在推送 / 开 PR 之前，没有新的 Actions run。PR 的检查才是本轮远端证据；若 PR 检查没启动，缺口就是：这个令牌不能为该分支触发 `workflow_dispatch`。
+- `gh api user` 返回 403 `Resource not accessible by integration`，不能用这个令牌查账号身份。能开 PR、能看 Actions。
 - 没有跑数据库套件。场景 9 的“直接写表被拒”在真库上仍以 `supabase/tests/isolation.sql` 为准。本轮 Node 只证明客户端保存走 `save_progress`，并且场景 9 和场景 11 各用各的假数据。没有连 `suipian-test`，更没有连正式库。
-- 没有浏览器点过“我的”页。退出失败、强制退出、删号清理失败的文案在 `src/account-ui.js`，同步层测试覆盖了返回值，没有在页面上点出来。
+- 没有浏览器点过“我的”页。退出失败、强制退出、删号清理失败的文案在 `src/account-ui.js`，同步层测试覆盖了返回值，没有在页面上点出来。远端 mobile job 是 Playwright 模拟，不是这次改动的手工点击。
 - 没有 iPhone / iPad。没有真实邮箱验证码。
 
 ## 5. 没做的事
