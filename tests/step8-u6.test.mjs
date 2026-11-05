@@ -1,4 +1,4 @@
-// 第 6 单元（U6L1–U6L2，第 1 部分）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
+// 第 6 单元（U6L1–U6L4，第 1、2 部分）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
 // 运行：npm run build && node tests/step8-u6.test.mjs [chromium|webkit]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -27,11 +27,11 @@ const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 
-check("U1–U5 通关后 U6L1 是当前关，U6L2 锁定（共 2 关）", unitN.lessons.length === 2 && await page.evaluate(() => document.querySelector('[data-lesson="U6L1"]')?.classList.contains("current") && ["U6L2"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
+check("U1–U5 通关后 U6L1 是当前关，U6L2–U6L4 锁定（共 4 关）", unitN.lessons.length === 4 && await page.evaluate(() => document.querySelector('[data-lesson="U6L1"]')?.classList.contains("current") && ["U6L2", "U6L3", "U6L4"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
 check("第 7 单元仍显示即将推出", (await page.locator(".unit.locked").count()) === 1);
 
 async function answer(ex, right) {
-  if (ex.type === "predict") {
+  if (ex.type === "predict" || ex.type === "pick") {
     const i = right ? ex.options.findIndex((o) => o.correct) : ex.options.findIndex((o) => !o.correct);
     await page.locator(".choice").nth(i).click();
   } else if (ex.type === "fill") {
@@ -47,20 +47,23 @@ for (const l of unitN.lessons) {
   await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); });
   await page.locator(`[data-lesson="${l.id}"]`).click(); await page.locator(".overlay .btn3d.primary").click();
   await page.getByRole("button", { name: "继续", exact: true }).click(); // 讲解页
-  const queue = [...l.exercises]; let wrongDone = false, steps = 0, outs = [];
+  const queue = [...l.exercises]; const wrongTypes = new Set(); let wrongDone = false, steps = 0, outs = [];
   while (queue.length && steps++ < 12) {
     const q = await page.locator("h2.q").textContent();
     const ex = l.exercises.find((e) => e.prompt === q && (e.type !== "predict" || true));
     const cand = l.exercises.filter((e) => e.prompt === q);
     let exm = cand.length === 1 ? cand[0] : null;
     if (!exm) { const code = await page.locator(".lesson pre, .lesson .code").first().textContent().catch(() => ""); exm = cand.find((e) => code.includes(e.code.split("\n").pop().slice(0, 12))) || cand[0]; }
-    const right = wrongDone || exm.type === "predict" ? true : false;
+    const first = !wrongTypes.has(exm.type);
+    const right = exm.type === "predict" || !first ? true : false; // 选输出题总答对；读报错题、填空、排序每种各先答错一次
+    if (!right) wrongTypes.add(exm.type);
+    if (exm.trace) check(`${l.id}：${exm.type} 题显示真实报错`, (await page.locator(".trace-pre").textContent()).trim() === exm.trace.trim());
     await answer(exm, right);
         await page.locator("[data-check]").click();
     await page.waitForSelector(".feedbar");
-    if (exm.type !== "predict") { await page.waitForFunction(() => { const t = document.querySelector(".outpanel pre")?.textContent; return t && !/运行中/.test(t); }, null, { timeout: 60000 }).catch(() => {}); outs.push([exm, right, await page.locator(".outpanel pre").textContent().catch(() => "")]); }
+    if (exm.type !== "predict" && exm.type !== "pick") { await page.waitForFunction(() => { const t = document.querySelector(".outpanel pre")?.textContent; return t && !/运行中/.test(t); }, null, { timeout: 60000 }).catch(() => {}); outs.push([exm, right, await page.locator(".outpanel pre").textContent().catch(() => "")]); }
     const fb = await page.locator(".feedbar").textContent();
-    if (!right) { wrongDone = true; check(`${l.id}：答错一次显示“不对哦”和解释`, fb.includes("不对哦"), fb.slice(0, 80)); }
+    if (!right) { wrongDone = true; check(`${l.id}：${exm.type} 答错显示“不对哦”和解释`, fb.includes("不对哦"), fb.slice(0, 80)); }
     else { check(`${l.id}：${exm.type} 正确答案判为答对`, fb.includes("答对了"), fb.slice(0, 120)); queue.splice(queue.indexOf(exm), 1); }
     await page.locator("[data-continue]:not([disabled])").click();
     await page.waitForSelector("[data-check], .finish").catch(async (e) => { await page.screenshot({ path: "/workspace/u3p2/shots/stuck.png" }); console.log("STUCK", (await page.locator("#app").innerText()).slice(0, 400)); throw e; });
