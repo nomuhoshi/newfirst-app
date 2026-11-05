@@ -6,7 +6,7 @@
 //  - 写云端必须带版本号（save_progress 的 expected_rev）；被抢先就重新读取、合并、再写。
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
-import { emptyDoc, mergeDocs, docsEquivalent, replaceWithGuest, docToState, syncStateIntoDoc, guestFingerprint, normalizeDoc, sumXp } from "./account-data.js";
+import { emptyDoc, mergeDocs, docsEquivalent, replaceWithGuest, docToState, syncStateIntoDoc, guestFingerprint, normalizeDoc, sumXp, isId } from "./account-data.js";
 import { SESSION_KEY, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
@@ -32,33 +32,57 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
 
   const setStatus = (s, msg = "") => { status = s; lastError = msg; try { onStatus(s, msg); } catch {} };
+  const normalizedEmail = (x) => String(x || "").trim().toLowerCase();
+  // 一份能用于联网的凭证必须字段齐全：没有访问令牌 / 刷新令牌 / 过期时间的残缺凭证只当作“需要重新登录”，
+  // 绝不把 undefined / 旧项目 / 别的账号的令牌拼进 Authorization 发出去。
+  const isSessionShape = (s) => !!s
+    && isId(s.userId)
+    && typeof s.accessToken === "string" && s.accessToken.trim() !== ""
+    && typeof s.refreshToken === "string" && s.refreshToken.trim() !== ""
+    && Number.isFinite(s.expiresAt) && s.expiresAt > 0;
   // 登录凭证跟着“Supabase 项目”走：凭证里记着它是从哪个项目拿到的（主机名）。项目换了（比如测试入口从正式库换到独立测试库），
   // 旧凭证在别的库里没有意义，读到时直接作废并要求重新登录；本机学习记录（游客记录、账号本机副本）一概不动。
   // 没记项目的旧凭证只可能来自正式库（项目标记是后加的），所以按 legacyProject（正式库主机名）处理。projectId 没给 = 不检查（旧测试用）。
   const readAuth = () => {
     try {
       const r = JSON.parse(storage.getItem(AUTH_KEY));
-      if (!r || !r.session || !r.session.userId) return null;
+      if (!r || !isSessionShape(r.session)) return null;
       if (projectId && (r.project || legacyProject) !== projectId) {
         // 不是这个项目的凭证：只是不用它（返回空）。绝不删除——它可能是另一个入口（正式版）还在用的登录。只留一个不含令牌的提示标记。
-        try { storage.setItem(STALE_KEY, JSON.stringify({ userId: r.session.userId, email: String(r.session.email || "").trim().toLowerCase(), project: r.project || legacyProject || "" })); } catch {}
+        try { storage.setItem(STALE_KEY, JSON.stringify({ userId: r.session.userId, email: normalizedEmail(r.session.email), project: r.project || legacyProject || "" })); } catch {}
         return null;
       }
       return r.session;
     } catch { return null; }
   };
-  const writeAuth = () => { try { if (session) storage.setItem(AUTH_KEY, JSON.stringify(projectId ? { session, project: projectId } : { session })); else storage.removeItem(AUTH_KEY); } catch {} };
+  const writeAuth = () => { try { if (isSessionShape(session)) storage.setItem(AUTH_KEY, JSON.stringify(projectId ? { session, project: projectId } : { session })); else storage.removeItem(AUTH_KEY); } catch {} };
   const isUnsent = (c) => !!c && (c.base == null || !!(c.dirty && (c.dirty.hearts || c.dirty.prefs || c.dirty.content)));
   const readStale = () => { try { const r = JSON.parse(storage.getItem(STALE_KEY)); return r && typeof r.userId === "string" ? r : null; } catch { return null; } };
   const clearStale = () => { try { storage.removeItem(STALE_KEY); } catch {} };
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
+  // 已经登录 A 时，不给 B 的邮箱发验证码 / 验证码校验请求：先在本机挡住，避免拿错账号的验证码。
+  // 没有有效凭证、但有“换项目后同邮箱接管”的标记时，只放行标记里的同一个邮箱。
+  function loginBlocked(addr) {
+    const mail = normalizedEmail(addr);
+    if (!userId) return null;
+    if (isSessionShape(session) && session.userId === userId) {
+      const cur = normalizedEmail(session.email || email);
+      if (cur && mail && mail !== cur) return { ok: false, kind: "other-account", message: "请先退出当前账号" };
+      return null;
+    }
+    const st = readStale();
+    if (st && st.userId === userId && st.email && mail && mail !== normalizedEmail(st.email)) {
+      return { ok: false, kind: "other-account", message: "请先退出当前账号" };
+    }
+    return null;
+  }
 
   // 同一浏览器的其他标签页共用这份凭证：别的标签页刷新令牌后会写回存储。
   // 刷新令牌是一次性的，拿内存里的旧令牌再去刷新，Supabase 会当作令牌被盗、把整个会话作废（所有标签页都被退出）。
   // 所以每次用令牌前先看存储里有没有同一账号、更新的凭证，有就换用。
   function adoptStoredSession() {
     const s = readAuth();
-    if (!s || s.userId !== userId || !s.refreshToken) return false;
+    if (!s || s.userId !== userId) return false;
     if (session && (s.refreshToken === session.refreshToken || !(s.expiresAt > session.expiresAt))) return false;
     session = s; email = s.email || email;
     return true;
@@ -66,10 +90,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   async function ensureToken() {
     adoptStoredSession();
-    if (!session) return { ok: false, kind: "auth", message: "需要重新登录" };
+    if (!isSessionShape(session) || session.userId !== userId) return { ok: false, kind: "auth", message: "需要重新登录" };
     if (session.expiresAt - now() > 60000) return { ok: true };
     const r = await api.refresh(session);
-    if (r.ok && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }
+    if (r.ok && isSessionShape(r.session) && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }
     // 刷新失败，可能是另一个标签页刚好抢先刷新了：再看一次存储
     if (!r.ok && r.kind === "auth" && adoptStoredSession() && session.expiresAt - now() > 60000) return { ok: true };
     return r.ok ? { ok: false, kind: "auth", message: "登录账号不一致" } : r;
@@ -147,6 +171,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   async function syncOnce() {
     setStatus("syncing");
+    if (!isSessionShape(session) || session.userId !== userId) {
+      const miss = { ok: false, kind: "auth", message: "需要重新登录" };
+      setStatus("need-login", miss.message);
+      return miss;
+    }
     const t = await ensureToken();
     if (!t.ok) { setStatus(statusFromFailure(t), t.message); return t; }
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -202,22 +231,28 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   // ---------- 登录 ----------
-  const sendCode = (addr) => api.sendCode(String(addr).trim());
+  const sendCode = (addr) => {
+    const blocked = loginBlocked(addr);
+    return blocked ? Promise.resolve(blocked) : api.sendCode(String(addr).trim());
+  };
 
   // 验证码 → 会话；然后看游客记录需不需要用户选择
   async function verify(addr, code, baseState = null) {
+    const blocked = loginBlocked(addr);
+    if (blocked) return blocked;
     const r = await api.verifyCode(String(addr).trim(), code);
     if (!r.ok) return r;
     return begin(r.session, baseState);
   }
 
   async function begin(newSession, baseState) {
+    if (!isSessionShape(newSession)) return { ok: false, kind: "auth", message: "登录返回的凭证无效" };
     // 换了 Supabase 项目后旧登录作废：用“同一个邮箱”可以在新项目正常登录，但只加载新项目自己的进度。
     // 旧项目的账号副本和游客记录原样留在本机，既不上传到新项目、也不删除（数据隔离规则）。换成别的邮箱仍要先退出。
     let leaveStale = false;
     if (userId && userId !== newSession.userId) {
-      const st = readStale(), mail = String(newSession.email || "").trim().toLowerCase();
-      if (!session && st && st.userId === userId && st.email && st.email === mail) leaveStale = true;
+      const st = readStale(), mail = normalizedEmail(newSession.email);
+      if (!session && st && st.userId === userId && st.email && normalizedEmail(st.email) === mail) leaveStale = true;
       else return { ok: false, kind: "other-account", message: "请先退出当前账号" };
     }
     const remote = await api.getProgress(newSession);
@@ -227,9 +262,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const L = loadAccount(storage, newSession.userId, { now: now() });
     if (!L.ok) return { ok: false, kind: "local", message: L.message };
     const guest = readGuest(storage);
-    const guestHas = guest.status === "ok" && guestFingerprint(guest.state) !== guestFingerprint(freshState());
+    const guestFp = guest.status === "ok" ? guestFingerprint(guest.state) : null;
+    const guestHas = guest.status === "ok" && guestFp !== guestFingerprint(freshState());
     const gid = getGuestId(storage);
-    const alreadyImported = !!(remoteDoc && gid.ok && remoteDoc.doc.imported[gid.id]);
+    // 只有“同一个游客编号 + 同一个内容指纹”才算已经导入过。导入之后游客又学了新内容（指纹变了）时，
+    // 不能让 already-imported 把新进度静默挡掉：重新交给用户选择保留云端还是用新的游客记录覆盖。
+    const imported = remoteDoc && gid.ok ? remoteDoc.doc.imported[gid.id] : undefined;
+    const alreadyImported = imported === true || (typeof imported === "string" && imported === guestFp);
     const ctx = { session: newSession, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, baseState, leaveStale };
     if (guestHas && !L.copy && !alreadyImported) {
       waiting = ctx;
