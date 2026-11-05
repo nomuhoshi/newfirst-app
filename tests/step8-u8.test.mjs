@@ -1,4 +1,4 @@
-// 第 8 单元（U8L1–U8L4 可玩，从地图进入；每道题先答错一次再答对）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
+// 第 8 单元（U8L1–U8L6 可玩，从地图进入；每道题先答错一次再答对）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
 // 运行：npm run build && node tests/step8-u8.test.mjs [chromium|webkit]（也认 MOBILE_BROWSER=webkit，npm run test:mobile 会在两个内核各跑一遍）
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -28,7 +28,7 @@ const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 
-check("U1–U7 通关后 U8L1 是当前关，U8L2 锁定（共 4 关可玩，没有待开放的关）", unitN.lessons.length === 4 && (unitN.heldLessons || []).length === 0 && await page.evaluate(() => document.querySelector('[data-lesson="U8L1"]')?.classList.contains("current") && document.querySelector('[data-lesson="U8L2"]')?.classList.contains("locked")));
+check("U1–U7 通关后 U8L1 是当前关，U8L2 锁定（共 6 关可玩，没有待开放的关）", unitN.lessons.length === 6 && (unitN.heldLessons || []).length === 0 && await page.evaluate(() => document.querySelector('[data-lesson="U8L1"]')?.classList.contains("current") && document.querySelector('[data-lesson="U8L2"]')?.classList.contains("locked")));
 check("第 9 单元（毕业小项目）仍显示即将推出", (await page.locator(".unit.locked").count()) === 1);
 
 async function answer(ex, right) {
