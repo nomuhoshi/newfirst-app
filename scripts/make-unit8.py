@@ -1,4 +1,4 @@
-# 生成 content/unit8.json（第 8 单元「函数」草稿：U8L1 定义与调用、U8L2 一个参数、U8L3 返回结果、U8L4 组合调用、U8L5 两个参数和默认值、U8L6 作用域）。
+# 生成 content/unit8.json（第 8 单元「函数」草稿：U8L1 定义与调用、U8L2 一个参数、U8L3 返回结果、U8L4 组合调用、U8L5 两个参数和默认值、U8L6 作用域；U8L7 价格计算器项目是 held，等代码题运行器）。
 # 草稿（产品官 2026-11-05 15:21 任务）：L1 分清“定义函数”和“执行函数”，L2 一个参数（传入不同的值，结果不同）。return 留到 L3。
 # 只出现在 content/unit8.json，还没挂进 content/course.json（U8 仍是“即将推出”占位），app 读不到。
 # 内容在这里改，再运行：python3 scripts/make-unit8.py && python3 scripts/verify-content.py --extra content/unit8.json
@@ -443,7 +443,197 @@ lessons += [
   ]},
 ]
 
-unit = {"id": "U8", "title": "函数", "subtitle": "def、参数、return", "lessons": lessons, "heldLessons": []}
+
+# ---------------- U8L7：价格计算器（项目，call 模式，held：待代码题运行器开放）----------------
+# 产品官 16:14：L7 价格计算器项目，先交题面、输入范围、测试用例。判分按返回值（checkMode "call"），不比较 print 的输出。
+# 用到的只有 L1–L6 学过的：def、两个参数、默认值、return、if / else、调用另一个函数、函数里的局部名字。
+TOTAL_DEF = 'def total(price, cups):\n    return price * cups\n'
+REF7 = TOTAL_DEF + '''
+def bill(price, cups=1):
+    amount = total(price, cups)
+    if amount >= 30:
+        return amount - 5
+    return amount
+'''
+START7 = TOTAL_DEF + '''
+def bill(price, cups):
+    amount = total(price, cups)
+    if amount >= 30:
+        print(amount - 5)
+    else:
+        print(amount)
+'''
+def callv(src, fn, *args):
+    """真实运行：先运行学生代码（顶层 print 不计），再调用函数，返回返回值；出错返回 ('报错', 类型)。"""
+    g = {}
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            exec(src, g)
+            return g[fn](*args)
+    except BaseException as e:
+        return ("报错", type(e).__name__)
+def T7(name, args, hidden=False, ref=None, fn="bill"):
+    d = {"name": name}
+    if hidden: d["hidden"] = True
+    d["call"] = {"fn": fn, "args": list(args)}
+    d["expectedReturn"] = callv(ref or REF7, fn, *args)
+    return d
+def fails7(src, tests):
+    return [t["name"] for t in tests if not (lambda a, e: type(a) is type(e) and a == e)(callv(src, t["call"]["fn"], *t["call"]["args"]), t["expectedReturn"])]
+
+TP7 = [T7("3 杯 8 元，不满 30", (8, 3)), T7("3 杯 12 元，总价满 30", (12, 3)), T7("只写单价，默认 1 杯", (8,))]
+TH7 = [T7("总价正好 30 元也减", (10, 3), True), T7("默认 1 杯，29 元不减", (29,), True), T7("默认 1 杯，30 元要减", (30,), True),
+       T7("杯数多", (6, 10), True), T7("1 杯 40 元", (40, 1), True)]
+ALL7 = TP7 + TH7
+assert [t["expectedReturn"] for t in ALL7] == [24, 31, 8, 25, 29, 25, 55, 35]
+assert fails7(REF7, ALL7) == []
+assert fails7(START7, ALL7) == [t["name"] for t in ALL7]                         # 起始代码：打印了、没有 return，返回 None；bill(8) 少传 cups 还会报错
+
+ALT7 = [
+ (TOTAL_DEF + '''
+def bill(price, cups=1):
+    amount = total(price, cups)
+    if amount >= 30:
+        return amount - 5
+    else:
+        return amount
+''', "if / else 两边各 return 一次"),
+ ('''def bill(price, cups=1):
+    amount = price * cups
+    if amount >= 30:
+        amount = amount - 5
+    return amount
+''', "不用 total，自己算；先改 amount，最后统一 return"),
+ (TOTAL_DEF + '''
+def bill(price, cups=1):
+    if total(price, cups) >= 30:
+        return total(price, cups) - 5
+    return total(price, cups)
+''', "每次直接调用 total(…)"),
+ ('''def bill(price, cups=1):
+    amount = price * cups
+    if amount < 30:
+        return amount
+    return amount - 5
+''', "反过来写条件：不满 30 直接交回"),
+]
+ALLNAMES7 = [t["name"] for t in ALL7]
+WRONG7 = [
+ (START7.replace("def bill(price, cups):", "def bill(price, cups=1):"), "只补了默认值，函数里还是 print，没有 return：调用得到 None", ALLNAMES7),
+ (REF7.replace("cups=1", "cups"), "忘了默认值：bill(8) 只传了一个值，会报 TypeError", ["只写单价，默认 1 杯", "默认 1 杯，29 元不减", "默认 1 杯，30 元要减"]),
+ (REF7.replace(">= 30", "> 30"), "边界：总价正好 30 元也要减，用 >= 不用 >", ["总价正好 30 元也减", "默认 1 杯，30 元要减"]),
+ (REF7.replace("amount >= 30", "price >= 30"), "拿单价去比，不是总价：12 元 × 3 杯 = 36 元，也要减", ["3 杯 12 元，总价满 30", "总价正好 30 元也减", "杯数多"]),
+ (REF7.replace("return amount - 5", "return cups * (price - 5)"), "每杯减 5 元，不是总价减 5 元", ["3 杯 12 元，总价满 30", "总价正好 30 元也减", "杯数多"]),
+ (REF7.replace("        return amount - 5\n", "        amount - 5\n"), "只算了 amount - 5，没有 return，也没有存回去，还是交回原来的总价", ["3 杯 12 元，总价满 30", "总价正好 30 元也减", "默认 1 杯，30 元要减", "杯数多", "1 杯 40 元"]),
+ (REF7.replace("    return amount\n", ""), "不满 30 的情况没有 return：函数执行结束时没有遇到 return，自动返回 None", ["3 杯 8 元，不满 30", "只写单价，默认 1 杯", "默认 1 杯，29 元不减"]),
+]
+for i, a in enumerate(ALT7, 1): assert fails7(a[0], ALL7) == [], (i, fails7(a[0], ALL7))
+for i, (w, why, want) in enumerate(WRONG7, 1): assert fails7(w, ALL7) == want, (i, fails7(w, ALL7), want)
+
+# 示范（换一个场景：咖啡店满 20 减 3），三步：先算总价、再判断满减、最后 return
+WORKED7 = {"code": 'def pay(price, cups=1):\n    amount = price * cups\n    if amount >= 20:\n        amount = amount - 3\n    return amount\nprint(pay(9, 3))',
+           "output": "24",
+           "explain": "三步：先算总价 amount；再判断：满 20 才减 3；最后把 amount return 交回去。函数里只算不 return，调用得到的就是 None。"}
+assert real_out(WORKED7["code"]) == WORKED7["output"]
+
+# 变化题：满 60 元减 12 元（不再同时减 5 元）；满 30 不满 60 仍减 5 元
+REF7V = TOTAL_DEF + '''
+def bill(price, cups=1):
+    amount = total(price, cups)
+    if amount >= 60:
+        return amount - 12
+    elif amount >= 30:
+        return amount - 5
+    return amount
+'''
+V7_TESTS = [T7("3 杯 8 元", (8, 3), False, REF7V), T7("满 30 不满 60", (9, 6), False, REF7V), T7("总价正好 60", (10, 6), True, REF7V),
+            T7("总价 59", (59,), True, REF7V), T7("杯数多", (5, 20), True, REF7V)]
+assert [t["expectedReturn"] for t in V7_TESTS] == [24, 49, 48, 54, 88]
+assert fails7(REF7V, V7_TESTS) == []
+assert fails7(REF7, V7_TESTS) != []                                   # 父题答案不能直接过变化题
+V7_START = TOTAL_DEF + '\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    # 在这里写：满 60 减 12；满 30 不满 60 减 5\n    return amount\n'
+assert fails7(V7_START, V7_TESTS) != []
+
+# 题面写明的输入范围：所有测试数据（含变化题）都必须在范围内
+for _t in ALL7 + V7_TESTS:
+    assert all(isinstance(_a, int) and not isinstance(_a, bool) and _a >= 1 for _a in _t["call"]["args"]) and 1 <= len(_t["call"]["args"]) <= 2, _t["name"]
+
+# 课内 4 题（运行器开放前显示；第 4 题将被代码题替换）
+BILL_GOOD_DEFAULT = START7.replace("def bill(price, cups):", "def bill(price, cups=1):")
+P7_A = REF7 + 'print(bill(8, 3))\nprint(bill(12, 3))\nprint(bill(8))'
+P7_B = REF7 + 'print(bill(10, 3))\nprint(bill(29))\nprint(bill(30))'
+P7_C = BILL_GOOD_DEFAULT + 'result = bill(12, 3) + 1\nprint(result)'
+P7_C_A = REF7 + 'result = bill(12, 3) + 1\nprint(result)'
+P7_C_B = BILL_GOOD_DEFAULT + 'result = bill(12, 3)\nprint(result)'
+P7_C_C = BILL_GOOD_DEFAULT.replace("print(amount - 5)", "total(amount - 5)") + 'result = bill(12, 3) + 1\nprint(result)'
+P7_C_D = BILL_GOOD_DEFAULT + 'print(bill(12, 3) + 1)'
+P7_D = 'def bill(price, cups=1):\n    amount = price * cups\n    if amount >= 30:\n        return amount - 5\nprint(bill(8, 3))\nprint(bill(12, 3))'
+assert real_out(P7_A) == "24\n31\n8"
+assert real_out(P7_A.replace("return amount - 5", "return amount")) == "24\n36\n8"                      # 以为 12 × 3 = 36 不够满减
+assert real_out(P7_A.replace("print(bill(8))", "print(bill(8, 3))")) == "24\n31\n24"                       # 以为默认杯数是上一次的 3
+assert real_out(P7_A.replace("return amount - 5", "return cups * (price - 5)")) == "24\n21\n8"
+assert real_out(P7_B) == "25\n29\n25"
+assert real_out(P7_B.replace(">= 30", "> 30")) == "30\n29\n30"
+assert real_out(P7_B.replace("print(bill(30))", "print(bill(29) - 5)")) == "25\n29\n24"
+assert real_out(P7_B.replace("print(bill(29))", "print(bill(29) - 5)")) == "25\n24\n25"
+r7c = real_error(P7_C)
+assert (r7c["type"], r7c["line"], r7c["code_line"], r7c["msg"], r7c["stdout"]) == ("TypeError", 10, "result = bill(12, 3) + 1", "unsupported operand type(s) for +: 'NoneType' and 'int'", "31")
+assert real_out(P7_C_A) == "32" and real_out(P7_C_B) == "31\nNone"
+assert run(P7_C_C)[1] == "TypeError" and run(P7_C_D)[1] == "TypeError"
+assert real_out(P7_D) == "None\n31"
+assert real_out(P7_D.replace("print(bill(8, 3))", "print(24)")) == "24\n31"
+assert P7_C.split("\n")[9] == "result = bill(12, 3) + 1"                                               # 解释里的“第 10 行”
+
+L7_TASK = {"id": "U8L7-M1", "version": 1, "type": "modify",
+ "prompt": "价格计算器：函数 bill(price, cups) 要算出顾客应付的钱，用 return 交回（不是 print）。输入范围：price、cups 都是正整数（至少为 1）。规则：① 总价 = price × cups；② 总价满 30 元（正好 30 元也算）减 5 元，不满不减；③ 只写单价、不写杯数时，按 1 杯算。已经写好的 total(price, cups) 可以直接用。",
+ "given": [], "checkMode": "call",
+ "code": START7, "tests": ALL7,
+ "hints": ["先运行：起始代码的 bill 里是 print，调用 bill(…) 得到的是 None；再看规则 ③：只写单价时 cups 要有默认值。", "bill 里先算总价 amount = total(price, cups)；总价满 30 才减 5；每种情况都要把结果 return 交回，不是 print。"],
+ "reference": REF7, "worked": WORKED7, "alternatives": [a for a, _ in ALT7],
+ "wrongAnswers": [{"code": w, "why": why} for w, why, _ in WRONG7],
+ "requiresVariationAfterSolution": True,
+ "variation": {"id": "U8L7-M1-V1", "prompt": "满 60 元减 12 元（满 60 时只减 12 元，不再减 5 元）；满 30 元但不满 60 元，仍减 5 元；不满 30 元不减。只写单价时按 1 杯算，其他不变。输入范围同上。",
+   "starter": V7_START,
+   "tests": V7_TESTS,
+   "hints": ["三档要从大到小判断：先问是不是满 60，再问是不是满 30，都不满才原价。", "if amount >= 60: return amount - 12；elif amount >= 30: return amount - 5；最后 return amount。"],
+   "solution": REF7V}}
+
+held = [
+ {"id": "U8L7", "title": "价格计算器", "concept": "项目：算总价、满减、默认杯数，用 return 交回",
+  "story": "项目：奶茶店的价格计算器。函数 bill(price, cups) 算顾客应付的钱：总价 = 单价 × 杯数；总价满 30 元（正好 30 元也算）减 5 元；只写单价时按 1 杯算。结果要用 return 交回，让别的地方可以接住它、继续算。已经写好的 total(price, cups) 可以直接调用。",
+  "introCode": P7_A,
+  "exercises": [
+    pred(SHOW, P7_A, [
+        ("24\n31\n8", T, "bill(8, 3)：总价 24，不满 30，交回 24。bill(12, 3)：总价 36，满 30，减 5 得 31。bill(8)：没传 cups，用默认的 1，总价 8，交回 8。"),
+        ("24\n36\n8", F, "判断的是总价 amount：12 × 3 = 36，满 30，要减 5。"),
+        ("24\n31\n24", F, "每次调用都重新传值。bill(8) 没传 cups，用默认值 1，不是上一次的 3。"),
+        ("24\n21\n8", F, "程序里减的是总价 amount - 5，不是每杯减 5：36 - 5 = 31。")],
+        tip="先算总价，再看总价是不是满 30。"),
+    pred(SHOW, P7_B, [
+        ("25\n29\n25", T, "bill(10, 3)：总价正好 30，amount >= 30 成立，减 5 得 25。bill(29)：只有 29 元，不满 30，交回 29。bill(30)：1 杯 30 元，满 30，交回 25。"),
+        ("30\n29\n30", F, "条件是 amount >= 30，总价正好 30 也成立，要减 5。"),
+        ("25\n29\n24", F, "bill(30) 的总价是 30，正好满 30，要减 5，得 25，不是 24。"),
+        ("25\n24\n25", F, "bill(29) 的总价是 29，不满 30，不减，交回 29。")],
+        tip="边界：>= 30 包含 30。"),
+    pick("想显示 32（31 再加 1）。现在运行报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加）。怎么改，屏幕才会显示 32？", "fix", [
+        opt("把 bill 里的两个 print(…) 都改成 return …", T, "bill 里是 print：显示了 31，函数却没遇到 return，自动返回 None，None + 1 报错。把两个 print 都改成 return，bill(12, 3) 交回 31，31 + 1 = 32。", fixed=P7_C_A),
+        opt("把第 10 行的 + 1 去掉", F, "不报错了，但 bill 里的 print 先显示 31，result 得到的是 None，最后显示 31 和 None，不是 32。", fixed=P7_C_B),
+        opt("把 bill 里的 print(amount - 5) 改成 total(amount - 5)", F, "total 需要两个值（price 和 cups），只传一个会报 TypeError。而且这样只是调用，没有 return。", fixed=P7_C_C),
+        opt("把第 10 行改成 print(bill(12, 3) + 1)", F, "bill(12, 3) 得到的还是 None，None + 1 仍然是 TypeError。", fixed=P7_C_D),
+    ], code=P7_C, trace=trace_of(P7_C), expected="32", tip="想把结果拿去继续算，函数里要用 return 交回。"),
+    pred(SHOW, P7_D, [
+        ("None\n31", T, "bill(8, 3)：总价 24，不满 30，if 里的 return 没有执行，函数执行结束时没有遇到 return，自动返回 None。bill(12, 3)：总价 36，满 30，return 31。"),
+        ("24\n31", F, "不满 30 的情况没有 return 24，函数不会自己把 amount 交回来，得到的是 None。"),
+        ("24\n36", F, "bill(12, 3) 满 30，会执行 return amount - 5，交回 31，不是 36。"),
+        ("报错", F, "没有 return 的调用不会报错，只是得到 None；print(None) 显示 None。")],
+        tip="每一种情况都要有 return；没遇到 return，就是 None。"),
+  ],
+  "pending": [{"type": "modify", "replaces": 4, "status": "待 Claude 的代码题运行器，暂不开放",
+    "plan": "改一改（项目）：价格计算器 bill(price, cups=1)；总价、满 30 减 5、默认 1 杯，用 return 交回（call 模式）",
+    "task": L7_TASK}]},
+]
+
+unit = {"id": "U8", "title": "函数", "subtitle": "def、参数、return", "lessons": lessons, "heldLessons": held}
 p = pathlib.Path(__file__).resolve().parent.parent / "content/unit8.json"
 p.write_text(json.dumps(unit, ensure_ascii=False, indent=2) + "\n")
 print("写入", p, "关卡", len(lessons), "题目", sum(len(l["exercises"]) for l in lessons))

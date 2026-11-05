@@ -769,5 +769,367 @@
       ]
     }
   ],
-  "heldLessons": []
+  "heldLessons": [
+    {
+      "id": "U8L7",
+      "title": "价格计算器",
+      "concept": "项目：算总价、满减、默认杯数，用 return 交回",
+      "story": "项目：奶茶店的价格计算器。函数 bill(price, cups) 算顾客应付的钱：总价 = 单价 × 杯数；总价满 30 元（正好 30 元也算）减 5 元；只写单价时按 1 杯算。结果要用 return 交回，让别的地方可以接住它、继续算。已经写好的 total(price, cups) 可以直接调用。",
+      "introCode": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\nprint(bill(8, 3))\nprint(bill(12, 3))\nprint(bill(8))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\nprint(bill(8, 3))\nprint(bill(12, 3))\nprint(bill(8))",
+          "options": [
+            {
+              "text": "24\n31\n8",
+              "correct": true,
+              "why": "bill(8, 3)：总价 24，不满 30，交回 24。bill(12, 3)：总价 36，满 30，减 5 得 31。bill(8)：没传 cups，用默认的 1，总价 8，交回 8。"
+            },
+            {
+              "text": "24\n36\n8",
+              "correct": false,
+              "why": "判断的是总价 amount：12 × 3 = 36，满 30，要减 5。"
+            },
+            {
+              "text": "24\n31\n24",
+              "correct": false,
+              "why": "每次调用都重新传值。bill(8) 没传 cups，用默认值 1，不是上一次的 3。"
+            },
+            {
+              "text": "24\n21\n8",
+              "correct": false,
+              "why": "程序里减的是总价 amount - 5，不是每杯减 5：36 - 5 = 31。"
+            }
+          ],
+          "tip": "先算总价，再看总价是不是满 30。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\nprint(bill(10, 3))\nprint(bill(29))\nprint(bill(30))",
+          "options": [
+            {
+              "text": "25\n29\n25",
+              "correct": true,
+              "why": "bill(10, 3)：总价正好 30，amount >= 30 成立，减 5 得 25。bill(29)：只有 29 元，不满 30，交回 29。bill(30)：1 杯 30 元，满 30，交回 25。"
+            },
+            {
+              "text": "30\n29\n30",
+              "correct": false,
+              "why": "条件是 amount >= 30，总价正好 30 也成立，要减 5。"
+            },
+            {
+              "text": "25\n29\n24",
+              "correct": false,
+              "why": "bill(30) 的总价是 30，正好满 30，要减 5，得 25，不是 24。"
+            },
+            {
+              "text": "25\n24\n25",
+              "correct": false,
+              "why": "bill(29) 的总价是 29，不满 30，不减，交回 29。"
+            }
+          ],
+          "tip": "边界：>= 30 包含 30。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想显示 32（31 再加 1）。现在运行报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加）。怎么改，屏幕才会显示 32？",
+          "key": "fix",
+          "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\nresult = bill(12, 3) + 1\nprint(result)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 10, in <module>\n    result = bill(12, 3) + 1\nTypeError: unsupported operand type(s) for +: 'NoneType' and 'int'",
+          "checks": [
+            {
+              "program": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\nresult = bill(12, 3) + 1\nprint(result)",
+              "type": "TypeError",
+              "line": 10,
+              "msg": "unsupported operand type(s) for +: 'NoneType' and 'int'"
+            }
+          ],
+          "expected": "32",
+          "options": [
+            {
+              "text": "把 bill 里的两个 print(…) 都改成 return …",
+              "correct": true,
+              "why": "bill 里是 print：显示了 31，函数却没遇到 return，自动返回 None，None + 1 报错。把两个 print 都改成 return，bill(12, 3) 交回 31，31 + 1 = 32。",
+              "fixed": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\nresult = bill(12, 3) + 1\nprint(result)"
+            },
+            {
+              "text": "把第 10 行的 + 1 去掉",
+              "correct": false,
+              "why": "不报错了，但 bill 里的 print 先显示 31，result 得到的是 None，最后显示 31 和 None，不是 32。",
+              "fixed": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\nresult = bill(12, 3)\nprint(result)"
+            },
+            {
+              "text": "把 bill 里的 print(amount - 5) 改成 total(amount - 5)",
+              "correct": false,
+              "why": "total 需要两个值（price 和 cups），只传一个会报 TypeError。而且这样只是调用，没有 return。",
+              "fixed": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        total(amount - 5)\n    else:\n        print(amount)\nresult = bill(12, 3) + 1\nprint(result)"
+            },
+            {
+              "text": "把第 10 行改成 print(bill(12, 3) + 1)",
+              "correct": false,
+              "why": "bill(12, 3) 得到的还是 None，None + 1 仍然是 TypeError。",
+              "fixed": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\nprint(bill(12, 3) + 1)"
+            }
+          ],
+          "tip": "想把结果拿去继续算，函数里要用 return 交回。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def bill(price, cups=1):\n    amount = price * cups\n    if amount >= 30:\n        return amount - 5\nprint(bill(8, 3))\nprint(bill(12, 3))",
+          "options": [
+            {
+              "text": "None\n31",
+              "correct": true,
+              "why": "bill(8, 3)：总价 24，不满 30，if 里的 return 没有执行，函数执行结束时没有遇到 return，自动返回 None。bill(12, 3)：总价 36，满 30，return 31。"
+            },
+            {
+              "text": "24\n31",
+              "correct": false,
+              "why": "不满 30 的情况没有 return 24，函数不会自己把 amount 交回来，得到的是 None。"
+            },
+            {
+              "text": "24\n36",
+              "correct": false,
+              "why": "bill(12, 3) 满 30，会执行 return amount - 5，交回 31，不是 36。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "没有 return 的调用不会报错，只是得到 None；print(None) 显示 None。"
+            }
+          ],
+          "tip": "每一种情况都要有 return；没遇到 return，就是 None。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "replaces": 4,
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改（项目）：价格计算器 bill(price, cups=1)；总价、满 30 减 5、默认 1 杯，用 return 交回（call 模式）",
+          "task": {
+            "id": "U8L7-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "价格计算器：函数 bill(price, cups) 要算出顾客应付的钱，用 return 交回（不是 print）。输入范围：price、cups 都是正整数（至少为 1）。规则：① 总价 = price × cups；② 总价满 30 元（正好 30 元也算）减 5 元，不满不减；③ 只写单价、不写杯数时，按 1 杯算。已经写好的 total(price, cups) 可以直接用。",
+            "given": [],
+            "checkMode": "call",
+            "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\n",
+            "tests": [
+              {
+                "name": "3 杯 8 元，不满 30",
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    8,
+                    3
+                  ]
+                },
+                "expectedReturn": 24
+              },
+              {
+                "name": "3 杯 12 元，总价满 30",
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    12,
+                    3
+                  ]
+                },
+                "expectedReturn": 31
+              },
+              {
+                "name": "只写单价，默认 1 杯",
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    8
+                  ]
+                },
+                "expectedReturn": 8
+              },
+              {
+                "name": "总价正好 30 元也减",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    10,
+                    3
+                  ]
+                },
+                "expectedReturn": 25
+              },
+              {
+                "name": "默认 1 杯，29 元不减",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    29
+                  ]
+                },
+                "expectedReturn": 29
+              },
+              {
+                "name": "默认 1 杯，30 元要减",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    30
+                  ]
+                },
+                "expectedReturn": 25
+              },
+              {
+                "name": "杯数多",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    6,
+                    10
+                  ]
+                },
+                "expectedReturn": 55
+              },
+              {
+                "name": "1 杯 40 元",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    40,
+                    1
+                  ]
+                },
+                "expectedReturn": 35
+              }
+            ],
+            "hints": [
+              "先运行：起始代码的 bill 里是 print，调用 bill(…) 得到的是 None；再看规则 ③：只写单价时 cups 要有默认值。",
+              "bill 里先算总价 amount = total(price, cups)；总价满 30 才减 5；每种情况都要把结果 return 交回，不是 print。"
+            ],
+            "reference": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\n",
+            "worked": {
+              "code": "def pay(price, cups=1):\n    amount = price * cups\n    if amount >= 20:\n        amount = amount - 3\n    return amount\nprint(pay(9, 3))",
+              "output": "24",
+              "explain": "三步：先算总价 amount；再判断：满 20 才减 3；最后把 amount return 交回去。函数里只算不 return，调用得到的就是 None。"
+            },
+            "alternatives": [
+              "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    else:\n        return amount\n",
+              "def bill(price, cups=1):\n    amount = price * cups\n    if amount >= 30:\n        amount = amount - 5\n    return amount\n",
+              "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    if total(price, cups) >= 30:\n        return total(price, cups) - 5\n    return total(price, cups)\n",
+              "def bill(price, cups=1):\n    amount = price * cups\n    if amount < 30:\n        return amount\n    return amount - 5\n"
+            ],
+            "wrongAnswers": [
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\n",
+                "why": "只补了默认值，函数里还是 print，没有 return：调用得到 None"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\n",
+                "why": "忘了默认值：bill(8) 只传了一个值，会报 TypeError"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount > 30:\n        return amount - 5\n    return amount\n",
+                "why": "边界：总价正好 30 元也要减，用 >= 不用 >"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if price >= 30:\n        return amount - 5\n    return amount\n",
+                "why": "拿单价去比，不是总价：12 元 × 3 杯 = 36 元，也要减"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return cups * (price - 5)\n    return amount\n",
+                "why": "每杯减 5 元，不是总价减 5 元"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        amount - 5\n    return amount\n",
+                "why": "只算了 amount - 5，没有 return，也没有存回去，还是交回原来的总价"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n",
+                "why": "不满 30 的情况没有 return：函数执行结束时没有遇到 return，自动返回 None"
+              }
+            ],
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U8L7-M1-V1",
+              "prompt": "满 60 元减 12 元（满 60 时只减 12 元，不再减 5 元）；满 30 元但不满 60 元，仍减 5 元；不满 30 元不减。只写单价时按 1 杯算，其他不变。输入范围同上。",
+              "starter": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    # 在这里写：满 60 减 12；满 30 不满 60 减 5\n    return amount\n",
+              "tests": [
+                {
+                  "name": "3 杯 8 元",
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      8,
+                      3
+                    ]
+                  },
+                  "expectedReturn": 24
+                },
+                {
+                  "name": "满 30 不满 60",
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      9,
+                      6
+                    ]
+                  },
+                  "expectedReturn": 49
+                },
+                {
+                  "name": "总价正好 60",
+                  "hidden": true,
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      10,
+                      6
+                    ]
+                  },
+                  "expectedReturn": 48
+                },
+                {
+                  "name": "总价 59",
+                  "hidden": true,
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      59
+                    ]
+                  },
+                  "expectedReturn": 54
+                },
+                {
+                  "name": "杯数多",
+                  "hidden": true,
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      5,
+                      20
+                    ]
+                  },
+                  "expectedReturn": 88
+                }
+              ],
+              "hints": [
+                "三档要从大到小判断：先问是不是满 60，再问是不是满 30，都不满才原价。",
+                "if amount >= 60: return amount - 12；elif amount >= 30: return amount - 5；最后 return amount。"
+              ],
+              "solution": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 60:\n        return amount - 12\n    elif amount >= 30:\n        return amount - 5\n    return amount\n"
+            }
+          }
+        }
+      ]
+    }
+  ]
 }

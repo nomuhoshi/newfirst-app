@@ -21,6 +21,36 @@ _orig_check = check
 def _go(src, t):
     pre = "".join(f"{k} = {v!r}\n" for k, v in t.get("data", {}).items())
     return run(pre + src)
+
+# ---- call 模式（U8 起）：先运行学生代码，再调用 t["call"]["fn"](*args, **kwargs)，按返回值比较（不比 print 的输出）。
+# 比较规则和 src/judge.js 里 callHarness 的 _jg_same 一致（布尔和数字不混；数字按值比较，小数用相对误差；元组≡列表；字典键按字符串）。
+_JG_SAME = """
+def _jg_same(a, e, tol):
+    if isinstance(e, bool) or isinstance(a, bool):
+        return isinstance(e, bool) and isinstance(a, bool) and a == e
+    if isinstance(e, (int, float)):
+        if not isinstance(a, (int, float)):
+            return False
+        return abs(a - e) <= tol * max(1.0, abs(e))
+    if isinstance(e, list):
+        return isinstance(a, (list, tuple)) and len(a) == len(e) and all(_jg_same(x, y, tol) for x, y in zip(a, e))
+    if isinstance(e, dict):
+        return isinstance(a, dict) and {str(k): v for k, v in a.items()}.keys() == e.keys() and all(_jg_same(v, e[str(k)], tol) for k, v in a.items())
+    return type(a) is type(e) and a == e
+"""
+def _call_ok(src, t):
+    """(是否通过, 说明)：返回 (True, '') 或 (False, 实际返回值 / 错误类型)。"""
+    c = t["call"]
+    harness = (_JG_SAME + f"\n_a = {c['fn']}(*{c.get('args', [])!r}, **{c.get('kwargs', {})!r})\n"
+               f"print('@@' + ('OK' if _jg_same(_a, {t['expectedReturn']!r}, {t.get('tol', 1e-9)!r}) else 'BAD ' + repr(_a)))\n")
+    out, err = run(src + "\n" + harness)
+    if err is not None: return False, err
+    last = out.rstrip("\n").split("\n")[-1] if out else ""
+    return (last == "@@OK"), (last[2:] if last.startswith("@@") else last)
+def _passes(src, t, mode):
+    """学生代码 / 参考答案在这一组测试上是否通过（output 模式比较标准输出，call 模式比较返回值）。"""
+    if mode == "call": return _call_ok(src, t)[0]
+    out, err = _go(src, t); return err is None and out.rstrip("\n") == t["expected"]
 def check(lessons):
     c = _orig_check(lessons); ids = set()
     for l in lessons:
@@ -28,10 +58,28 @@ def check(lessons):
             k = pt.get("task")
             if not k: continue
             w = k["id"]; c.ok(w not in ids, w, "id 重复"); ids.add(w)
-            c.ok(k["type"] in ("modify", "write") and k.get("checkMode") == "output", w + "-格式", "type/checkMode 不对")
+            mode = k.get("checkMode")
+            c.ok(k["type"] in ("modify", "write") and mode in ("output", "call"), w + "-格式", "type/checkMode 不对")
             c.ok(len(k.get("hints", [])) == 2, w + "-提示", "提示不是两级")
             ts = k.get("tests", [])
             c.ok(any(not t.get("hidden") for t in ts) and any(t.get("hidden") for t in ts), w + "-测试", "缺公开或隐藏测试")
+            if mode == "call":
+                c.ok(all(isinstance(t.get("call"), dict) and "expectedReturn" in t for t in ts), w + "-call格式", "call 模式的测试要有 call 和 expectedReturn")
+                c.ok(len({t["name"] for t in ts}) == len(ts), w + "-测试名", "测试名重复")
+                for t in ts:
+                    ok, info = _call_ok(k["reference"], t)
+                    c.ok(ok, f"{w}-参考-{t['name']}", f"参考答案返回 {info!r}，期望 {t['expectedReturn']!r}")
+                for ai, a in enumerate(k.get("alternatives", []), 1):
+                    bad = [t["name"] for t in ts if not _call_ok(a, t)[0]]
+                    c.ok(not bad, f"{w}-其他写法{ai}", f"其他写法没通过：{bad}")
+                for wi, wa in enumerate(k.get("wrongAnswers", []), 1):
+                    c.ok(any(not _call_ok(wa["code"], t)[0] for t in ts), f"{w}-错误写法{wi}", "标成错误写法的代码却通过了全部测试")
+                src = k.get("code") if k["type"] == "modify" else k.get("starter")
+                c.ok(any(not _call_ok(src, t)[0] for t in ts), w + "-起始不能直接过", "起始代码已经全部通过")
+                wk = k.get("worked")
+                if wk:
+                    o, e = run(wk["code"]); c.ok(e is None and o.rstrip("\n") == wk["output"], w + "-示范", f"示范输出 {o!r}/{e}")
+                continue
             for t in ts:
                 out, err = _go(k["reference"], t)
                 c.ok(err is None and out.rstrip("\n") == t["expected"], f"{w}-参考-{t['name']}", f"得到 {out!r}/{err}，期望 {t['expected']!r}")
@@ -61,6 +109,15 @@ def check(lessons):
             c.ok(len(v.get("hints", [])) == 2, w + "-提示", "提示不是两级")
             ts = v.get("tests", []); hid = [t for t in ts if t.get("hidden")]
             c.ok(hid and any(not t.get("hidden") for t in ts), w + "-测试", "缺公开或隐藏测试")
+            mode = k.get("checkMode")
+            if mode == "call":
+                c.ok(all(isinstance(t.get("call"), dict) and "expectedReturn" in t for t in ts), w + "-call格式", "call 模式的测试要有 call 和 expectedReturn")
+                for t in ts:
+                    ok, info = _call_ok(v["solution"], t); c.ok(ok, f"{w}-答案-{t['name']}", f"变化题答案返回 {info!r}，期望 {t['expectedReturn']!r}")
+                c.ok(any(not _call_ok(v["starter"], t)[0] for t in ts), w + "-起始不能直接过", "起始代码已全过")
+                c.ok(any(not _call_ok(k["reference"], t)[0] for t in hid), w + "-父题答案不能过", "父题 reference 能过全部隐藏测试")
+                c.ok(len({repr(t["expectedReturn"]) for t in ts}) >= 2, w + "-期望互不相同", "变化题测试的期望返回值至少要有两种")
+                continue
             for t in ts:
                 o, e = _go(v["solution"], t); c.ok(e is None and o == t["expected"], f"{w}-答案-{t['name']}", f"得到 {o!r}/{e}")
             res = [(_go(v["starter"], t), t) for t in ts]
