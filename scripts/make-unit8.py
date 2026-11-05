@@ -6,6 +6,7 @@
 # 加上本单元新教的：
 #   U8L1 def 名字():、缩进的函数体、调用 名字()（括号不能省）、先定义后调用、调用几次就执行几次；
 #   U8L2 一个参数：def 名字(参数):、调用时传入值、函数体里用参数、传入不同的值得到不同的结果、传入变量里的值、漏传值报 TypeError。
+# 口径（产品官 15:39）：L2 只说“本关 pay(price) 定义了一个必填参数，调用时漏传会报 TypeError”，不概括成“函数的参数都必须传”（以后教默认参数时不用推翻）。
 # 本部分不用：return（下一关）、多个参数、默认参数、作用域（函数里外的同名变量）、函数里改列表 / 字典、递归、f-string、函数调用函数。
 # 函数体里只用 print 显示；这样“定义不执行、调用才执行”能直接在屏幕上看出来。
 import json, pathlib, sys, itertools, io, contextlib
@@ -164,7 +165,7 @@ lessons = [
     ], code=Q4, trace=trace_of(Q4), tip="报错时程序就停在出错的那一行；看看那一行用到的名字，之前有没有被定义过。"),
   ]},
  {"id": "U8L2", "title": "给函数一个参数", "concept": "参数、传入值",
-  "story": "欢迎光临永远是同一句话。想让同一个函数按不同的饮品工作，就给它留一个空位：def say(drink): 括号里的 drink 叫参数，在函数体里它就像一个变量。调用时，括号里写的值会传进这个空位：say(\"奶茶\") 把 \"奶茶\" 传给 drink，函数体里用到 drink 的地方就是“奶茶”；say(\"果茶\") 再传一个，同一个函数就得到不一样的结果。每次调用都会重新传值。调用时不给值，Python 会报 TypeError（类型错误）。",
+  "story": "欢迎光临永远是同一句话。想让同一个函数按不同的饮品工作，就给它留一个空位：def say(drink): 括号里的 drink 叫参数，在函数体里它就像一个变量。调用时，括号里写的值会传进这个空位：say(\"奶茶\") 把 \"奶茶\" 传给 drink，函数体里用到 drink 的地方就是“奶茶”；say(\"果茶\") 再传一个，同一个函数就得到不一样的结果。每次调用都会重新传值。后面的 pay(price) 定义了一个必填参数 price：调用时漏传值，Python 会报 TypeError（类型错误）。",
   "introCode": L2_INTRO,
   "exercises": [
     pred(SHOW, Q5, [
@@ -186,11 +187,11 @@ lessons = [
          "\"price\"": "括号里写的是名字，不是文字，不能加引号，会报 SyntaxError（写法不符合语法）。"},
         "def 括号里要写一个名字，函数体里用到的就是这个名字。")},
     pick("忘了给 pay 传值，运行报了错。最后一行 TypeError: pay() missing 1 required positional argument: 'price' 是在说什么？", "type", [
-        opt("调用 pay() 时括号里没给值，参数 price 没有收到", T, "def pay(price) 留了一个空位 price，调用时必须传一个值进去。第 3 行 pay() 括号里是空的，所以 Python 说“少了 1 个必须给的参数 'price'”。", value="TypeError"),
+        opt("调用 pay() 时括号里没给值，必填参数 price 没有收到", T, "本关的 pay(price) 定义了一个必填参数 price，调用时必须传一个值进去。第 3 行 pay() 括号里是空的，漏传了，所以 Python 说“少了 1 个必须给的参数 'price'”。", value="TypeError"),
         opt("pay 这个名字还没有定义", F, "那是 NameError。pay 在第 1 行已经 def 过了；这里报的是 TypeError，说的是调用时少了一个值。", value="NameError"),
         opt("def 那一行少了冒号", F, "少冒号是 SyntaxError，程序一行都不会运行。这里 def 写得没问题，函数体都定义好了，是第 3 行调用时才出的错。", value="SyntaxError"),
         opt("函数体没有缩进", F, "那是 IndentationError。这里函数体的缩进是对的；最后一行写的是 TypeError，说的是调用时少了一个值。", value="IndentationError"),
-    ], code=Q8, trace=trace_of(Q8), tip="missing 1 required argument：少了 1 个必须给的值。看看调用那一行括号里有没有东西。"),
+    ], code=Q8, trace=trace_of(Q8), tip="missing 1 required argument：少了 1 个必须给的值（必填参数）。看看调用那一行括号里有没有东西。"),
   ]},
 ]
 

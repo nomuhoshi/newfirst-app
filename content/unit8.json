@@ -126,7 +126,7 @@
       "id": "U8L2",
       "title": "给函数一个参数",
       "concept": "参数、传入值",
-      "story": "欢迎光临永远是同一句话。想让同一个函数按不同的饮品工作，就给它留一个空位：def say(drink): 括号里的 drink 叫参数，在函数体里它就像一个变量。调用时，括号里写的值会传进这个空位：say(\"奶茶\") 把 \"奶茶\" 传给 drink，函数体里用到 drink 的地方就是“奶茶”；say(\"果茶\") 再传一个，同一个函数就得到不一样的结果。每次调用都会重新传值。调用时不给值，Python 会报 TypeError（类型错误）。",
+      "story": "欢迎光临永远是同一句话。想让同一个函数按不同的饮品工作，就给它留一个空位：def say(drink): 括号里的 drink 叫参数，在函数体里它就像一个变量。调用时，括号里写的值会传进这个空位：say(\"奶茶\") 把 \"奶茶\" 传给 drink，函数体里用到 drink 的地方就是“奶茶”；say(\"果茶\") 再传一个，同一个函数就得到不一样的结果。每次调用都会重新传值。后面的 pay(price) 定义了一个必填参数 price：调用时漏传值，Python 会报 TypeError（类型错误）。",
       "introCode": "def say(drink):\n    print(\"来一杯\", drink)\nsay(\"奶茶\")\nsay(\"果茶\")",
       "exercises": [
         {
@@ -222,9 +222,9 @@
           ],
           "options": [
             {
-              "text": "调用 pay() 时括号里没给值，参数 price 没有收到",
+              "text": "调用 pay() 时括号里没给值，必填参数 price 没有收到",
               "correct": true,
-              "why": "def pay(price) 留了一个空位 price，调用时必须传一个值进去。第 3 行 pay() 括号里是空的，所以 Python 说“少了 1 个必须给的参数 'price'”。",
+              "why": "本关的 pay(price) 定义了一个必填参数 price，调用时必须传一个值进去。第 3 行 pay() 括号里是空的，漏传了，所以 Python 说“少了 1 个必须给的参数 'price'”。",
               "value": "TypeError"
             },
             {
@@ -246,7 +246,7 @@
               "value": "IndentationError"
             }
           ],
-          "tip": "missing 1 required argument：少了 1 个必须给的值。看看调用那一行括号里有没有东西。"
+          "tip": "missing 1 required argument：少了 1 个必须给的值（必填参数）。看看调用那一行括号里有没有东西。"
         }
       ]
     }
