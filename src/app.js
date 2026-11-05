@@ -185,17 +185,20 @@ function mascot(size = 96, mood = "happy") {
 }
 
 // 简单的代码着色（只用于显示）
+// .lc 是 inline-flex：裸文本节点若只含空格（缩进、两个符号之间的空格）会被当作空白丢掉。
+// 所以普通文本也包进 span（继承 white-space: pre），缩进和空格才会保留。
+const plain = (t) => h("span", { class: "tk-txt", text: t });
 function codeLine(text) {
   const frag = [];
   const re = /("[^"]*"?)|(\b\d+(?:\.\d+)?\b)|(\bprint\b)|([=+\-*/()])/g;
   let last = 0; let m;
   while ((m = re.exec(text))) {
-    if (m.index > last) frag.push(document.createTextNode(text.slice(last, m.index)));
+    if (m.index > last) frag.push(plain(text.slice(last, m.index)));
     const cls = m[1] ? "tk-str" : m[2] ? "tk-num" : m[3] ? "tk-fn" : "tk-op";
     frag.push(h("span", { class: cls, text: m[0] }));
     last = m.index + m[0].length;
   }
-  if (last < text.length) frag.push(document.createTextNode(text.slice(last)));
+  if (last < text.length) frag.push(plain(text.slice(last)));
   return frag;
 }
 function codeBlock(code, cls = "") {
@@ -1192,7 +1195,7 @@ if (vv) {
 // 回到前台时刷新红心显示
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
 
-window.__app = { sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { startLesson, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;

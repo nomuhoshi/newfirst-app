@@ -10,6 +10,9 @@ for (const b of list) {
   // 判题核心 + 真实 Runner（真 Pyodide、真 Worker）：同一个内核再跑一遍
   const x = spawnSync(process.execPath, [fileURLToPath(new URL("../judge-browser.test.mjs", import.meta.url))], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b, JUDGE_BROWSERS: b } });
   code = Math.max(code, x.status ?? 2);
+  // 题面代码块的缩进 / 空格回归（predict、fill、order、小屏横滑）
+  const w = spawnSync(process.execPath, [fileURLToPath(new URL("../code-block-whitespace.test.mjs", import.meta.url))], { stdio: "inherit", env: { ...process.env, MOBILE_BROWSER: b } });
+  code = Math.max(code, w.status ?? 2);
   console.log(`== ${b}: ${code === 0 ? "通过" : code === 2 ? "环境失败" : "失败"}`);
   worst = Math.max(worst, code);
 }
