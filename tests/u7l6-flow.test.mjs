@@ -238,6 +238,37 @@ try {
     check("⑦ 变化题流程没有脚本错误", errors.length === 0, errors.join(" | "));
     await ctx.close();
   }
+  { // ⑧ 变化题走完整个关卡：XP 只结算一次（结算在变化题通过时，不在原题通过时；通过后再点“检查”不重复结算；最后总 XP 和没看参考解法的正常通关一样）
+    const VCODE = task.variation.solution;
+    const normal = await (async () => {
+      const { ctx, page } = await open(); await mount(page); await answerPicksToCodeTask(page);
+      const a = await stat(page); await setCode(page, task.reference); await page.locator("[data-check]").tap(); await page.waitForSelector(".feedbar.ok", { timeout: 60000 });
+      const b = await stat(page); await page.waitForFunction(() => !document.querySelector("[data-continue]")?.disabled); await page.locator("[data-continue]").tap(); await page.waitForTimeout(1200);
+      const c = await stat(page); const text = await page.locator("#app").innerText(); await ctx.close(); return { a, b, c, text };
+    })();
+    const { ctx, page, errors } = await open(); await mount(page); await answerPicksToCodeTask(page);
+    for (let i = 0; i < 3; i++) { await page.locator(".mascot-btn").tap(); if (i < 2) await page.locator(".overlay").getByRole("button", { name: "好的" }).tap(); }
+    await page.locator(".overlay").getByRole("button", { name: "看参考解法" }).tap();
+    await page.locator(".overlay").getByRole("button", { name: "好的" }).tap();
+    await setCode(page, task.reference); const v0 = await stat(page);
+    await page.locator("[data-check]").tap(); await page.waitForSelector("[data-variation]", { timeout: 60000 });
+    const v1 = await stat(page);
+    await page.waitForFunction(() => !document.querySelector("[data-continue]")?.disabled).catch(() => {}); if (await page.locator("[data-continue]").count()) await page.locator("[data-continue]").tap();
+    await page.waitForSelector("[data-code-task]"); await setCode(page, VCODE);
+    await page.locator("[data-check]").tap(); await page.waitForSelector(".feedbar.ok", { timeout: 60000 });
+    const v2 = await stat(page);
+    await page.locator("[data-check]").tap({ timeout: 2000 }).catch(() => {}); await page.waitForTimeout(800); // 通过后再点“检查”（如果按钮还在）
+    const v3 = await stat(page);
+    await page.waitForFunction(() => !document.querySelector("[data-continue]")?.disabled); await page.locator("[data-continue]").tap(); await page.waitForTimeout(1200);
+    const v4 = await stat(page); const vtext = await page.locator("#app").innerText();
+    show("⑧ 正常通关结束页", normal.text); show("⑧ 变化题通关结束页", vtext);
+    check("⑧ 正常通关：XP 依次 +0 → +10（答对）→ +20（通关），本关显示 +50", normal.b.xp === normal.a.xp + 10 && normal.c.xp === normal.a.xp + 20 && /本关 XP/.test(normal.text) && /\+50/.test(normal.text), JSON.stringify([normal.a, normal.b, normal.c]));
+    check("⑧ 变化题：原题通过时 XP 不变（0），变化题通过时才 +10（只这一次）", v1.xp === v0.xp && v2.xp === v0.xp + 10, JSON.stringify([v0, v1, v2]));
+    check("⑧ 变化题通过后再点“检查”：XP 不再增加", v3.xp === v2.xp, JSON.stringify([v2, v3]));
+    check("⑧ 变化题走完整关：最终 XP 和正常通关一样（总共 +20，不是 +30），本关显示 +50、红心不变", v4.xp === v0.xp + 20 && v4.xp - v0.xp === normal.c.xp - normal.a.xp && /本关 XP/.test(vtext) && /\+50/.test(vtext) && v4.hearts === v0.hearts, JSON.stringify([v0, v4, vtext.slice(0, 80)]));
+    check("⑧ 结算流程没有脚本错误", errors.length === 0, errors.join(" | "));
+    await ctx.close();
+  }
 } finally {
   await browser.close(); srv.closeAllConnections(); srv.close();
 }

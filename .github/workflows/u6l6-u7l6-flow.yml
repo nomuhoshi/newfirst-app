@@ -1,0 +1,67 @@
+# U6L6「修好收银程序」/ U7L6「库存小程序」流程验收（WebKit + Chromium）：
+# 用普通构建（不设 PREVIEW_ID，等于 preview/u7 的源码），临时把 heldLessons 里的 L6 挂载成一关，
+# 跑真实编辑器 + Pyodide + 真实判题界面。两条测试是独立命令（npm run test:u6l6 / test:u7l6），不接入 npm test；公开地图里这两关仍是“待开放”。
+# 触发：推送到测试分支 sonnet/wk-u6l6-u7l6（非默认分支上的工作流不能用 API 手动触发，所以用推送触发），或在 Actions 页面手动运行。
+# 不部署任何网站，不碰正式版、rc1/、#42 和 Supabase。
+name: U6L6 / U7L6 flow
+on:
+  push:
+    branches: [sonnet/wk-u6l6-u7l6]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: u6u7-flow-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  flow:
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [webkit, chromium]
+    name: flow (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 安装浏览器和系统依赖
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run build
+      - name: 构建来源
+        run: |
+          echo "build source commit: $(git rev-parse HEAD)  browser: ${{ matrix.browser }}"
+          echo "### 构建来源提交 $(git rev-parse HEAD)（${{ matrix.browser }}）" >> "$GITHUB_STEP_SUMMARY"
+      - name: U6L6 修好收银程序（${{ matrix.browser }}）
+        id: u6
+        env:
+          MOBILE_BROWSER: ${{ matrix.browser }}
+          SHOTS_DIR: shots
+        run: npm run test:u6l6 2>&1 | tee u6l6.log; exit ${PIPESTATUS[0]}
+      - name: U7L6 库存小程序（${{ matrix.browser }}）
+        id: u7
+        if: always() && steps.u6.conclusion != 'cancelled'
+        env:
+          MOBILE_BROWSER: ${{ matrix.browser }}
+          SHOTS_DIR: shots
+        run: npm run test:u7l6 2>&1 | tee u7l6.log; exit ${PIPESTATUS[0]}
+      - name: 汇总（每个项目的结果和失败步骤）
+        if: always()
+        run: |
+          for p in u6l6 u7l6; do
+            echo "#### $p（${{ matrix.browser }}）" >> "$GITHUB_STEP_SUMMARY"
+            tail -n 1 "$p.log" 2>/dev/null | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY" || true
+            grep -E '^❌' "$p.log" 2>/dev/null | cut -c1-300 | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY" || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flow-${{ matrix.browser }}
+          path: |
+            shots
+            u6l6.log
+            u7l6.log
+          if-no-files-found: ignore
