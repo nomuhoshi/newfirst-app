@@ -15,6 +15,13 @@ for u in course["units"]:
     for l in data["lessons"] + data.get("heldLessons", []):  # heldLessons：已写好、已验证，但还没开放给学生的关（app 只读 lessons）
         lessons.append(l)
         for qi, ex in enumerate(l["exercises"], 1): items.append((f"{l['id']}-Q{qi}({ex['type']})", l, ex))
+# 草稿单元（还没挂进 course.json）：--extra content/unit7.json 把它的 lessons + heldLessons 也一起检查，可以重复写多个
+for i, a in enumerate(sys.argv):
+    if a == "--extra" and i + 1 < len(sys.argv):
+        data = json.loads((ROOT / sys.argv[i + 1]).read_text())
+        for l in data["lessons"] + data.get("heldLessons", []):
+            lessons.append(l)
+            for qi, ex in enumerate(l["exercises"], 1): items.append((f"{l['id']}-Q{qi}({ex['type']})", l, ex))
 known_types = {"predict", "fill", "order", "pick"}
 results = [output.check(items), fill.check(items), order.check(items), pick.check(items), codetask.check(lessons)]
 other = common.Check("其他题型")
