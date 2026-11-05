@@ -558,31 +558,37 @@ assert fails7(V7_START, V7_TESTS) != []
 for _t in ALL7 + V7_TESTS:
     assert all(isinstance(_a, int) and not isinstance(_a, bool) and _a >= 1 for _a in _t["call"]["args"]) and 1 <= len(_t["call"]["args"]) <= 2, _t["name"]
 
-# 课内 4 题（运行器开放前显示；第 4 题将被代码题替换）
-BILL_GOOD_DEFAULT = START7.replace("def bill(price, cups):", "def bill(price, cups=1):")
-P7_A = REF7 + 'print(bill(8, 3))\nprint(bill(12, 3))\nprint(bill(8))'
-P7_B = REF7 + 'print(bill(10, 3))\nprint(bill(29))\nprint(bill(30))'
-P7_C = BILL_GOOD_DEFAULT + 'result = bill(12, 3) + 1\nprint(result)'
-P7_C_A = REF7 + 'result = bill(12, 3) + 1\nprint(result)'
-P7_C_B = BILL_GOOD_DEFAULT + 'result = bill(12, 3)\nprint(result)'
-P7_C_C = BILL_GOOD_DEFAULT.replace("print(amount - 5)", "total(amount - 5)") + 'result = bill(12, 3) + 1\nprint(result)'
-P7_C_D = BILL_GOOD_DEFAULT + 'print(bill(12, 3) + 1)'
-P7_D = 'def bill(price, cups=1):\n    amount = price * cups\n    if amount >= 30:\n        return amount - 5\nprint(bill(8, 3))\nprint(bill(12, 3))'
-assert real_out(P7_A) == "24\n31\n8"
-assert real_out(P7_A.replace("return amount - 5", "return amount")) == "24\n36\n8"                      # 以为 12 × 3 = 36 不够满减
-assert real_out(P7_A.replace("print(bill(8))", "print(bill(8, 3))")) == "24\n31\n24"                       # 以为默认杯数是上一次的 3
-assert real_out(P7_A.replace("return amount - 5", "return cups * (price - 5)")) == "24\n21\n8"
-assert real_out(P7_B) == "25\n29\n25"
-assert real_out(P7_B.replace(">= 30", "> 30")) == "30\n29\n30"
-assert real_out(P7_B.replace("print(bill(30))", "print(bill(29) - 5)")) == "25\n29\n24"
-assert real_out(P7_B.replace("print(bill(29))", "print(bill(29) - 5)")) == "25\n24\n25"
+# 课内 4 题（运行器开放前显示；第 4 题将被代码题替换）。16:35 审稿意见：讲解和前置题不能出现与参考答案相同的完整 bill；
+# 讲解用“逾期费封顶”的场景，Q1/Q3/Q4 用“停车费”fee，Q2 只给“满减判断”的片段，学生要自己完成的 bill 一行都不出现。
+L7_INTRO = 'def late_fee(days, rate=2):\n    amount = days * rate\n    if amount > 10:\n        amount = 10\n    return amount\nprint(late_fee(3))\nprint(late_fee(8))\nprint(late_fee(8, 1))'
+P7_A = 'def fee(hours, rate=3):\n    amount = hours * rate\n    if amount > 12:\n        return 12\n    return amount\nprint(fee(2))\nprint(fee(5))\nprint(fee(5, 2))'
+P7_B = 'amount = 10 * 3\nif amount >= 30:\n    amount = amount - 5\nprint(amount)\namount = 29\nif amount >= 30:\n    amount = amount - 5\nprint(amount)'
+FEE_PRINT = 'def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\n'
+P7_C = FEE_PRINT + 'result = fee(2) + 1\nprint(result)'
+P7_C_A = 'def fee(hours, rate=3):\n    amount = hours * rate\n    return amount\nresult = fee(2) + 1\nprint(result)'
+P7_C_B = FEE_PRINT + 'result = fee(2)\nprint(result)'
+P7_C_C = FEE_PRINT + 'result = fee(2, 1) + 1\nprint(result)'
+P7_C_D = FEE_PRINT + 'print(fee(2) + 1)'
+P7_D = 'def fee(hours, rate=3):\n    amount = hours * rate\n    if amount > 12:\n        return 12\nprint(fee(2))\nprint(fee(5))'
+assert real_out(L7_INTRO) == "6\n10\n8"
+assert real_out(P7_A) == "6\n12\n10"
+assert real_out(P7_A.replace("print(fee(5, 2))", "print(fee(5, 3))")) == "6\n12\n12"
+assert real_out(P7_A.replace("print(fee(5))", "print(fee(5) + 1)")) == "6\n13\n10"
+assert real_out(P7_A.replace("return 12", "return amount")) == "6\n15\n10"                           # 以为没有封顶
+assert real_out(P7_A.replace("print(fee(5, 2))", "print(fee(5, 2) * 2)")) == "6\n12\n20"
+assert real_out(P7_B) == "25\n29"
+assert real_out(P7_B.replace(">= 30", "> 30")) == "30\n29"
+assert real_out(P7_B.replace("amount = amount - 5", "amount = 5")) == "5\n29"
 r7c = real_error(P7_C)
-assert (r7c["type"], r7c["line"], r7c["code_line"], r7c["msg"], r7c["stdout"]) == ("TypeError", 10, "result = bill(12, 3) + 1", "unsupported operand type(s) for +: 'NoneType' and 'int'", "31")
-assert real_out(P7_C_A) == "32" and real_out(P7_C_B) == "31\nNone"
+assert (r7c["type"], r7c["line"], r7c["code_line"], r7c["msg"], r7c["stdout"]) == ("TypeError", 4, "result = fee(2) + 1", "unsupported operand type(s) for +: 'NoneType' and 'int'", "6")
+assert real_out(P7_C_A) == "7" and real_out(P7_C_B) == "6\nNone"
 assert run(P7_C_C)[1] == "TypeError" and run(P7_C_D)[1] == "TypeError"
-assert real_out(P7_D) == "None\n31"
-assert real_out(P7_D.replace("print(bill(8, 3))", "print(24)")) == "24\n31"
-assert P7_C.split("\n")[9] == "result = bill(12, 3) + 1"                                               # 解释里的“第 10 行”
+assert P7_C.split("\n")[3] == "result = fee(2) + 1"                                                   # 解释里的“第 4 行”
+assert real_out(P7_D) == "None\n12"
+assert real_out(P7_D.replace("print(fee(2))", "print(6)")) == "6\n12"
+# 这些前置内容里不能出现项目的参考答案：不含 bill，也不含 total(price, cups) 的调用
+for _src in (L7_INTRO, P7_A, P7_B, P7_C, P7_D, P7_C_A):
+    assert "bill" not in _src and "total(" not in _src and "price" not in _src, _src
 
 L7_TASK = {"id": "U8L7-M1", "version": 1, "type": "modify",
  "prompt": "价格计算器：函数 bill(price, cups) 要算出顾客应付的钱，用 return 交回（不是 print）。输入范围：price、cups 都是正整数（至少为 1）。规则：① 总价 = price × cups；② 总价满 30 元（正好 30 元也算）减 5 元，不满不减；③ 只写单价、不写杯数时，按 1 杯算。已经写好的 total(price, cups) 可以直接用。",
@@ -601,30 +607,30 @@ L7_TASK = {"id": "U8L7-M1", "version": 1, "type": "modify",
 held = [
  {"id": "U8L7", "title": "价格计算器", "concept": "项目：算总价、满减、默认杯数，用 return 交回",
   "story": "项目：奶茶店的价格计算器。函数 bill(price, cups) 算顾客应付的钱：总价 = 单价 × 杯数；总价满 30 元（正好 30 元也算）减 5 元；只写单价时按 1 杯算。结果要用 return 交回，让别的地方可以接住它、继续算。已经写好的 total(price, cups) 可以直接调用。",
-  "introCode": P7_A,
+  "introCode": L7_INTRO,
   "exercises": [
     pred(SHOW, P7_A, [
-        ("24\n31\n8", T, "bill(8, 3)：总价 24，不满 30，交回 24。bill(12, 3)：总价 36，满 30，减 5 得 31。bill(8)：没传 cups，用默认的 1，总价 8，交回 8。"),
-        ("24\n36\n8", F, "判断的是总价 amount：12 × 3 = 36，满 30，要减 5。"),
-        ("24\n31\n24", F, "每次调用都重新传值。bill(8) 没传 cups，用默认值 1，不是上一次的 3。"),
-        ("24\n21\n8", F, "程序里减的是总价 amount - 5，不是每杯减 5：36 - 5 = 31。")],
-        tip="先算总价，再看总价是不是满 30。"),
-    pred(SHOW, P7_B, [
-        ("25\n29\n25", T, "bill(10, 3)：总价正好 30，amount >= 30 成立，减 5 得 25。bill(29)：只有 29 元，不满 30，交回 29。bill(30)：1 杯 30 元，满 30，交回 25。"),
-        ("30\n29\n30", F, "条件是 amount >= 30，总价正好 30 也成立，要减 5。"),
-        ("25\n29\n24", F, "bill(30) 的总价是 30，正好满 30，要减 5，得 25，不是 24。"),
-        ("25\n24\n25", F, "bill(29) 的总价是 29，不满 30，不减，交回 29。")],
+        ("6\n12\n10", T, "fee(2)：2 × 3 = 6，不超过 12，交回 6。fee(5)：5 × 3 = 15，超过 12，return 12。fee(5, 2)：传了 rate 是 2，5 × 2 = 10，不超过 12，交回 10。"),
+        ("6\n15\n10", F, "15 超过 12，会执行 return 12，封顶交回 12，不是 15。"),
+        ("6\n12\n12", F, "fee(5, 2) 传了 rate = 2，不是默认的 3：5 × 2 = 10，没超过 12。"),
+        ("6\n12\n20", F, "fee(5, 2) 的第二个值传给 rate，不是乘 2 的倍数：5 × 2 = 10。")],
+        tip="先算 amount，再看是不是超过 12；传了第二个值就用它，没传才用默认值 3。"),
+    pred("下面是“总价满 30 元减 5 元”的判断（总价正好 30 元也算）。屏幕上会显示什么？", P7_B, [
+        ("25\n29", T, "第一段：amount 是 30，amount >= 30 成立（正好 30 也成立），减 5 得 25。第二段：amount 是 29，不满 30，不减，显示 29。"),
+        ("30\n29", F, "条件是 amount >= 30，30 也成立，要减 5。"),
+        ("25\n24", F, "第二段 amount 是 29，不满 30，不减，仍是 29。"),
+        ("5\n29", F, "amount = amount - 5 是在原来的数上减 5：30 - 5 = 25，不是直接变成 5。")],
         tip="边界：>= 30 包含 30。"),
-    pick("想显示 32（31 再加 1）。现在运行报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加）。怎么改，屏幕才会显示 32？", "fix", [
-        opt("把 bill 里的两个 print(…) 都改成 return …", T, "bill 里是 print：显示了 31，函数却没遇到 return，自动返回 None，None + 1 报错。把两个 print 都改成 return，bill(12, 3) 交回 31，31 + 1 = 32。", fixed=P7_C_A),
-        opt("把第 10 行的 + 1 去掉", F, "不报错了，但 bill 里的 print 先显示 31，result 得到的是 None，最后显示 31 和 None，不是 32。", fixed=P7_C_B),
-        opt("把 bill 里的 print(amount - 5) 改成 total(amount - 5)", F, "total 需要两个值（price 和 cups），只传一个会报 TypeError。而且这样只是调用，没有 return。", fixed=P7_C_C),
-        opt("把第 10 行改成 print(bill(12, 3) + 1)", F, "bill(12, 3) 得到的还是 None，None + 1 仍然是 TypeError。", fixed=P7_C_D),
-    ], code=P7_C, trace=trace_of(P7_C), expected="32", tip="想把结果拿去继续算，函数里要用 return 交回。"),
+    pick("想显示 7（6 再加 1）。现在运行先显示了 6，又报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加）。怎么改，屏幕才会显示 7？", "fix", [
+        opt("把 fee 里的 print(amount) 改成 return amount", T, "fee 里是 print：显示了 6，函数却没遇到 return，自动返回 None，None + 1 报错。改成 return amount，fee(2) 交回 6，6 + 1 = 7。", fixed=P7_C_A),
+        opt("把第 4 行的 + 1 去掉", F, "不报错了，但 fee 里的 print 先显示 6，result 得到的是 None，最后显示 6 和 None，不是 7。", fixed=P7_C_B),
+        opt("把第 4 行改成 result = fee(2, 1) + 1", F, "多传一个值给 rate，fee 还是只 print、不 return，得到的仍是 None，None + 1 仍然是 TypeError。", fixed=P7_C_C),
+        opt("把第 4 行改成 print(fee(2) + 1)", F, "fee(2) 得到的还是 None，None + 1 仍然是 TypeError。", fixed=P7_C_D),
+    ], code=P7_C, trace=trace_of(P7_C), expected="7", tip="想把结果拿去继续算，函数里要用 return 交回。"),
     pred(SHOW, P7_D, [
-        ("None\n31", T, "bill(8, 3)：总价 24，不满 30，if 里的 return 没有执行，函数执行结束时没有遇到 return，自动返回 None。bill(12, 3)：总价 36，满 30，return 31。"),
-        ("24\n31", F, "不满 30 的情况没有 return 24，函数不会自己把 amount 交回来，得到的是 None。"),
-        ("24\n36", F, "bill(12, 3) 满 30，会执行 return amount - 5，交回 31，不是 36。"),
+        ("None\n12", T, "fee(2)：amount 是 6，不超过 12，if 里的 return 没有执行，函数执行结束时没有遇到 return，自动返回 None。fee(5)：15 超过 12，return 12。"),
+        ("6\n12", F, "不超过 12 的情况没有 return amount，函数不会自己把 amount 交回来，得到的是 None。"),
+        ("6\n15", F, "fee(5) 超过 12，会执行 return 12，交回 12，不是 15。"),
         ("报错", F, "没有 return 的调用不会报错，只是得到 None；print(None) 显示 None。")],
         tip="每一种情况都要有 return；没遇到 return，就是 None。"),
   ],

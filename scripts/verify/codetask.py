@@ -39,14 +39,43 @@ def _jg_same(a, e, tol):
     return type(a) is type(e) and a == e
 """
 def _call_ok(src, t):
-    """(是否通过, 说明)：返回 (True, '') 或 (False, 实际返回值 / 错误类型)。"""
+    """(是否通过, 说明)：返回 (True, '') 或 (False, 实际返回值 / 错误类型)。
+    返回值和学生的 print 输出走两条独立的通道（和 src/judge.js 一样：判题代码把结果写进单独的结果文件，不读标准输出），
+    所以学生先 print(…, end="")、甚至打印 "@@OK" 之类的文字，都不会影响判断。"""
+    import json, os, tempfile
     c = t["call"]
+    fd, path = tempfile.mkstemp(suffix=".json", prefix="calljudge-"); os.close(fd)
     harness = (_JG_SAME + f"\n_a = {c['fn']}(*{c.get('args', [])!r}, **{c.get('kwargs', {})!r})\n"
-               f"print('@@' + ('OK' if _jg_same(_a, {t['expectedReturn']!r}, {t.get('tol', 1e-9)!r}) else 'BAD ' + repr(_a)))\n")
-    out, err = run(src + "\n" + harness)
-    if err is not None: return False, err
-    last = out.rstrip("\n").split("\n")[-1] if out else ""
-    return (last == "@@OK"), (last[2:] if last.startswith("@@") else last)
+               f"import json as _j\n"
+               f"with open({path!r}, 'w', encoding='utf-8') as _fh:\n"
+               f"    _fh.write(_j.dumps({{'ok': bool(_jg_same(_a, {t['expectedReturn']!r}, {t.get('tol', 1e-9)!r})), 'actual': repr(_a)[:200]}}, ensure_ascii=False))\n")
+    try:
+        out, err = run(src + "\n" + harness)
+        if err is not None: return False, err
+        raw = open(path, encoding="utf-8").read()
+        if not raw: return False, "没有得到返回值"
+        r = json.loads(raw)
+        return bool(r["ok"]), ("" if r["ok"] else r["actual"])
+    finally:
+        try: os.remove(path)
+        except OSError: pass
+
+_SELFTEST_DONE = []
+def _selftest_call(c):
+    """call 判分自检（每次验证只跑一遍）：学生的 print 输出不能影响返回值的判断。"""
+    if _SELFTEST_DONE: return
+    _SELFTEST_DONE.append(1)
+    T = {"name": "t", "call": {"fn": "f", "args": [8]}, "expectedReturn": 24}
+    cases = [
+        ('def f(x):\n    print("调试", end="")\n    return x * 3\n', True, "先 print(…, end=\"\") 再正确返回：通过"),
+        ('def f(x):\n    print("调试")\n    return x * 3\n', True, "先 print 再正确返回：通过"),
+        ('def f(x):\n    print("@@OK")\n    return x * 2\n', False, "打印 @@OK 但返回值错：不通过"),
+        ('def f(x):\n    print(x * 3)\n', False, "只 print 了正确的数、没有 return：不通过"),
+        ('print("顶层输出", end="")\ndef f(x):\n    return x * 3\n', True, "顶层有不换行的输出，函数返回值对：通过"),
+        ('def f(x):\n    return str(x * 3)\n', False, "返回文字 \"24\" 不等于数字 24：不通过"),
+        ('def f(x):\n    return True\n', False, "返回 True 不等于数字 24（布尔和数字不混）：不通过"),
+    ]
+    for src, want, why in cases: c.ok(_call_ok(src, T)[0] == want, "call判分自检", why)
 def _passes(src, t, mode):
     """学生代码 / 参考答案在这一组测试上是否通过（output 模式比较标准输出，call 模式比较返回值）。"""
     if mode == "call": return _call_ok(src, t)[0]
@@ -64,6 +93,7 @@ def check(lessons):
             ts = k.get("tests", [])
             c.ok(any(not t.get("hidden") for t in ts) and any(t.get("hidden") for t in ts), w + "-测试", "缺公开或隐藏测试")
             if mode == "call":
+                _selftest_call(c)
                 c.ok(all(isinstance(t.get("call"), dict) and "expectedReturn" in t for t in ts), w + "-call格式", "call 模式的测试要有 call 和 expectedReturn")
                 c.ok(len({t["name"] for t in ts}) == len(ts), w + "-测试名", "测试名重复")
                 for t in ts:

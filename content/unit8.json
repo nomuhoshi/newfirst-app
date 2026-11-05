@@ -775,103 +775,103 @@
       "title": "价格计算器",
       "concept": "项目：算总价、满减、默认杯数，用 return 交回",
       "story": "项目：奶茶店的价格计算器。函数 bill(price, cups) 算顾客应付的钱：总价 = 单价 × 杯数；总价满 30 元（正好 30 元也算）减 5 元；只写单价时按 1 杯算。结果要用 return 交回，让别的地方可以接住它、继续算。已经写好的 total(price, cups) 可以直接调用。",
-      "introCode": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\nprint(bill(8, 3))\nprint(bill(12, 3))\nprint(bill(8))",
+      "introCode": "def late_fee(days, rate=2):\n    amount = days * rate\n    if amount > 10:\n        amount = 10\n    return amount\nprint(late_fee(3))\nprint(late_fee(8))\nprint(late_fee(8, 1))",
       "exercises": [
         {
           "type": "predict",
           "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
-          "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\nprint(bill(8, 3))\nprint(bill(12, 3))\nprint(bill(8))",
+          "code": "def fee(hours, rate=3):\n    amount = hours * rate\n    if amount > 12:\n        return 12\n    return amount\nprint(fee(2))\nprint(fee(5))\nprint(fee(5, 2))",
           "options": [
             {
-              "text": "24\n31\n8",
+              "text": "6\n12\n10",
               "correct": true,
-              "why": "bill(8, 3)：总价 24，不满 30，交回 24。bill(12, 3)：总价 36，满 30，减 5 得 31。bill(8)：没传 cups，用默认的 1，总价 8，交回 8。"
+              "why": "fee(2)：2 × 3 = 6，不超过 12，交回 6。fee(5)：5 × 3 = 15，超过 12，return 12。fee(5, 2)：传了 rate 是 2，5 × 2 = 10，不超过 12，交回 10。"
             },
             {
-              "text": "24\n36\n8",
+              "text": "6\n15\n10",
               "correct": false,
-              "why": "判断的是总价 amount：12 × 3 = 36，满 30，要减 5。"
+              "why": "15 超过 12，会执行 return 12，封顶交回 12，不是 15。"
             },
             {
-              "text": "24\n31\n24",
+              "text": "6\n12\n12",
               "correct": false,
-              "why": "每次调用都重新传值。bill(8) 没传 cups，用默认值 1，不是上一次的 3。"
+              "why": "fee(5, 2) 传了 rate = 2，不是默认的 3：5 × 2 = 10，没超过 12。"
             },
             {
-              "text": "24\n21\n8",
+              "text": "6\n12\n20",
               "correct": false,
-              "why": "程序里减的是总价 amount - 5，不是每杯减 5：36 - 5 = 31。"
+              "why": "fee(5, 2) 的第二个值传给 rate，不是乘 2 的倍数：5 × 2 = 10。"
             }
           ],
-          "tip": "先算总价，再看总价是不是满 30。"
+          "tip": "先算 amount，再看是不是超过 12；传了第二个值就用它，没传才用默认值 3。"
         },
         {
           "type": "predict",
-          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
-          "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\nprint(bill(10, 3))\nprint(bill(29))\nprint(bill(30))",
+          "prompt": "下面是“总价满 30 元减 5 元”的判断（总价正好 30 元也算）。屏幕上会显示什么？",
+          "code": "amount = 10 * 3\nif amount >= 30:\n    amount = amount - 5\nprint(amount)\namount = 29\nif amount >= 30:\n    amount = amount - 5\nprint(amount)",
           "options": [
             {
-              "text": "25\n29\n25",
+              "text": "25\n29",
               "correct": true,
-              "why": "bill(10, 3)：总价正好 30，amount >= 30 成立，减 5 得 25。bill(29)：只有 29 元，不满 30，交回 29。bill(30)：1 杯 30 元，满 30，交回 25。"
+              "why": "第一段：amount 是 30，amount >= 30 成立（正好 30 也成立），减 5 得 25。第二段：amount 是 29，不满 30，不减，显示 29。"
             },
             {
-              "text": "30\n29\n30",
+              "text": "30\n29",
               "correct": false,
-              "why": "条件是 amount >= 30，总价正好 30 也成立，要减 5。"
+              "why": "条件是 amount >= 30，30 也成立，要减 5。"
             },
             {
-              "text": "25\n29\n24",
+              "text": "25\n24",
               "correct": false,
-              "why": "bill(30) 的总价是 30，正好满 30，要减 5，得 25，不是 24。"
+              "why": "第二段 amount 是 29，不满 30，不减，仍是 29。"
             },
             {
-              "text": "25\n24\n25",
+              "text": "5\n29",
               "correct": false,
-              "why": "bill(29) 的总价是 29，不满 30，不减，交回 29。"
+              "why": "amount = amount - 5 是在原来的数上减 5：30 - 5 = 25，不是直接变成 5。"
             }
           ],
           "tip": "边界：>= 30 包含 30。"
         },
         {
           "type": "pick",
-          "prompt": "想显示 32（31 再加 1）。现在运行报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加）。怎么改，屏幕才会显示 32？",
+          "prompt": "想显示 7（6 再加 1）。现在运行先显示了 6，又报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加）。怎么改，屏幕才会显示 7？",
           "key": "fix",
-          "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\nresult = bill(12, 3) + 1\nprint(result)",
-          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 10, in <module>\n    result = bill(12, 3) + 1\nTypeError: unsupported operand type(s) for +: 'NoneType' and 'int'",
+          "code": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nresult = fee(2) + 1\nprint(result)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 4, in <module>\n    result = fee(2) + 1\nTypeError: unsupported operand type(s) for +: 'NoneType' and 'int'",
           "checks": [
             {
-              "program": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\nresult = bill(12, 3) + 1\nprint(result)",
+              "program": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nresult = fee(2) + 1\nprint(result)",
               "type": "TypeError",
-              "line": 10,
+              "line": 4,
               "msg": "unsupported operand type(s) for +: 'NoneType' and 'int'"
             }
           ],
-          "expected": "32",
+          "expected": "7",
           "options": [
             {
-              "text": "把 bill 里的两个 print(…) 都改成 return …",
+              "text": "把 fee 里的 print(amount) 改成 return amount",
               "correct": true,
-              "why": "bill 里是 print：显示了 31，函数却没遇到 return，自动返回 None，None + 1 报错。把两个 print 都改成 return，bill(12, 3) 交回 31，31 + 1 = 32。",
-              "fixed": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\nresult = bill(12, 3) + 1\nprint(result)"
+              "why": "fee 里是 print：显示了 6，函数却没遇到 return，自动返回 None，None + 1 报错。改成 return amount，fee(2) 交回 6，6 + 1 = 7。",
+              "fixed": "def fee(hours, rate=3):\n    amount = hours * rate\n    return amount\nresult = fee(2) + 1\nprint(result)"
             },
             {
-              "text": "把第 10 行的 + 1 去掉",
+              "text": "把第 4 行的 + 1 去掉",
               "correct": false,
-              "why": "不报错了，但 bill 里的 print 先显示 31，result 得到的是 None，最后显示 31 和 None，不是 32。",
-              "fixed": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\nresult = bill(12, 3)\nprint(result)"
+              "why": "不报错了，但 fee 里的 print 先显示 6，result 得到的是 None，最后显示 6 和 None，不是 7。",
+              "fixed": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nresult = fee(2)\nprint(result)"
             },
             {
-              "text": "把 bill 里的 print(amount - 5) 改成 total(amount - 5)",
+              "text": "把第 4 行改成 result = fee(2, 1) + 1",
               "correct": false,
-              "why": "total 需要两个值（price 和 cups），只传一个会报 TypeError。而且这样只是调用，没有 return。",
-              "fixed": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        total(amount - 5)\n    else:\n        print(amount)\nresult = bill(12, 3) + 1\nprint(result)"
+              "why": "多传一个值给 rate，fee 还是只 print、不 return，得到的仍是 None，None + 1 仍然是 TypeError。",
+              "fixed": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nresult = fee(2, 1) + 1\nprint(result)"
             },
             {
-              "text": "把第 10 行改成 print(bill(12, 3) + 1)",
+              "text": "把第 4 行改成 print(fee(2) + 1)",
               "correct": false,
-              "why": "bill(12, 3) 得到的还是 None，None + 1 仍然是 TypeError。",
-              "fixed": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\nprint(bill(12, 3) + 1)"
+              "why": "fee(2) 得到的还是 None，None + 1 仍然是 TypeError。",
+              "fixed": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nprint(fee(2) + 1)"
             }
           ],
           "tip": "想把结果拿去继续算，函数里要用 return 交回。"
@@ -879,22 +879,22 @@
         {
           "type": "predict",
           "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
-          "code": "def bill(price, cups=1):\n    amount = price * cups\n    if amount >= 30:\n        return amount - 5\nprint(bill(8, 3))\nprint(bill(12, 3))",
+          "code": "def fee(hours, rate=3):\n    amount = hours * rate\n    if amount > 12:\n        return 12\nprint(fee(2))\nprint(fee(5))",
           "options": [
             {
-              "text": "None\n31",
+              "text": "None\n12",
               "correct": true,
-              "why": "bill(8, 3)：总价 24，不满 30，if 里的 return 没有执行，函数执行结束时没有遇到 return，自动返回 None。bill(12, 3)：总价 36，满 30，return 31。"
+              "why": "fee(2)：amount 是 6，不超过 12，if 里的 return 没有执行，函数执行结束时没有遇到 return，自动返回 None。fee(5)：15 超过 12，return 12。"
             },
             {
-              "text": "24\n31",
+              "text": "6\n12",
               "correct": false,
-              "why": "不满 30 的情况没有 return 24，函数不会自己把 amount 交回来，得到的是 None。"
+              "why": "不超过 12 的情况没有 return amount，函数不会自己把 amount 交回来，得到的是 None。"
             },
             {
-              "text": "24\n36",
+              "text": "6\n15",
               "correct": false,
-              "why": "bill(12, 3) 满 30，会执行 return amount - 5，交回 31，不是 36。"
+              "why": "fee(5) 超过 12，会执行 return 12，交回 12，不是 15。"
             },
             {
               "text": "报错",
