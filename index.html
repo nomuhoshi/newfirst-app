@@ -16,44 +16,90 @@
 </head>
 <body>
   <div id="app"></div>
-  <!-- 兜底提示：用最老的语法写、不依赖主程序。主程序没能显示内容（网络、浏览器太旧、微信内置浏览器等）时，说明原因并给“重新加载”按钮；正常加载时不会出现。 -->
+  <!-- 兜底提示：用最老的语法写、不依赖主程序。主程序没能显示内容时，说明原因并给“重新加载”按钮；正常加载时不会出现。
+       三种情况：① 确认是资源下载失败（脚本文件打不开）→ 先给网络排查建议；② 已捕获到脚本解析 / 启动异常 → 先说“页面脚本出错，应用未能启动”，错误详情放在下方、可复制；③ 什么错误都没捕获到（比如一直没响应）→ 保持原来的通用提示。
+       页面已经渲染出来之后的异步异常不会触发这个提示。 -->
   <script>
   (function () {
-    var MS = window.__fallbackMs || 8000, box = null, lastErr = "", timer = null;
+    var MS = window.__fallbackMs || 8000, box = null, timer = null;
+    var kind = "", detail = ""; // kind："resource"（资源下载失败）/ "script"（脚本解析或启动异常）/ ""（没捕获到）
     function ready() { var a = document.getElementById("app"); return !!(a && a.childNodes.length); }
     function remove() { if (box && box.parentNode) box.parentNode.removeChild(box); box = null; }
     function add(parent, tag, text, css) {
       var el = document.createElement(tag); el.textContent = text; if (css) el.style.cssText = css; parent.appendChild(el); return el;
+    }
+    var BTN = "font:inherit;padding:10px 20px;border-radius:10px;border:1px solid currentColor;background:transparent;color:inherit";
+    function copyText(ta, btn) {
+      function manual() { btn.textContent = "没能自动复制：请长按上面的文字框，选“全选”再“拷贝”"; }
+      function legacy() { var ok = false; try { ta.focus(); ta.select(); ok = document.execCommand("copy"); } catch (e) { ok = false; } if (ok) btn.textContent = "已复制 ✓"; else manual(); }
+      try { ta.focus(); ta.select(); if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(function () { btn.textContent = "已复制 ✓"; }, legacy); else legacy(); } catch (e) { legacy(); }
     }
     function show() {
       if (box || ready()) return;
       var ua = navigator.userAgent || "";
       var wx = /MicroMessenger|QQ\//i.test(ua);
       var m = ua.match(/OS (\d+)[_.](\d+)/);
+      var env = (m ? "iOS " + m[1] + "." + m[2] + " · " : "") + (wx ? "微信/QQ · " : "") + ua.slice(0, 120);
       document.documentElement.style.colorScheme = "light dark";
       box = document.createElement("div");
       box.id = "load-fallback";
       box.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;overflow:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box;background:Canvas;font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;padding:32px 20px;color:CanvasText";
-      add(box, "h1", "页面没有正常加载", "font-size:20px;margin:0 0 12px");
-      add(box, "p", "可能的原因（按可能性排列）：", "margin:0 0 8px");
+      var tips;
+      if (kind === "script") {
+        add(box, "h1", "页面脚本出错，应用未能启动", "font-size:20px;margin:0 0 12px");
+        add(box, "p", "页面文件已经下载到了，但里面的脚本在这台设备上没能运行。这通常不是网络问题。可以试试：", "margin:0 0 8px");
+        tips = [
+          ["重新加载一次：", "偶尔是文件没下载完整，点下面的“重新加载”。"],
+          ["换个浏览器打开：", wx ? "你现在在微信或 QQ 里：点右上角“···”，选“在浏览器打开”（iPhone 选“在 Safari 中打开”）。" : "换 Safari 或 Chrome 再试；如果在微信或 QQ 里，点右上角“···”选“在浏览器打开”。"],
+          ["系统或浏览器版本太旧：", "升级 iOS 或浏览器后再试。"]
+        ];
+        if (wx) tips.splice(0, 0, tips.splice(1, 1)[0]);
+      } else {
+        add(box, "h1", "页面没有正常加载", "font-size:20px;margin:0 0 12px");
+        add(box, "p", "可能的原因（按可能性排列）：", "margin:0 0 8px");
+        tips = [
+          ["微信或 QQ 里打开：", "点右上角“···”，选“在浏览器打开”（iPhone 选“在 Safari 中打开”），再试一次。"],
+          ["网络不稳定：", "换 Wi-Fi 或移动网络，然后点下面的“重新加载”。"],
+          ["系统或浏览器版本太旧：", "升级 iOS 或浏览器后再试。"]
+        ];
+        if (!wx) tips.push(tips.shift());
+      }
       var ul = add(box, "ul", "", "padding-left:20px;margin:0 0 16px");
-      var tips = [
-        ["微信或 QQ 里打开：", "点右上角“···”，选“在浏览器打开”（iPhone 选“在 Safari 中打开”），再试一次。"],
-        ["网络不稳定：", "换 Wi-Fi 或移动网络，然后点下面的“重新加载”。"],
-        ["系统或浏览器版本太旧：", "升级 iOS 或浏览器后再试。"]
-      ];
-      if (!wx) tips.push(tips.shift());
       for (var i = 0; i < tips.length; i++) { var li = add(ul, "li", "", "margin-bottom:6px"); add(li, "b", tips[i][0]); li.appendChild(document.createTextNode(tips[i][1])); }
-      var b = add(box, "button", "重新加载", "font:inherit;padding:10px 20px;border-radius:10px;border:1px solid currentColor;background:transparent;color:inherit");
+      var b = add(box, "button", "重新加载", BTN);
       b.id = "load-fallback-reload";
       b.onclick = function () { location.reload(); };
-      var info = (m ? "iOS " + m[1] + "." + m[2] + " · " : "") + (wx ? "微信/QQ · " : "") + (lastErr ? lastErr + " · " : "") + ua.slice(0, 120);
-      add(box, "p", "给开发者的信息：" + info, "margin-top:20px;font-size:12px;opacity:.65;word-break:break-all");
+      if (kind === "script") {
+        // 错误详情：放在提示下方，文字框里的内容可以长按全选、也可以点按钮复制
+        add(box, "p", "把下面的错误信息发给开发者：", "margin:20px 0 6px;font-size:14px");
+        var ta = document.createElement("textarea");
+        ta.id = "load-fallback-detail"; ta.readOnly = true;
+        ta.value = "错误：" + detail + "\n环境：" + env + "\n网址：" + String(location.href).slice(0, 160);
+        ta.style.cssText = "display:block;width:100%;box-sizing:border-box;height:8em;font:12px/1.5 ui-monospace,Menlo,monospace;color:inherit;background:transparent;border:1px solid currentColor;border-radius:8px;padding:8px;opacity:.85";
+        box.appendChild(ta);
+        var cb = add(box, "button", "复制错误信息", BTN + ";margin-top:10px;font-size:14px;padding:8px 16px");
+        cb.id = "load-fallback-copy";
+        cb.onclick = function () { copyText(ta, cb); };
+      } else {
+        add(box, "p", "给开发者的信息：" + (detail ? detail + " · " : "") + env, "margin-top:20px;font-size:12px;opacity:.65;word-break:break-all");
+      }
       document.body.appendChild(box);
     }
+    // 这些信息说明“资源（脚本块 / 模块）没下载下来”，不是脚本本身出错
+    var NETMSG = /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Load failed|NetworkError|Failed to fetch/i;
     function onErr(e) {
-      var t = e && e.target && e.target.src ? "无法加载 " + String(e.target.src).split("/").pop() : (e && e.message) || (e && e.reason && String(e.reason)) || "";
-      if (t && !lastErr) lastErr = String(t).slice(0, 100);
+      var el = e && e.target, t = "", k = "";
+      if (el && el !== window && (el.src || el.href)) { t = "无法加载 " + String(el.src || el.href).split("/").pop(); k = "resource"; }
+      else {
+        var msg = (e && e.message) || (e && e.reason && (e.reason.message || String(e.reason))) || "";
+        if (msg) {
+          t = String(msg);
+          if (e && e.filename) t += "（" + String(e.filename).split("/").pop() + (e.lineno ? ":" + e.lineno + (e.colno ? ":" + e.colno : "") : "") + "）";
+          k = NETMSG.test(t) ? "resource" : "script";
+        }
+      }
+      if (t) { if (!detail || (k === "resource" && kind !== "resource")) detail = t.slice(0, 240); }
+      if (k === "resource" || (k === "script" && kind !== "resource")) kind = k; // 确认是资源下载失败的，优先给网络建议
       setTimeout(show, 1500);
     }
     window.addEventListener("error", onErr, true);

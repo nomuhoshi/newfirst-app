@@ -93,11 +93,43 @@ try {
     await ctx.close();
   }
 
-  { // 主脚本有语法错误 / 运行报错
-    const { ctx, page } = await open({ route: (pg) => pg.route(MAIN_JS, (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: "const = ;" })) });
-    await page.waitForSelector("#load-fallback", { timeout: 8000 });
-    check("主脚本语法错误（模拟浏览器不认识新语法）：显示兜底提示", /页面没有正常加载/.test(await page.locator("#load-fallback").innerText()));
-    await ctx.close();
+  { // 主脚本下载成功（200）但有语法错误 / 启动时异常：脚本出错，不是网络问题
+    // 行为变更（产品官 13:41）：已捕获到脚本解析或启动异常时，先说“页面脚本出错，应用未能启动”，错误详情放在下方可复制；原来这里写“页面没有正常加载”+“网络不稳定”排第一。
+    const real = readFileSync(join(DIST, "assets", readdirSync(join(DIST, "assets")).find((f) => /^main-.*\.js$/.test(f))), "utf8");
+    for (const [name, body, errRe] of [["语法错误", "const = ;", /SyntaxError/], ["启动时异常", `throw new Error("模拟：启动时异常");\n` + real, /模拟：启动时异常/]]) {
+      const { ctx, page } = await open({ route: (pg) => pg.route(MAIN_JS, (r) => r.fulfill({ status: 200, contentType: "text/javascript", body })) });
+      await page.waitForSelector("#load-fallback", { timeout: 8000 });
+      const txt = await page.locator("#load-fallback").innerText();
+      check(`主脚本${name}（200）：标题是“页面脚本出错，应用未能启动”，不再是“页面没有正常加载”`, /页面脚本出错，应用未能启动/.test(txt) && !/页面没有正常加载/.test(txt), txt.slice(0, 60));
+      check(`主脚本${name}（200）：不把“网络不稳定”排在第一条`, !/网络不稳定/.test(txt) || txt.indexOf("网络不稳定") > txt.indexOf("重新加载一次"), txt.replace(/\n+/g, " / ").slice(0, 160));
+      const detail = await page.locator("#load-fallback-detail").inputValue();
+      check(`主脚本${name}（200）：错误详情在提示下方的文字框里，含错误、环境、网址`, errRe.test(detail) && /环境：.*iOS 16\.6/.test(detail) && /网址：http/.test(detail), detail);
+      const g = await page.evaluate(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(); return { reload: r("load-fallback-reload"), detail: r("load-fallback-detail"), vh: innerHeight }; });
+      check(`主脚本${name}（200）：详情文字框在“重新加载”按钮下面，重新加载在首屏内`, g.detail.top > g.reload.bottom && g.reload.bottom <= g.vh, JSON.stringify(g));
+      await page.locator("#load-fallback-copy").click(); await page.waitForTimeout(300);
+      check(`主脚本${name}（200）：点“复制错误信息”后按钮如实反馈（成功写“已复制”，否则提示长按手动复制）`, /已复制|长按/.test(await page.locator("#load-fallback-copy").innerText()));
+      await ctx.close();
+    }
+    { // 在微信里：脚本出错也要把“换浏览器打开”排第一
+      const { ctx, page } = await open({ ua: WECHAT_UA, route: (pg) => pg.route(MAIN_JS, (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: "const = ;" })) });
+      await page.waitForSelector("#load-fallback", { timeout: 8000 });
+      const first = await page.locator("#load-fallback li").first().innerText();
+      check("在微信里脚本出错：第一条是“换个浏览器打开”，环境里标明微信", /换个浏览器打开/.test(first) && /微信/.test(first) && /微信\/QQ/.test(await page.locator("#load-fallback-detail").inputValue()), first);
+      await ctx.close();
+    }
+    { // 确认是资源下载失败（主程序依赖的脚本块打不开）：仍然网络建议在前
+      const { ctx, page } = await open({ route: (pg) => pg.route(/\/assets\/errors-[^/]*\.js$/, (r) => r.abort()) });
+      await page.waitForSelector("#load-fallback", { timeout: 8000 });
+      const txt = await page.locator("#load-fallback").innerText();
+      check("脚本块下载失败（确认是资源加载失败）：仍显示“页面没有正常加载”，“网络不稳定”排在“微信或 QQ”前面，没有错误文字框，开发者信息里写“无法加载 errors-”", /页面没有正常加载/.test(txt) && /无法加载 errors-/.test(txt) && txt.indexOf("网络不稳定") < txt.indexOf("微信或 QQ") && (await page.locator("#load-fallback-detail").count()) === 0, txt.replace(/\n+/g, " / ").slice(0, 160));
+      await ctx.close();
+    }
+    { // 页面已经正常显示后的异步异常：维持现有行为（不弹兜底提示）
+      const { ctx, page } = await open({ route: (pg) => pg.route(MAIN_JS, (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: real + `\nsetTimeout(() => { Promise.reject(new Error("模拟：启动后异步异常")); }, 800);` })) });
+      await page.waitForSelector("#app *", { timeout: 8000 }); await page.waitForTimeout(4000);
+      check("页面已渲染后的异步异常：不出现兜底提示，页面照常显示", (await page.locator("#load-fallback").count()) === 0 && /小码/.test(await page.locator("#app").innerText()));
+      await ctx.close();
+    }
   }
 
   { // 不能创建 Python 工作线程：页面照样出现

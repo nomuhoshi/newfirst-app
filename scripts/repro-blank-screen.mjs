@@ -5,11 +5,11 @@
 //     3 启动时异常（HTTP 200，真实主程序，但初始化完成后异步抛出未捕获的 Promise 拒绝；页面已渲染）
 //   对每一种，记录：应用页（index.html）有没有提示、提示写了什么、控制台报什么错；
 //   再在同样的条件下打开诊断页（access-test.html）点“开始测试”，记录它怎么报告。
-// 用法：npm run build && node scripts/repro-blank-screen.mjs [dist目录] [截图目录]
+// 用法：npm run build && [MOBILE_BROWSER=chromium|webkit] node scripts/repro-blank-screen.mjs [dist目录] [截图目录]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync, readdirSync, mkdirSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 
 const DIST = resolve(process.argv[2] || "dist"); const SHOTS = process.argv[3] ? resolve(process.argv[3]) : null; if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm", ".zip": "application/zip" };
@@ -27,9 +27,9 @@ const CASES = [
   ["2 启动时异常（200，模块开头 throw）", `throw new Error("模拟：启动时异常");\n` + realMain],
   ["3 启动后异步异常（200，页面已渲染，之后出现未处理的 Promise 拒绝）", realMain + `\nsetTimeout(() => { Promise.reject(new Error("模拟：启动后异步异常")); }, 1500);`],
 ];
-const browser = await chromium.launch(); const out = [];
+const B = process.env.MOBILE_BROWSER || "chromium"; const browser = await (B === "webkit" ? webkit : chromium).launch(); const out = [];
 for (const [name, body] of CASES) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block" });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: B === "webkit" ? undefined : true, serviceWorkers: "block" });
   if (body !== null) await ctx.route(MAIN_JS, (r) => r.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body }));
   const res = { name, app: {}, diag: {} };
   // ---- 应用页 ----
