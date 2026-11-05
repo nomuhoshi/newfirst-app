@@ -166,7 +166,8 @@ try {
     await page.waitForSelector("#done:not([hidden])", { timeout: 30000 });
     const rep = await page.locator("#report").inputValue();
     check("访问测试页：网站文件逐项给出结果（首页、图标、主程序都通过）", /通过 网站文件 index\.html/.test(rep) && /通过 网站文件 icon-192\.png/.test(rep) && /通过 主程序 assets\//.test(rep), rep.split("\n").filter((l) => /^(通过|失败)/.test(l)).join(" | ").slice(0, 200));
-    check("访问测试页：Supabase 未配置时明确写出，不假装通过", /跳过 Supabase 未配置/.test(rep) && !/通过 Supabase/.test(rep));
+    // 行为变更(诊断页默认只读,不连云端):原来写“跳过 Supabase 未配置”,现在默认就写“跳过 云端检查（Supabase）”;要求不变——明确写出跳过、不假装通过
+    check("访问测试页：云端检查(Supabase)默认明确写出“跳过”，不假装通过", /跳过 云端检查（Supabase）/.test(rep) && !/通过 (Supabase|测试账号|写入|读回)/.test(rep));
     check("访问测试页：结果里有时区、浏览器和是否在微信里", /时区：/.test(rep) && /浏览器：/.test(rep) && /在微信\/QQ 里打开：否/.test(rep));
     check("访问测试页：没有脚本错误", errors.length === 0, errors.join(" | "));
     await ctx.close();
