@@ -130,13 +130,13 @@ const xpOf = (server, email) => sumXp(server.rows.get(server.users.get(email)).d
   check("云端已有进度且这台有游客记录：提示云端已有数据", v2.ok && v2.needChoice && v2.cloudHasData === true);
   const r2 = await h.sync.finishChoice("cloud");
   check("选择用云端：显示云端的 70 XP，游客记录原样保留", r2.ok && r2.state.xp === 70 && h.storage.getItem(GUEST_KEY) !== null && r2.guestCleared === false);
-  // 第三台：选“用游客覆盖云端” → 云端换成游客的内容（代数 +1），需要用户明确选择
+  // 第三台：选“安全合并游客进度” → 云端原 70 XP 保留，再加入这台游客的 10 XP（总 80），代数不变
   const k = device(S, "guest-dev3");
   k.state = { ...freshState(), onboarded: true, xp: 10, lessonsCompleted: 1, done: { U1L1: true }, streak: 1, lastDay: TODAY };
   k.storage.setItem(GUEST_KEY, JSON.stringify(k.state));
   await k.sync.verify("g@x.com", "123456", k.state);
   const r3 = await k.sync.finishChoice("transfer");
-  check("明确选择“用游客覆盖云端”：云端变成 10 XP（代数 +1）", r3.ok && xpOf(S, "g@x.com") === 10 && S.rows.get(S.users.get("g@x.com")).doc.gen === 2);
+  check("明确选择安全合并：云端保留原 70 XP，再加入游客 10 XP（总 80，代数不变）", r3.ok && xpOf(S, "g@x.com") === 80 && S.rows.get(S.users.get("g@x.com")).doc.gen === 1);
 }
 
 // ---------- 5. 退出、重新登录、切换账号 ----------

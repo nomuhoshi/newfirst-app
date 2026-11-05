@@ -74,15 +74,17 @@ check("3 设备编号读取失败：返回 read-failed，不生成新编号覆�
 check("4 导入后游客又学了：返回 guest-changed + 两个选择，云端不变、不累加", () => {
   const first = D.replaceWithGuest(guest(), { deviceId: DEV, guestId: G, now: NOW }).doc;
   const r = D.replaceWithGuest(guest({ xp: 150, lessonsCompleted: 5 }), { deviceId: DEV, guestId: G, cloudDoc: first, now: NOW });
-  return r.outcome === "guest-changed" && r.choices.join() === "keep-cloud,replace" && D.sumXp(r.doc) === 130;
+  return r.outcome === "guest-changed" && r.choices.join() === "keep-cloud,merge" && D.sumXp(r.doc) === 130;
 });
-check("4 选“保留云端”：云端原样；选“替换”：代数 +1，XP = 新快照（150，不是 280）", () => {
+check("4 选“保留云端”：其余字段原样，只写当前指纹；选“安全合并”：代数不变，XP = 本机设备较大值 150（不是 280）", () => {
   const first = D.replaceWithGuest(guest(), { deviceId: DEV, guestId: G, now: NOW }).doc;
   const g2 = guest({ xp: 150, lessonsCompleted: 5 });
   const k = D.replaceWithGuest(g2, { deviceId: DEV, guestId: G, cloudDoc: first, now: NOW, choice: "keep-cloud" });
-  const r = D.replaceWithGuest(g2, { deviceId: DEV, guestId: G, cloudDoc: first, now: NOW, choice: "replace" });
+  const r = D.replaceWithGuest(g2, { deviceId: DEV, guestId: G, cloudDoc: first, now: NOW, choice: "merge" });
   const again = D.replaceWithGuest(g2, { deviceId: DEV, guestId: G, cloudDoc: r.doc, now: NOW });
-  return k.outcome === "kept-cloud" && D.docsEquivalent(k.doc, first) && r.outcome === "replaced" && r.doc.gen === 2 && D.sumXp(r.doc) === 150 && again.outcome === "already-imported";
+  const sameExceptFingerprint = (() => { const a = JSON.parse(JSON.stringify(k.doc)), b = JSON.parse(JSON.stringify(first)); delete a.imported[G]; delete b.imported[G]; return JSON.stringify(a) === JSON.stringify(b); })();
+  return k.outcome === "kept-cloud" && sameExceptFingerprint && k.doc.imported[G] === D.guestFingerprint(g2)
+    && r.outcome === "merged" && r.doc.gen === first.gen && D.sumXp(r.doc) === 150 && again.outcome === "already-imported";
 });
 check("4 只是红心计时 / 设置变化，不算新进度：仍是 already-imported", () => {
   const first = D.replaceWithGuest(guest(), { deviceId: DEV, guestId: G, now: NOW }).doc;

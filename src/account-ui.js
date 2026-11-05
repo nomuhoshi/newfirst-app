@@ -102,22 +102,18 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           box.replaceChildren(
             h("h2", { text: "转存这台设备上的进度？" }),
             h("p", { text: `这台设备上有没登录时学的进度（${g}）。要放进这个账号吗？` }),
-            button("转存到账号", () => pick("transfer"), "btn3d primary wide", { "data-choice": "transfer" }),
+            button("安全合并到账号", () => pick("transfer"), "btn3d primary wide", { "data-choice": "transfer" }),
             button("不转存，用全新账号", () => pick("cloud"), "btn3d wide", { "data-choice": "cloud" }),
-            h("p", { class: "muted small", text: "转存成功并确认云端一致后，这台设备上的游客记录才会清除；不转存则原样保留。" }),
+            h("p", { class: "muted small", text: "安全合并：XP / 次数按设备取较大值，关卡和日期取并集；上传成功并确认云端一致后，游客记录才会清除。不转存则原样保留。" }),
             msg,
           );
         } else {
           box.replaceChildren(
             h("h2", { text: "这个账号已有学习进度" }),
             h("p", { text: `云端已经有这个账号的进度。这台设备上还有没登录时学的进度（${g}）。` }),
-            button("用账号里的进度（推荐）", () => pick("cloud"), "btn3d primary wide", { "data-choice": "cloud" }),
-            button("用这台设备的进度覆盖账号", () => { box.replaceChildren(
-              h("h2", { text: "确定覆盖吗？" }),
-              h("p", { text: "账号里原来的进度会被这台设备的进度替换，不能撤销。" }),
-              button("确定覆盖", () => pick("transfer"), "btn3d danger wide", { "data-choice": "transfer" }),
-              button("返回", () => stepChoice(info), "btn3d ghost wide"), msg); }, "btn3d wide", { "data-choice": "ask-replace" }),
-            h("p", { class: "muted small", text: "选“用账号里的进度”时，这台设备上的游客记录会原样保留，不会删除。" }),
+            button("保留云端进度（推荐）", () => pick("cloud"), "btn3d primary wide", { "data-choice": "cloud" }),
+            button("安全合并游客进度", () => pick("transfer"), "btn3d wide", { "data-choice": "transfer" }),
+            h("p", { class: "muted small", text: "安全合并不会整份覆盖：其他设备的 XP、关卡、红心和设置都会保留，XP / 次数按设备取较大值，关卡和日期取并集。选“保留云端进度”时游客记录原样保留，只记下它的指纹，之后游客再变才会再次提示。" }),
             msg,
           );
         }

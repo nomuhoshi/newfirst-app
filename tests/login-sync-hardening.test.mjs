@@ -5,8 +5,8 @@
 import { readFileSync } from "node:fs";
 import { createSync, AUTH_KEY, STALE_KEY, scopedStorage, projectNamespace } from "../src/sync.js";
 import { createApi } from "../src/cloud-api.js";
-import { saveAccount, setCurrentAccount, loadAccount, getCurrentAccount, GUEST_KEY, getGuestId } from "../src/account-store.js";
-import { emptyDoc, docToState, sumXp, guestToDoc, guestFingerprint, normalizeDoc, mergeDocs, docsEquivalent } from "../src/account-data.js";
+import { saveAccount, setCurrentAccount, loadAccount, getCurrentAccount, GUEST_KEY, getGuestId, DEVICE_KEY } from "../src/account-store.js";
+import { emptyDoc, docToState, sumXp, guestToDoc, guestFingerprint, guestImportStatus, replaceWithGuest, normalizeDoc, mergeDocs, docsEquivalent } from "../src/account-data.js";
 import { freshState } from "../src/storage.js";
 
 const results = [];
@@ -388,98 +388,315 @@ await noNetworkCase("凭证没有用户编号", JSON.stringify({ session: { acce
   const v2 = await sy2.verify("guest@example.com", "123456", guest80);
   check("同一游客编号但内容变了：再次登录会提示选择，而不是静默用云端的 70", v2.ok && v2.needChoice === true && v2.cloudHasData === true, JSON.stringify(v2));
   const r2 = v2.needChoice ? await sy2.finishChoice("transfer") : v2;
-  check("用户明确选择转存：云端变成 80 XP（不是 70 + 80，也不是丢掉 10）", r2.ok && xpOf(cloud, "guest@example.com") === 80, String(xpOf(cloud, "guest@example.com")));
-  check("转存读回一致后游客记录才清除", r2.guestCleared === true && st.getItem(GUEST_KEY) === null);
+  check("用户明确选择安全合并：云端变成 80 XP（不是 70 + 80，也不是丢掉 10）", r2.ok && xpOf(cloud, "guest@example.com") === 80, String(xpOf(cloud, "guest@example.com")));
+  check("安全合并读回一致后游客记录才清除", r2.guestCleared === true && st.getItem(GUEST_KEY) === null);
 }
 
 // ======================================================================
-// I. 旧 true 格式 / 新指纹格式：导入后游客又学了新内容
-//    云端 imported[游客编号] 有两种历史格式：旧数据只有 true（没有内容指纹），新数据是 8 位指纹。
-//    旧格式不能直接比较指纹，只能看“当前游客内容是否已经被云端覆盖”；只要游客多出关卡 / XP / 日期，
-//    就必须像新格式一样提示选择，绝不静默用云端。
+// I. 旧 true 无指纹 / 弹窗期间并发 / 保留云端 / 安全合并 / 读回校验
+//    产品口径（2026-11-05）：
+//    - 旧 true 没有指纹，禁止用云端总 XP / 总次数 / 日期推断“未变化”；
+//      游客有学习记录 = unknown，必须提示；游客完全为空才允许跳过。
+//    - 选保留云端：重读最新云端，只写当前游客指纹，其余云端数据逐字保留；CAS 冲突重读再写。
+//    - 选安全合并：重读最新云端，XP/次数按设备取较大值，关卡/日期并集，绝不 gen+1 整份覆盖。
+//    - 只有上传成功且读回与预期一致才删游客；失败、冲突、读回失败/不一致都保留游客原文。
 // ======================================================================
-const DONE70 = { U1L1: true, U1L2: true, U1L3: true, U1L4: true };
-const guest70 = { ...freshState(), onboarded: true, xp: 70, lessonsCompleted: 4, done: DONE70, streak: 1, lastDay: TODAY, prefs: { sound: true, haptics: true, soundStyle: "C" } };
-const guest80 = { ...guest70, xp: 80, lessonsCompleted: 5, done: { ...DONE70, U1L5: true } };
-// 造一份“云端已经导入过这份游客记录”的账号：legacy=true 用旧格式，false 用新指纹格式。
-// 云端的进度快照固定是游客 70 时的内容（导入那一刻的样子）。
-function seedImported({ legacy, guest = guest80, email = "legacy@example.com", userId = "uLegacy" }) {
-  const st = mem(), cloud = fakeCloud();
+const DEVICE = "devLegacy";
+const DONE4 = { U1L1: true, U1L2: true, U1L3: true, U1L4: true };
+const guestWith = (o = {}) => ({
+  ...freshState(), onboarded: true,
+  xp: o.xp ?? 70,
+  lessonsCompleted: o.lessons ?? 4,
+  done: o.done ?? { ...DONE4 },
+  streak: o.streak ?? 1,
+  lastDay: o.lastDay ?? TODAY,
+  hearts: o.hearts ?? 5,
+  prefs: o.prefs ?? { sound: true, haptics: true, soundStyle: "C" },
+});
+const g70 = guestWith({});
+const g80 = guestWith({ xp: 80, lessons: 5, done: { ...DONE4, U1L5: true } });
+// 造一份“云端已经导入过这个游客编号”的记录。legacy=true 是旧格式，字符串是旧/新指纹。
+function makeCase({ guest = g80, doc, legacy = true, email = "legacy@example.com", userId = "uLegacy", rev = 7 } = {}) {
+  const st = mem();
+  st.setItem(DEVICE_KEY, DEVICE);
   st.setItem(GUEST_KEY, JSON.stringify(guest));
   const gid = getGuestId(st).id;
-  const seed = guestToDoc(guest70, { deviceId: "devLegacy", guestId: gid, now: NOW });
-  const doc = seed.doc;
-  doc.imported[gid] = legacy ? true : guestFingerprint(guest70);
+  if (legacy !== null) doc.imported[gid] = legacy;
+  const cloud = fakeCloud();
   cloud.users.set(email, userId);
-  cloud.rows.set(userId, { doc, rev: 7 });
-  return { st, cloud, gid, doc, guest: guest, email, userId };
+  cloud.rows.set(userId, { doc: clone(doc), rev });
+  return { st, cloud, gid, email, userId, guest, raw: JSON.stringify(guest), before: clone(doc) };
 }
-async function verifyAndExpectChoice({ st, cloud, guest, email }, label) {
-  const sy = makeSync(st, cloud);
-  const v = await sy.verify(email, "123456", guest);
-  check(`${label}：登录必须提示用户选择（不能静默使用云端的 70）`, v.ok && v.needChoice === true && v.cloudHasData === true && v.guest.xp === 80, JSON.stringify(v));
-  return { sy, v };
+// 云端 500 XP 的大记录：总 XP / 总次数 / 日期都远大于游客，用来证明“总量推断”会遮蔽新进度。
+function bigCloud({ gen = 1, lineage = "L-big", device = "devA", xp = 500, runs = 20 } = {}) {
+  const d = emptyDoc({ gen, lineage });
+  d.xp[device] = xp;
+  d.runs[device] = runs;
+  d.done = { U1L1: "2026-10-01", U1L2: "2026-10-02", U2L1: "2026-10-03" };
+  d.days = ["2026-10-01", "2026-10-02", "2026-10-03"];
+  d.hearts = { n: 3, msToNext: 120000 };
+  d.prefs = { sound: false, haptics: true, soundStyle: "C" };
+  return d;
 }
+const rowOfCase = (c) => c.cloud.rows.get(c.userId);
+const stateOf = (st) => {
+  const r = loadAccount(st, "uLegacy", { now: NOW });
+  return r.ok && r.copy ? r.copy : null;
+};
 
-// 对照：旧 true 但游客内容没有变化（仍是 70）→ 不应每登录一次都重复问
+// ---- I.0 Case 10 硬断言（原 gemini/login-sync-edge-tests-1 Case 10，不再软红）----
 {
-  const c = seedImported({ legacy: true, guest: guest70 });
-  const sy = makeSync(c.st, c.cloud);
-  const v = await sy.verify(c.email, "123456", guest70);
-  check("旧 true 格式 + 游客没有新进度：不重复提示，直接用云端 70", v.ok && !v.needChoice && v.state.xp === 70, JSON.stringify(v));
-  check("旧 true 格式 + 游客没变：游客记录逐字保留，云端没有多写", c.st.getItem(GUEST_KEY) === JSON.stringify(guest70) && xpOf(c.cloud, c.email) === 70);
+  const cloud = emptyDoc();
+  cloud.imported.GID_12345 = true;
+  const guestNew = guestWith({ xp: 150, lessons: 3, done: { U2L1: true, U2L2: true, U2L3: true }, lastDay: "2026-11-05" });
+  const status = guestImportStatus(cloud, "GID_12345", guestNew);
+  const r = replaceWithGuest(guestNew, { deviceId: "dev1", guestId: "GID_12345", cloudDoc: cloud });
+  check("Case 10 硬断言：旧 imported=true + 游客有学习记录 → 状态 unknown，不再按总量推断 same", status === "unknown", status);
+  check("Case 10 硬断言：replaceWithGuest 必须返回 guest-changed + 两个选择，不得 already-imported", r.ok && r.outcome === "guest-changed" && r.choices.join() === "keep-cloud,merge", JSON.stringify({ outcome: r.outcome, choices: r.choices }));
 }
 
-for (const [label, legacy] of [["旧 true 格式", true], ["新指纹格式", false]]) {
-  // 路径 1：提示后选云端
-  {
-    const c = seedImported({ legacy });
-    const raw80 = JSON.stringify(guest80);
-    const { sy } = await verifyAndExpectChoice(c, `${label} + 游客新增关卡和 XP`);
-    const r = await sy.finishChoice("cloud");
-    check(`${label} 选云端：页面和云端都停在 70，不把游客的 80 偷偷加进去`, r.ok && r.state.xp === 70 && xpOf(c.cloud, c.email) === 70 && r.guestCleared !== true);
-    check(`${label} 选云端：游客记录逐字保留（以后还能再选一次）`, c.st.getItem(GUEST_KEY) === raw80, String(c.st.getItem(GUEST_KEY)));
-  }
-  // 路径 2：提示后选游客（覆盖云端）
-  {
-    const c = seedImported({ legacy });
-    const raw80 = JSON.stringify(guest80);
-    const { sy } = await verifyAndExpectChoice(c, `${label} + 游客新增关卡和 XP`);
-    const r = await sy.finishChoice("transfer");
-    const row = rowOf(c.cloud, c.email);
-    check(`${label} 选游客：云端用游客 80 覆盖（不是 70 + 80），代数 +1`, r.ok && xpOf(c.cloud, c.email) === 80 && row.doc.gen === c.doc.gen + 1 && r.state.xp === 80, JSON.stringify({ xp: xpOf(c.cloud, c.email), gen: row.doc.gen }));
-    check(`${label} 选游客：上传成功且读回一致后，游客记录才删除`, r.guestCleared === true && c.st.getItem(GUEST_KEY) === null);
-  }
-  // 路径 3：上传失败
-  {
-    const c = seedImported({ legacy });
-    const raw80 = JSON.stringify(guest80);
-    const { sy } = await verifyAndExpectChoice(c, `${label} + 游客新增关卡和 XP`);
-    const origSave = c.cloud.saveProgress;
-    c.cloud.saveProgress = async () => ({ ok: false, kind: "network", message: "上传失败（测试注入）" });
-    const r = await sy.finishChoice("transfer");
-    const copy = loadAccount(c.st, c.userId, { now: NOW }).copy;
-    check(`${label} 上传失败：登录完成但明确未同步，不谎报成功`, r.ok && r.synced === false && r.guestCleared !== true, JSON.stringify(r));
-    check(`${label} 上传失败：云端仍是 70，游客记录逐字保留`, xpOf(c.cloud, c.email) === 70 && c.st.getItem(GUEST_KEY) === raw80);
-    check(`${label} 上传失败：本机账号副本已是 80，并标记为待上传`, sumXp(copy.doc) === 80 && copy.dirty.content === true, JSON.stringify(copy && copy.dirty));
-    c.cloud.saveProgress = origSave;
-    await sy.syncNow();
-    check(`${label} 恢复网络后补传：云端变成 80；游客记录仍保留（这一轮没有重新做读回校验）`, xpOf(c.cloud, c.email) === 80 && c.st.getItem(GUEST_KEY) === raw80, String(c.st.getItem(GUEST_KEY)));
-  }
-  // 路径 4：上传成功但读回失败
-  {
-    const c = seedImported({ legacy });
-    const raw80 = JSON.stringify(guest80);
-    const { sy } = await verifyAndExpectChoice(c, `${label} + 游客新增关卡和 XP`);
-    const origGet = c.cloud.getProgress;
-    let gets = 0;
-    c.cloud.getProgress = async (s) => { gets++; return gets === 2 ? { ok: false, kind: "network", message: "读回失败（测试注入）" } : origGet(s); };
-    const r = await sy.finishChoice("transfer");
-    check(`${label} 读回失败：上传本身成功（云端 80），但不把“写成功”当成“读回一致”`, r.ok && r.synced === true && xpOf(c.cloud, c.email) === 80, JSON.stringify({ r, xp: xpOf(c.cloud, c.email), gets }));
-    check(`${label} 读回失败：游客记录逐字保留，不删除`, r.guestCleared !== true && c.st.getItem(GUEST_KEY) === raw80, String(c.st.getItem(GUEST_KEY)));
-    c.cloud.getProgress = origGet;
-  }
+// ---- I.1 旧 true：云端 500 XP 也不能遮蔽游客新增的 10 XP ----
+{
+  const c = makeCase({ guest: guestWith({ xp: 10, lessons: 1, done: { U2L1: true }, lastDay: "2026-10-03" }), doc: bigCloud() });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", c.guest);
+  check("I.1 旧 true + 云端 500 XP / 游客新增 10 XP：必须提示选择（总 XP 不能证明未变化）", v.ok && v.needChoice === true && v.cloudHasData === true, JSON.stringify(v));
 }
+
+// ---- I.2 旧 true：云端次数更高，游客新增复习也必须提示 ----
+{
+  const c = makeCase({ guest: guestWith({ xp: 5, lessons: 3, done: { U1L1: true }, lastDay: "2026-10-02" }), doc: bigCloud() });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", c.guest);
+  check("I.2 旧 true + 云端次数更高但游客新增复习：必须提示选择（总次数不能遮蔽）", v.ok && v.needChoice === true, JSON.stringify(v));
+}
+
+// ---- I.3 旧 true：云端已有同关卡 / 同日期，游客新增 XP 也必须提示 ----
+{
+  const c = makeCase({ guest: guestWith({ xp: 10, lessons: 1, done: { U2L1: true }, lastDay: "2026-10-03" }), doc: bigCloud() });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", c.guest);
+  check("I.3 旧 true + 云端已有同关卡和同日期但游客新增 XP：必须提示选择（日期遮蔽也不行）", v.ok && v.needChoice === true, JSON.stringify(v));
+}
+
+// ---- I.4 旧 true + 游客确实没变：仍然必须提示（没有指纹就不能说“没变”）----
+{
+  // 游客的 XP / 次数 / 关卡 / 日期全部被云端“覆盖”，旧代码会据此判 same；但没有指纹就不能这么推断。
+  const unchangedGuest = guestWith({ xp: 60, lessons: 3, done: { U1L1: true, U1L2: true, U2L1: true }, lastDay: "2026-10-03", streak: 3 });
+  const c = makeCase({ guest: unchangedGuest, doc: bigCloud({ xp: 70, runs: 4 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", unchangedGuest);
+  check("I.4 旧 true + 游客有学习记录（XP/次数/关卡/日期看起来都被云端覆盖）：也必须提示，不再静默 same", v.ok && v.needChoice === true, JSON.stringify(v));
+}
+
+// ---- I.5 对照：游客完全为空才允许跳过 ----
+{
+  const empty = freshState();
+  const c = makeCase({ guest: empty, doc: bigCloud(), legacy: true });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", empty);
+  check("I.5 对照：旧 true + 游客完全为空（无 XP / 次数 / 关卡 / 日期）：允许跳过，不弹窗", v.ok && !v.needChoice && v.state.xp === 500, JSON.stringify(v));
+  check("I.5 对照：跳过时游客原文保留，云端一个字没改", c.st.getItem(GUEST_KEY) === JSON.stringify(empty) && xpOf(c.cloud, c.email) === 500);
+}
+
+// ---- I.6 选“保留云端”：只写指纹，其余云端数据逐字保留；第二次不重复弹，游客再变再弹 ----
+{
+  const cloudDoc = bigCloud({ gen: 4, lineage: "L-keep", device: "devA", xp: 500, runs: 20 });
+  cloudDoc.xp.devB = 40; cloudDoc.runs.devB = 3;
+  cloudDoc.done.U3L1 = "2026-10-04"; cloudDoc.days.push("2026-10-04");
+  const c = makeCase({ guest: g80, doc: cloudDoc, legacy: true });
+  const before = clone(rowOfCase(c).doc);
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.6 准备：旧 true + 游客 80 → 弹窗", v.ok && v.needChoice === true, JSON.stringify(v));
+  const r = await sy.finishChoice("cloud");
+  const row = rowOfCase(c);
+  const stripped = (d) => { const x = clone(d); delete x.imported[c.gid]; return JSON.stringify(x); };
+  check("I.6 选保留云端：只写 imported[游客编号]=当前指纹", r.ok && row.doc.imported[c.gid] === guestFingerprint(g80), JSON.stringify(row.doc.imported));
+  check("I.6 选保留云端：gen / lineage / 其他设备 XP / 关卡 / 日期 / 红心 / 设置逐字保留", stripped(row.doc) === stripped(before), stripped(row.doc).slice(0, 120) + " != " + stripped(before).slice(0, 120));
+  check("I.6 选保留云端：游客记录逐字保留，不删", c.st.getItem(GUEST_KEY) === c.raw);
+  check("I.6 选保留云端：本机账号副本与云端一致，不标待上传", docsEquivalent(stateOf(c.st).doc, row.doc) && stateOf(c.st).dirty.content === false);
+  await sy.logout({ force: true });
+  const sy2 = makeSync(c.st, c.cloud);
+  const v2 = await sy2.verify(c.email, "123456", g80);
+  check("I.6 选保留云端后同一份游客记录再次登录：不再重复弹窗", v2.ok && !v2.needChoice && v2.state.xp === 540, JSON.stringify(v2));
+  await sy2.logout({ force: true });
+  const g82 = guestWith({ xp: 82, lessons: 6, done: { ...DONE4, U1L5: true, U1L6: true } });
+  c.st.setItem(GUEST_KEY, JSON.stringify(g82));
+  const sy3 = makeSync(c.st, c.cloud);
+  const v3 = await sy3.verify(c.email, "123456", g82);
+  check("I.6 游客再次变化：重新弹窗（指纹变了 → changed）", v3.ok && v3.needChoice === true, JSON.stringify(v3));
+}
+
+// ---- I.7 弹窗期间另一台设备增加 XP 和关卡：选保留云端也必须保留 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 3, lineage: "L-dialog", xp: 500, runs: 20 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.7 准备：弹窗已挂起", v.ok && v.needChoice === true);
+  const row = rowOfCase(c);
+  row.doc.xp.devOther = 30; row.doc.runs.devOther = 2; row.doc.done.U2L9 = "2026-11-05"; row.doc.days.push("2026-11-05"); row.rev++;
+  const latestRev = row.rev;
+  const writes = [], origSave = c.cloud.saveProgress;
+  c.cloud.saveProgress = async (s, expected, doc) => { writes.push({ expected, doc: clone(doc) }); return origSave(s, expected, doc); };
+  const r = await sy.finishChoice("cloud");
+  check("I.7 弹窗期间另一设备增加 XP 和关卡：选保留云端后重读最新，新增内容完整保留", r.ok && row.doc.xp.devOther === 30 && !!row.doc.done.U2L9 && row.doc.days.includes("2026-11-05"), JSON.stringify({ xp: row.doc.xp, done: row.doc.done }));
+  check("I.7 保留云端第一次写入就基于最新 rev 和最新文档（不是挂起时的旧 remoteDoc）", writes.length === 1 && writes[0].expected === latestRev && writes[0].doc.xp.devOther === 30, JSON.stringify(writes.map((w) => ({ expected: w.expected, devOther: w.doc.xp.devOther }))));
+  check("I.7 选保留云端仍只写指纹：gen / lineage 不变", row.doc.gen === 3 && row.doc.lineage === "L-dialog" && row.doc.imported[c.gid] === guestFingerprint(g80));
+}
+
+// ---- I.8 弹窗期间另一台设备增加 XP 和关卡：安全合并后必须保留 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 3, lineage: "L-dialog", device: DEVICE, xp: 70, runs: 4 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.8 准备：弹窗已挂起", v.ok && v.needChoice === true);
+  const row = rowOfCase(c);
+  row.doc.xp.devOther = 30; row.doc.runs.devOther = 2; row.doc.done.U2L9 = "2026-11-05"; row.doc.days.push("2026-11-05"); row.rev++;
+  const latestRev = row.rev;
+  const writes = [], origSave = c.cloud.saveProgress;
+  c.cloud.saveProgress = async (s, expected, doc) => { writes.push({ expected, doc: clone(doc) }); return origSave(s, expected, doc); };
+  const r = await sy.finishChoice("transfer");
+  check("I.8 弹窗期间另一设备增加 XP 和关卡：安全合并后全部保留", r.ok && row.doc.xp.devOther === 30 && row.doc.runs.devOther === 2 && !!row.doc.done.U2L9 && row.doc.days.includes("2026-11-05"), JSON.stringify({ xp: row.doc.xp, done: row.doc.done }));
+  check("I.8 安全合并第一次写入就基于最新 rev 和最新文档（不是挂起时的旧 remoteDoc）", writes.length === 1 && writes[0].expected === latestRev && writes[0].doc.xp.devOther === 30, JSON.stringify(writes.map((w) => ({ expected: w.expected, devOther: w.doc.xp.devOther }))));
+  check("I.8 安全合并：游客 XP 记到本机设备格，按设备取较大值（70 → 80）", row.doc.xp[DEVICE] === 80 && sumXp(row.doc) === 110, JSON.stringify(row.doc.xp));
+  check("I.8 安全合并：不再 gen + 1，lineage 不变", row.doc.gen === 3 && row.doc.lineage === "L-dialog");
+  check("I.8 安全合并读回一致：游客记录才删除", r.guestCleared === true && c.st.getItem(GUEST_KEY) === null);
+}
+
+// ---- I.9 安全合并：其他设备 XP / 关卡 / 红心 / 设置完整保留 ----
+{
+  const cloudDoc = emptyDoc({ gen: 5, lineage: "L-five" });
+  cloudDoc.xp = { devA: 100, devB: 40 }; cloudDoc.runs = { devA: 6, devB: 2 };
+  cloudDoc.done = { U1L1: "2026-09-01", U1L2: "2026-09-02" };
+  cloudDoc.days = ["2026-09-01", "2026-09-02"];
+  cloudDoc.hearts = { n: 3, msToNext: 90000 };
+  cloudDoc.prefs = { sound: false, haptics: false, soundStyle: "A" };
+  cloudDoc.imported = { Gother: "deadbeef" };
+  const c = makeCase({ guest: guestWith({ xp: 70, lessons: 3, done: { U1L3: true } }), doc: cloudDoc, legacy: null });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", c.guest);
+  check("I.9 准备：新游客编号（没有 imported 记录）→ 弹窗", v.ok && v.needChoice === true);
+  const r = await sy.finishChoice("transfer");
+  const row = rowOfCase(c);
+  check("I.9 安全合并：其他设备 XP / 次数完整保留（devA=100, devB=40）", row.doc.xp.devA === 100 && row.doc.xp.devB === 40 && row.doc.runs.devA === 6 && row.doc.runs.devB === 2, JSON.stringify(row.doc.xp));
+  check("I.9 安全合并：其他设备关卡和日期取并集，不覆盖", row.doc.done.U1L1 === "2026-09-01" && row.doc.done.U1L2 === "2026-09-02" && Object.hasOwn(row.doc.done, "U1L3") && row.doc.days.includes("2026-09-02") && row.doc.days.includes(TODAY), JSON.stringify({ done: row.doc.done, days: row.doc.days }));
+  check("I.9 安全合并：红心 / 设置保留云端最新值", row.doc.hearts.n === 3 && row.doc.hearts.msToNext === 90000 && row.doc.prefs.sound === false && row.doc.prefs.soundStyle === "A", JSON.stringify({ hearts: row.doc.hearts, prefs: row.doc.prefs }));
+  check("I.9 安全合并：gen / lineage 不变，其他游客的 imported 记录保留", row.doc.gen === 5 && row.doc.lineage === "L-five" && row.doc.imported.Gother === "deadbeef" && row.doc.imported[c.gid] === guestFingerprint(c.guest));
+}
+
+// ---- I.10 上传失败：保留游客原文，本机账号副本不回退 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ device: DEVICE, xp: 70, runs: 4 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.10 准备：弹窗已挂起", v.ok && v.needChoice === true);
+  c.cloud.saveProgress = async () => ({ ok: false, kind: "network", message: "上传失败（测试注入）" });
+  const r = await sy.finishChoice("transfer");
+  const copy = stateOf(c.st);
+  check("I.10 上传失败：登录完成但明确未同步，不谎报成功", r.ok && r.synced === false && r.guestCleared !== true, JSON.stringify(r));
+  check("I.10 上传失败：云端仍是 70，游客记录逐字保留", xpOf(c.cloud, c.email) === 70 && c.st.getItem(GUEST_KEY) === c.raw);
+  check("I.10 上传失败：本机账号副本保留合并后的 80 XP 并标记待上传（没有回退到 70）", sumXp(copy.doc) === 80 && copy.dirty.content === true, JSON.stringify(copy && { xp: sumXp(copy.doc), dirty: copy.dirty }));
+}
+
+// ---- I.11 读回失败：上传成功也不删游客 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ device: DEVICE, xp: 70, runs: 4 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.11 准备：弹窗已挂起", v.ok && v.needChoice === true);
+  const origGet = c.cloud.getProgress; let gets = 0;
+  c.cloud.getProgress = async (s) => { gets++; return gets === 2 ? { ok: false, kind: "network", message: "读回失败（测试注入）" } : origGet(s); };
+  const r = await sy.finishChoice("transfer");
+  check("I.11 读回失败：上传本身成功（云端 80），但不把“写成功”当成“读回一致”", r.ok && r.synced === true && xpOf(c.cloud, c.email) === 80, JSON.stringify({ r, xp: xpOf(c.cloud, c.email), gets }));
+  check("I.11 读回失败：游客记录逐字保留，不删除", r.guestCleared !== true && c.st.getItem(GUEST_KEY) === c.raw);
+  check("I.11 读回失败：本机账号副本是刚上传的 80，没有回退", sumXp(stateOf(c.st).doc) === 80);
+}
+
+// ---- I.12 读回不一致：保留游客，本机副本不用错误读回覆盖 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ device: DEVICE, xp: 70, runs: 4 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.12 准备：弹窗已挂起", v.ok && v.needChoice === true);
+  const origGet = c.cloud.getProgress; let gets = 0;
+  c.cloud.getProgress = async (s) => {
+    gets++;
+    if (gets === 2) {
+      const row = rowOfCase(c);
+      const bad = clone(row.doc); bad.xp.devGhost = 999; // 读回多出不该有的数据
+      return { ok: true, row: { doc: bad, rev: row.rev } };
+    }
+    return origGet(s);
+  };
+  const r = await sy.finishChoice("transfer");
+  check("I.12 读回不一致：上传成功但读回文档与预期不同 → 不删游客", r.ok && r.synced === true && r.guestCleared !== true && c.st.getItem(GUEST_KEY) === c.raw);
+  check("I.12 读回不一致：本机账号副本仍是上传的 80，不被错误读回（999）污染", sumXp(stateOf(c.st).doc) === 80 && stateOf(c.st).doc.xp.devGhost === undefined);
+}
+
+// ---- I.13 读回一致：才删除游客 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ device: DEVICE, xp: 70, runs: 4 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.13 准备：弹窗已挂起", v.ok && v.needChoice === true);
+  const r = await sy.finishChoice("transfer");
+  check("I.13 读回与上传文档一致：游客记录才被删除", r.ok && r.synced === true && r.guestCleared === true && c.st.getItem(GUEST_KEY) === null, JSON.stringify(r));
+  check("I.13 读回一致：云端是 80，本机副本也是 80", xpOf(c.cloud, c.email) === 80 && sumXp(stateOf(c.st).doc) === 80);
+}
+
+// ---- I.14 选保留云端遇 CAS 冲突：重读最新再写，弹窗期间新增不丢 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-cas", xp: 500, runs: 20 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.14 准备：弹窗已挂起", v.ok && v.needChoice === true);
+  const origSave = c.cloud.saveProgress; let first = true;
+  c.cloud.saveProgress = async (s, expected, doc) => {
+    if (first) {
+      first = false;
+      const row = rowOfCase(c);
+      row.doc.xp.devOther = 30; row.doc.done.U2L9 = "2026-11-05"; row.doc.days.push("2026-11-05"); row.rev++;
+      return { ok: true, rev: null }; // 模拟被别的设备抢先
+    }
+    return origSave(s, expected, doc);
+  };
+  const r = await sy.finishChoice("cloud");
+  const row = rowOfCase(c);
+  check("I.14 保留云端 CAS 冲突：重读最新后重写成功，指纹写入", r.ok && r.synced === true && row.doc.imported[c.gid] === guestFingerprint(g80));
+  check("I.14 保留云端 CAS 冲突：冲突期间其他设备新增的 XP / 关卡完整保留", row.doc.xp.devOther === 30 && !!row.doc.done.U2L9, JSON.stringify({ xp: row.doc.xp, done: row.doc.done }));
+}
+
+// ---- I.15 安全合并遇 CAS 冲突：重读再合并，游客和其他设备数据都不丢 ----
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-cas2", device: DEVICE, xp: 70, runs: 4 }) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g80);
+  check("I.15 准备：弹窗已挂起", v.ok && v.needChoice === true);
+  const origSave = c.cloud.saveProgress; let first = true;
+  c.cloud.saveProgress = async (s, expected, doc) => {
+    if (first) {
+      first = false;
+      const row = rowOfCase(c);
+      row.doc.xp.devOther = 25; row.doc.done.U3L3 = "2026-11-06"; row.doc.days.push("2026-11-06"); row.rev++;
+      return { ok: true, rev: null };
+    }
+    return origSave(s, expected, doc);
+  };
+  const r = await sy.finishChoice("transfer");
+  const row = rowOfCase(c);
+  check("I.15 安全合并 CAS 冲突：重读最新再合并，其他设备新增 XP / 关卡保留", r.ok && row.doc.xp.devOther === 25 && !!row.doc.done.U3L3, JSON.stringify({ xp: row.doc.xp, done: row.doc.done }));
+  check("I.15 安全合并 CAS 冲突：游客进度也在，读回一致才删游客", row.doc.xp[DEVICE] === 80 && r.guestCleared === true && c.st.getItem(GUEST_KEY) === null);
+}
+
+// ---- I.16 对照：新指纹相同 → 不弹窗（合法）----
+{
+  const c = makeCase({ guest: g70, doc: bigCloud({ xp: 70, runs: 4 }), legacy: guestFingerprint(g70) });
+  const sy = makeSync(c.st, c.cloud);
+  const v = await sy.verify(c.email, "123456", g70);
+  check("I.16 对照：imported 记录了相同指纹且游客未变 → 不弹窗", v.ok && !v.needChoice && v.state.xp === 70, JSON.stringify(v));
+}
+
 
 const failed = results.filter((r) => !r).length;
 console.log(`\n登录/同步加固专项：共 ${results.length} 项，失败 ${failed} 项`);

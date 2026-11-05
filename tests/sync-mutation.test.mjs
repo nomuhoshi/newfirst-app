@@ -59,10 +59,40 @@ try {
       to: 'if (false) return { url: "", anonKey: "" };',
     },
     {
-      name: "旧 true 格式一律当作已导入（游客新增进度被静默忽略）",
+      name: "旧 true 格式一律当作已导入（游客有学习记录也被静默忽略）",
       file: "account-data.js",
-      from: 'if (prev === true) return guestCoveredByCloud(guestState, c.doc) ? "same" : "changed";',
+      from: 'if (prev === true) return "unknown";',
       to: 'if (prev === true) return "same";',
+    },
+    {
+      name: "保留云端不重读最新（弹窗期间其他设备新增会丢）",
+      file: "sync.js",
+      from: "let latest = await readLatestCloud(sess);",
+      to: "let latest = { ok: true, row: ctx.remote.row ? { doc: ctx.remoteDoc, rev: ctx.remote.row.rev } : null };",
+    },
+    {
+      name: "安全合并不重读最新（弹窗期间其他设备新增会丢）",
+      file: "sync.js",
+      from: "let current = await readLatestCloud(sess);",
+      to: "let current = { ok: true, row: ctx.remote.row ? { doc: ctx.remoteDoc, rev: ctx.remote.row.rev } : null };",
+    },
+    {
+      name: "安全合并改回 gen+1 整份覆盖（清掉其他设备数据）",
+      file: "account-data.js",
+      from: "const out = clone(c.doc);",
+      to: "const out = emptyDoc({ gen: c.doc.gen + 1, lineage: c.doc.lineage });",
+    },
+    {
+      name: "保留云端不写游客指纹（同一游客每次登录重复弹窗）",
+      file: "account-data.js",
+      from: "doc.imported = { ...imported, [guestId]: fp };",
+      to: "doc.imported = imported;",
+    },
+    {
+      name: "读回不校验（读回失败/不一致也删游客）",
+      file: "sync.js",
+      from: "const guestCleared = verified && clearGuestAfterVerified(storage, { userChoseTransfer: true, uploadOk: true, uploaded: doc, readBack, guestSnapshotRaw: ctx.guest.raw });",
+      to: "const guestCleared = clearGuestAfterVerified(storage, { userChoseTransfer: true, uploadOk: true, uploaded: doc, readBack: doc, guestSnapshotRaw: ctx.guest.raw });",
     },
   ];
 

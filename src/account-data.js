@@ -141,31 +141,32 @@ export function guestFingerprint(state) {
   for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return h.toString(16).padStart(8, "0");
 }
-// 旧格式 imported[游客编号] = true 没有指纹。不能直接判断“有没有新进度”，
-// 只能检查当前游客记录的学习内容是否已经全部包含在云端文档里。任何一项超出（多一关、多 XP、
-// 多完成次数、多学习日期）都算 changed；宁可在不确定时提示用户，也不能静默丢进度。
-function guestCoveredByCloud(state, doc) {
+// 游客是否已经有“学习记录”。只有完全没有学习记录（XP=0、次数=0、没有完成关卡、没有学习日期）
+// 才允许跳过导入选择；红心计时、设置、开场介绍不算学习记录。
+// 不能拿云端总 XP / 总次数来推断游客“没变化”：总量大不代表包含游客新增的那一笔。
+export function guestHasLearning(state) {
   if (!state || typeof state !== "object") return false;
-  const done = Object.keys(state.done ?? {}).filter((k) => state.done[k]);
-  if (done.some((k) => !isId(k) || !(k in doc.done))) return false;
-  if (natural(state.xp) > sumXp(doc)) return false;
-  if (natural(state.lessonsCompleted) > sumRuns(doc)) return false;
-  const days = streakDays(state);
-  if (validDay(state.lastDay) && !days.includes(state.lastDay)) days.push(state.lastDay);
-  if (days.some((d) => !doc.days.includes(d))) return false;
-  return true;
+  if (natural(state.xp) > 0 || natural(state.lessonsCompleted) > 0) return true;
+  if (state.done && typeof state.done === "object") {
+    for (const [k, v] of Object.entries(state.done)) if (v && isId(k)) return true;
+  }
+  if (validDay(state.lastDay)) return true;
+  return Number.isInteger(state.streak) && state.streak > 0;
 }
-// 云端 imported[游客编号] 的三种状态：
+// 云端 imported[游客编号] 的状态（guestImportStatus / replaceWithGuest / sync.js 共用）：
 //   "new"     没导入过；
-//   "same"    导入过，且当前游客记录没有超出云端（新指纹直接比较；旧 true 用内容覆盖判断）；
-//   "changed" 导入过，但游客记录又有新内容（或旧 true 无法确认全部覆盖），必须让用户选择。
+//   "same"    导入过，且当前游客记录与当时一致（没有可丢的进度）；
+//   "changed" 指纹格式，但游客记录又变了，必须让用户选择；
+//   "unknown" 旧 true 格式没有指纹，而游客有学习记录——无法证明“没变”，必须让用户选择。
+// 旧 true + 游客完全为空 → "same"：没有学习记录可丢，允许跳过。
 export function guestImportStatus(cloudDoc, guestId, guestState) {
   if (!cloudDoc || !isId(guestId)) return "new";
   const c = normalizeDoc(cloudDoc);
   if (!c.ok) return "new"; // 无效文档由调用方按数据处理错误处理，这里不冒充“已导入”
   const prev = c.doc.imported[guestId];
   if (!prev) return "new";
-  if (prev === true) return guestCoveredByCloud(guestState, c.doc) ? "same" : "changed";
+  if (!guestHasLearning(guestState)) return "same";
+  if (prev === true) return "unknown"; // 没有指纹：不许用总数 / 次数 / 日期推断未变化
   const fp = guestFingerprint(guestState);
   return typeof prev === "string" && prev === fp ? "same" : "changed";
 }
@@ -255,23 +256,66 @@ export function refreshStateAfterMerge(mergedDoc, state, now = Date.now()) {
   return docToState(mergedDoc, state, now);
 }
 
-// 用户在“云端已有进度”时明确选择“用这台设备的游客记录覆盖云端”：代数 +1、换新编号。
-// 同一份游客记录（游客编号 + 内容指纹都相同）只导入一次。
-// 导入之后游客又学了新内容（指纹变了）：不静默忽略，返回 outcome "guest-changed" 和 choices，让用户选：
-//   "keep-cloud"：保留云端，什么都不改；"replace"：确认后用新的游客快照替换（代数 +1）；取消 = 不调用，两边都保留。不自动累加。
-export function replaceWithGuest(guestState, { deviceId, guestId, cloudDoc = null, now = Date.now(), choice = null }) {
-  if (cloudDoc) {
-    const c = normalizeDoc(cloudDoc);
-    if (!c.ok) return { ok: false, code: c.code, message: c.message };
-    const status = guestImportStatus(c.doc, guestId, guestState);
-    if (status !== "new") {
-      if (status === "same") return { ok: true, doc: c.doc, outcome: "already-imported" };
-      if (choice === "keep-cloud") return { ok: true, doc: c.doc, outcome: "kept-cloud" };
-      if (choice !== "replace") return { ok: true, doc: c.doc, outcome: "guest-changed", choices: ["keep-cloud", "replace"], message: "这份游客记录导入后又有新的学习进度，请选择保留云端，或用新的游客记录替换" };
-    }
-    const r = guestToDoc(guestState, { deviceId, guestId, gen: c.doc.gen + 1, now });
-    return r.ok ? { ok: true, doc: r.doc, outcome: "replaced" } : r;
+// 只把当前游客指纹写进云端 imported[游客编号]，其余字段一律保留（用户选“保留云端”）。
+// 不增加代数、不换 lineage、不动任何设备 / 关卡 / 红心 / 设置 / 弹窗期间新增的进度。
+export function markGuestImported(cloudDoc, guestId, guestState) {
+  if (!isId(guestId)) return { ok: false, code: "bad-ids", message: "缺少游客编号" };
+  const base = cloudDoc ?? emptyDoc();
+  const c = normalizeDoc(base);
+  if (!c.ok) return { ok: false, code: c.code, message: c.message };
+  const fp = guestFingerprint(guestState);
+  if (!fp) return { ok: false, code: "guest-invalid", message: "游客记录无法生成指纹" };
+  const doc = clone(base); // 保留云端原有字段和值，只改 imported 这一项
+  const imported = doc.imported && typeof doc.imported === "object" && !Array.isArray(doc.imported) ? doc.imported : {};
+  doc.imported = { ...imported, [guestId]: fp };
+  return { ok: true, doc, fingerprint: fp };
+}
+
+// “安全合并游客进度”：以云端最新文档为底，只把游客自己的 XP / 次数按设备取较大值，
+// 关卡和日期取并集，并写入当前游客指纹。云端其他设备的数据、代数、lineage、红心、设置一概保留。
+// 绝不再用 gen + 1 的整份覆盖（那会把其他设备以及弹窗期间新增的进度清掉）。
+export function mergeGuestProgress(guestState, { deviceId, guestId, cloudDoc = null, now = Date.now() } = {}) {
+  if (!isId(deviceId) || !isId(guestId)) return { ok: false, code: "bad-ids", message: "缺少设备编号或游客编号" };
+  const g = guestToDoc(guestState, { deviceId, guestId, now });
+  if (!g.ok) return g;
+  if (!cloudDoc) return { ok: true, doc: g.doc, outcome: "created" };
+  const c = normalizeDoc(cloudDoc);
+  if (!c.ok) return { ok: false, code: c.code, message: c.message };
+  const out = clone(c.doc);
+  const guest = g.doc;
+  const gxp = guest.xp[deviceId] ?? 0, gruns = guest.runs[deviceId] ?? 0;
+  if (gxp > 0 || Object.hasOwn(out.xp, deviceId)) out.xp[deviceId] = Math.max(out.xp[deviceId] ?? 0, gxp);
+  if (gruns > 0 || Object.hasOwn(out.runs, deviceId)) out.runs[deviceId] = Math.max(out.runs[deviceId] ?? 0, gruns);
+  for (const [k, v] of Object.entries(guest.done)) {
+    if (!Object.hasOwn(out.done, k)) out.done[k] = v;
+    else if (!out.done[k] && v) out.done[k] = v;
   }
-  const r = guestToDoc(guestState, { deviceId, guestId, gen: 1, now });
-  return r.ok ? { ok: true, doc: r.doc, outcome: "created" } : r;
+  out.days = [...new Set([...out.days, ...guest.days])].sort();
+  out.imported = { ...out.imported, [guestId]: guest.imported[guestId] };
+  // hearts / prefs / gen / lineage 保持云端最新值（其他设备的红心、设置不能被游客清掉）。
+  return { ok: true, doc: out, outcome: "merged" };
+}
+
+// 用户在导入弹窗里做了选择：
+//   "keep-cloud"：只写游客指纹，云端其余逐字保留（见 markGuestImported）；
+//   "merge" / "transfer"（兼容旧调用）：安全合并（见 mergeGuestProgress），不再 gen + 1 整份覆盖。
+// 没有选择时：同一份记录 → already-imported；旧 true / 指纹变了 → guest-changed + 两个选择。
+export function replaceWithGuest(guestState, { deviceId, guestId, cloudDoc = null, now = Date.now(), choice = null }) {
+  let c = null;
+  if (cloudDoc) {
+    c = normalizeDoc(cloudDoc);
+    if (!c.ok) return { ok: false, code: c.code, message: c.message };
+  }
+  const status = c ? guestImportStatus(c.doc, guestId, guestState) : "new";
+  if (status === "same") return { ok: true, doc: c.doc, outcome: "already-imported" };
+  if (choice === "keep-cloud") {
+    const r = markGuestImported(c ? c.doc : null, guestId, guestState);
+    return r.ok ? { ok: true, doc: r.doc, outcome: "kept-cloud" } : r;
+  }
+  const mergeChoice = choice === "merge" || choice === "transfer" || choice === "replace";
+  if (status !== "new" && !mergeChoice) {
+    return { ok: true, doc: c.doc, outcome: "guest-changed", choices: ["keep-cloud", "merge"], message: "这份游客记录导入后又有新的学习进度，请选择保留云端，或安全合并游客进度" };
+  }
+  const r = mergeGuestProgress(guestState, { deviceId, guestId, cloudDoc: c ? c.doc : null, now });
+  return r.ok ? { ok: true, doc: r.doc, outcome: c ? "merged" : "created" } : r;
 }

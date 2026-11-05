@@ -174,12 +174,12 @@ const base = () => ({ ...emptyDoc({ lineage: "LIN" }) });
   const again = replaceWithGuest(guest(), { deviceId: DEV_A, guestId: GUEST_1, cloudDoc: first.doc, now: NOW });
   check("同一份游客记录再次触发导入（重试）：识别为已导入，原样返回，XP 不变", again.outcome === "already-imported" && docsEquivalent(again.doc, first.doc) && sumXp(again.doc) === 130);
   const twice = replaceWithGuest(guest({ xp: 999 }), { deviceId: DEV_B, guestId: GUEST_1, cloudDoc: first.doc, now: NOW });
-  check("同一个游客编号但内容变了（XP 999）：不静默忽略也不自动累加，返回 guest-changed 让用户选，云端原样", twice.outcome === "guest-changed" && eq(twice.choices, ["keep-cloud", "replace"]) && sumXp(twice.doc) === 130 && docsEquivalent(twice.doc, first.doc));
+  check("同一个游客编号但内容变了（XP 999）：不静默忽略也不自动累加，返回 guest-changed 让用户选，云端原样", twice.outcome === "guest-changed" && eq(twice.choices, ["keep-cloud", "merge"]) && sumXp(twice.doc) === 130 && docsEquivalent(twice.doc, first.doc));
   const other = replaceWithGuest(guest({ xp: 40, done: { U1L1: true }, lessonsCompleted: 1 }), { deviceId: DEV_B, guestId: GUEST_2, cloudDoc: first.doc, now: NOW });
-  check("云端已有进度时用户选“用本机覆盖”：代数 +1、换新编号，XP 不与云端相加（40，不是 170）", other.outcome === "replaced" && other.doc.gen === 2 && other.doc.lineage !== first.doc.lineage && sumXp(other.doc) === 40);
-  check("覆盖之后，旧一代的数据（来自其他设备的 XP 记录）不会合并回来", sumXp(mergeDocs(first.doc, other.doc).doc) === 40 && mergeDocs(other.doc, first.doc).outcome === "local-newer");
+  check("云端已有进度时选“安全合并”：代数 / lineage 不变，其他设备 130 XP 保留，本机设备记 40（总 170）", other.outcome === "merged" && other.doc.gen === first.doc.gen && other.doc.lineage === first.doc.lineage && other.doc.xp[DEV_A] === 130 && other.doc.xp[DEV_B] === 40 && sumXp(other.doc) === 170);
+  check("安全合并后再次合并同一份结果：幂等（仍 170，不会重复加）", sumXp(mergeDocs(first.doc, other.doc).doc) === 170 && sumXp(mergeDocs(other.doc, other.doc).doc) === 170);
   const again2 = replaceWithGuest(guest({ xp: 40, done: { U1L1: true }, lessonsCompleted: 1 }), { deviceId: DEV_B, guestId: GUEST_2, cloudDoc: other.doc, now: NOW });
-  check("覆盖也只做一次：同一个游客编号再来，已导入", again2.outcome === "already-imported" && again2.doc.gen === 2);
+  check("安全合并也只做一次：同一个游客编号再来，已导入", again2.outcome === "already-imported" && again2.doc.gen === 1 && sumXp(again2.doc) === 170);
   const badCloud = replaceWithGuest(guest(), { deviceId: DEV_A, guestId: GUEST_1, cloudDoc: { schema: 1 } });
   check("云端文档无效时：不导入，返回错误", badCloud.ok === false);
 }
