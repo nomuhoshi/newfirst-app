@@ -42,7 +42,7 @@ async function mount(viewport, lesson) {
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.__app && window.__app.getState);
   await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; st.installTipClosed = true; window.__app.persist(); window.__app.renderPath(); });
-  if (!(await page.evaluate(() => typeof window.__app.startLesson))) throw new Error("window.__app.startLesson 不存在");
+  if ((await page.evaluate(() => typeof window.__app.startLesson)) !== "function") throw new Error("window.__app.startLesson 不是函数（入口不存在）");
   await page.evaluate((x) => window.__app.startLesson(x, { review: false }), lesson);
   await page.getByRole("button", { name: /继续/ }).first().click();
   return { ctx, page };
