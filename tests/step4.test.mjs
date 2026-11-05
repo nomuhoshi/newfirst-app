@@ -121,7 +121,7 @@ try {
       const { ctx, page } = await open({ route: (pg) => pg.route(/\/assets\/errors-[^/]*\.js$/, (r) => r.abort()) });
       await page.waitForSelector("#load-fallback", { timeout: 8000 });
       const txt = await page.locator("#load-fallback").innerText();
-      check("脚本块下载失败（确认是资源加载失败）：仍显示“页面没有正常加载”，“网络不稳定”排在“微信或 QQ”前面，没有错误文字框，开发者信息里写“无法加载 errors-”", /页面没有正常加载/.test(txt) && /无法加载 errors-/.test(txt) && txt.indexOf("网络不稳定") < txt.indexOf("微信或 QQ") && (await page.locator("#load-fallback-detail").count()) === 0, txt.replace(/\n+/g, " / ").slice(0, 160));
+      check("脚本块下载失败（确认是资源加载失败）：仍显示“页面没有正常加载”，“网络不稳定”排在“微信或 QQ”前面，没有错误文字框，开发者信息里写“无法加载 …”（确认归为资源失败；模块依赖打不开时浏览器把错误记在主脚本上）", /页面没有正常加载/.test(txt) && /给开发者的信息：无法加载 /.test(txt) && txt.indexOf("网络不稳定") < txt.indexOf("微信或 QQ") && (await page.locator("#load-fallback-detail").count()) === 0, txt.replace(/\n+/g, " / ").slice(0, 160));
       await ctx.close();
     }
     { // 页面已经正常显示后的异步异常：维持现有行为（不弹兜底提示）
