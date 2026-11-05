@@ -1,8 +1,10 @@
 # U7「字典」5 关的独立课程预览入口（U7L6 留在 heldLessons，不可玩）：用 PREVIEW_ID=u7 构建（本地存储键前缀 u7:、缓存前缀 u7-suipian-），推到分支 preview-dist-u7。
-# 只在 preview/u7 分支手动运行（源码 = 课程分支 preview/u6-part1 + U7 内容 + 空格修复）；不部署任何网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 u7/ 目录。
+# 只在 preview/u7 分支运行（源码 = 课程分支 preview/u6-part1 + U7 内容 + 空格修复）；不部署任何网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 u7/ 目录。
 name: U7 preview
 on:
-  workflow_dispatch:   # 只手动运行：先在同一提交上跑完整 CI（deploy.yml），通过后再构建预览
+  push:
+    branches: [preview/u7]   # 非默认分支上的工作流不能用 API 手动触发，所以用推送触发；推送前已在源码相同的提交上跑完整 CI（deploy.yml）
+  workflow_dispatch:
 permissions:
   contents: write
 concurrency:
