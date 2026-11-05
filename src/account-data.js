@@ -3,7 +3,8 @@
 //
 // 账号文档（doc）：
 //   schema   数据格式版本（现在是 1）。比自己认识的更新 → 拒绝处理，不乱改。
-//   gen      第几代。用户选择“用这份覆盖云端”时 +1；高的一代整份替换低的一代。
+//   gen      第几代。云端代数更高时整份采用云端（旧一代作废）。
+//            本机代数更高且 lineage 相同：整份用本机。本机只是把 gen 抬高、lineage 却不同：不得整份覆盖云端。
 //   lineage  这一代的随机编号。同一代但编号不同 = 两次互相独立的“覆盖”，不能自动合并，要让用户选。
 //   xp       { 设备编号: 这台设备自己挣到的 XP }。总 XP = 各设备相加。
 //   runs     { 设备编号: 这台设备完成关卡的次数 }（含复习）。
@@ -101,22 +102,16 @@ export function docsEquivalent(a, b) {
 // ---------- 合并 ----------
 // local = 本机副本，remote = 云端当前内容。
 // 返回 { doc, outcome }：
-//   "merged"        同一代同一编号：XP/次数按设备取较大值再相加，完成关卡和日期取并集；红心和设置按“写入顺序”二选一
+//   "merged"        同一代同一编号，或本机只是抬高 gen 且 lineage 不同：XP/次数按设备取较大值，完成关卡和日期取并集；红心和设置按“写入顺序”二选一
 //   "remote-newer"  云端代数更高：整份用云端的（本机的旧一代作废）
-//   "local-newer"   本机代数更高：整份用本机的
+//   "local-newer"   本机代数更高且 lineage 相同：整份用本机的
 //   "conflict"      代数相同但编号不同（两次互相独立的“覆盖”）：不自动合并，交给用户选
 //   或 { error: { code, message } }（任何一份无效、或来自更新版本）
 // opts.localHeartsDirty / opts.localPrefsDirty：自上次同步以来，本机改过红心 / 设置。
 //   云端是“谁最后成功写入谁说了算”，本机改过 = 本机这次写入会排在云端当前内容之后，所以用本机的；没改过就用云端的。
 //   不用设备时间判断哪份更新（两台设备的时钟可能不一致）。
-export function mergeDocs(local, remote, opts = {}) {
-  const a = normalizeDoc(local), b = normalizeDoc(remote);
-  if (!a.ok) return { error: { code: a.code, message: "本机记录：" + a.message } };
-  if (!b.ok) return { error: { code: b.code, message: "云端记录：" + b.message } };
-  const L = a.doc, R = b.doc;
-  if (L.gen !== R.gen) return L.gen > R.gen ? { doc: L, outcome: "local-newer" } : { doc: R, outcome: "remote-newer" };
-  if (L.lineage !== R.lineage) return { doc: L, outcome: "conflict", remote: R };
-  const out = emptyDoc({ gen: L.gen, lineage: L.lineage });
+function mergeLearning(L, R, opts, identity) {
+  const out = emptyDoc({ gen: identity.gen, lineage: identity.lineage });
   for (const field of ["xp", "runs"]) {
     for (const k of new Set([...Object.keys(L[field]), ...Object.keys(R[field])])) out[field][k] = Math.max(L[field][k] ?? 0, R[field][k] ?? 0);
   }
@@ -135,7 +130,22 @@ export function mergeDocs(local, remote, opts = {}) {
     if (typeof prev === "string" && FP_RE.test(prev) && v === true) continue; // 旧 true 不覆盖有效指纹
     out.imported[k] = v;
   }
-  return { doc: out, outcome: "merged" };
+  return out;
+}
+export function mergeDocs(local, remote, opts = {}) {
+  const a = normalizeDoc(local), b = normalizeDoc(remote);
+  if (!a.ok) return { error: { code: a.code, message: "本机记录：" + a.message } };
+  if (!b.ok) return { error: { code: b.code, message: "云端记录：" + b.message } };
+  const L = a.doc, R = b.doc;
+  if (L.gen !== R.gen) {
+    // 旧备份可以把 gen 改得很大、再换一个 lineage。这种“只抬高代数”不能整份盖掉云端已有的 XP 和关卡。
+    // 学习内容按设备取较大值、关卡和日期取并集；gen / lineage 留在云端那份，备份夺不了身份。
+    // 云端代数更高仍整份采用云端（另一台设备真正换代时，旧一代不会复活）。同一 lineage 下本机代数更高才整份用本机。
+    if (L.gen > R.gen && L.lineage !== R.lineage) return { doc: mergeLearning(L, R, opts, R), outcome: "merged" };
+    return L.gen > R.gen ? { doc: L, outcome: "local-newer" } : { doc: R, outcome: "remote-newer" };
+  }
+  if (L.lineage !== R.lineage) return { doc: L, outcome: "conflict", remote: R };
+  return { doc: mergeLearning(L, R, opts, L), outcome: "merged" };
 }
 
 // ---------- 游客记录（v3）↔ 账号文档 ----------
