@@ -84,6 +84,7 @@ B 带着自己的身份：
 | `review-2.sh` 可以被指向任意主机 | 要求 `PGHOST` 是已存在的绝对路径（Unix 套接字目录），主机名 / IP 直接拒绝 |
 **加固后的自检**（把输入故意弄坏，脚本应当失败）：schema.sql 语法错误 → 退出码 2、初始化失败；stub.sql 出错 → 退出码 2；放宽权限 → 退出码 1；删掉一个检查 → 项数不符、退出码 1；并发脚本里 psql 报错 → 退出码 1；review-2 的 EXPECTED 不符 → 退出码 1；环境里设置指向外部主机的 `PGHOST/PGUSER/PGPASSWORD` → 被忽略，仍只连自己的实例；不改动的对照 → 全部通过、退出码 0；每次运行后临时目录已清理。
 **CI**：新增 `.github/workflows/db-tests.yml`（push 到 `review/**`、`feat/account-data-layer`、`release/**` 或 PR 涉及 `supabase/**` 时触发，也可手动触发），在 GitHub 的 ubuntu 机器上跑同一个 `run-all.sh`，不需要任何密钥。
+**CI 结果**：提交 dadbe16 触发的 `db-tests`（run 41991983808）成功——runner 上是 PostgreSQL 18（本机是 16），isolation 18 / review-1 37 / review-2 22 / 并发 1，全部通过。同一套测试在 16 和 18 两个大版本上都通过。
 
 ---
 
