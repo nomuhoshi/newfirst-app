@@ -1,0 +1,37 @@
+# U8「函数」前两关（定义和调用、给函数一个参数）的独立课程预览入口：用 PREVIEW_ID=u8 构建（本地存储键前缀 u8:、缓存前缀 u8-suipian-），推到分支 preview-dist-u8。
+# 只在 preview/u8 分支运行（源码 = U7 预览 preview/u7（含空格修复）+ U8 前两关）；不部署任何网站、不碰正式版。产物由人工复制到预览仓库 newfirst-app-preview 的 u8/ 目录。
+name: U8 preview
+on:
+  push:
+    branches: [preview/u8]   # 非默认分支上的工作流不能用 API 手动触发，所以用推送触发；推送前已在源码相同的提交上跑完整 CI（deploy.yml）
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: u8-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 构建（云端关闭：不传任何 Supabase 配置，预览构建默认不连任何云端）
+        env:
+          PREVIEW_ID: u8
+        run: npm run build
+      - name: 检查隔离：构建里有 u8 前缀、缓存前缀不是 suipian-
+        run: |
+          grep -q 'PREFIX = "u8-suipian-"' dist/sw.js
+          grep -rq 'u8' dist/assets/main-*.js
+      - name: 推到 preview-dist-u8
+        run: |
+          cd dist
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          echo "${{ github.sha }}" > SOURCE_SHA.txt
+          git add -A && git commit -q -m "u8 test entry from ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist:preview-dist-u8
