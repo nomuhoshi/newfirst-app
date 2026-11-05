@@ -514,8 +514,14 @@ assert V6_TESTS[0]["expected"] == "库存不足，还差 3 杯\n{'奶茶': 12, '
 assert V6_TESTS[4]["expected"] == "库存不足，还差 8 杯\n{'奶茶': 2}"
 assert fails(REF6, V6_TESTS) != []                    # 父题答案不能直接过变化题
 
+# 题面写明的输入范围：所有测试数据（含变化题）都必须在范围内
+for _t in T_PUB + T_HID + V6_TESTS:
+    _d = _t["data"]
+    assert isinstance(_d["cups"], int) and not isinstance(_d["cups"], bool) and _d["cups"] >= 1, _t["name"]
+    assert all(isinstance(_v, int) and not isinstance(_v, bool) and _v >= 0 for _v in _d["stock"].values()), _t["name"]
+
 L6_TASK = {"id": "U7L6-M1", "version": 1, "type": "modify",
- "prompt": "库存小程序：顾客点了 name（饮品）cups 杯，stock 是库存表。规则：① 饮品不存在（不在 stock 里）：输出“没有这个饮品”，库存不变。② 库存不足（点的杯数比库存多）：输出“库存不足”，库存不变。③ 其余情况：库存减去杯数，输出“成交，剩 N 杯”（N 是卖完后的库存；正好卖完，剩 0 杯，也算成交）。不管是哪种情况，最后都再用 print(stock) 显示一次库存表。起始程序只写了“成交”这一种，请一处一处改好，每改一处就重新运行。",
+ "prompt": "库存小程序：顾客点了 name（饮品）cups 杯，stock 是库存表。输入范围：cups 是正整数（至少 1 杯），stock 里每个库存都是非负整数（可以是 0）。规则：① 饮品不存在（不在 stock 里）：输出“没有这个饮品”，库存不变。② 库存不足（点的杯数比库存多）：输出“库存不足”，库存不变。③ 其余情况：库存减去杯数，输出“成交，剩 N 杯”（N 是卖完后的库存；正好卖完，剩 0 杯，也算成交）。不管是哪种情况，最后都再用 print(stock) 显示一次库存表。起始程序只写了“成交”这一种，请一处一处改好，每改一处就重新运行。",
  "given": ["stock", "name", "cups"], "checkMode": "output",
  "code": START6, "tests": T_PUB + T_HID,
  "hints": ["先运行，读最后一行的错误类型和 line 几；再对照三种情况：不存在、库存不足、成交。不报错也要对一对输出，有的错不会报错，只会算错。", "三种情况用 if / elif / else：先问 name not in stock，再问 cups > stock[name]，最后才改库存。最后一行 print(stock) 写在 if 外面，每种情况都要显示。"],
