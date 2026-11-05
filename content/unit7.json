@@ -7,8 +7,8 @@
       "id": "U7L1",
       "title": "按名字查库存",
       "concept": "字典、键和值、stock[键]",
-      "story": "库存按名字记：奶茶 12 杯、果茶 5 杯。列表靠位置找（cups[0]），字典（英文叫 dict）靠名字找：stock = {\"奶茶\": 12, \"果茶\": 5}。花括号里是一对一对的“键: 值”：键是名字（\"奶茶\"），值是对应的数量（12），冒号连着，逗号隔开。取值时在方括号里写键：stock[\"果茶\"] 得到 5，写的是名字，不是第几个。键要和字典里写的一模一样；查一个字典里没有的键，会报 KeyError。注意 print(stock) 显示的字典，文字外面是单引号：{'奶茶': 12, '果茶': 5}，Python 习惯这样显示。",
-      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock)\nprint(stock[\"果茶\"])",
+      "story": "库存按名字记：奶茶 12 杯、果茶 5 杯。列表靠位置找（cups[0]），字典（英文叫 dict）靠名字找：stock = {\"奶茶\": 12, \"果茶\": 5}。花括号里是一对一对的“键: 值”：键是名字（\"奶茶\"），值是对应的数量（12），冒号连着，逗号隔开。取值时在方括号里写键：stock[\"果茶\"] 得到 5，写的是名字，不是第几个。键要和字典里写的一模一样；查一个字典里没有的键，会报 KeyError。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock[\"奶茶\"])\nprint(stock[\"果茶\"])",
       "exercises": [
         {
           "type": "predict",
@@ -81,7 +81,7 @@
           ],
           "expected": "8",
           "why": {
-            "咖啡": "咖啡没有引号，Python 会把它当成变量名去找，找不到，会报 NameError。键是文字，要写成 \"咖啡\"。",
+            "咖啡": "咖啡没有引号，Python 会把它当成变量名去找，找不到，会报 NameError（用到了没有定义的变量名）。键是文字，要写成 \"咖啡\"。",
             "2": "字典不按位置找：stock[2] 是在找一个叫 2 的键，字典里没有，会报 KeyError。咖啡虽然写在第 3 个，也不能用 2 去取。",
             "\"果茶\"": "stock[\"果茶\"] 是 5，不是 8。8 是咖啡的数量。"
           },
@@ -111,19 +111,19 @@
             {
               "text": "用到了一个还没有定义的变量名",
               "correct": false,
-              "why": "那种错误叫 NameError，信息里写 name '…' is not defined。这里的 \"咖啡\" 带着引号，是文字，不是变量名，最后一行写的是 KeyError。",
+              "why": "那是 NameError：程序里用到了一个从没给过值的变量名。这里的 \"咖啡\" 带着引号，是文字，不是变量名；最后一行写的是 KeyError。",
               "value": "NameError"
             },
             {
               "text": "列表的下标超出了范围",
               "correct": false,
-              "why": "那种错误叫 IndexError，是列表（比如 cups[2]）位置越界。这里是字典，没有“第几个”，最后一行写的是 KeyError。",
+              "why": "那是 IndexError：列表只有 2 个元素，却去取第 3 个（位置超出了范围）。这里是字典，查的是键，不是位置；最后一行写的是 KeyError。",
               "value": "IndexError"
             },
             {
               "text": "文字和整数放在一起用 + 接了",
               "correct": false,
-              "why": "那种错误叫 TypeError。这行代码里没有 +，最后一行写的是 KeyError。",
+              "why": "那是 TypeError：类型搭配不对，比如文字和整数用 + 接在一起。这行代码里没有 +；最后一行写的是 KeyError。",
               "value": "TypeError"
             }
           ],
@@ -136,32 +136,32 @@
       "title": "改库存",
       "concept": "给已有的键写新值",
       "story": "卖掉了东西，库存要改。给已经有的键写新值：stock[\"果茶\"] = 9，字典里果茶的数量就换成 9——是替换旧值，不是加上去。想在旧数量的基础上改，右边先查出旧值再算：stock[\"奶茶\"] = stock[\"奶茶\"] - 1，Python 先算右边（12 - 1 得 11），再把 11 存回奶茶。只写 stock[\"奶茶\"] - 1 不行：这只是算了一下，没有存回去，库存没变。改的是字典本身，改完之后再去查，查到的就是新值。这一关只改字典里已经有的键。",
-      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果茶\"] = 9\nstock[\"奶茶\"] = stock[\"奶茶\"] - 1\nprint(stock)",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果茶\"] = 9\nstock[\"奶茶\"] = stock[\"奶茶\"] - 1\nprint(stock[\"奶茶\"], stock[\"果茶\"])",
       "exercises": [
         {
           "type": "predict",
           "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
-          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果茶\"] = 9\nprint(stock)",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果茶\"] = 9\nprint(stock[\"奶茶\"], stock[\"果茶\"])",
           "options": [
             {
-              "text": "{'奶茶': 12, '果茶': 9}",
+              "text": "12 9",
               "correct": true,
-              "why": "stock[\"果茶\"] = 9 把果茶的值换成 9，奶茶没动。"
+              "why": "第 2 行 stock[\"果茶\"] = 9 把果茶的值换成 9，奶茶没动，还是 12。"
             },
             {
-              "text": "{'奶茶': 12, '果茶': 14}",
+              "text": "12 14",
               "correct": false,
               "why": "= 是“换成”，不是“加上”：5 被换成了 9，不是 5 + 9。"
             },
             {
-              "text": "{'奶茶': 12, '果茶': 5}",
+              "text": "12 5",
               "correct": false,
-              "why": "第 2 行已经运行过了：果茶的值被换成了 9，print 显示的是改完之后的字典。"
+              "why": "第 2 行已经运行过了：果茶的值被换成了 9，print 查到的是改完之后的值。"
             },
             {
-              "text": "{'奶茶': 9, '果茶': 5}",
+              "text": "9 5",
               "correct": false,
-              "why": "改错了名字：第 2 行方括号里写的是 \"果茶\"，被换成 9 的是果茶，奶茶没动。"
+              "why": "改错了名字：第 2 行方括号里写的是 \"果茶\"，被换成 9 的是果茶；奶茶没动，还是 12。"
             }
           ],
           "tip": "stock[键] = 新值：把这个键原来的值换成新值。"
@@ -228,7 +228,7 @@
             {
               "text": "5",
               "correct": true,
-              "why": "第 3 行 stock[\"果茶\"] - 1 只算出了 4，没有存回字典，随后就丢掉了，不会报错，字典没变。"
+              "why": "第 2 行 stock[\"果茶\"] - 1 只算出了 4，没有存回字典，随后就丢掉了，不会报错，字典没变。"
             },
             {
               "text": "4",
@@ -242,6 +242,245 @@
             }
           ],
           "tip": "想改库存，要写成 stock[键] = 新值；只做计算，字典不会变。"
+        }
+      ]
+    },
+    {
+      "id": "U7L3",
+      "title": "先问再取",
+      "concept": "in、.get()、None 和默认值",
+      "story": "查一个字典里没有的键，会报 KeyError，程序就停了。想不让它停，有两个办法。第一个：先问一问。\"咖啡\" in stock 问的是：咖啡是不是字典里的一个键，答案是 True 或 False（not in 是反过来问）。注意字典的 in 只看键，不看值：12 是奶茶的数量（值），所以 12 in stock 是 False。配合 if：先问有没有，有才取。第二个：stock.get(\"咖啡\")，查得到时和 stock[\"咖啡\"] 一样给出值，查不到时不报错，给出 None（意思是“没有”）。还可以在逗号后面写一个默认值：stock.get(\"咖啡\", 0)，查不到就用 0；查得到时用的仍然是真实的值，默认值不起作用。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(\"咖啡\" in stock)\nprint(stock.get(\"咖啡\"))\nprint(stock.get(\"咖啡\", 0))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(\"奶茶\" in stock)\nprint(\"咖啡\" in stock)\nprint(12 in stock)",
+          "options": [
+            {
+              "text": "True\nFalse\nFalse",
+              "correct": true,
+              "why": "奶茶是字典的键，True；咖啡不是键，False；12 是奶茶的数量（值），不是键，in 只看键，False。"
+            },
+            {
+              "text": "True\nFalse\nTrue",
+              "correct": false,
+              "why": "最后一行 12 in stock：in 只看键，不看值。12 是值，不是键，是 False。"
+            },
+            {
+              "text": "False\nFalse\nFalse",
+              "correct": false,
+              "why": "第一行 \"奶茶\" in stock：奶茶是字典里的键，是 True。"
+            }
+          ],
+          "tip": "字典的 in 问的是：这个名字是不是字典里的键。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock.get(\"果茶\"))\nprint(stock.get(\"咖啡\"))\nprint(stock.get(\"咖啡\", 0))",
+          "options": [
+            {
+              "text": "5\nNone\n0",
+              "correct": true,
+              "why": "果茶有，给出 5；咖啡没有，没写默认值，给出 None；咖啡没有，写了默认值 0，给出 0。"
+            },
+            {
+              "text": "5\n0\n0",
+              "correct": false,
+              "why": "第二行没写默认值：查不到时给出的是 None（意思是“没有”），不是 0。"
+            },
+            {
+              "text": "5\nNone\nNone",
+              "correct": false,
+              "why": "第三行逗号后面的 0 是默认值：查不到咖啡，就用它，显示 0。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": ".get() 查不到时不报错：没有默认值给 None，有默认值给默认值。只有 stock[\"咖啡\"] 这种写法才会报 KeyError。"
+            }
+          ],
+          "tip": ".get(键) 查不到给 None；.get(键, 默认值) 查不到给默认值。"
+        },
+        {
+          "type": "fill",
+          "prompt": "咖啡还没进货。屏幕要显示：没有这个饮品",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nname = \"咖啡\"\nif {0}:\n    print(stock[name])\nelse:\n    print(\"没有这个饮品\")",
+          "tokens": [
+            "name in stock",
+            "name not in stock",
+            "stock[name]"
+          ],
+          "answer": [
+            "name in stock"
+          ],
+          "expected": "没有这个饮品",
+          "why": {
+            "name not in stock": "咖啡不在字典里，所以 name not in stock 是 True，程序会去取 stock[name]，结果报 KeyError。要的是“有才取”：用 name in stock，咖啡没有就走 else。",
+            "stock[name]": "if 后面要先得出 True 或 False，可是 stock[name] 自己就要先去查咖啡，查不到当场报 KeyError，根本到不了 if。"
+          },
+          "hint": "先问“name 在不在 stock 里”：在才取，不在就走 else。"
+        },
+        {
+          "type": "pick",
+          "prompt": "咖啡还没进货，字典里没有这个键，下面的程序报了 KeyError。要让屏幕显示 0（而不是报错），第 2 行怎么改？",
+          "key": "fix",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock[\"咖啡\"])",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 2, in <module>\n    print(stock[\"咖啡\"])\nKeyError: '咖啡'",
+          "checks": [
+            {
+              "program": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock[\"咖啡\"])",
+              "type": "KeyError",
+              "line": 2,
+              "msg": "'咖啡'"
+            }
+          ],
+          "expected": "0",
+          "options": [
+            {
+              "text": "改成：print(stock.get(\"咖啡\", 0))",
+              "correct": true,
+              "why": ".get() 查不到咖啡不报错，用默认值 0，屏幕显示 0。",
+              "fixed": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock.get(\"咖啡\", 0))"
+            },
+            {
+              "text": "改成：print(stock.get(\"咖啡\"))",
+              "correct": false,
+              "why": "不报错了，但显示 None：没写默认值，查不到给 None，不是 0。",
+              "fixed": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock.get(\"咖啡\"))"
+            },
+            {
+              "text": "改成：print(\"咖啡\" in stock)",
+              "correct": false,
+              "why": "不报错了，但显示 False：in 问的是“在不在”，答案是 True / False，不是数量。",
+              "fixed": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(\"咖啡\" in stock)"
+            },
+            {
+              "text": "改成：print(stock.get(\"果茶\", 0))",
+              "correct": false,
+              "why": "显示 5：查的是果茶，果茶有，用的是真实的值；要查的是咖啡。",
+              "fixed": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock.get(\"果茶\", 0))"
+            }
+          ],
+          "tip": "没有这个键时想要一个默认值：.get(键, 默认值)。"
+        }
+      ]
+    },
+    {
+      "id": "U7L4",
+      "title": "进货与下架",
+      "concept": "新增、拼错键名、del",
+      "story": "给字典里没有的键写值，就是新增一对：stock[\"咖啡\"] = 8，字典里多了咖啡。写法和上一关的“替换”一样：键已经有，就是替换；键没有，就是新增，Python 不会报错提醒你。所以键名拼错了，也不会报错，而是悄悄多出一个拼错的键，原来的键没动。删掉一对：del stock[\"果茶\"]，键和值一起删掉；要删的键必须存在，否则也会报 KeyError。现在可以直接看整个字典了：print(stock) 显示 {'奶茶': 12, '果茶': 5}，每一对是 '键': 值，文字外面是单引号（Python 习惯这样显示，你写的双引号也可以）。新增的键排在最后面。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"咖啡\"] = 8\ndel stock[\"果茶\"]\nprint(stock)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"咖啡\"] = 8\nprint(stock)",
+          "options": [
+            {
+              "text": "{'奶茶': 12, '果茶': 5, '咖啡': 8}",
+              "correct": true,
+              "why": "咖啡原来没有，给它写值就是新增一对，排在最后面。"
+            },
+            {
+              "text": "{'奶茶': 12, '果茶': 5}",
+              "correct": false,
+              "why": "第 2 行已经运行了：给没有的键写值，会把这一对加进去。"
+            },
+            {
+              "text": "{'咖啡': 8, '奶茶': 12, '果茶': 5}",
+              "correct": false,
+              "why": "新增的键排在最后面，不是最前面。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "给没有的键写值不会报错，是新增。只有“取”一个没有的键，才会报 KeyError。"
+            }
+          ],
+          "tip": "键没有，写值就是新增；键已经有，写值就是替换。"
+        },
+        {
+          "type": "predict",
+          "prompt": "小码想把果茶的库存改成 4，却把“茶”打成了“查”。点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果查\"] = 4\nprint(stock[\"果茶\"])\nprint(stock[\"果查\"])",
+          "options": [
+            {
+              "text": "5\n4",
+              "correct": true,
+              "why": "\"果查\" 原来没有，写值就是新增一对，不会报错；果茶根本没被改，还是 5。第 4 行查的是新增的 \"果查\"，是 4。"
+            },
+            {
+              "text": "4\n4",
+              "correct": false,
+              "why": "果茶没有被改：第 2 行写的是 \"果查\"，是另一个键。"
+            },
+            {
+              "text": "5\n报错",
+              "correct": false,
+              "why": "给没有的键写值不会报错，而是新增了 \"果查\"，所以第 4 行查得到，是 4。"
+            }
+          ],
+          "tip": "键名拼错了，Python 不会报错：它会新增一个拼错的键。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\ndel stock[\"果茶\"]\nprint(\"果茶\" in stock)\nprint(stock.get(\"果茶\", 0))",
+          "options": [
+            {
+              "text": "False\n0",
+              "correct": true,
+              "why": "del 把果茶这一对（键和值）一起删了，所以果茶不在字典里（False）；用 .get(\"果茶\", 0) 查，查不到，用默认值 0。"
+            },
+            {
+              "text": "True\n5",
+              "correct": false,
+              "why": "第 2 行 del stock[\"果茶\"] 已经运行：键和值都被删掉了，不是只删值。"
+            },
+            {
+              "text": "False\nNone",
+              "correct": false,
+              "why": "第二个 print 写了默认值 0：查不到果茶，就用 0，不是 None。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "果茶在字典里，del 可以删，不会报错。要删的键不存在才会报 KeyError。"
+            }
+          ],
+          "tip": "del 字典[键]：键和值一起删掉。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序。进货 5 杯果茶：字典里没有果茶时，先记成 0，再加上 5，最后显示：5",
+          "lines": [
+            "stock = {\"奶茶\": 12}",
+            "if \"果茶\" not in stock:",
+            "    stock[\"果茶\"] = 0",
+            "stock[\"果茶\"] = stock[\"果茶\"] + 5",
+            "print(stock[\"果茶\"])"
+          ],
+          "shuffled": [
+            3,
+            1,
+            4,
+            0,
+            2
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4
+            ]
+          ],
+          "expected": "5",
+          "hint": "先有字典；再检查有没有果茶，没有就记成 0；然后加 5；最后显示。"
         }
       ]
     }
