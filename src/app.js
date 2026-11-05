@@ -264,9 +264,10 @@ accountUi = createAccountUi({
 });
 if (sync && restored) sync.syncNow(); // 打开应用时后台同步一次（失败也不影响学习）
 if (sync) {
-  addEventListener("online", () => { if (sync.account()) sync.syncNow(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && sync.account()) sync.syncNow(); });
-  setInterval(() => { if (document.visibilityState === "visible" && sync.account() && sync.status().pending) sync.syncNow(); }, 60000);
+  const canAutoSync = () => sync.status().autoRetry !== false;
+  addEventListener("online", () => { if (sync.account() && canAutoSync()) sync.syncNow(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && sync.account() && canAutoSync()) sync.syncNow(); });
+  setInterval(() => { const st = sync.status(); if (document.visibilityState === "visible" && sync.account() && st.pending && st.autoRetry !== false) sync.syncNow(); }, 60000);
 }
 const allLessons = () => course.units.filter((u) => u.available).flatMap((u) => UNITS[u.id].lessons.map((l) => ({ ...l, unit: u.id })));
 const firstUndone = () => allLessons().find((l) => !state.done[l.id]);

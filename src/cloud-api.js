@@ -1,6 +1,15 @@
 // Supabase 的最小客户端（只用 fetch，不依赖 SDK）：邮箱验证码登录 + 读取 / 保存进度。fetch 可以注入，所以能在 Node 里用假服务器测试。
 // 每个方法都返回 { ok:true, ... } 或 { ok:false, kind, message }，kind：
 //   "network" 连不上（离线 / 超时）；"auth" 登录失效或验证码不对；"rate-limit" 请求太频繁；"server" 其他服务器错误；"config" 没配置。
+function retryAfterSeconds(value) {
+  if (value == null || value === "") return 60;
+  const text = String(value).trim();
+  if (/^\d+$/.test(text)) return Math.max(1, Math.min(3600, Number(text)));
+  const at = Date.parse(text);
+  if (Number.isFinite(at)) return Math.max(1, Math.min(3600, Math.ceil((at - Date.now()) / 1000)));
+  return 60;
+}
+
 export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeoutMs = 15000 }) {
   const base = String(url || "").replace(/\/+$/, "");
   const configured = !!(base && anonKey);
@@ -25,7 +34,9 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
     if (resp.ok) return { ok: true, status: resp.status, data };
     const msg = (data && (data.msg || data.message || data.error_description || data.error)) || `服务器返回 ${resp.status}`;
     const kind = resp.status === 429 ? "rate-limit" : resp.status === 401 || resp.status === 403 ? "auth" : "server";
-    return { ok: false, kind, status: resp.status, message: String(msg) };
+    const out = { ok: false, kind, status: resp.status, message: String(msg) };
+    if (resp.status === 429) out.retryAfter = retryAfterSeconds(resp.headers?.get?.("retry-after"));
+    return out;
   }
 
   const toSession = (d) => d && d.access_token && d.user?.id ? {
@@ -52,7 +63,11 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
       const s = toSession(r.data);
       return s ? { ok: true, session: s } : { ok: false, kind: "server", message: "刷新登录返回的内容无法识别" };
     },
-    async signOut(session) { await req("/auth/v1/logout", { method: "POST", token: session.accessToken }); return { ok: true }; },
+    // 普通退出必须知道云端有没有确认；失败时交给同步层保持登录（强退走 forceLocalLogout）。
+    async signOut(session) {
+      const r = await req("/auth/v1/logout", { method: "POST", token: session.accessToken });
+      return r.ok ? { ok: true } : r;
+    },
     // 读自己的进度（行级权限只会返回自己的那一行）：{ ok:true, row:null | { doc, rev } }
     async getProgress(session) {
       const r = await req("/rest/v1/progress", { token: session.accessToken, query: "select=doc,rev&limit=2" });

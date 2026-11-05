@@ -7,7 +7,7 @@
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
 import { emptyDoc, mergeDocs, docsEquivalent, docToState, syncStateIntoDoc, guestHasLearning, guestImportStatus, guestFingerprint, markGuestImported, mergeGuestProgress, normalizeDoc, sumXp, isId } from "./account-data.js";
-import { SESSION_KEY, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport } from "./account-store.js";
+import { SESSION_KEY, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, removeAccountCopy, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport, loadCleanupPending, saveCleanupPending, clearCleanupPending } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
@@ -32,9 +32,30 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
   let baseline = null, lastError = "";
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
+  // 连续 5 次保存冲突后停止自动重试（用户手动“立即同步”仍可再试）；三类 429 冷却分开计时：
+  // 发验证码、验证码校验、进度同步互不阻塞。
+  let autoRetryBlocked = false;
+  let sendCooldownUntil = 0, verifyCooldownUntil = 0, syncCooldownUntil = 0;
+  let cleanupPending = false;
 
   const setStatus = (s, msg = "") => { status = s; lastError = msg; try { onStatus(s, msg); } catch {} };
   const normalizedEmail = (x) => String(x || "").trim().toLowerCase();
+  const cooldownLeft = (until) => Math.max(0, Math.ceil((until - now()) / 1000));
+  const sendLeft = () => cooldownLeft(sendCooldownUntil);
+  const verifyLeft = () => cooldownLeft(verifyCooldownUntil);
+  const syncLeft = () => cooldownLeft(syncCooldownUntil);
+  const setCooldown = (which, seconds) => {
+    const sec = Number.isFinite(seconds) && seconds > 0 ? Math.min(3600, Math.ceil(seconds)) : 60;
+    if (which === "send") sendCooldownUntil = now() + sec * 1000;
+    else if (which === "verify") verifyCooldownUntil = now() + sec * 1000;
+    else syncCooldownUntil = now() + sec * 1000;
+    return sec;
+  };
+  const rateLimited = (which, r = {}) => {
+    const sec = setCooldown(which, r.retryAfter);
+    const what = which === "send" ? "发送验证码" : which === "verify" ? "校验验证码" : "同步";
+    return { ok: false, kind: "rate-limit", status: r.status, retryAfter: sec, message: `${what}太频繁，请等 ${sec} 秒后再试` };
+  };
   // 一份能用于联网的凭证必须字段齐全：没有访问令牌 / 刷新令牌 / 过期时间的残缺凭证只当作“需要重新登录”，
   // 绝不把 undefined / 旧项目 / 别的账号的令牌拼进 Authorization 发出去。
   const isSessionShape = (s) => !!s
@@ -59,9 +80,95 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   };
   const writeAuth = () => { try { if (isSessionShape(session)) storage.setItem(AUTH_KEY, JSON.stringify(projectId ? { session, project: projectId } : { session })); else storage.removeItem(AUTH_KEY); } catch {} };
   const isUnsent = (c) => !!c && (c.base == null || !!(c.dirty && (c.dirty.hearts || c.dirty.prefs || c.dirty.content)));
+
+  // “这台设备上还有没有没上传的东西”：不只看内存里的 pending，还要看落盘的副本和游客导入待办。
+  // 退出 / 删号必须用这个判断，否则一次失败同步后内存 pending 被重置，就会误删未上传副本。
+  function localHasUnsent(uid = userId) {
+    if (!uid) return false;
+    const L = loadAccount(storage, uid, { now: now() });
+    if (!L.ok) return true; // 读不出来时按“可能还有”处理，宁可保留
+    const pi = loadPendingImport(storage, uid);
+    return isUnsent(L.copy) || !pi.ok || !!pi.record;
+  }
+
+  // 本机清理失败时不能只依赖 removeItem：存储拒绝删除时，用“已吊销”标记覆盖凭证 / 当前账号，
+  // 让 readAuth / getCurrentAccount 立刻失效，同时保留原副本供人工恢复或重试清理。
+  function disableAuthStrict() {
+    try { storage.removeItem(AUTH_KEY); } catch {}
+    if (storage.getItem(AUTH_KEY) === null) return true;
+    try { storage.setItem(AUTH_KEY, JSON.stringify({ revoked: true })); } catch {}
+    try { return JSON.parse(storage.getItem(AUTH_KEY))?.revoked === true; } catch { return false; }
+  }
+  function clearCurrentStrict(uid) {
+    try { storage.removeItem(SESSION_KEY); } catch {}
+    if (getCurrentAccount(storage) === null) return true;
+    try { storage.setItem(SESSION_KEY, ""); } catch {}
+    return getCurrentAccount(storage) === null;
+  }
+  function restoreCurrent(uid) {
+    if (setCurrentAccount(storage, uid)) return true;
+    try { storage.setItem(SESSION_KEY, uid); } catch {}
+    return getCurrentAccount(storage) === uid;
+  }
+  function removeCopyStrict(uid) {
+    try { removeAccountCopy(storage, uid); } catch {}
+    const L = loadAccount(storage, uid, { now: now() });
+    return L.ok && !L.copy;
+  }
+  function removePendingStrict(uid) {
+    try { clearPendingImport(storage, uid); } catch {}
+    const pi = loadPendingImport(storage, uid);
+    return pi.ok && !pi.record;
+  }
+  function authUserId() {
+    try { return JSON.parse(storage.getItem(AUTH_KEY))?.session?.userId || null; } catch { return null; }
+  }
+  function markCleanup(uid) {
+    if (saveCleanupPending(storage, { version: 1, userId: uid, reason: "account-deleted", at: now() })) { cleanupPending = true; return true; }
+    return false;
+  }
+  function cleanupRecordFor(uid) {
+    const c = loadCleanupPending(storage);
+    return c.ok && c.record && c.record.userId === uid ? c.record : null;
+  }
+
+  // 删号后本机清理待办：重开 / 恢复登录前先重试；只清这个已删除账号自己的键，
+  // 不碰其他账号的副本和凭证。清理不干净时保留待办，下次继续。
+  function retryLocalCleanup() {
+    const c = loadCleanupPending(storage);
+    if (!c.ok) { cleanupPending = true; return { ok: false, kind: "local", message: c.message }; }
+    if (!c.record) { cleanupPending = false; return { ok: true, nothing: true, cleaned: false }; }
+    cleanupPending = true;
+    const uid = c.record.userId;
+    if (getCurrentAccount(storage) === uid) clearCurrentStrict(uid);
+    if (authUserId() === uid) disableAuthStrict();
+    const copyRemoved = removeCopyStrict(uid);
+    const pendingRemoved = removePendingStrict(uid);
+    const authGone = authUserId() !== uid;
+    const currentGone = getCurrentAccount(storage) !== uid;
+    if (copyRemoved && pendingRemoved && authGone && currentGone) {
+      const cleared = clearCleanupPending(storage);
+      cleanupPending = !cleared;
+      if (!cleared) {
+        return {
+          ok: false, kind: "local", pendingLocalCleanup: true,
+          cleanup: { auth: authGone, current: currentGone, copy: copyRemoved, pending: pendingRemoved },
+          message: "旧副本已清掉，但清理待办本身没删掉；下次打开会再试一次。",
+        };
+      }
+      return { ok: true, cleaned: true, nothing: false };
+    }
+    cleanupPending = true;
+    return {
+      ok: false, kind: "local", pendingLocalCleanup: true,
+      cleanup: { auth: authGone, current: currentGone, copy: copyRemoved, pending: pendingRemoved },
+      message: "账号已删除，但这台设备上的旧副本还没清理干净。旧登录凭证已禁用；下次打开会自动重试。",
+    };
+  }
+
   const readStale = () => { try { const r = JSON.parse(storage.getItem(STALE_KEY)); return r && typeof r.userId === "string" ? r : null; } catch { return null; } };
   const clearStale = () => { try { storage.removeItem(STALE_KEY); } catch {} };
-  const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
+  const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "rate-limit" : "error");
   // 已经登录 A 时，不给 B 的邮箱发验证码 / 验证码校验请求：先在本机挡住，避免拿错账号的验证码。
   // 没有有效凭证、但有“换项目后同邮箱接管”的标记时，只放行标记里的同一个邮箱。
   function loginBlocked(addr) {
@@ -103,8 +210,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   // ---------- 启动：恢复上次登录的账号（只读本机，不联网）----------
   function restore(baseState = null) {
+    retryLocalCleanup(); // 删号后本机没清干净：先重试；即使失败也不能把这个账号恢复成登录状态
     const uid = getCurrentAccount(storage);
     if (!uid) return null;
+    if (cleanupRecordFor(uid)) { setStatus("need-login", "账号已删除，本机旧副本等待清理"); return null; }
     const L = loadAccount(storage, uid, { now: now() });
     if (!L.ok || !L.copy) return null;
     const s = readAuth();
@@ -148,13 +257,21 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   function syncNow() {
     if (!userId) return Promise.resolve({ ok: false, kind: "no-account" });
     if (running) { again = true; return running; }
+    // 同步接口刚回过 429：冷却期内不再发请求，也不安排自动退避。用户手动点“立即同步”同样先等冷却结束。
+    const wait = syncLeft();
+    if (wait > 0) {
+      const r = { ok: false, kind: "rate-limit", retryAfter: wait, message: `同步太频繁，请等 ${wait} 秒后再试` };
+      setStatus("rate-limit", r.message);
+      return Promise.resolve(r);
+    }
     running = (async () => {
       try {
         let r, joinedRetry = 0, replaced = false;
         for (;;) {
           again = false; r = await syncOnce();
           if (r.replacedLocal) replaced = true;
-          if (r.ok) { netFails = 0; if (again) continue; break; }
+          if (r.ok) { netFails = 0; autoRetryBlocked = false; syncCooldownUntil = 0; if (again) continue; break; }
+          if (r.kind === "rate-limit") { autoRetryBlocked = false; break; }
           if (r.kind === "network" || r.retryable) {
             // 联网了但这一轮因为“断网时发出的请求”失败：如果期间有人又要求同步（again），立刻再试一次，不能把旧的失败当成结果还给他
             if (again && joinedRetry++ < 1) continue;
@@ -168,9 +285,24 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     return running;
   }
   function scheduleRetry() {
-    if (retryTimer || !userId || !session) return;
+    if (retryTimer || !userId || !session || autoRetryBlocked || syncLeft() > 0) return;
     const delay = [3000, 10000, 30000, 60000][Math.min(netFails, 3)]; netFails++;
-    retryTimer = schedule(() => { retryTimer = null; syncNow(); }, delay);
+    retryTimer = schedule(() => { retryTimer = null; if (!autoRetryBlocked && syncLeft() === 0) syncNow(); }, delay);
+  }
+
+  function markPendingIfLocal() {
+    if (localHasUnsent()) pending = true;
+  }
+  function handleSyncFailure(r) {
+    if (r.kind === "rate-limit") {
+      const rr = rateLimited("sync", r);
+      markPendingIfLocal();
+      setStatus("rate-limit", rr.message);
+      return rr;
+    }
+    setStatus(statusFromFailure(r), r.message);
+    if (r.kind === "network") markPendingIfLocal();
+    return r;
   }
 
   async function syncOnce() {
@@ -181,7 +313,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       return miss;
     }
     const t = await ensureToken();
-    if (!t.ok) { setStatus(statusFromFailure(t), t.message); return t; }
+    if (!t.ok) return handleSyncFailure(t);
     // 先重试“游客导入”专用待办，再跑普通同步。否则普通合并可能把云端旧 true 当成最新，
     // 让用户已经做过的选择永远写不上去。
     const pi = loadPendingImport(storage, userId);
@@ -196,14 +328,14 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     for (let attempt = 0; attempt < 5; attempt++) {
       const remote = await api.getProgress(session);
-      if (!remote.ok) { setStatus(statusFromFailure(remote), remote.message); return remote; }
+      if (!remote.ok) return handleSyncFailure(remote);
       const L = loadAccount(storage, userId, { now: now() });
       if (!L.ok || !L.copy) { setStatus("error", "本机账号记录读取失败"); return { ok: false, kind: "local", message: "本机账号记录读取失败" }; }
       const copy = L.copy;
       let finalDoc, rev, replaced = false;
       if (!remote.row) {
         const c = await api.createProgress(session, copy.doc);
-        if (!c.ok) { setStatus(statusFromFailure(c), c.message); return c; }
+        if (!c.ok) return handleSyncFailure(c);
         if (c.rev === null) continue; // 刚好有别的设备抢先创建了：重新读
         finalDoc = copy.doc; rev = c.rev;
       } else {
@@ -214,7 +346,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         if (m.outcome === "remote-newer" && copy.dirty.content) replaced = true;
         if (!docsEquivalent(finalDoc, remote.row.doc)) {
           const s = await api.saveProgress(session, remote.row.rev, finalDoc);
-          if (!s.ok) { setStatus(statusFromFailure(s), s.message); return s; }
+          if (!s.ok) return handleSyncFailure(s);
           if (s.rev === null) continue; // 被抢先：重新读、合并、再写
           rev = s.rev;
         }
@@ -242,23 +374,49 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (replaced) { try { onNotice("replaced", {}); } catch {} }
       return replaced ? { ok: true, rev, replacedLocal: true } : { ok: true, rev };
     }
-    setStatus("error", "同步冲突太多次，请稍后再试");
-    return { ok: false, kind: "server", message: "同步冲突太多次，请稍后再试" };
+    // 连续 5 次都被别的设备抢先：停止自动重试，但本机副本、脏标记和“待同步”必须原样保留。
+    // 用户手动点“立即同步”仍会再试；成功后 dirty/pending 才会清掉。
+    const keep = localHasUnsent();
+    pending = keep;
+    autoRetryBlocked = true;
+    const msg = "连续 5 次保存冲突，已停止自动重试；这台设备上的进度还在，稍后点“立即同步”再试";
+    setStatus(keep ? "pending" : "error", msg);
+    return { ok: false, kind: "conflict", message: msg, pending: keep, autoRetry: false };
   }
 
   // ---------- 登录 ----------
-  const sendCode = (addr) => {
+  // 发送验证码：本机先做 60 秒冷却（服务端 429 时按 Retry-After 延长），冷却期内不发请求。
+  // 测试和界面都走这里，所以不会出现“按钮看起来能点、实际连续发信”。
+  const sendCode = async (addr) => {
     const blocked = loginBlocked(addr);
-    return blocked ? Promise.resolve(blocked) : api.sendCode(String(addr).trim());
+    if (blocked) return blocked;
+    const wait = sendLeft();
+    if (wait > 0) return { ok: false, kind: "rate-limit", retryAfter: wait, message: `发送验证码太频繁，请等 ${wait} 秒后再试` };
+    let r;
+    try { r = await api.sendCode(String(addr).trim()); }
+    catch { r = { ok: false, kind: "network", message: "网络连不上，请检查网络后重试" }; }
+    if (!r.ok && r.kind === "rate-limit") return rateLimited("send", r);
+    if (r.ok) setCooldown("send", 60);
+    return r;
   };
 
-  // 验证码 → 会话；然后看游客记录需不需要用户选择
+  // 验证码 → 会话；然后看游客记录需不需要用户选择。
+  // 只有服务端真的回过 429 才冷却校验接口；正常“发完码马上输码”不会被发送冷却误伤。
   async function verify(addr, code, baseState = null) {
     const blocked = loginBlocked(addr);
     if (blocked) return blocked;
-    const r = await api.verifyCode(String(addr).trim(), code);
+    const wait = verifyLeft();
+    if (wait > 0) return { ok: false, kind: "rate-limit", retryAfter: wait, message: `校验验证码太频繁，请等 ${wait} 秒后再试` };
+    let r;
+    try { r = await api.verifyCode(String(addr).trim(), code); }
+    catch { r = { ok: false, kind: "network", message: "网络连不上，请检查网络后重试" }; }
+    if (!r.ok && r.kind === "rate-limit") return rateLimited("verify", r);
     if (!r.ok) return r;
-    return begin(r.session, baseState);
+    const out = await begin(r.session, baseState);
+    // 验证码已经成功用掉：清掉“发码冷却”，避免登录后马上切换账号时被上一次发码拦住。
+    // 登录弹窗内部的“重新发送”按钮仍有自己的 60 秒倒计时。
+    if (out.ok) sendCooldownUntil = 0;
+    return out;
   }
 
   async function begin(newSession, baseState) {
@@ -562,22 +720,76 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   // ---------- 退出 / 删除 ----------
-  // 有没同步的内容时先试着同步一次；同步失败就返回 { ok:false, pending:true }，界面让用户确认；force 才会丢弃
+  // 普通退出：先同步；云端 signOut 没确认就保持登录（不删本机副本 / 凭证）。
+  // 强制本机退出：用户明确选择后，清本机凭证和当前账号，但保留没上传的副本，并提示云端会话可能仍有效。
   async function logout({ force = false } = {}) {
     if (!userId) return { ok: true };
-    if (pending && !force) {
-      const r = await syncNow();
-      if (!r.ok) return { ok: false, pending: true, kind: r.kind, message: r.message };
+    if (!force) {
+      if (localHasUnsent()) {
+        const r = await syncNow();
+        if (!r.ok) return { ok: false, pending: true, kind: r.kind, message: r.message, keptLogin: true };
+      }
+      // 同步成功后仍可能有专用待办 / 失败残留，按落盘状态再判断一次。
+      if (localHasUnsent()) return { ok: false, pending: true, kind: "pending", message: "还有进度没上传，仍保持登录", keptLogin: true };
     }
-    if (session) { try { await api.signOut(session); } catch {} }
     const uid = userId;
-    // 强制退出（没上传的内容还在）：本机副本留着，不删。同一个账号再登录时会接着上传；只有已同步的账号才删副本。
-    if (force && pending) setCurrentAccount(storage, null); else logoutLocal(storage, uid);
+    const old = session;
+    const oldCopy = loadAccount(storage, uid, { now: now() }).copy;
+    const keepCopy = force && localHasUnsent(uid);
+    let cloudSessionMaybeValid = false;
+    if (old) {
+      let out;
+      try { out = await api.signOut(old); }
+      catch { out = { ok: false, kind: "network", message: "无法通知云端退出" }; }
+      if (!out || out.ok === false) {
+        cloudSessionMaybeValid = true;
+        if (!force) {
+          return {
+            ok: false, kind: out?.kind || "network", keptLogin: true, cloudSessionMaybeValid: true,
+            message: "退出登录失败：云端没有确认退出。网络恢复后再试，或选择“强制本机退出”。",
+          };
+        }
+      }
+    }
+
+    if (keepCopy) {
+      // 未上传副本按规则保留：只清当前账号和凭证，同一个账号重新登录后继续同步。
+      if (!clearCurrentStrict(uid)) return { ok: false, kind: "local", message: "本机登录状态清理失败，仍保持登录", keptLogin: true };
+      if (!disableAuthStrict()) {
+        restoreCurrent(uid);
+        return { ok: false, kind: "local", message: "本机登录凭证清理失败，仍保持登录", keptLogin: true };
+      }
+    } else {
+      if (!removeCopyStrict(uid)) return { ok: false, kind: "local", message: "本机账号副本清理失败，仍保持登录", keptLogin: true };
+      if (!clearCurrentStrict(uid)) {
+        if (oldCopy) saveAccount(storage, uid, oldCopy, { now: now() });
+        return { ok: false, kind: "local", message: "本机登录状态清理失败，仍保持登录", keptLogin: true };
+      }
+      if (!disableAuthStrict()) {
+        if (oldCopy) saveAccount(storage, uid, oldCopy, { now: now() });
+        restoreCurrent(uid);
+        return { ok: false, kind: "local", message: "本机登录凭证清理失败，仍保持登录", keptLogin: true };
+      }
+    }
+
     clearStale();
     session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
-    writeAuth();
+    autoRetryBlocked = false; syncCooldownUntil = 0;
     setStatus(null);
-    return { ok: true };
+    return { ok: true, cloudSessionMaybeValid, keptCopy: keepCopy };
+  }
+
+  // 强制本机退出：不要求云端确认；清本机凭证 / 当前账号，保留未上传副本，并明确提示云端会话可能仍有效。
+  async function forceLocalLogout() {
+    const r = await logout({ force: true });
+    if (!r.ok) return r;
+    return {
+      ...r,
+      cloudSessionMaybeValid: r.cloudSessionMaybeValid !== false,
+      message: r.cloudSessionMaybeValid !== false
+        ? "已在这台设备退出；云端会话可能仍然有效。没上传的进度留在本机，同一账号重新登录后会继续同步。"
+        : "已在这台设备退出；没上传的进度留在本机，同一账号重新登录后会继续同步。",
+    };
   }
 
   async function deleteAccount() {
@@ -585,18 +797,48 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const t = await ensureToken();
     if (!t.ok) return t;
     const r = await api.deleteAccount(session);
-    if (!r.ok) return r;
+    if (!r.ok) return r.kind === "rate-limit" ? rateLimited("sync", r) : r;
     const uid = userId;
-    logoutLocal(storage, uid);
-    clearPendingImport(storage, uid);
-    session = null; userId = null; email = ""; baseline = null; pending = false;
-    writeAuth(); setStatus(null);
-    return { ok: true };
+    // 云端已经删号，本机必须立刻失效；清不掉时留待办，绝不能返回“完全成功”或让旧令牌继续可用。
+    markCleanup(uid);
+    const tokenRevokedLocally = disableAuthStrict();
+    const currentCleared = clearCurrentStrict(uid);
+    const copyRemoved = removeCopyStrict(uid);
+    const pendingRemoved = removePendingStrict(uid);
+    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
+    autoRetryBlocked = false; syncCooldownUntil = 0;
+    setStatus(null);
+    if (tokenRevokedLocally && currentCleared && copyRemoved && pendingRemoved) {
+      const cleared = clearCleanupPending(storage);
+      cleanupPending = !cleared;
+      if (cleared) return { ok: true, accountDeleted: true, tokenRevokedLocally: true };
+      return {
+        ok: false, kind: "local-cleanup", accountDeleted: true, pendingLocalCleanup: true,
+        tokenRevokedLocally, copyIsolated: true,
+        cleanup: { auth: true, current: true, copy: true, pending: true },
+        message: "账号已删除，本机记录也已清掉，但清理待办本身没删掉；下次打开会再试一次。",
+      };
+    }
+    cleanupPending = true;
+    return {
+      ok: false, kind: "local-cleanup", accountDeleted: true, pendingLocalCleanup: true,
+      tokenRevokedLocally, copyIsolated: true,
+      cleanup: { auth: tokenRevokedLocally, current: currentCleared, copy: copyRemoved, pending: pendingRemoved },
+      message: tokenRevokedLocally
+        ? "账号已从云端删除，但这台设备上的旧记录还没清理干净。旧登录凭证已在本机禁用；下次打开会自动重试清理。"
+        : "账号已从云端删除，但这台设备上的旧记录还没清理干净，而且本机存储异常、旧凭证可能还没禁用；请清除本站数据。",
+    };
   }
 
   return {
-    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, deleteAccount,
+    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, forceLocalLogout, deleteAccount, retryLocalCleanup,
     account: () => (userId ? { userId, email } : null),
-    status: () => ({ status, pending, message: lastError }),
+    status: () => ({
+      status, pending, message: lastError,
+      autoRetry: !autoRetryBlocked && syncLeft() === 0,
+      sendCooldownSeconds: sendLeft(), verifyCooldownSeconds: verifyLeft(), syncCooldownSeconds: syncLeft(),
+      cooldownSeconds: Math.max(sendLeft(), verifyLeft(), syncLeft()),
+      cleanupPending,
+    }),
   };
 }

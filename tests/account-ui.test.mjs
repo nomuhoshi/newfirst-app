@@ -30,8 +30,8 @@ let browser;
 try { browser = await browserType.launch(); } catch (e) { console.log("环境失败：浏览器启动失败 " + String(e.message).split("\n")[0]); srv.closeAllConnections(); srv.close(); process.exit(2); }
 
 // ---------- 假 Supabase（HTTP 层）----------
-const S = { users: new Map(), rows: new Map(), tokens: new Map(), n: 0 };
-const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS" };
+const S = { users: new Map(), rows: new Map(), tokens: new Map(), n: 0, otpCalls: 0, otp429: false };
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-expose-headers": "retry-after" };
 const json = (route, status, body) => route.fulfill({ status, headers: { ...CORS, "content-type": "application/json" }, body: body === undefined ? "" : JSON.stringify(body) });
 async function fakeSupabase(ctx) {
   await ctx.route(FAKE + "/**", async (route) => {
@@ -41,7 +41,11 @@ async function fakeSupabase(ctx) {
     const body = req.postData() ? JSON.parse(req.postData()) : {};
     const uid = S.tokens.get((req.headers().authorization || "").replace("Bearer ", ""));
     const issue = (id, email) => { const at = "at-" + ++S.n, rt = "rt-" + S.n; S.tokens.set(at, id); S.tokens.set(rt, id); return { access_token: at, refresh_token: rt, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id, email } }; };
-    if (u.pathname === "/auth/v1/otp") return json(route, 200, {});
+    if (u.pathname === "/auth/v1/otp") {
+      S.otpCalls++;
+      if (S.otp429) return route.fulfill({ status: 429, headers: { ...CORS, "content-type": "application/json", "retry-after": "2" }, body: JSON.stringify({ message: "Too Many Requests" }) });
+      return json(route, 200, {});
+    }
     if (u.pathname === "/auth/v1/verify") { if (body.token !== "123456") return json(route, 403, { msg: "Token has expired or is invalid" }); if (!S.users.has(body.email)) S.users.set(body.email, "u" + S.users.size + "xxxxxxxx"); return json(route, 200, issue(S.users.get(body.email), body.email)); }
     if (u.pathname === "/auth/v1/token") { const id = S.tokens.get(body.refresh_token); return id ? json(route, 200, issue(id, [...S.users].find(([, v]) => v === id)?.[0] || "")) : json(route, 400, { msg: "invalid refresh token" }); }
     if (u.pathname === "/auth/v1/logout") return json(route, 204);
@@ -150,11 +154,51 @@ try {
   check("验证码错误/过期：提示里写明“已过期”，并且还能点“重新发送”", /已过期/.test(await E.page.locator("[data-login-msg]").innerText()) && (await E.page.locator("[data-resend]").count()) === 1);
   check("验证码错误：提示重试，没有登录、没有创建云端数据", (await E.page.evaluate(() => window.__app.sync.account())) === null && !S.users.has("e@example.com"));
 
+  const R = await device("R-phone");
+  await toMe(R); await R.page.locator("[data-open-login]").tap(); await R.page.locator("[data-email]").fill("rate@example.com");
+  S.otp429 = true;
+  const otpBefore = S.otpCalls;
+  await R.page.locator("[data-send-code]").tap();
+  await R.page.waitForFunction(() => /太频繁|请等/.test(document.querySelector("[data-login-msg]")?.textContent || ""));
+  const rateMsg = await R.page.locator("[data-login-msg]").innerText();
+  const rateBtn = await R.page.locator("[data-send-code]").innerText();
+  const rateDisabled = await R.page.locator("[data-send-code]").isDisabled();
+  check("验证码 429：显示服务端冷却秒数并禁用发送按钮", /请等 2 秒/.test(rateMsg) && rateDisabled && /发送验证码（2 秒）/.test(rateBtn), JSON.stringify({ rateMsg, rateBtn, rateDisabled }));
+  await R.page.evaluate(() => document.querySelector("[data-send-code]")?.click());
+  await R.page.waitForTimeout(150);
+  check("验证码 429：冷却期内点击不会再发请求（只发 1 次）", S.otpCalls - otpBefore === 1, `新增 ${S.otpCalls - otpBefore} 次`);
+  S.otp429 = false;
+
+  const D = await device("D-delete-cleanup");
+  await loginUi(D, "delete-cleanup@example.com");
+  const deleteUid = S.users.get("delete-cleanup@example.com");
+  await D.page.evaluate(() => {
+    const orig = Storage.prototype.removeItem;
+    const fail = function (k) { if (String(k).includes("suipian.acct.")) throw new Error("Disk Fail"); return orig.call(this, k); };
+    try { Storage.prototype.removeItem = fail; } catch {}
+    if (localStorage.removeItem !== fail) {
+      try { Object.defineProperty(localStorage, "removeItem", { configurable: true, value: fail }); } catch {}
+    }
+    window.__restoreRemoveItem = () => { try { Storage.prototype.removeItem = orig; } catch {} try { delete localStorage.removeItem; } catch {} };
+  });
+  await toMe(D);
+  await D.page.locator("[data-delete-account]").tap();
+  await D.page.getByRole("button", { name: "永久删除" }).tap();
+  await D.page.waitForSelector("[data-retry-cleanup]");
+  check(
+    "删号成功但本机清理失败：界面不宣称成功，显示恢复提示和“重试清理”",
+    /账号已删除/.test(await D.page.locator(".lsheet").innerText()) && /旧登录凭证已在本机禁用/.test(await D.page.locator(".lsheet").innerText()) && (await D.page.evaluate(() => window.__app.sync.account())) === null,
+  );
+  await D.page.evaluate(() => { window.__restoreRemoveItem(); });
+  await D.page.locator("[data-retry-cleanup]").tap();
+  await D.page.waitForFunction((uid) => !Object.keys(localStorage).some((k) => k.includes("suipian.acct.") && k.endsWith(uid)), deleteUid);
+  check("恢复存储后点“重试清理”：旧账号副本清掉，不再留给下一次登录", await D.page.evaluate((uid) => !Object.keys(localStorage).some((k) => k.includes("suipian.acct.") && k.endsWith(uid)), deleteUid));
+
   const G = await device("G-phone", { guest: { version: 3, onboarded: true, xp: 40, hearts: 5, heartsAt: Date.now(), streak: 1, lastDay: "2026-11-03", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: false, lastActive: 0, prefs: { sound: true, haptics: true, soundStyle: "J" } } });
   check("游客有进度（40 XP）", (await xpOnPage(G)) === 40);
   await loginUi(G, "g@example.com", { choice: "transfer" });
   check("选择转存：账号有 40 XP，页面仍是 40 XP，游客记录清除", xpIn("g@example.com") === 40 && (await xpOnPage(G)) === 40 && (await G.page.evaluate(() => localStorage.getItem("suipian.progress"))) === null);
-  check("整个流程没有页面脚本错误", [A, A2, B, E, G].every((d) => d.errors.length === 0), JSON.stringify([A, A2, B, E, G].flatMap((d) => d.errors)));
+  check("整个流程没有页面脚本错误", [A, A2, B, E, R, D, G].every((d) => d.errors.length === 0), JSON.stringify([A, A2, B, E, R, D, G].flatMap((d) => d.errors)));
 } catch (e) {
   check("账号界面测试异常", false, String(e.stack || e).split("\n").slice(0, 4).join(" | "));
 } finally {

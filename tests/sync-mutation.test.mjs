@@ -49,8 +49,8 @@ try {
     {
       name: "强制退出也删除未上传的本机副本",
       file: "sync.js",
-      from: "if (force && pending) setCurrentAccount(storage, null); else logoutLocal(storage, uid);",
-      to: "logoutLocal(storage, uid);",
+      from: "if (keepCopy) {",
+      to: "if (false && keepCopy) {",
     },
     {
       name: "测试入口的 localhost 覆盖不检查正式项目",

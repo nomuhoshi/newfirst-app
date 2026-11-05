@@ -10,6 +10,7 @@ export const DEVICE_KEY = "suipian.device";        // 这台设备的随机编�
 export const SESSION_KEY = "suipian.session";      // 当前登录的账号编号（没有 = 游客）
 const ACCT_PREFIX = "suipian.acct.";
 export const PENDING_IMPORT_PREFIX = ACCT_PREFIX + "import."; // 游客导入写云失败后的专用待办（按账号分开，跟着 Supabase 项目命名空间走）
+export const CLEANUP_KEY = ACCT_PREFIX + "cleanup"; // 删号成功、但本机键没删干净时的清理待办（跟着 Supabase 项目命名空间走）
 
 const acctKey = (userId) => ACCT_PREFIX + userId;
 const pendingImportKey = (userId) => PENDING_IMPORT_PREFIX + userId;
@@ -122,6 +123,29 @@ export function savePendingImport(storage, userId, record) {
 }
 export function clearPendingImport(storage, userId) {
   return isId(userId) ? safeRemove(storage, pendingImportKey(userId)) : false;
+}
+
+// ---------- 删号后的本机清理待办 ----------
+// 云端删号已经成功、但本机 removeItem 失败时，不能把“删号成功”当成“本机也干净了”。
+// 单独记一条待办：下次启动先重试清理；重试成功前不恢复这个账号，也不把旧令牌继续当登录凭证。
+export function loadCleanupPending(storage) {
+  const r = safeRead(storage, CLEANUP_KEY);
+  if (!r.ok) return { ok: false, code: "read-failed", message: "无法读取本机清理待办" };
+  if (r.value === null) return { ok: true, record: null };
+  let p;
+  try { p = JSON.parse(r.value); } catch { return { ok: false, code: "corrupt", message: "本机清理待办损坏" }; }
+  if (!p || p.version !== 1 || !isId(p.userId) || p.reason !== "account-deleted") return { ok: false, code: "corrupt", message: "本机清理待办损坏" };
+  return { ok: true, record: { version: 1, userId: p.userId, reason: "account-deleted", at: Number.isFinite(p.at) ? p.at : 0 } };
+}
+export function saveCleanupPending(storage, record) {
+  if (!record || !isId(record.userId)) return false;
+  const payload = JSON.stringify({ version: 1, userId: record.userId, reason: "account-deleted", at: Number.isFinite(record.at) ? record.at : 0 });
+  if (!safeSet(storage, CLEANUP_KEY, payload)) return false;
+  const back = safeRead(storage, CLEANUP_KEY);
+  return back.ok && back.value === payload;
+}
+export function clearCleanupPending(storage) {
+  return safeRemove(storage, CLEANUP_KEY);
 }
 
 // 退出登录：删除这个账号在本机的副本，回到游客。云端不动。
