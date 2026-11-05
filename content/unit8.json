@@ -1,0 +1,255 @@
+{
+  "id": "U8",
+  "title": "函数",
+  "subtitle": "def、参数、return",
+  "lessons": [
+    {
+      "id": "U8L1",
+      "title": "定义和调用",
+      "concept": "def、函数体、调用 welcome()",
+      "story": "奶茶店每次开门都要说“欢迎光临”。同一句话写很多遍太麻烦：用 def 给这段程序起个名字，以后喊一下名字就行。（你一直在用的 print(…) 就是别人写好的函数，写 print(…) 就是在调用它。）写法：def welcome(): 这一行是“起名字”，下面缩进的几行是函数体，也就是要做的事。注意：def 只是把做法记下来，这时函数体一行都不会运行，屏幕上什么都不会显示。要让它真正做事，要写 welcome()，名字后面带括号，这叫调用：调用一次，函数体就运行一次；调用两次，就运行两次。名字要先定义、后调用。",
+      "introCode": "def welcome():\n    print(\"欢迎光临\")\nwelcome()\nwelcome()",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def welcome():\n    print(\"欢迎光临\")\nprint(\"开店了\")",
+          "options": [
+            {
+              "text": "开店了",
+              "correct": true,
+              "why": "def 只是把做法记下来，函数体要等到调用才运行；这段程序里没有调用 welcome()。屏幕上只有第 3 行的 print 显示的“开店了”（它没有缩进，不在函数里）。"
+            },
+            {
+              "text": "欢迎光临\n开店了",
+              "correct": false,
+              "why": "def 那两行不会自己运行。函数体里的 print 要等到调用 welcome() 才会运行，这段程序从头到尾没有调用。"
+            },
+            {
+              "text": "欢迎光临",
+              "correct": false,
+              "why": "显示的是第 3 行普通的 print：“开店了”。函数体里的 print 没有运行，因为没有调用 welcome()。"
+            },
+            {
+              "text": "什么都不显示",
+              "correct": false,
+              "why": "第 3 行的 print 没有缩进，不在函数里，是一行普通的程序，会照常运行，显示“开店了”。"
+            }
+          ],
+          "tip": "def 只是起名字、记做法；看有没有 名字() 这样带括号的调用。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def welcome():\n    print(\"欢迎光临\")\nwelcome()\nprint(\"请点单\")\nwelcome()",
+          "options": [
+            {
+              "text": "欢迎光临\n请点单\n欢迎光临",
+              "correct": true,
+              "why": "函数在被调用的那一行运行：第 3 行调用 → 欢迎光临；第 4 行 → 请点单；第 5 行再调用一次 → 再显示一次欢迎光临。调用几次，函数体就运行几次。"
+            },
+            {
+              "text": "欢迎光临\n请点单",
+              "correct": false,
+              "why": "第 5 行又调用了一次 welcome()，函数体会再运行一遍，所以欢迎光临显示两次。"
+            },
+            {
+              "text": "欢迎光临\n欢迎光临\n请点单",
+              "correct": false,
+              "why": "程序按顺序一行一行运行：第 3 行调用（欢迎光临），第 4 行 print（请点单），第 5 行再调用（欢迎光临）。两次调用之间夹着“请点单”。"
+            },
+            {
+              "text": "欢迎光临\n欢迎光临\n欢迎光临\n请点单",
+              "correct": false,
+              "why": "def 那一行不会运行函数体，不算调用。这段程序只有第 3、5 行两次调用，欢迎光临只显示两次。"
+            }
+          ],
+          "tip": "一行一行往下走：碰到 welcome() 就把函数体运行一遍。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：欢迎光临",
+          "code": "def welcome():\n    print(\"欢迎光临\")\n{0}",
+          "tokens": [
+            "welcome()",
+            "welcome",
+            "def welcome():",
+            "Welcome()"
+          ],
+          "answer": [
+            "welcome()"
+          ],
+          "expected": "欢迎光临",
+          "why": {
+            "welcome": "只写名字、不带括号，只是提到了这个函数，没有调用它，函数体不会运行，屏幕上什么都不显示（也不会报错）。调用要带括号。",
+            "def welcome():": "def 是“定义”，不是“调用”。而且 def 后面必须有缩进的函数体，这里没有，会报 IndentationError（缩进错误：def 后面缺少缩进的内容）。",
+            "Welcome()": "大小写不同，Python 当成另一个名字。Welcome 没有定义过，会报 NameError（用到了没有定义的名字）。"
+          },
+          "hint": "函数已经定义好了，现在要让它运行：名字加括号。"
+        },
+        {
+          "type": "pick",
+          "prompt": "调用写在了定义的前面，运行报了错。最后一行说 NameError: name 'welcome' is not defined（welcome 这个名字还没有定义）。出错的是哪一行？",
+          "key": "line",
+          "code": "welcome()\ndef welcome():\n    print(\"欢迎光临\")",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 1, in <module>\n    welcome()\nNameError: name 'welcome' is not defined",
+          "checks": [
+            {
+              "program": "welcome()\ndef welcome():\n    print(\"欢迎光临\")",
+              "type": "NameError",
+              "line": 1,
+              "msg": "name 'welcome' is not defined"
+            }
+          ],
+          "options": [
+            {
+              "text": "welcome()",
+              "correct": true,
+              "why": "程序从上往下运行。到第 1 行调用 welcome() 时，下面的 def 还没有运行过，Python 还不知道 welcome 是什么，就在这一行报错了。先定义，后调用。"
+            },
+            {
+              "text": "def welcome():",
+              "correct": false,
+              "why": "def 这一行本身没有问题。它只是在调用的后面，程序还没有走到那里，就已经在第 1 行出错停下来了。"
+            },
+            {
+              "text": "print(\"欢迎光临\")",
+              "correct": false,
+              "why": "函数体一次都没有运行。程序在第 1 行就停了，根本没有走到这一行。"
+            }
+          ],
+          "tip": "报错时程序就停在出错的那一行；看看那一行用到的名字，之前有没有被定义过。"
+        }
+      ]
+    },
+    {
+      "id": "U8L2",
+      "title": "给函数一个参数",
+      "concept": "参数、传入值",
+      "story": "欢迎光临永远是同一句话。想让同一个函数按不同的饮品工作，就给它留一个空位：def say(drink): 括号里的 drink 叫参数，在函数体里它就像一个变量。调用时，括号里写的值会传进这个空位：say(\"奶茶\") 把 \"奶茶\" 传给 drink，函数体里用到 drink 的地方就是“奶茶”；say(\"果茶\") 再传一个，同一个函数就得到不一样的结果。每次调用都会重新传值。后面的 pay(price) 定义了一个必填参数 price：调用时漏传值，Python 会报 TypeError（类型错误）。",
+      "introCode": "def say(drink):\n    print(\"来一杯\", drink)\nsay(\"奶茶\")\nsay(\"果茶\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def say(drink):\n    print(\"来一杯\", drink)\nsay(\"咖啡\")\nsay(\"果茶\")",
+          "options": [
+            {
+              "text": "来一杯 咖啡\n来一杯 果茶",
+              "correct": true,
+              "why": "第 3 行调用 say(\"咖啡\")，咖啡传给 drink，显示“来一杯 咖啡”；第 4 行再调用 say(\"果茶\")，这次 drink 是果茶，显示“来一杯 果茶”。"
+            },
+            {
+              "text": "来一杯 drink\n来一杯 drink",
+              "correct": false,
+              "why": "print 里的 drink 没有引号，是参数这个变量，显示的是传进来的值（咖啡、果茶），不是单词 drink。"
+            },
+            {
+              "text": "来一杯 咖啡\n来一杯 咖啡",
+              "correct": false,
+              "why": "每次调用都会重新传值。第 4 行传的是果茶，drink 这次就是果茶。"
+            },
+            {
+              "text": "来一杯 果茶\n来一杯 咖啡",
+              "correct": false,
+              "why": "程序按顺序运行：先第 3 行传咖啡，再第 4 行传果茶，所以先显示咖啡。"
+            }
+          ],
+          "tip": "每次调用，括号里的值传给参数；函数体里的 drink 就是这一次传进来的值。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def pay(price):\n    print(\"应付\", price * 2)\ntea = 8\npay(tea)\ntea = 5\npay(tea)",
+          "options": [
+            {
+              "text": "应付 16\n应付 10",
+              "correct": true,
+              "why": "第 4 行调用 pay(tea)，这时 tea 是 8，传给 price，8 × 2 = 16。第 5 行把 tea 改成 5，第 6 行再调用，传进去的是 5，5 × 2 = 10。"
+            },
+            {
+              "text": "应付 16\n应付 16",
+              "correct": false,
+              "why": "每次调用，传进去的是调用那一刻 tea 里的值。第 5 行已经把 tea 改成 5，第 6 行传的是 5，所以是 10。"
+            },
+            {
+              "text": "应付 8\n应付 5",
+              "correct": false,
+              "why": "函数体里写的是 price * 2，要乘 2：8 × 2 = 16，5 × 2 = 10。"
+            },
+            {
+              "text": "应付 10\n应付 10",
+              "correct": false,
+              "why": "函数是在调用的那一行运行的，不是等到最后。第一次调用时 tea 还是 8，得 16，之后 tea 才改成 5。"
+            }
+          ],
+          "tip": "看调用的那一刻变量里是多少：传进去的是值，不是变量名。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：应付 20",
+          "code": "def pay({0}):\n    print(\"应付\", price * 2)\npay(10)",
+          "tokens": [
+            "price",
+            "cups",
+            "10",
+            "\"price\""
+          ],
+          "answer": [
+            "price"
+          ],
+          "expected": "应付 20",
+          "why": {
+            "cups": "参数起名叫 cups，但函数体里用的是 price。price 没有定义过，调用时会报 NameError（用到了没有定义的名字）。参数的名字要和函数体里用的一致。",
+            "10": "def 的括号里要写一个名字（空位的名字），不能直接写具体的值 10，会报 SyntaxError（写法不符合语法）。值要在调用的时候传，pay(10)。",
+            "\"price\"": "括号里写的是名字，不是文字，不能加引号，会报 SyntaxError（写法不符合语法）。"
+          },
+          "hint": "def 括号里要写一个名字，函数体里用到的就是这个名字。"
+        },
+        {
+          "type": "pick",
+          "prompt": "忘了给 pay 传值，运行报了错。最后一行 TypeError: pay() missing 1 required positional argument: 'price' 是在说什么？",
+          "key": "type",
+          "code": "def pay(price):\n    print(\"应付\", price * 2)\npay()",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    pay()\nTypeError: pay() missing 1 required positional argument: 'price'",
+          "checks": [
+            {
+              "program": "def pay(price):\n    print(\"应付\", price * 2)\npay()",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "pay() missing 1 required positional argument: 'price'"
+            }
+          ],
+          "options": [
+            {
+              "text": "调用 pay() 时括号里没给值，必填参数 price 没有收到",
+              "correct": true,
+              "why": "本关的 pay(price) 定义了一个必填参数 price，调用时必须传一个值进去。第 3 行 pay() 括号里是空的，漏传了，所以 Python 说“少了 1 个必须给的参数 'price'”。",
+              "value": "TypeError"
+            },
+            {
+              "text": "pay 这个名字还没有定义",
+              "correct": false,
+              "why": "那是 NameError。pay 在第 1 行已经 def 过了；这里报的是 TypeError，说的是调用时少了一个值。",
+              "value": "NameError"
+            },
+            {
+              "text": "def 那一行少了冒号",
+              "correct": false,
+              "why": "少冒号是 SyntaxError，程序一行都不会运行。这里 def 写得没问题，函数体都定义好了，是第 3 行调用时才出的错。",
+              "value": "SyntaxError"
+            },
+            {
+              "text": "函数体没有缩进",
+              "correct": false,
+              "why": "那是 IndentationError。这里函数体的缩进是对的；最后一行写的是 TypeError，说的是调用时少了一个值。",
+              "value": "IndentationError"
+            }
+          ],
+          "tip": "missing 1 required argument：少了 1 个必须给的值（必填参数）。看看调用那一行括号里有没有东西。"
+        }
+      ]
+    }
+  ],
+  "heldLessons": []
+}

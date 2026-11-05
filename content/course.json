@@ -54,6 +54,13 @@
       "id": "U8",
       "title": "函数",
       "subtitle": "def、参数、return",
+      "available": true,
+      "file": "unit8.json"
+    },
+    {
+      "id": "U9",
+      "title": "毕业小项目",
+      "subtitle": "把学过的拼成一个小系统",
       "available": false
     }
   ]
