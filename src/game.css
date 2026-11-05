@@ -173,6 +173,9 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .lc { white-space: pre; display: inline-flex; align-items: center; flex-wrap: nowrap; }
 .tk-str { color: var(--g-tk-str); } .tk-num { color: var(--g-tk-num); } .tk-fn { color: var(--g-tk-fn); } .tk-op { color: var(--g-tk-op); }
 
+.trace { margin: 10px 0; border: 1.5px solid var(--g-bad); border-radius: 12px; background: var(--g-bad-bg); overflow: hidden; }
+.trace-cap { padding: 4px 10px; font-size: 13px; font-weight: 700; color: var(--g-bad); }
+.trace-pre { margin: 0; padding: 4px 10px 10px; font: 15px/1.6 ui-monospace, Menlo, monospace; color: var(--g-fg); white-space: pre-wrap; overflow-wrap: anywhere; }
 .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; margin: 14px 0; }
 .choice { border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); border-radius: 12px; padding: 12px; min-height: 60px; transition: border-color .08s, background-color .08s, transform .08s; }
 .choice:active { transform: translateY(1px); }
