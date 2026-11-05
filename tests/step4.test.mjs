@@ -101,7 +101,7 @@ try {
       await page.waitForSelector("#load-fallback", { timeout: 8000 });
       const txt = await page.locator("#load-fallback").innerText();
       check(`主脚本${name}（200）：标题是“页面脚本出错，应用未能启动”，不再是“页面没有正常加载”`, /页面脚本出错，应用未能启动/.test(txt) && !/页面没有正常加载/.test(txt), txt.slice(0, 60));
-      check(`主脚本${name}（200）：不把“网络不稳定”排在第一条`, !/网络不稳定/.test(txt) || txt.indexOf("网络不稳定") > txt.indexOf("重新加载一次"), txt.replace(/\n+/g, " / ").slice(0, 160));
+      check(`主脚本${name}（200）：正文是产品官定的话，不下“不是网络问题 / 文件没下载完整”之类没证据的判断`, txt.includes("已收到脚本错误信息，应用未能启动。请尝试重新加载或换个浏览器打开。如果仍然无法打开，请复制下面的错误信息发给开发者。") && !/这通常不是网络问题|没下载完整|网络不稳定/.test(txt), txt.replace(/\n+/g, " / ").slice(0, 200));
       const detail = await page.locator("#load-fallback-detail").inputValue();
       check(`主脚本${name}（200）：错误详情在提示下方的文字框里，含错误、环境、网址`, errRe.test(detail) && /环境：.*iOS 16\.6/.test(detail) && /网址：http/.test(detail), detail);
       const g = await page.evaluate(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(); return { reload: r("load-fallback-reload"), detail: r("load-fallback-detail"), vh: innerHeight }; });

@@ -38,6 +38,7 @@ try {
     const shown = await page.waitForSelector("#load-fallback", { timeout: 12000 }).then(() => true, () => false);
     const txt = shown ? await page.locator("#load-fallback").innerText() : "";
     check(`主脚本${name}（200）：标题是“页面脚本出错，应用未能启动”`, /页面脚本出错，应用未能启动/.test(txt) && !/页面没有正常加载/.test(txt), txt.slice(0, 60));
+    check(`主脚本${name}（200）：正文是产品官定的话，不下没证据的判断`, txt.includes("已收到脚本错误信息，应用未能启动。请尝试重新加载或换个浏览器打开。如果仍然无法打开，请复制下面的错误信息发给开发者。") && !/这通常不是网络问题|没下载完整/.test(txt));
     const detail = shown && (await page.locator("#load-fallback-detail").count()) ? await page.locator("#load-fallback-detail").inputValue() : "";
     check(`主脚本${name}（200）：详情文字框里有这个引擎报的错误、环境和网址（记录原文）`, errRe.test(detail) && /环境：/.test(detail) && /网址：http/.test(detail), detail);
     const g = shown ? await page.evaluate(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(); return { rb: r("load-fallback-reload").bottom, dt: r("load-fallback-detail").top, vh: innerHeight }; }) : null;
