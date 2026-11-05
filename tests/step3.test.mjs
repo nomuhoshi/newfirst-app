@@ -19,8 +19,8 @@ function check(name, ok, detail = "") {
 }
 
 // ---------- 可控的小服务器：换根目录 = 换版本；stop() = 断网；delayMs = 网络很慢 ----------
-let root = DIST, delayMs = 0, srv = null;
-const hits = [];
+let root = DIST, delayMs = 0, swDelayMs = 0, srv = null; // swDelayMs：只延迟 sw.js 的响应（模拟“浏览器很晚才开始安装新版本”）
+const hits = [], misses = []; // misses：服务器返回过 404 的请求
 function start() {
   return new Promise((res) => {
     srv = createServer((req, resp) => {
@@ -30,11 +30,12 @@ function start() {
         hits.push(url.pathname);
         let p = join(where, decodeURIComponent(url.pathname));
         if (url.pathname.endsWith("/")) p = join(p, "index.html");
-        if (!p.startsWith(where) || !existsSync(p) || statSync(p).isDirectory()) { resp.writeHead(404); resp.end("not found"); return; }
+        // 预缓存是 fetch(url, { cache: "reload" })，浏览器会带 Pragma: no-cache——用它区分“安装时的预缓存请求”和页面自己的请求
+        if (!p.startsWith(where) || !existsSync(p) || statSync(p).isDirectory()) { misses.push({ where, path: url.pathname, install: req.headers.pragma === "no-cache" }); resp.writeHead(404); resp.end("not found"); return; }
         resp.writeHead(200, { "content-type": MIME[extname(p)] || "application/octet-stream", "cache-control": "no-store" });
         resp.end(readFileSync(p));
       };
-      if (delayMs && !req.url.includes("sw.js")) setTimeout(go, delayMs); else go();
+      if (req.url.includes("sw.js")) { if (swDelayMs) setTimeout(go, swDelayMs); else go(); } else if (delayMs) setTimeout(go, delayMs); else go();
     }).listen(PORT, res);
   });
 }
@@ -43,18 +44,23 @@ function stop() { return new Promise((res) => { srv.closeAllConnections(); srv.c
 // 刷新后等“应用真的恢复好”：只等到 domcontentloaded（不等 load——load 要等页面所有后台请求收尾，
 // CI 里曾偶发 30 秒等不到 load：page.reload: Timeout 30000ms exceeded，日志停在 waiting for navigation until "load"），
 // 再等测试真正需要的状态：状态栏已画出、应用对象已读到存档。失败时打印当时的页面状态，方便判断是没触发 load 还是状态没恢复。
-// 等 Service Worker 的一次更新收尾：服务器收到了新的 sw.js 请求（sinceSwHits 是此前的次数），并且没有“正在安装 / 等待中”的 worker（连续两次都没有）。失败时打印当时状态。
-async function waitInstallSettled(p, sinceSwHits, { timeout = 20000 } = {}) {
-  const t0 = Date.now(); let quiet = 0, last = "";
+// 等“缺文件的新版本”这次安装真的失败并收尾，然后才能切到下一个版本。三步都要满足，超时直接抛错（带诊断），不返回 false 让后面的断言碰运气：
+//  1. 服务器确认：安装时的预缓存请求（Pragma: no-cache）对缺失的文件拿到了 404——说明浏览器真的开始装这个新版本了（只看到 sw.js 请求不够，安装可能还没开始）；
+//  2. 没有“正在安装 / 等待中”的 worker（连续两次）；
+//  3. 旧版本仍然在控制页面（旧 worker 是 activated、页面有 controller），坏版本的缓存已经清掉、旧缓存还在。
+async function waitBrokenInstallFailed(p, brokenRoot, oldCache, brokenCache, { timeout = 25000 } = {}) {
+  const t0 = Date.now(); let quiet = 0, snap = null;
+  const state = () => p.evaluate(async ([old, bad]) => { const r = await navigator.serviceWorker.getRegistration(); const keys = await caches.keys(); return { installing: !!r?.installing, waiting: !!r?.waiting, active: r?.active?.state ?? null, controlled: !!navigator.serviceWorker.controller, hasOld: keys.includes(old), hasBad: keys.includes(bad), keys: keys.sort() }; }, [oldCache, brokenCache]).catch(() => null);
   while (Date.now() - t0 < timeout) {
-    const sawSw = hits.filter((h) => h.endsWith("/sw.js")).length > sinceSwHits;
-    last = await p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return r ? { installing: !!r.installing, waiting: !!r.waiting } : { installing: false, waiting: false }; }).catch(() => ({ installing: true, waiting: false }));
-    quiet = sawSw && !last.installing && !last.waiting ? quiet + 1 : 0;
-    if (quiet >= 2) return true;
+    const install404 = misses.filter((m) => m.where === brokenRoot && m.install).length;
+    snap = await state();
+    const idle = snap && !snap.installing && !snap.waiting;
+    quiet = install404 > 0 && idle ? quiet + 1 : 0;
+    if (quiet >= 2 && snap.active === "activated" && snap.controlled && snap.hasOld && !snap.hasBad) return snap;
     await p.waitForTimeout(250);
   }
-  console.log("等待安装收尾超时：", JSON.stringify({ last, sw请求次数: hits.filter((h) => h.endsWith("/sw.js")).length, 之前: sinceSwHits, 缓存: await p.evaluate(async () => (await caches.keys()).sort()).catch(() => "读取失败") }));
-  return false;
+  console.log("等待“缺文件的新版本”安装失败并收尾：超时", JSON.stringify({ 安装时的404: misses.filter((m) => m.where === brokenRoot && m.install).map((m) => m.path), 其他404: misses.filter((m) => m.where === brokenRoot && !m.install).map((m) => m.path), snap, sw请求: hits.filter((h) => h.endsWith("/sw.js")).length }));
+  throw new Error("缺文件的新版本没有在 " + timeout + "ms 内走完“开始安装 → 404 → 安装失败 → 清掉坏缓存”");
 }
 
 async function reloadReady(p, { timeout = 30000 } = {}) {
@@ -177,11 +183,15 @@ try {
   await start();
 
   // ===== 4. 新版本缺文件：安装失败，旧缓存和旧版本继续可用 =====
-  const swHitsBefore = hits.filter((h) => h.endsWith("/sw.js")).length;
+  swDelayMs = 5000; // 让浏览器“很晚才开始安装”：只看到 sw.js 请求、或者还没开始安装时，不能就当作安装结束了
   root = makeVersion("v3-broken", { dropCss: true });
+  const brokenRoot = root;
   await page.reload(); await page.waitForSelector(".statsbar");
-  // 不能固定等 2.5 秒：机器忙时安装还没收尾，临时缓存（安装中一定会先建出来）还在。先等浏览器真的来取了新的 sw.js，再等“正在安装”的那个 worker 消失（安装失败或完成）。
-  await waitInstallSettled(page, swHitsBefore);
+  const startedBefore = misses.filter((m) => m.where === brokenRoot && m.install).length;
+  check("更新：新版本缺文件——页面刷新后，浏览器还没开始安装（sw.js 被延迟），此时还没有安装时的 404", startedBefore === 0, String(startedBefore));
+  await waitBrokenInstallFailed(page, brokenRoot, "suipian-v2", "suipian-v3-broken");
+  swDelayMs = 0;
+  check("更新：新版本缺文件——是安装时的预缓存请求拿到了 404（不是页面自己的请求），安装才失败的", misses.some((m) => m.where === brokenRoot && m.install && /\.css$/.test(m.path)), JSON.stringify(misses.filter((m) => m.where === brokenRoot)));
   const keysC = await cacheKeys();
   check("更新：新版本缺文件时安装失败，不会留下缺文件的半个缓存，旧缓存继续可用", keysC.includes("suipian-v2") && !keysC.includes("suipian-v3-broken"), keysC.join());
   root = makeVersion("v4");
