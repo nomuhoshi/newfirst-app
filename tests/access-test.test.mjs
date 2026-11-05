@@ -4,7 +4,9 @@
 //   C Python 工作线程启动失败（py-worker 文件 / Pyodide 文件被拦截）→ 失败 + 结论说“运行代码会失败”；
 //   D 浏览器离线（页面打开后断网）→ 离线提示 + 结论说“没有网络”；
 //   E 复制：剪贴板接口不可用、execCommand 也失败时，不能显示“已复制”，要提示长按手动复制；
-//   F 测试页自己的脚本出意外（TextDecoder 不存在）→ 仍然出结果、可复制，不会停在“测试中……”。
+//   F 测试页自己的脚本出意外（TextDecoder 不存在）→ 仍然出结果、可复制，不会停在“测试中……”；
+//   G 只读：即使配置里填了 Supabase，默认也零云端请求（无 POST、无外站）；?cloud=1 才会连云端（正向对照）；
+//   结论措辞：写“已执行的检查通过”并列出跳过项，不再写“全部通过”。
 // 运行：npm run build && MOBILE_BROWSER=chromium|webkit node tests/access-test.test.mjs   （DIST_DIR 可指定别的构建目录）
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -41,7 +43,8 @@ try {
     const { ctx, page, errs } = await open();
     const r = await run(page);
     check("A 基线：网站文件、主程序、Python 启动都是 ✅，没有 ❌", r.rows.length >= 6 && r.rows.every((x) => !x.startsWith("❌")) && r.rows.some((x) => /Python 启动/.test(x) && x.startsWith("✅")), r.rows.join(" | "));
-    check("A 基线：结论写“全部通过”，报告里带结论和环境信息", /全部通过/.test(r.verdict) && /结论/.test(r.report) && /浏览器：/.test(r.report), r.verdict);
+    check("A 基线：结论写“已执行的检查通过”，说明下载成功不等于能执行，且不出现“全部通过”", /已执行的检查通过/.test(r.verdict) && /主程序能不能解析、执行/.test(r.verdict) && !/全部通过|能正常打开并运行/.test(r.verdict + r.report), r.verdict);
+    check("A 基线：结论列出跳过的项目（云端检查），报告里带结论和环境信息", /跳过、没有检查的项目：.*云端检查/.test(r.verdict) && /结论/.test(r.report) && /浏览器：/.test(r.report) && /已执行的检查通过/.test(r.report), r.verdict);
     await page.locator("#copy").tap(); await page.waitForTimeout(400);
     const cp = await page.locator("#copy").innerText();
     const clip = B === "chromium" ? await page.evaluate(() => navigator.clipboard.readText()).catch(() => null) : null;
@@ -93,6 +96,24 @@ try {
     try { r = await run(page, 60000); } catch { finished = false; }
     check("F 测试页脚本出意外（没有 TextDecoder）：仍然出结果，不会一直停在“测试中……”", finished && r && r.report.length > 50, finished ? "" : "按钮一直停在：" + (await page.locator("#go").innerText()));
     check("F 测试页脚本出意外：结果里有一条说明（失败 / 页面脚本报错），能复制", finished && /失败|页面脚本报错|测试页自己出错/.test(r?.report || ""), r?.report); await ctx.close();
+  }
+  { // G 只读：配置里填了 Supabase，默认也不能有任何云端请求；?cloud=1 才连（正向对照，证明监听是有效的）
+    const hits = []; // 假 Supabase 服务器收到的所有请求
+    const fake = createServer((q, r) => { hits.push(q.method + " " + q.url); const h = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "*", "content-type": "application/json" };
+      if (q.method === "OPTIONS") { r.writeHead(204, h); r.end(); return; } if (q.url.includes("/auth/v1/health")) { r.writeHead(200, h); r.end("{}"); return; } r.writeHead(400, h); r.end('{"msg":"fake"}'); });
+    await new Promise((ok) => fake.listen(0, "127.0.0.1", ok)); const FAKE = `http://127.0.0.1:${fake.address().port}`;
+    const cfgBody = `window.ACCESS_TEST_CONFIG = { supabaseUrl: "${FAKE}", supabaseKey: "sb_publishable_fake" };`;
+    const openCfg = async (query) => { const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers: "block" });
+      await ctx.route((u) => u.pathname.endsWith("/access-test-config.js"), (r) => r.fulfill({ contentType: "text/javascript", body: cfgBody }));
+      const page = await ctx.newPage(); const reqs = []; page.on("request", (q) => reqs.push({ m: q.method(), u: q.url() }));
+      await page.goto(BASE + "access-test.html" + query, { waitUntil: "domcontentloaded" }); return { ctx, page, reqs }; };
+    { const { ctx, page, reqs } = await openCfg(""); const r = await run(page);
+      check("G 只读：配置里有 Supabase 地址，默认也不向它发任何请求（页面侧 + 服务器侧都是 0）", !reqs.some((x) => x.u.startsWith(FAKE)) && hits.length === 0, JSON.stringify({ reqs: reqs.filter((x) => x.u.startsWith(FAKE)), hits }));
+      check("G 只读：整个测试过程没有任何非 GET 请求（没有 POST 注册 / 写入），也没有请求外站", reqs.every((x) => x.m === "GET" && x.u.startsWith(BASE)), JSON.stringify(reqs.filter((x) => x.m !== "GET" || !x.u.startsWith(BASE))));
+      check("G 只读：页面写明这一行被跳过（不会创建测试账号、不写入数据），没有 Supabase / 测试账号 / 写入 的 ✅ 或 ❌ 行", r.rows.some((x) => x.startsWith("⏭") && /云端检查/.test(x) && /不会创建测试账号/.test(x)) && !r.rows.some((x) => /^(✅|❌) (Supabase|测试账号|写入|读回)/.test(x)), r.rows.join(" | ")); await ctx.close(); }
+    { const { ctx, page } = await openCfg("?cloud=1"); await run(page);
+      check("G 正向对照：加 ?cloud=1 才会连到假服务器（证明上面的“0 请求”不是监听失效）", hits.some((x) => x.includes("/auth/v1/health")), JSON.stringify(hits)); await ctx.close(); }
+    fake.closeAllConnections(); fake.close();
   }
 } catch (e) { console.log("❌ 测试异常：" + (e.stack || e)); results.push(false); }
 await browser.close(); srv.closeAllConnections(); srv.close();

@@ -23,7 +23,7 @@
 </head>
 <body>
 <h1>碎片编程 · 连接测试</h1>
-<p>点下面的按钮，等它跑完（最多约 1–2 分钟，会真的试一次启动 Python）。然后点“复制结果”，把内容发给开发者。不需要运行任何命令。</p>
+<p>点下面的按钮，等它跑完（最多约 1–2 分钟，会真的试一次启动 Python）。这个页面是只读的：只下载网站文件，不连接云端，不创建账号，也不保存任何数据。然后点“复制结果”，把内容发给开发者。不需要运行任何命令。</p>
 <div id="verdict" class="verdict" hidden></div>
 <button id="go" type="button">开始测试</button>
 <div id="env" class="small"></div>
@@ -154,6 +154,8 @@
   // ---- 2~4. Supabase ----
   function supa() {
     var url = (cfg.supabaseUrl || "").replace(/\/+$/, ""), key = cfg.supabaseKey || "";
+    // 默认只读、纯前端：不连云端，不创建匿名账号，不写测试记录。只有开发者在网址后加 ?cloud=1 才会往下走。
+    if (!/[?&]cloud=1(&|$)/.test(location.search)) { say("skip", "云端检查（Supabase）", "（这个页面默认只读：不会连接云端，不会创建测试账号，也不会写入任何数据）"); return Promise.resolve(); }
     if (!url || !key) { say("skip", "Supabase 未配置", "（项目主人还没填写，本次只测网站文件）"); return Promise.resolve(); }
     var host = url.replace(/^https?:\/\//, "");
     var token = null, uid = null;
@@ -192,7 +194,9 @@
       if (bad.some(function (l) { return /Python/.test(l); })) out.push("Python 没能启动：能看到地图和选择题，但做“运行代码”的题会失败。");
       if (bad.some(function (l) { return /Supabase|测试账号|写入|读回/.test(l); })) out.push("云端（Supabase）连不上：登录和云端进度会不可用，本机学习不受影响。");
     }
-    if (!bad.length) out.push("全部通过：你的网络和浏览器能正常打开并运行应用。");
+    if (!bad.length) out.push(ok.length ? "已执行的检查通过（" + ok.length + " 项）。这还不等于应用一定能打开：文件下载成功只说明文件拿到了，主程序能不能解析、执行，这个页面没有验证。" : "没有执行任何检查。");
+    var skipped = lines.filter(function (l) { return l.indexOf("跳过 ") === 0; }).map(function (l) { return l.replace(/^跳过 /, "").replace(/\s{2,}.*$/, ""); });
+    if (skipped.length) out.push("跳过、没有检查的项目：" + skipped.join("、") + "。");
     if (lines.some(function (l) { return l.indexOf("页面脚本报错") === 0; })) out.push("测试页自己的脚本也报过错（见下面“页面脚本报错”）。");
     return out.join("\n");
   }
