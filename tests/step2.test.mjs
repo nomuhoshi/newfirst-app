@@ -1,6 +1,6 @@
 // 多邻国式关卡的自动测试：内容核对 + 做题流程 + XP/红心/连续天数 + 旧记录迁移。
 // 桌面 Chromium 模拟手机触摸，不能代替 iPhone 真机。运行：npm run build && node tests/step2.test.mjs
-import { spawn } from "node:child_process";
+import { startDistServer } from "./helpers/dist-server.mjs";
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { freshState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, HEART_REGEN_MS } from "../src/storage.js";
@@ -10,10 +10,8 @@ const unit = JSON.parse(readFileSync(new URL("../content/unit1.json", import.met
 const unit2 = JSON.parse(readFileSync(new URL("../content/unit2.json", import.meta.url)));
 const words = JSON.parse(readFileSync(new URL("../content/words.json", import.meta.url)));
 const course = JSON.parse(readFileSync(new URL("../content/course.json", import.meta.url)));
-const PORT = 4319;
-const BASE = `http://localhost:${PORT}/`;
-const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], { stdio: "ignore" });
-await new Promise((r) => setTimeout(r, 2500));
+const server = await startDistServer(); // 进程内静态服务器、随机端口、就绪才返回；用完 server.close()（不再留下 vite preview 进程）
+const BASE = server.base;
 
 const results = [];
 function check(name, ok, detail = "") {
@@ -828,7 +826,7 @@ try {
   check("页面无脚本错误", errors.length === 0, errors.join(" | "));
 } finally {
   await browser.close();
-  server.kill();
+  await server.close();
 }
 const failed = results.filter((r) => !r.ok);
 console.log(`\n共 ${results.length} 项，失败 ${failed.length} 项`);

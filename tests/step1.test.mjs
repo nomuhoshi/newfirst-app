@@ -1,13 +1,11 @@
 // 第一步的自动测试：桌面版 Chromium 模拟手机屏幕（触摸）。不能代替 iPhone 真机测试。
 // 准备：npm install && npx playwright install chromium
 // 运行：npm run build && npm test
-import { spawn } from "node:child_process";
+import { startDistServer } from "./helpers/dist-server.mjs";
 import { chromium } from "playwright";
 
-const PORT = 4318;
-const BASE = `http://localhost:${PORT}/`;
-const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], { stdio: "ignore" });
-await new Promise((r) => setTimeout(r, 2500));
+const server = await startDistServer(); // 进程内静态服务器、随机端口、就绪才返回；用完 server.close()（不再留下 vite preview 进程）
+const BASE = server.base;
 
 const results = [];
 function check(name, ok, detail = "") {
@@ -249,7 +247,7 @@ try {
   check("页面无脚本错误", errors.length === 0, errors.join(" | "));
 } finally {
   await browser.close();
-  server.kill();
+  await server.close();
 }
 const failed = results.filter((r) => !r.ok);
 console.log(`\n共 ${results.length} 项，失败 ${failed.length} 项`);
