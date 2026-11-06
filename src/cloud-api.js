@@ -12,6 +12,17 @@ function classifySignOutFailure(r) {
   return null;
 }
 
+// 刷新失败里，哪些明确证明“这个刷新令牌 / 会话已经死了”（GoTrue RefreshTokenGrant 的 400，错误码 refresh_token_not_found /
+// refresh_token_already_used / session_not_found / session_expired）。通用 403、路由 404、OAuth invalid_request（空令牌）、
+// validation_failed（格式不对 / 不是本服务签发）、429、5xx 都不是。
+const REFRESH_DEAD_CODES = new Set(["refresh_token_not_found", "refresh_token_already_used", "session_not_found", "session_expired"]);
+function classifyRefreshFailure(r) {
+  if (r.status !== 400 && r.status !== 401 && r.status !== 403) return false;
+  if (r.errorCode) return REFRESH_DEAD_CODES.has(r.errorCode); // 有明确错误码就只按错误码判断
+  // 老版本 GoTrue 没有 error_code：OAuth invalid_grant，或消息以 "Invalid Refresh Token" 开头
+  return r.oauthError === "invalid_grant" || /^Invalid Refresh Token/i.test(String(r.message || ""));
+}
+
 export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeoutMs = 15000 }) {
   const base = String(url || "").replace(/\/+$/, "");
   const configured = !!(base && anonKey);
@@ -37,7 +48,8 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
     const msg = (data && (data.msg || data.message || data.error_description || data.error)) || `服务器返回 ${resp.status}`;
     const kind = resp.status === 429 ? "rate-limit" : resp.status === 401 || resp.status === 403 ? "auth" : "server";
     const errorCode = data && typeof data === "object" && typeof data.error_code === "string" ? data.error_code : undefined;
-    return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}) };
+    const oauthError = data && typeof data === "object" && typeof data.error === "string" ? data.error : undefined; // 老版本 / OAuth 风格：{ error: "invalid_grant", error_description }
+    return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}), ...(oauthError ? { oauthError } : {}) };
   }
 
   const toSession = (d) => d && d.access_token && d.user?.id ? {
@@ -60,7 +72,12 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
     },
     async refresh(session) {
       const r = await req("/auth/v1/token", { method: "POST", query: "grant_type=refresh_token", body: { refresh_token: session.refreshToken } });
-      if (!r.ok) return r.kind === "server" && r.status && r.status < 500 ? { ...r, kind: "auth" } : r;
+      if (!r.ok) {
+        // kind 保持原来的粗分类（<500 的失败都叫 auth，同步那边靠它提示重新登录）；
+        // 但“刷新令牌 / 会话是不是真的死了”只看明确的错误码，由 sessionState:"dead" 单独表达，退出流程只认它。
+        const base = r.kind === "server" && r.status && r.status < 500 ? { ...r, kind: "auth" } : r;
+        return classifyRefreshFailure(r) ? { ...base, sessionState: "dead" } : base;
+      }
       const s = toSession(r.data);
       return s ? { ok: true, session: s } : { ok: false, kind: "server", message: "刷新登录返回的内容无法识别" };
     },

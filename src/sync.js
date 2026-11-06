@@ -734,8 +734,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!so || so.ok !== false) return { ok: true };
       if (so.sessionState === "gone") return { ok: true, alreadyInvalid: true };
       if (so.sessionState !== "token-invalid") return fail(so);
-      const rf = await api.refresh(sess);
-      if (!rf.ok) return rf.kind === "auth" ? { ok: true, alreadyInvalid: true } : fail(rf);
+      adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌：用最新的核实，别拿旧令牌去撞“已使用”
+      const rf = await api.refresh(isSessionShape(session) ? session : sess);
+      // 只有明确证明刷新令牌 / 会话已死（sessionState "dead"）才算已退出；通用 403、路由 404、请求格式错误、429、5xx、断网都算失败。
+      if (!rf.ok) return rf.sessionState === "dead" ? { ok: true, alreadyInvalid: true } : fail(rf);
       if (!isSessionShape(rf.session) || rf.session.userId !== userId) return { ok: false, kind: "auth", message: "登录账号不一致，暂未退出" };
       session = rf.session; email = session.email || email; writeAuth();
       if (onSession) onSession();
@@ -810,7 +812,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (sess && isSessionShape(sess)) {
       // access token 快过期就先刷新；刷新被拒 = 会话已经失效，不用再撤销；断网等其他失败 → 不退出（没法撤销云端会话）。
       const t = await ensureToken();
-      if (!t.ok && t.kind !== "auth") return { ok: false, stayed: true, kind: t.kind || "server", pending: copyStillUnsent(uid), message: t.message || "退出云端失败" };
+      // 刷新失败只有“明确证明会话已死”才继续退出（没东西可撤销）；其他失败（权限错误、路由错误、请求格式错误、429、断网、账号不一致）都先不动本机。
+      if (!t.ok && t.sessionState !== "dead") return { ok: false, stayed: true, kind: t.kind || "server", pending: copyStillUnsent(uid), message: t.message || "退出云端失败，暂未退出" };
     }
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;

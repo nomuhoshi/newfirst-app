@@ -40,3 +40,19 @@
 - “清理本机残留的登录凭证”按钮没有做浏览器级测试。
 - 响应丢失但云端其实已撤销（O.6）的取舍不变。
 - 不涉及 GPT1 的损坏待办补丁，没有改动其逻辑。
+
+---
+## 追加：refresh 失败的判断（208ee2e 的 P1，2026-11-06 20:16）
+**问题**：logout 返回 403 bad_jwt 后用 refresh 核实会话。`cloud-api.refresh` 把所有 <500 的失败都归为 `kind:"auth"`，`revokeCloudSession` 又把 `kind==="auth"` 一律当“会话已死 = 已退出”，结果 refresh 返回 403 not_admin / 404 Route not found / 400 invalid_request 时都会假退出并清掉本机凭证。普通退出前的 `ensureToken` 失败判断（`kind !== "auth"` 才留下）有同样的问题。
+
+**依据**（GoTrue `internal/tokens/service.go` RefreshTokenGrant，2026-11-06 核对）：令牌/会话已死都是 400 + 错误码 `refresh_token_not_found` / `refresh_token_already_used` / `session_not_found` / `session_expired`；空令牌是 OAuth `invalid_request`（无错误码）；格式不对或不是本服务签发是 `validation_failed`；`user_banned` 也不等于会话被撤销。
+
+**修复**
+- `req` 失败结果保留 `status`、`errorCode`，新增 `oauthError`（老版本 / OAuth 风格 `error` 字段）。
+- `cloud-api.refresh` 新增 `sessionState:"dead"`，只在状态 400/401/403 且（有错误码时只认上述四个码；没有错误码时认 `invalid_grant` 或消息以 "Invalid Refresh Token" 开头）时设置。`kind` 保持原来的粗分类，同步流程的行为不变。
+- 退出流程只认 `sessionState==="dead"`：bad_jwt 核实、普通退出前的 `ensureToken` 都一样。其他失败（通用 403、路由 404、请求格式错误、validation_failed、429、5xx、断网、账号不一致）→ 不退出，不动本机；bad_jwt 路径则回滚并保持登录。
+- bad_jwt 核实前先 `adoptStoredSession()`：别的标签页刚轮换过令牌时用最新令牌核实，不会拿旧令牌撞“already_used”就当会话已死（Q.7）。
+
+**测试**：登录专项 Q.1–Q.7（全部走真实 `createApi`，只替换 fetch）；变异测试新增 8 项。假云端的刷新失败形状改为真实 createApi 翻译的结果。
+
+**没改**：`statusFromFailure` / `syncOnce` 对 `kind:"auth"` 的“需要重新登录”提示仍按原来的粗分类（refresh 的 400/404 在同步里仍可能显示 need-login），这是同步侧的行为，不在退出流程范围内，留作后续评估。

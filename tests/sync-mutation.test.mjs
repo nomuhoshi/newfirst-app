@@ -284,14 +284,14 @@ try {
     {
       name: "DB-3.1：bad_jwt 时断网无法核实也当成已退出",
       file: "sync.js",
-      from: "return rf.kind === \"auth\" ? { ok: true, alreadyInvalid: true } : fail(rf);",
+      from: "return rf.sessionState === \"dead\" ? { ok: true, alreadyInvalid: true } : fail(rf);",
       to: "return { ok: true, alreadyInvalid: true };",
     },
     {
       name: "DB-3.1：cloud-api 丢掉 error_code",
       file: "cloud-api.js",
       from: "...(errorCode ? { errorCode } : {})",
-      to: "",
+      to: "...{}",
     },
     {
       name: "DB-3.1：云端撤销后凭证清不掉，不留残留标记",
@@ -316,6 +316,54 @@ try {
       file: "sync.js",
       from: "if (userId || getCurrentAccount(storage)) return false;",
       to: "if (userId) return false;",
+    },
+    {
+      name: "DB-3.1：refresh 的 auth 类失败（通用 403/404/400）一律当会话已死（208ee2e 的 P1）",
+      file: "sync.js",
+      from: "return rf.sessionState === \"dead\" ? { ok: true, alreadyInvalid: true } : fail(rf);",
+      to: "return rf.kind === \"auth\" ? { ok: true, alreadyInvalid: true } : fail(rf);",
+    },
+    {
+      name: "DB-3.1：退出前 ensureToken 失败只看 kind=auth 就继续退出",
+      file: "sync.js",
+      from: "if (!t.ok && t.sessionState !== \"dead\") return",
+      to: "if (!t.ok && t.kind !== \"auth\") return",
+    },
+    {
+      name: "DB-3.1：refresh 有明确错误码也不按错误码判断（任何错误码都算已死）",
+      file: "cloud-api.js",
+      from: "if (r.errorCode) return REFRESH_DEAD_CODES.has(r.errorCode);",
+      to: "if (r.errorCode) return true;",
+    },
+    {
+      name: "DB-3.1：老版本无错误码的 refresh 失败一律算已死",
+      file: "cloud-api.js",
+      from: "return r.oauthError === \"invalid_grant\" || /^Invalid Refresh Token/i.test(String(r.message || \"\"));",
+      to: "return true;",
+    },
+    {
+      name: "DB-3.1：refresh 判断不看状态码（404 路由不存在配上 dead 码也算）",
+      file: "cloud-api.js",
+      from: "if (r.status !== 400 && r.status !== 401 && r.status !== 403) return false;\n  if (r.errorCode)",
+      to: "if (r.errorCode)",
+    },
+    {
+      name: "DB-3.1：cloud-api 丢掉 refresh 失败的 oauthError",
+      file: "cloud-api.js",
+      from: "...(oauthError ? { oauthError } : {})",
+      to: "...{}",
+    },
+    {
+      name: "DB-3.1：bad_jwt 核实前不采用别的标签页刚轮换的令牌",
+      file: "sync.js",
+      from: "      adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌",
+      to: "      // (不采用)",
+    },
+    {
+      name: "DB-3.1：refresh 的 dead 标记没有透传",
+      file: "cloud-api.js",
+      from: "return classifyRefreshFailure(r) ? { ...base, sessionState: \"dead\" } : base;",
+      to: "return base;",
     },
     {
       name: "删号后本机清理失败仍宣称成功",

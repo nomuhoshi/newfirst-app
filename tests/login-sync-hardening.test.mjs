@@ -60,6 +60,11 @@ const SO_SHAPES = {
   proxy502: await signOutShape(502, "<html>Bad Gateway</html>"),
   badJwt: await signOutShape(403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired" }),
 };
+// 刷新令牌已被撤销 / 已用过：服务器真实返回 400 + 错误码（见 Q 段说明），由真实 cloud-api 翻译
+const RF_SHAPES = {
+  notFound: await (async () => createApi({ url: "https://x.supabase.co", anonKey: "anon", fetchFn: async () => ({ ok: false, status: 400, text: async () => JSON.stringify({ code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token: Refresh Token Not Found" }) }) }).refresh(SHAPE_SESS))(),
+  alreadyUsed: await (async () => createApi({ url: "https://x.supabase.co", anonKey: "anon", fetchFn: async () => ({ ok: false, status: 400, text: async () => JSON.stringify({ code: 400, error_code: "refresh_token_already_used", msg: "Invalid Refresh Token: Already Used" }) }) }).refresh(SHAPE_SESS))(),
+};
 function fakeCloud() {
   const users = new Map(), rows = new Map(), tokens = new Map(), calls = [];
   let seq = 0;
@@ -95,8 +100,8 @@ function fakeCloud() {
       if (!state.online) return net;
       const uid = tokens.get(s?.refreshToken);
       const sid = sidOf.get(s?.refreshToken);
-      if (!uid || revokedSids.has(sid)) return { ok: false, kind: "auth", message: "Invalid Refresh Token: Refresh Token Not Found" };
-      if (usedRt.has(s.refreshToken)) return { ok: false, kind: "auth", message: "Invalid Refresh Token: Already Used" }; // 刷新令牌一次性：旧的用过就作废（真实 Supabase 同样）
+      if (!uid || revokedSids.has(sid)) return RF_SHAPES.notFound;
+      if (usedRt.has(s.refreshToken)) return RF_SHAPES.alreadyUsed; // 刷新令牌一次性：旧的用过就作废（真实 Supabase 同样）
       usedRt.add(s.refreshToken);
       return { ok: true, session: issue(uid, s.email, sid) };
     },
@@ -1876,6 +1881,181 @@ for (const mode of ["forbidden", "route404", "proxy502", "bad-jwt"]) {
   check("P.7b 同存储别的标签页已登录：hasLeftoverAuth() 为 false", tabB.hasLeftoverAuth() === false);
   const r = await tabB.retryAuthCleanup();
   check("P.7b 同存储别的标签页已登录：拒绝清理，凭证原样，登录那边照常同步", r.ok === false && t.stA.getItem(AUTH_KEY) === before && (await t.A.syncNow()).ok === true, JSON.stringify(r));
+}
+
+// ======================================================================
+// Q. DB-3.1 刷新错误的判断（208ee2e 的 P1，2026-11-06 20:16）
+//    logout 返回 403 bad_jwt 后要用 refresh 核实会话。旧实现把 refresh 的任何 "auth" 类失败（含 403 not_admin、404 路由不存在、
+//    400 请求格式错误——cloud-api 把所有 <500 的失败都归成 auth）都当成“会话已死 = 已退出”，于是假退出并清掉凭证。
+//    依据（GoTrue tokens/service.go RefreshTokenGrant）：令牌/会话已死 = refresh_token_not_found / refresh_token_already_used /
+//    session_not_found / session_expired（均为 400）；空令牌是 OAuth invalid_request，格式不对是 validation_failed —— 都不是“已死”。
+//    这一段全部走真实 createApi（只替换 fetch），不再用 fake api 的手写形状。
+// ======================================================================
+async function refreshShape(status, body) {
+  const api = createApi({ url: "https://x.supabase.co", anonKey: "anon", fetchFn: async () => ({ ok: false, status, text: async () => (typeof body === "string" ? body : JSON.stringify(body)) }) });
+  return api.refresh(SHAPE_SESS);
+}
+function httpCloud() {
+  const st = { calls: [], logoutAuth: [], logout: () => resp(204), token: () => resp(500, "unset"), netTokenFail: false };
+  function resp(status, body) { return { ok: status >= 200 && status < 300, status, text: async () => (body === undefined ? "" : typeof body === "string" ? body : JSON.stringify(body)) }; }
+  const fresh = (n) => resp(200, { access_token: "at-" + n, refresh_token: "rt-" + n, expires_at: Math.floor(NOW / 1000) + 3600, user: { id: "uhttp", email: "http@example.com" } });
+  const fetchFn = async (url, o) => {
+    const path = url.replace("https://x.supabase.co", "");
+    st.calls.push(o.method + " " + path.split("?")[0]);
+    if (path.startsWith("/auth/v1/verify")) return fresh(1);
+    if (path.startsWith("/rest/v1/progress")) return resp(200, []);
+    if (path.startsWith("/rest/v1/rpc/create_progress")) return resp(200, 1);
+    if (path.startsWith("/auth/v1/token")) { if (st.netTokenFail) throw new Error("offline"); return st.token(JSON.parse(o.body)); }
+    if (path.startsWith("/auth/v1/logout")) { st.logoutAuth.push(o.headers.Authorization); return st.logout(); }
+    return resp(404, "no route");
+  };
+  st.resp = resp; st.fresh = fresh;
+  st.api = createApi({ url: "https://x.supabase.co", anonKey: "anon", fetchFn });
+  st.count = (needle) => st.calls.filter((c) => c.includes(needle)).length;
+  return st;
+}
+async function httpLogin(tag) {
+  const h = httpCloud(), stor = flakyStore(mem());
+  stor.setItem(DEVICE_KEY, "dev-" + tag);
+  const sync = makeSync(stor, h.api);
+  const l = await login(sync, "http@example.com", freshState());
+  h.calls.length = 0; h.logoutAuth.length = 0;
+  return { h, stor, sync, l, uid: sync.account().userId };
+}
+const BADJWT = (h) => () => h.resp(403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT: unable to parse or verify signature, token is expired" });
+
+// ---- Q.1 cloud-api.refresh 的失败判断（真实翻译）：只有明确的错误码才是“令牌/会话已死”；status / errorCode 保留 ----
+{
+  const dead = async (status, body) => (await refreshShape(status, body)).sessionState === "dead";
+  check("Q.1 400 refresh_token_not_found → dead", await dead(400, { code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token: Refresh Token Not Found" }));
+  check("Q.1 400 refresh_token_already_used → dead", await dead(400, { error_code: "refresh_token_already_used", msg: "Invalid Refresh Token: Already Used" }));
+  check("Q.1 400 session_not_found / session_expired → dead", (await dead(400, { error_code: "session_not_found", msg: "Invalid Refresh Token: No Valid Session Found" })) && (await dead(400, { error_code: "session_expired", msg: "Invalid Refresh Token: Session Expired" })));
+  check("Q.1 老版本无 error_code：OAuth invalid_grant，或消息以 Invalid Refresh Token 开头 → dead", (await dead(400, { error: "invalid_grant", error_description: "refresh token revoked" })) && (await dead(400, { msg: "Invalid Refresh Token: Already Used" })));
+  check("Q.1 403 not_admin（通用权限错误）→ 不是 dead", !(await dead(403, { error_code: "not_admin", msg: "User not allowed" })));
+  check("Q.1 403 纯文本 / 代理拦截 → 不是 dead", !(await dead(403, "Forbidden")) && !(await dead(403, "<html>blocked</html>")));
+  check("Q.1 404 路由不存在 → 不是 dead", !(await dead(404, "404 page not found")) && !(await dead(404, { msg: "no Route matched" })));
+  check("Q.1 400 OAuth invalid_request（请求格式）/ validation_failed → 不是 dead", !(await dead(400, { error: "invalid_request", error_description: "refresh_token required" })) && !(await dead(400, { error_code: "validation_failed", msg: "Refresh token is not valid" })));
+  check("Q.1 400 validation_failed 即使消息像 Invalid Refresh Token 也不是 dead（有明确错误码就按错误码）", !(await dead(400, { error_code: "validation_failed", msg: "Invalid Refresh Token: Not Issued By This Server" })));
+  check("Q.1 429 / 500 / 502 → 不是 dead", !(await dead(429, { error_code: "over_request_rate_limit" })) && !(await dead(500, { msg: "boom" })) && !(await dead(502, "bad gateway")));
+  check("Q.1 dead 码配了 500/404 状态 → 不是 dead", !(await dead(500, { error_code: "session_expired" })) && !(await dead(404, { error_code: "refresh_token_not_found" })));
+  const r = await refreshShape(403, { error_code: "not_admin", msg: "denied" });
+  check("Q.1 失败结果保留 status / errorCode，供排查", r.ok === false && r.status === 403 && r.errorCode === "not_admin", JSON.stringify(r));
+}
+
+// ---- Q.2 端到端（真实 createApi → sync）：logout 返回 bad_jwt，refresh 返回“不是已死”的失败 → 不是已退出，回滚，保持登录 ----
+const NOT_DEAD = {
+  "403 not_admin": (h) => () => h.resp(403, { code: 403, error_code: "not_admin", msg: "User not allowed" }),
+  "404 Route not found": (h) => () => h.resp(404, "Route not found"),
+  "400 invalid_request": (h) => () => h.resp(400, { error: "invalid_request", error_description: "refresh_token required" }),
+  "400 validation_failed": (h) => () => h.resp(400, { code: 400, error_code: "validation_failed", msg: "Refresh token is not valid" }),
+  "429": (h) => () => h.resp(429, { code: 429, error_code: "over_request_rate_limit", msg: "rate limited" }),
+  "502": (h) => () => h.resp(502, "<html>Bad Gateway</html>"),
+};
+for (const [name, mk] of Object.entries(NOT_DEAD)) {
+  const t = await httpLogin("q2");
+  const authBefore = t.stor.getItem(AUTH_KEY), xp0 = copyXp(t.stor, t.uid);
+  t.h.logout = BADJWT(t.h); t.h.token = mk(t.h);
+  const r = await t.sync.logout();
+  check("Q.2 bad_jwt + refresh " + name + "：不是已退出（ok:false, stayed:true）", r.ok === false && r.stayed === true, JSON.stringify(r));
+  check("Q.2 bad_jwt + refresh " + name + "：本机凭证、账号指针、副本原样，仍是登录态", t.stor.getItem(AUTH_KEY) === authBefore && getCurrentAccount(t.stor) === t.uid && t.sync.account() !== null && copyXp(t.stor, t.uid) === xp0);
+  check("Q.2 bad_jwt + refresh " + name + "：只问了一次 logout、一次 refresh（没有重试风暴）", t.h.count("/auth/v1/logout") === 1 && t.h.count("/auth/v1/token") === 1, JSON.stringify(t.h.calls));
+}
+{ // 断网：refresh 的 fetch 直接抛错
+  const t = await httpLogin("q2n");
+  const authBefore = t.stor.getItem(AUTH_KEY);
+  t.h.logout = BADJWT(t.h); t.h.netTokenFail = true;
+  const r = await t.sync.logout();
+  check("Q.2 bad_jwt + refresh 断网：不是已退出，保持登录，凭证原样", r.ok === false && r.stayed === true && r.kind === "network" && t.stor.getItem(AUTH_KEY) === authBefore && t.sync.account() !== null, JSON.stringify(r));
+  t.h.netTokenFail = false; t.h.logout = () => t.h.resp(204); t.h.token = () => t.h.fresh(2);
+  const again = await t.sync.logout();
+  check("Q.2 恢复后再退出成功", again.ok === true && t.sync.account() === null && getCurrentAccount(t.stor) === null, JSON.stringify(again));
+}
+
+// ---- Q.3 对照：refresh 明确证明令牌/会话已死 → 才按已退出处理 ----
+const DEAD = {
+  "400 refresh_token_not_found": (h) => () => h.resp(400, { code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token: Refresh Token Not Found" }),
+  "400 refresh_token_already_used": (h) => () => h.resp(400, { code: 400, error_code: "refresh_token_already_used", msg: "Invalid Refresh Token: Already Used" }),
+  "400 session_not_found": (h) => () => h.resp(400, { code: 400, error_code: "session_not_found", msg: "Invalid Refresh Token: No Valid Session Found" }),
+  "400 session_expired": (h) => () => h.resp(400, { code: 400, error_code: "session_expired", msg: "Invalid Refresh Token: Session Expired" }),
+  "legacy invalid_grant": (h) => () => h.resp(400, { error: "invalid_grant", error_description: "refresh token revoked" }),
+};
+for (const [name, mk] of Object.entries(DEAD)) {
+  const t = await httpLogin("q3");
+  t.h.logout = BADJWT(t.h); t.h.token = mk(t.h);
+  const r = await t.sync.logout();
+  check("Q.3 bad_jwt + refresh " + name + "：令牌/会话已死，按已退出处理，本机清理完成", r.ok === true && t.sync.account() === null && getCurrentAccount(t.stor) === null && t.stor.getItem(AUTH_KEY) === null, JSON.stringify(r));
+}
+
+// ---- Q.4 对照：正常刷新轮换——刷新成功后用“新令牌”重试 logout；仍 bad_jwt 则回滚且存储里是新凭证 ----
+{
+  const t = await httpLogin("q4");
+  let n = 1; t.h.token = () => t.h.fresh(++n);
+  let first = true; t.h.logout = () => { if (first) { first = false; return BADJWT(t.h)(); } return t.h.resp(204); };
+  const r = await t.sync.logout();
+  check("Q.4 bad_jwt 一次 + 刷新成功：用新令牌重试 logout 成功", r.ok === true && t.h.logoutAuth.length === 2 && t.h.logoutAuth[0] === "Bearer at-1" && t.h.logoutAuth[1] === "Bearer at-2" && t.sync.account() === null, JSON.stringify({ r, auth: t.h.logoutAuth }));
+  const u = await httpLogin("q4b"); n = 1;
+  u.h.token = () => u.h.fresh(++n); u.h.logout = BADJWT(u.h);
+  const r2 = await u.sync.logout();
+  const stored = JSON.parse(u.stor.getItem(AUTH_KEY)).session;
+  check("Q.4 一直 bad_jwt 但刷新成功：不宣称退出；回滚后存储里是刷新后的新凭证（不是已被轮换作废的旧令牌）", r2.ok === false && r2.stayed === true && stored.refreshToken === "rt-2" && stored.accessToken === "at-2" && u.sync.account() !== null, JSON.stringify({ r2, stored }));
+}
+
+// ---- Q.5 普通退出前 ensureToken 的刷新失败：只有“已死”才继续退出；其他失败不动本机、不发 logout ----
+async function expiredHttp(tag) {
+  const t = await httpLogin(tag);
+  const stored = JSON.parse(t.stor.getItem(AUTH_KEY)); stored.session.expiresAt = NOW + 1000; t.stor.setItem(AUTH_KEY, JSON.stringify(stored));
+  const sync = makeSync(t.stor, t.h.api); sync.restore(freshState());
+  return { ...t, sync };
+}
+for (const [name, mk] of Object.entries(NOT_DEAD)) {
+  const t = await expiredHttp("q5");
+  const authBefore = t.stor.getItem(AUTH_KEY), xp0 = copyXp(t.stor, t.uid);
+  t.h.token = mk(t.h);
+  const r = await t.sync.logout();
+  check("Q.5 访问令牌已过期、refresh " + name + "：不退出，不动本机，没有发 logout 请求", r.ok === false && r.stayed === true && t.h.count("/auth/v1/logout") === 0 && t.stor.getItem(AUTH_KEY) === authBefore && getCurrentAccount(t.stor) === t.uid && copyXp(t.stor, t.uid) === xp0, JSON.stringify({ r, calls: t.h.calls }));
+}
+{
+  const t = await expiredHttp("q5n");
+  t.h.netTokenFail = true;
+  const r = await t.sync.logout();
+  check("Q.5 访问令牌已过期、refresh 断网：不退出，没发 logout，本机原样", r.ok === false && r.stayed === true && t.h.count("/auth/v1/logout") === 0 && getCurrentAccount(t.stor) === t.uid, JSON.stringify(r));
+}
+for (const [name, mk] of Object.entries(DEAD)) {
+  const t = await expiredHttp("q5d");
+  t.h.token = mk(t.h); t.h.logout = BADJWT(t.h);
+  const r = await t.sync.logout();
+  check("Q.5 访问令牌已过期、refresh " + name + "：会话已死，直接完成退出", r.ok === true && t.sync.account() === null && getCurrentAccount(t.stor) === null, JSON.stringify(r));
+}
+{ // 刷新成功（正常轮换）：用新令牌退出
+  const t = await expiredHttp("q5ok");
+  t.h.token = () => t.h.fresh(7); t.h.logout = () => t.h.resp(204);
+  const r = await t.sync.logout();
+  check("Q.5 访问令牌已过期、refresh 成功：用新令牌退出", r.ok === true && t.h.logoutAuth.length === 1 && t.h.logoutAuth[0] === "Bearer at-7", JSON.stringify({ r, a: t.h.logoutAuth }));
+}
+{ // 强制退出对同样的刷新失败：本机照常退出，但不能说云端已撤销
+  const t = await httpLogin("q6");
+  t.h.logout = BADJWT(t.h); t.h.token = NOT_DEAD["403 not_admin"](t.h);
+  const r = await t.sync.logout({ force: true });
+  check("Q.6 强制退出 + bad_jwt + refresh 403 not_admin：本机已退出，标注云端会话可能仍有效", r.ok === true && r.cloudSessionMaybeValid === true && t.sync.account() === null, JSON.stringify(r));
+}
+
+// ---- Q.7 另一个标签页在 logout 进行中刚轮换了刷新令牌：核实时要用最新的令牌，不能拿旧令牌撞“已使用”就当会话已死 ----
+{
+  const t = await httpLogin("q7");
+  const sessionNow = JSON.parse(t.stor.getItem(AUTH_KEY));
+  let first = true;
+  t.h.logout = () => {
+    if (first) { // 这个请求在路上时，另一个标签页刷新了令牌并写回存储
+      first = false;
+      sessionNow.session = { ...sessionNow.session, accessToken: "at-9", refreshToken: "rt-9", expiresAt: NOW + 7200_000 };
+      t.stor.setItem(AUTH_KEY, JSON.stringify(sessionNow));
+      return BADJWT(t.h)();
+    }
+    return t.h.resp(204);
+  };
+  t.h.token = (body) => (body.refresh_token === "rt-1" ? DEAD["400 refresh_token_already_used"](t.h)() : t.h.fresh(10));
+  const r = await t.sync.logout();
+  check("Q.7 别的标签页刚轮换过令牌：用最新令牌核实并重试 logout（共 2 次，第二次用刷新后的新令牌），真的退出", r.ok === true && t.h.logoutAuth.length === 2 && t.h.logoutAuth[1] === "Bearer at-10" && t.sync.account() === null, JSON.stringify({ r, auth: t.h.logoutAuth, calls: t.h.calls }));
 }
 
 const failed = results.filter((r) => !r).length;
