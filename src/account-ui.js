@@ -2,6 +2,8 @@
 // 不直接碰数据：全部通过 sync（src/sync.js）；元素创建函数和弹窗从 app.js 传进来，所以样式和无障碍行为和其他弹窗一致。
 export function statusText(s) {
   const st = s?.status;
+  if (st === "import-recovery-required") return "游客导入记录损坏：云端同步已暂停。学习进度仍保存在本机，请保留数据等待恢复处理。";
+  if (st === "import-read-failed") return "无法读取游客导入记录：云端同步已暂停。请检查本机存储后重试。";
   if (st === "synced") return "已同步 ✓";
   if (st === "syncing") return "同步中…";
   if (st === "pending") return "有进度等待上传（联网后自动同步）";
@@ -163,6 +165,11 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const f = await sync.forceLocalLogout();
         if (!f.ok) { showToast(f.message || "还没退出。"); return; }
         onSwitchedOut(); showToast(f.warning ? f.message : "已退出登录。"); if (then) then();
+      }, true);
+      else if (r.kind === "import-corrupt" || r.kind === "import-read-failed") sheetConfirm("游客导入待办需要恢复", "云端同步已锁定，继续学习可保存在本机。仅在本机退出会保留游客记录、损坏待办和未上传账号副本；重新登录后仍需专门恢复，云端会话可能仍有效。", "仅在本机退出", async () => {
+        const f = await sync.forceLocalLogout();
+        if (!f.ok) { showToast(f.message || "还没退出。"); return; }
+        onSwitchedOut(); showToast(f.message || "已在本机退出，数据已保留。"); if (then) then();
       }, true);
       else if (r.pending) sheetConfirm("有进度还没上传", "现在连不上云端。退出后这些进度会先留在这台设备上，用同一个账号重新登录时会接着上传；建议联网后再退出。", "仍然退出", async () => {
         const f = await sync.logout({ force: true });
