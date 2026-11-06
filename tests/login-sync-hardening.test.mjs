@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { createSync, AUTH_KEY, STALE_KEY, scopedStorage, projectNamespace } from "../src/sync.js";
 import { createApi } from "../src/cloud-api.js";
 import { saveAccount, setCurrentAccount, loadAccount, getCurrentAccount, GUEST_KEY, getGuestId, DEVICE_KEY, clearGuestAfterVerified } from "../src/account-store.js";
-import { emptyDoc, docToState, sumXp, guestToDoc, guestFingerprint, guestImportStatus, replaceWithGuest, normalizeDoc, mergeDocs, docsEquivalent } from "../src/account-data.js";
+import { emptyDoc, docToState, sumXp, guestToDoc, guestFingerprint, guestImportStatus, replaceWithGuest, normalizeDoc, mergeDocs, docsEquivalent, mergeGuestProgress } from "../src/account-data.js";
 import { freshState } from "../src/storage.js";
 
 const results = [];
@@ -1296,6 +1296,178 @@ for (const kind of ["network", "server", "auth"]) {
   const rb = await b.syncNow();
   const row = cloud.rows.get(cloud.users.get("scene11@example.com"));
   check("场景11：两台设备各自的离线进度都在，总数 32，不丢关卡", ra.ok && rb.ok && sumXp(row.doc) === 32 && row.doc.done.U11A && row.doc.done.U11B, JSON.stringify({ ra, rb, xp: row.doc.xp, done: row.doc.done }));
+}
+
+// ======================================================================
+// M. 清单 12：旧备份保护（2026-11-06，DB-3 整合）
+//    旧备份 = 本机账号副本里一份过时的文档。它可能：rev 很旧、保存时间很旧（或被时钟拨到未来）、
+//    gen 被抬得很高并换了 lineage（或沿用云端 lineage）。无论哪种，都不能覆盖较新的云端。
+//    客户端不读 updated_at（那是服务端字段，只在 save_progress 里 now()）；唯一的写入凭证是“刚读到的 rev”（CAS），
+//    副本里的旧 base 永远不会被拿去写云端。
+// ======================================================================
+const NEW_CLOUD = () => {
+  const d = emptyDoc({ gen: 1, lineage: "L-cloud" });
+  d.xp = { devA: 500, devB: 300 }; d.runs = { devA: 20, devB: 12 };
+  d.done = { U1L1: "2026-10-01", U1L2: "2026-10-02", U2L1: "2026-10-03", U2L2: "2026-10-04" };
+  d.days = ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"];
+  d.hearts = { n: 3, msToNext: 120000 }; d.prefs = { sound: false, haptics: true, soundStyle: "C" };
+  return d;
+};
+const OLD_BACKUP = (over = {}) => {
+  const d = emptyDoc({ gen: 1, lineage: "L-cloud" });
+  d.xp = { devA: 10 }; d.runs = { devA: 1 }; d.done = { U1L1: "2026-10-01" }; d.days = ["2026-10-01"]; // 云端的真子集
+  Object.assign(d, over);
+  return d;
+};
+async function backupCase({ backup, base, savedAt, cloudDoc = NEW_CLOUD(), cloudRev = 9, dirty = { hearts: false, prefs: false, content: true } }) {
+  const st = mem(); st.setItem(DEVICE_KEY, "devA");
+  const cloud = fakeCloud(); cloud.users.set("bk@example.com", "uBk"); cloud.rows.set("uBk", { doc: clone(cloudDoc), rev: cloudRev });
+  const notices = [];
+  const sy = makeSync(st, cloud, { onNotice: (k) => notices.push(k) });
+  const v = await sy.verify("bk@example.com", "123456", freshState());
+  // 把本机副本换成这份“旧备份”
+  saveAccount(st, "uBk", { doc: backup, base, dirty }, { now: savedAt });
+  const before = clone(cloud.rows.get("uBk"));
+  cloud.calls.length = 0;
+  const r = await sy.syncNow();
+  const saves = cloud.calls.filter((c) => c[0] === "saveProgress").map((c) => c[1]);
+  return { st, cloud, sy, v, r, before, after: clone(cloud.rows.get("uBk")), saves, notices };
+}
+
+// ---- M.1 旧 rev：副本 base=1，云端 rev=9。写云端只能用刚读到的 9；云端内容一个字不少 ----
+{
+  const c = await backupCase({ backup: OLD_BACKUP(), base: 1, savedAt: 1 });
+  check("M.1 旧 rev 的旧备份：同步成功，云端 XP/runs/关卡/日期/红心/设置逐项不变", c.r.ok && JSON.stringify(c.after.doc) === JSON.stringify(c.before.doc), JSON.stringify({ r: c.r, after: c.after.doc.xp }));
+  check("M.1 旧 rev 永远不会被拿去写云端（所有 saveProgress 的 expected_rev 只能是 9）", c.saves.every((x) => x === 9), JSON.stringify(c.saves));
+  const l = loadAccount(c.st, "uBk", { now: NOW }).copy;
+  check("M.1 同步后本机副本追上云端：base=9，XP 总数 800，不再有 content 脏标记", l.base === 9 && sumXp(l.doc) === 800 && l.dirty.content === false, JSON.stringify({ base: l.base, xp: sumXp(l.doc), dirty: l.dirty }));
+}
+
+// ---- M.2 旧 updated_at：副本保存时间在很久以前（1）或在遥远的未来（时钟被拨快）——都不能取得优先权 ----
+for (const [label, savedAt] of [["很久以前", 1], ["遥远的未来(时钟拨快)", 4_102_444_800_000]]) {
+  const c = await backupCase({ backup: OLD_BACKUP(), base: 3, savedAt });
+  check(`M.2 副本保存时间${label}：云端不变，红心 / 设置沿用云端（不因“更晚保存”而被旧备份覆盖）`, c.r.ok && JSON.stringify(c.after.doc) === JSON.stringify(c.before.doc) && c.after.doc.hearts.n === 3 && c.after.doc.prefs.sound === false, JSON.stringify({ hearts: c.after.doc.hearts, prefs: c.after.doc.prefs }));
+}
+
+// ---- M.3 不同 lineage + 虚高 gen：不得取得覆盖权；云端其他设备的 XP / runs / 关卡 / 日期全保留，本机新增的并进去 ----
+for (const [label, lineage] of [["不同 lineage", "L-forged"], ["同 lineage", "L-cloud"]]) {
+  const bk = OLD_BACKUP({ gen: 999, lineage });
+  bk.xp = { devA: 520, devC: 40 }; bk.runs = { devA: 21, devC: 3 }; bk.done = { ...bk.done, U9L9: "2026-11-05" }; bk.days = ["2026-11-05"];
+  const c = await backupCase({ backup: bk, base: 2, savedAt: 1 });
+  const d = c.after.doc;
+  check(`M.3 虚高 gen(999)+${label}：不覆盖——云端身份不变 gen=1 lineage=L-cloud`, c.r.ok && d.gen === 1 && d.lineage === "L-cloud", JSON.stringify({ gen: d.gen, lineage: d.lineage, r: c.r }));
+  check(`M.3 虚高 gen+${label}：devB 的 300 XP / 12 次保留，devA 取较大 520/21，devC 新增 40/3`, d.xp.devB === 300 && d.runs.devB === 12 && d.xp.devA === 520 && d.runs.devA === 21 && d.xp.devC === 40 && d.runs.devC === 3, JSON.stringify({ xp: d.xp, runs: d.runs }));
+  check(`M.3 虚高 gen+${label}：云端四个关卡与四个日期全在，备份新增的 U9L9 与 2026-11-05 并入`, ["U1L1", "U1L2", "U2L1", "U2L2", "U9L9"].every((k) => d.done[k]) && d.done.U1L1 === "2026-10-01" && ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-11-05"].every((x) => d.days.includes(x)) && d.days.length === 5, JSON.stringify({ done: d.done, days: d.days }));
+  check(`M.3 虚高 gen+${label}：没有触发“你的进度被别处覆盖”提示，rev 只前进一格（9→10）`, !c.notices.includes("replaced") && c.after.rev === 10 && c.saves.every((x) => x === 9), JSON.stringify({ notices: c.notices, rev: c.after.rev, saves: c.saves }));
+}
+
+// ---- M.4 对照：云端代数真的更高（另一台设备换代）→ 仍整份采用云端，旧一代不会复活，并提示 ----
+{
+  const cl = emptyDoc({ gen: 2, lineage: "L-new" }); cl.xp = { devB: 7 };
+  const c = await backupCase({ backup: OLD_BACKUP(), base: 2, savedAt: 1, cloudDoc: cl, cloudRev: 4 });
+  check("M.4 云端 gen 更高：云端不动，本机旧一代作废，且提示用户", c.r.ok && JSON.stringify(c.after.doc) === JSON.stringify(c.before.doc) && c.notices.includes("replaced") && sumXp(loadAccount(c.st, "uBk", { now: NOW }).copy.doc) === 7, JSON.stringify({ notices: c.notices }));
+}
+
+// ---- M.5 同代不同 lineage（两次独立覆盖）：不合并、不写云端、本机副本原样保留、留待用户选择 ----
+{
+  const bk = OLD_BACKUP({ gen: 1, lineage: "L-other" });
+  const c = await backupCase({ backup: bk, base: 2, savedAt: 1 });
+  const l = loadAccount(c.st, "uBk", { now: NOW }).copy;
+  check("M.5 同 gen 不同 lineage：不写云端，云端原样；本机副本仍是那份备份（没被吞）", !c.r.ok && c.r.kind === "conflict" && JSON.stringify(c.after.doc) === JSON.stringify(c.before.doc) && c.saves.length === 0 && l.doc.lineage === "L-other" && l.dirty.content === true, JSON.stringify({ r: c.r, saves: c.saves }));
+}
+
+// ---- M.6 安全合并（游客）遇云端其他设备数据：runs / 日期 / 关卡 / gen / lineage 全保留 ----
+{
+  const cl = NEW_CLOUD(); cl.gen = 7; cl.lineage = "L-seven";
+  const r = mergeGuestProgress(g80, { deviceId: DEVICE, guestId: "G-m6", cloudDoc: cl, now: NOW });
+  const d = r.doc;
+  check("M.6 安全合并：gen=7 / lineage 不变；其他设备 devA/devB 的 XP 和 runs 原样", r.ok && d.gen === 7 && d.lineage === "L-seven" && d.xp.devA === 500 && d.xp.devB === 300 && d.runs.devA === 20 && d.runs.devB === 12, JSON.stringify({ gen: d.gen, xp: d.xp, runs: d.runs }));
+  check("M.6 安全合并：云端关卡与日期全部保留，游客的并进来；本设备 XP/次数按 max，不相加", ["U1L1", "U1L2", "U2L1", "U2L2", "U1L3", "U1L4"].every((k) => k in d.done) && ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"].every((x) => d.days.includes(x)) && d.xp[DEVICE] === 80 && d.runs[DEVICE] === 5 && d.hearts.n === 3 && d.prefs.sound === false, JSON.stringify({ xp: d.xp, done: Object.keys(d.done), hearts: d.hearts }));
+}
+
+// ======================================================================
+// N. 清单 15：Case 10 全流程硬断言（旧 imported=true + 游客有新进度）
+//    不止看函数返回值：逐项检查最终存储、rev、dirty / pending、游客保留、可重试性。
+// ======================================================================
+const writesOf = (cloud) => cloud.calls.filter((x) => x[0] === "saveProgress" || x[0] === "createProgress");
+{
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-case10", device: DEVICE, xp: 70, runs: 4 }), legacy: true });
+  const sy = makeSync(c.st, c.cloud);
+  const rowBefore = clone(rowOfCase(c));
+  const v = await sy.verify(c.email, "123456", g80);
+  check("N.1 Case 10：必须挂起让用户选择（不是静默 already-imported，也不是直接登录完成）", v.ok && v.needChoice === true, JSON.stringify(v));
+  check("N.1 挂起期间存储：没写云端(0 次 save/create)、云端文档与 rev 逐字不变、没有账号副本、没有待办、没有当前账号", writesOf(c.cloud).length === 0 && JSON.stringify(rowOfCase(c)) === JSON.stringify(rowBefore) && rowOfCase(c).rev === 7 && stateOf(c.st) === null && pendingImportKeys(c.st).length === 0 && getCurrentAccount(c.st) === null && sy.account() === null, JSON.stringify({ writes: writesOf(c.cloud), rev: rowOfCase(c).rev, keys: pendingImportKeys(c.st) }));
+  check("N.1 挂起期间游客记录逐字保留", c.st.getItem(GUEST_KEY) === c.raw);
+
+  // 选择“安全合并”但写云失败 → 失败态必须可重试
+  const restore = failSaves(c.cloud);
+  const r = await sy.finishChoice("merge");
+  const copy = stateOf(c.st);
+  check("N.2 合并写失败：登录完成但未同步；云端 rev 仍是 7、文档不变", r.ok && r.synced === false && rowOfCase(c).rev === 7 && JSON.stringify(rowOfCase(c).doc) === JSON.stringify(rowBefore.doc), JSON.stringify({ r: { ok: r.ok, synced: r.synced }, rev: rowOfCase(c).rev }));
+  check("N.2 合并写失败：游客逐字保留；本机副本含合并结果、dirty.content=true、无新指纹；专用待办存在；状态 pending", c.st.getItem(GUEST_KEY) === c.raw && copy.doc.xp[DEVICE] === 80 && copy.dirty.content === true && copy.doc.imported[c.gid] === true && pendingImportKeys(c.st).length === 1 && sy.status().status === "pending" && sy.status().pending === true, JSON.stringify({ dirty: copy?.dirty, imp: copy?.doc.imported[c.gid], keys: pendingImportKeys(c.st), st: sy.status() }));
+  restore();
+  // 重试：重开页面 → 恢复登录 → 同步
+  const sy2 = makeSync(c.st, c.cloud);
+  const restored = sy2.restore(freshState());
+  check("N.3 重开页面：能恢复登录并知道有待办", !!restored && sy2.status().pending === true, JSON.stringify(sy2.status()));
+  const rr = await sy2.syncNow();
+  const row = rowOfCase(c), copy2 = stateOf(c.st);
+  check("N.3 重试成功：云端 rev 7→8，XP 80 / 次数 5 只一份，imported 是新指纹字符串", rr.ok && row.rev === 8 && row.doc.xp[DEVICE] === 80 && row.doc.runs[DEVICE] === 5 && row.doc.imported[c.gid] === guestFingerprint(g80), JSON.stringify({ rr, rev: row.rev, xp: row.doc.xp, imp: row.doc.imported[c.gid] }));
+  check("N.3 重试成功：游客已删(1 次)、待办清空、本机副本 base=8 且 dirty 全清、状态 synced", c.st.getItem(GUEST_KEY) === null && pendingImportKeys(c.st).length === 0 && copy2.base === 8 && !copy2.dirty.content && !copy2.dirty.hearts && !copy2.dirty.prefs && sy2.status().status === "synced" && sy2.status().pending === false, JSON.stringify({ base: copy2.base, dirty: copy2.dirty, st: sy2.status() }));
+  const rev8 = rowOfCase(c).rev;
+  await sy2.syncNow(); await sy2.syncNow();
+  check("N.3 再同步两次：不再写云端（rev 仍 8），不重复合并", rowOfCase(c).rev === rev8 && sumXp(rowOfCase(c).doc) === 80, JSON.stringify({ rev: rowOfCase(c).rev }));
+}
+{ // 选“保留云端”：rev 只前进一格，只有 imported 变；游客保留；本机副本干净
+  const c = makeCase({ guest: g80, doc: bigCloud({ gen: 2, lineage: "L-case10b", xp: 500, runs: 20 }), legacy: true });
+  const sy = makeSync(c.st, c.cloud);
+  const before = clone(rowOfCase(c).doc);
+  await sy.verify(c.email, "123456", g80);
+  const r = await sy.finishChoice("cloud");
+  const row = rowOfCase(c), copy = stateOf(c.st);
+  const strip = (d) => { const x = clone(d); delete x.imported; return x; };
+  check("N.4 保留云端：rev 7→8，除 imported 外文档逐字不变（XP 仍 500，没加游客）", r.ok && r.synced === true && row.rev === 8 && JSON.stringify(strip(row.doc)) === JSON.stringify(strip(before)) && row.doc.imported[c.gid] === guestFingerprint(g80), JSON.stringify({ rev: row.rev, imp: row.doc.imported[c.gid] }));
+  check("N.4 保留云端：游客保留、待办清空、本机副本 base=8 且干净、状态 synced", c.st.getItem(GUEST_KEY) === c.raw && pendingImportKeys(c.st).length === 0 && copy.base === 8 && !copy.dirty.content && sy.status().status === "synced", JSON.stringify({ base: copy.base, dirty: copy.dirty, st: sy.status() }));
+}
+
+// ---- N.5 清单 6：失败路径矩阵。每种失败点 × 两种选择：游客 / 待办 / 本机副本都保住，不谎报完成，故障排除后能恢复且只做一次 ----
+function flakyStore(st) {
+  const o = { _m: st._m, removed: [], failSet: new Set(), getItem: (k) => st.getItem(k), setItem: (k, v) => { if (o.failSet.has(k)) throw new Error("quota exceeded"); st.setItem(k, v); }, removeItem: (k) => { if (st._m.has(k)) o.removed.push(k); st.removeItem(k); } };
+  return o;
+}
+for (const choice of ["cloud", "merge"]) {
+  for (const fault of ["read-latest", "cas-exhaust", "local-save"]) {
+    const tag = `N.5[${choice}/${fault}]`;
+    const doc = choice === "merge" ? bigCloud({ gen: 2, lineage: "L-n5-" + fault, device: DEVICE, xp: 70, runs: 4 }) : bigCloud({ gen: 2, lineage: "L-n5-" + fault, xp: 500, runs: 20 });
+    const c = makeCase({ guest: g80, doc, legacy: true });
+    c.st = flakyStore(c.st);
+    const sy = makeSync(c.st, c.cloud);
+    const v = await sy.verify(c.email, "123456", g80);
+    const rowBefore = clone(rowOfCase(c));
+    const origGet = c.cloud.getProgress, origSave = c.cloud.saveProgress;
+    if (fault === "read-latest") c.cloud.getProgress = async () => ({ ok: false, kind: "network", message: "断网（N.5 注入）" });
+    if (fault === "cas-exhaust") c.cloud.saveProgress = async () => ({ ok: true, rev: null });
+    if (fault === "local-save") c.st.failSet.add("suipian.acct." + c.userId);
+    const r = await sy.finishChoice(choice);
+    const claimsDone = r.ok && r.synced === true && r.verified !== false && !r.pending;
+    check(`${tag} 挂起 → 故障：没有谎报完成（不是 synced+无 pending）`, v.needChoice === true && !claimsDone, JSON.stringify({ ok: r.ok, synced: r.synced, pending: r.pending, kind: r.kind }));
+    check(`${tag} 故障后：游客逐字保留、专用待办在、没有删过游客`, c.st.getItem(GUEST_KEY) === c.raw && pendingImportKeys(c.st).length === 1 && guestRemovals(c.st) === 0, JSON.stringify({ keys: pendingImportKeys(c.st), removed: c.st.removed }));
+    if (fault !== "local-save") check(`${tag} 故障后：云端文档与 rev 逐字不变`, JSON.stringify(rowOfCase(c)) === JSON.stringify(rowBefore), JSON.stringify(rowOfCase(c)));
+    else check(`${tag} 故障后：云端已写入新指纹（上传成功），但本机登录没完成`, rowOfCase(c).doc.imported[c.gid] === guestFingerprint(g80) && r.ok === false, JSON.stringify({ imp: rowOfCase(c).doc.imported[c.gid], ok: r.ok }));
+    if (fault === "cas-exhaust") {
+      const cp = stateOf(c.st);
+      check(`${tag} 冲突用尽：本机副本已保存，状态待同步；merge 时 dirty.content=true、含合并结果；cloud 时不带新指纹`, !!cp && sy.status().pending === true && (choice === "merge" ? cp.dirty.content === true && cp.doc.xp[DEVICE] === 80 : cp.doc.imported[c.gid] !== guestFingerprint(g80)), JSON.stringify({ dirty: cp?.dirty, st: sy.status() }));
+    }
+    // 排除故障后恢复
+    c.cloud.getProgress = origGet; c.cloud.saveProgress = origSave; c.st.failSet.clear();
+    let fin;
+    if (r.ok) { const sy2 = makeSync(c.st, c.cloud); sy2.restore(freshState()); fin = await sy2.syncNow(); }
+    else fin = await sy.finishChoice(choice);
+    const row = rowOfCase(c), cp2 = stateOf(c.st);
+    check(`${tag} 恢复后：成功，指纹落地，待办清空，本机副本 dirty 全清且含新指纹`, (fin.ok) && row.doc.imported[c.gid] === guestFingerprint(g80) && pendingImportKeys(c.st).length === 0 && cp2 && cp2.doc.imported[c.gid] === guestFingerprint(g80) && !cp2.dirty.content && !cp2.dirty.hearts && !cp2.dirty.prefs, JSON.stringify({ fin: { ok: fin.ok, kind: fin.kind }, keys: pendingImportKeys(c.st), imp: cp2?.doc.imported[c.gid], dirty: cp2?.dirty }));
+    if (choice === "merge") check(`${tag} 恢复后：XP 80 / 次数 5 只一份，游客只删一次`, row.doc.xp[DEVICE] === 80 && row.doc.runs[DEVICE] === 5 && sumXp(row.doc) === 80 && c.st.getItem(GUEST_KEY) === null && guestRemovals(c.st) === 1, JSON.stringify({ xp: row.doc.xp, runs: row.doc.runs, removed: c.st.removed }));
+    else check(`${tag} 恢复后：只写了指纹（XP 仍 500，没加游客），游客保留`, sumXp(row.doc) === 500 && c.st.getItem(GUEST_KEY) === c.raw && guestRemovals(c.st) === 0, JSON.stringify({ xp: sumXp(row.doc) }));
+  }
 }
 
 const failed = results.filter((r) => !r).length;

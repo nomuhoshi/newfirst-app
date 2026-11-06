@@ -176,6 +176,30 @@ try {
       to: 'if (!kind) kind = "server";',
     },
     {
+      name: "清单12：虚高 gen 的旧备份可以整份覆盖云端",
+      file: "account-data.js",
+      from: 'if (L.gen > R.gen) return { doc: mergeLearning(L, R, opts, R), outcome: "merged" };',
+      to: 'if (L.gen > R.gen) return { doc: L, outcome: "local-newer" };',
+    },
+    {
+      name: "清单12：旧备份合并后抢走云端的 gen / lineage 身份",
+      file: "account-data.js",
+      from: 'if (L.gen > R.gen) return { doc: mergeLearning(L, R, opts, R), outcome: "merged" };',
+      to: 'if (L.gen > R.gen) return { doc: mergeLearning(L, R, opts, L), outcome: "merged" };',
+    },
+    {
+      name: "清单12：同步用副本里的旧 base rev 去写云端（而不是刚读到的 rev）",
+      file: "sync.js",
+      from: "const s = await api.saveProgress(session, remote.row.rev, finalDoc);",
+      to: "const s = await api.saveProgress(session, copy.base ?? remote.row.rev, finalDoc);",
+    },
+    {
+      name: "清单15：旧 true + 游客有学习记录被当成 same（Case 10 静默丢进度）",
+      file: "account-data.js",
+      from: 'if (prev === true) return "unknown";',
+      to: 'if (prev === true) return "same";',
+    },
+    {
       name: "删号后本机清理失败仍宣称成功",
       file: "sync.js",
       from: `        ok: false,

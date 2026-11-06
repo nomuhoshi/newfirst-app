@@ -111,7 +111,7 @@ const base = () => ({ ...emptyDoc({ lineage: "LIN" }) });
   check("本机代数更高但 lineage 不同：不得覆盖云端，500 XP 和本机 10 XP 都在，身份仍是云端", r2.outcome === "merged" && r2.doc.xp.devA === 500 && r2.doc.xp.devB === 10 && sumXp(r2.doc) === 510 && r2.doc.gen === 1 && r2.doc.lineage === "LIN");
   const hiSame = { ...base(), gen: 2, lineage: "LIN", xp: { devA: 10 } };
   const r3 = mergeDocs(hiSame, lo);
-  check("同一 lineage、本机代数更高：整份用本机", r3.outcome === "local-newer" && sumXp(r3.doc) === 10 && r3.doc.gen === 2);
+  check("同一 lineage、本机代数更高（虚高 gen）：同样不得整份覆盖云端，500 XP 还在，gen 仍是云端的 1", r3.outcome === "merged" && r3.doc.xp.devA === 500 && sumXp(r3.doc) === 500 && r3.doc.gen === 1);
   const x = { ...base(), gen: 2, lineage: "AAA", xp: { devA: 100 } }, y = { ...base(), gen: 2, lineage: "BBB", xp: { devB: 100 } };
   const cf = mergeDocs(x, y);
   check("同一代、编号不同（两次独立的覆盖）：不自动合并，也不把 XP 相加", cf.outcome === "conflict" && sumXp(cf.doc) === 100);
