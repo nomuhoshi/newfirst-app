@@ -200,6 +200,18 @@ try {
       to: 'if (prev === true) return "same";',
     },
     {
+      name: "DB-3：普通同步忽略本机写回失败（谎报 synced）",
+      file: "sync.js",
+      from: "if (!localSaved) {",
+      to: "if (false && !localSaved) {",
+    },
+    {
+      name: "DB-3：强制退出不核对凭证是否真的清掉",
+      file: "sync.js",
+      from: "if (!clearStoredAuthVerified()) {",
+      to: "if (false && !clearStoredAuthVerified()) {",
+    },
+    {
       name: "删号后本机清理失败仍宣称成功",
       file: "sync.js",
       from: `        ok: false,

@@ -1141,7 +1141,7 @@ for (const kind of ["network", "server", "auth"]) {
   cloud.signOut = async () => { signed++; return { ok: true }; };
   const synced = await sy.syncNow();
   const out = await sy.logout();
-  check("普通退出：本机还没写上已同步副本时，不退出、不调用 signOut、未上传进度还在", synced.ok === true && out.ok === false && out.pending === true && signed === 0 && sy.account() !== null && sumXp(loadAccount(st, uid, { now: NOW }).copy.doc) === xpBefore, JSON.stringify({ synced, out, signed, xpBefore }));
+  check("普通退出：本机还没写上已同步副本时，同步如实失败(localWritebackFailed)，不退出、不调用 signOut、未上传进度还在", synced.ok === false && synced.kind === "local" && synced.localWritebackFailed === true && out.ok === false && out.pending === true && signed === 0 && sy.account() !== null && sumXp(loadAccount(st, uid, { now: NOW }).copy.doc) === xpBefore, JSON.stringify({ synced, out, signed, xpBefore }));
 }
 {
   const st = mem(), cloud = fakeCloud();
@@ -1468,6 +1468,86 @@ for (const choice of ["cloud", "merge"]) {
     if (choice === "merge") check(`${tag} 恢复后：XP 80 / 次数 5 只一份，游客只删一次`, row.doc.xp[DEVICE] === 80 && row.doc.runs[DEVICE] === 5 && sumXp(row.doc) === 80 && c.st.getItem(GUEST_KEY) === null && guestRemovals(c.st) === 1, JSON.stringify({ xp: row.doc.xp, runs: row.doc.runs, removed: c.st.removed }));
     else check(`${tag} 恢复后：只写了指纹（XP 仍 500，没加游客），游客保留`, sumXp(row.doc) === 500 && c.st.getItem(GUEST_KEY) === c.raw && guestRemovals(c.st) === 0, JSON.stringify({ xp: sumXp(row.doc) }));
   }
+}
+
+// ======================================================================
+// GPT DB-3 follow-up: 本机写回失败与强制退出凭证清理失败必须可恢复。
+// ======================================================================
+{
+  const st = mem(), cloud = fakeCloud();
+  const sy = makeSync(st, cloud);
+  const logged = await login(sy, "writeback-fail@example.com", freshState());
+  const dev = { sync: sy, state: logged.state };
+  learn(dev, "U1L1", 40);
+  const uid = sy.account().userId;
+  const originalSet = st.setItem;
+  st.setItem = (key, value) => {
+    if (key === `suipian.acct.${uid}`) throw new Error("quota exceeded");
+    originalSet(key, value);
+  };
+  const first = await sy.syncNow();
+  const localAfterFailure = loadAccount(st, uid, { now: NOW }).copy;
+  const cloudAfterFailure = cloud.rows.get(uid);
+  check(
+    "DB-3 写回失败：不得谎报 synced，pending 保留且本机 XP/dirty 副本不变",
+    first.ok === false && first.kind === "local" && first.retryable === true
+      && sy.status().status === "pending" && sy.status().pending === true
+      && !!localAfterFailure && sumXp(localAfterFailure.doc) === 40
+      && localAfterFailure.dirty.content === true
+      && !!cloudAfterFailure && sumXp(cloudAfterFailure.doc) === 40,
+    JSON.stringify({ first, status: sy.status(), local: localAfterFailure?.dirty, cloudRev: cloudAfterFailure?.rev })
+  );
+  st.setItem = originalSet;
+  const second = await sy.syncNow();
+  const localAfterRetry = loadAccount(st, uid, { now: NOW }).copy;
+  check(
+    "DB-3 写回恢复：重试后本机副本同步、dirty 清空且 XP 不重复累计",
+    second.ok === true && sy.status().status === "synced"
+      && !!localAfterRetry && localAfterRetry.base === cloud.rows.get(uid).rev
+      && !localAfterRetry.dirty.content
+      && sumXp(localAfterRetry.doc) === 40
+      && sumXp(cloud.rows.get(uid).doc) === 40,
+    JSON.stringify({ second, local: localAfterRetry?.dirty, cloudRev: cloud.rows.get(uid)?.rev })
+  );
+}
+{
+  const st = mem(), cloud = fakeCloud();
+  const sy = makeSync(st, cloud);
+  const logged = await login(sy, "logout-auth-fail@example.com", freshState());
+  const dev = { sync: sy, state: logged.state };
+  learn(dev, "U1L1", 25);
+  const uid = sy.account().userId;
+  const authBefore = st.getItem(AUTH_KEY);
+  const originalRemove = st.removeItem;
+  const originalSet = st.setItem;
+  st.removeItem = (key) => {
+    if (key === AUTH_KEY) throw new Error("remove denied");
+    originalRemove(key);
+  };
+  st.setItem = (key, value) => {
+    if (key === AUTH_KEY) throw new Error("write denied");
+    originalSet(key, value);
+  };
+  const failedLogout = await sy.forceLocalLogout();
+  const preserved = loadAccount(st, uid, { now: NOW }).copy;
+  check(
+    "DB-3 凭证清理失败：不得宣称退出，账号指针、凭证和未上传副本保留",
+    failedLogout.ok === false && sy.account()?.userId === uid
+      && getCurrentAccount(st) === uid && st.getItem(AUTH_KEY) === authBefore
+      && !!preserved && sumXp(preserved.doc) === 25 && preserved.dirty.content === true,
+    JSON.stringify({ failedLogout, account: sy.account(), current: getCurrentAccount(st), dirty: preserved?.dirty })
+  );
+  st.removeItem = originalRemove;
+  st.setItem = originalSet;
+  const retriedLogout = await sy.forceLocalLogout();
+  const afterLogout = loadAccount(st, uid, { now: NOW }).copy;
+  check(
+    "DB-3 凭证清理恢复：重试后本机退出成功，未上传学习副本仍保留",
+    retriedLogout.ok === true && sy.account() === null && getCurrentAccount(st) === null
+      && st.getItem(AUTH_KEY) === null
+      && !!afterLogout && sumXp(afterLogout.doc) === 25 && afterLogout.dirty.content === true,
+    JSON.stringify({ retriedLogout, current: getCurrentAccount(st), dirty: afterLogout?.dirty })
+  );
 }
 
 const failed = results.filter((r) => !r).length;

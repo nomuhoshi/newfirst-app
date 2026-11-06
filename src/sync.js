@@ -243,7 +243,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           saveDoc = m2.doc; dirty = { hearts: curCopy.dirty.hearts, prefs: curCopy.dirty.prefs, content: !lost && curCopy.dirty.content }; again = true;
         }
       }
-      saveAccount(storage, userId, { doc: saveDoc, base: rev, dirty }, { now: now() });
+      const localSaved = saveAccount(storage, userId, { doc: saveDoc, base: rev, dirty }, { now: now() });
+      if (!localSaved) {
+        pending = true;
+        const message = "云端已保存，但本机副本写回失败；原有副本已保留，稍后可重试";
+        setStatus("pending", message);
+        return { ok: false, kind: "local", retryable: true, localWritebackFailed: true, rev, message };
+      }
       if (!docsEquivalent(curCopy.doc, saveDoc)) { // 云端带来了本机没有的内容：用合并后的结果刷新应用状态，并把“新挣的 XP”的基准同步成新的总数
         const ns = docToState(saveDoc, null, now());
         baseline = { xp: ns.xp, lessonsCompleted: ns.lessonsCompleted };
@@ -591,6 +597,18 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const L = loadAccount(storage, uid, { now: now() });
     return !!(L.ok && L.copy && isUnsent(L.copy));
   }
+  // 删除失败时尝试写入无凭证的撤销标记；只有读回确认不含会话/令牌才算本机凭证已清理。
+  function clearStoredAuthVerified() {
+    try { storage.removeItem(AUTH_KEY); } catch {}
+    try {
+      if (storage.getItem(AUTH_KEY) === null) return true;
+      try { storage.setItem(AUTH_KEY, JSON.stringify({ revoked: true, reason: "logout-cleanup-failed" })); } catch {}
+      const after = storage.getItem(AUTH_KEY);
+      if (after === null) return true;
+      const marker = JSON.parse(after);
+      return marker?.revoked === true && !marker.session && !marker.accessToken && !marker.refreshToken;
+    } catch { return false; }
+  }
   // 有没同步的内容时先试着同步一次；同步失败就返回 { ok:false, pending:true }，界面让用户确认；force 才会继续退出。
   // 普通退出：云端 signOut 失败，或本机仍有未上传副本时，保持登录，不删副本。
   // 强制退出：即使 signOut 失败也清本机凭证；未上传副本留着。本机清理失败则不宣称已退出。
@@ -621,11 +639,32 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       return { ok: false, stayed: true, kind: signOutKind, pending: copyStillUnsent(uid), message: signOutMessage };
     }
     // 强制退出（没上传的内容还在）：本机副本留着，不删。同一个账号再登录时会接着上传；只有已同步的账号才删副本。
+    const beforeLocal = loadAccount(storage, uid, { now: now() });
+    if (!beforeLocal.ok) return { ok: false, kind: "local", pending: true, message: "无法确认本机副本状态，暂未退出" };
+    const beforeCopy = beforeLocal.copy ? clone(beforeLocal.copy) : null;
     const localOk = (force && pending) ? setCurrentAccount(storage, null) : logoutLocal(storage, uid);
-    if (!localOk) return { ok: false, kind: "local", pending: true, message: "无法完成本机退出，登录和未上传的进度都还在" };
+    if (!localOk) {
+      const copyRestored = !beforeCopy || saveAccount(storage, uid, beforeCopy, { now: now() });
+      const accountRestored = setCurrentAccount(storage, uid);
+      pending = copyStillUnsent(uid);
+      const message = copyRestored && accountRestored
+        ? "本机退出未完成，登录状态和学习副本已恢复"
+        : "本机退出未完成；请检查本机登录状态和学习副本";
+      setStatus(pending ? "pending" : "error", message);
+      return { ok: false, kind: "local", pending: true, copyRestored, accountRestored, message };
+    }
+    if (!clearStoredAuthVerified()) {
+      const copyRestored = !beforeCopy || saveAccount(storage, uid, beforeCopy, { now: now() });
+      const accountRestored = setCurrentAccount(storage, uid);
+      pending = copyStillUnsent(uid);
+      const message = copyRestored && accountRestored
+        ? "无法确认本机凭证已清除，登录状态和学习副本已恢复"
+        : "无法确认本机凭证已清除；请检查本机登录状态和学习副本";
+      setStatus(pending ? "pending" : "error", message);
+      return { ok: false, kind: "local", pending: true, copyRestored, accountRestored, message };
+    }
     clearStale();
     session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
-    writeAuth();
     setStatus(null);
     if (signOutFailed) return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出。云端会话可能仍有效。" };
     return { ok: true };
