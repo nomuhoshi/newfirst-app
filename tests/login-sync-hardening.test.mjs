@@ -53,14 +53,17 @@ function fakeCloud() {
   const state = { online: true };
   const net = { ok: false, kind: "network", message: "网络连不上" };
   const authErr = { ok: false, kind: "auth", message: "登录已失效" };
-  const issue = (uid, email) => {
+  // 会话级撤销（DB-3.1）：每次验证码登录 = 一个新会话 sid；refresh 沿用 sid；signOut 按 scope 撤销 refresh token。
+  // access token（JWT）撤销后到过期前仍然有效，和 Supabase 一致。signOut 不带 scope 时按 Supabase 默认 = global。
+  const sidOf = new Map(), revokedSids = new Set(), sidUser = new Map();
+  const issue = (uid, email, sid = "s" + (++seq)) => {
     const at = "at-" + (++seq), rt = "rt-" + seq;
-    tokens.set(at, uid); tokens.set(rt, uid);
+    tokens.set(at, uid); tokens.set(rt, uid); sidOf.set(at, sid); sidOf.set(rt, sid); sidUser.set(sid, uid);
     return { accessToken: at, refreshToken: rt, expiresAt: NOW + 3600_000, userId: uid, email };
   };
   const uidOf = (s) => tokens.get(s?.accessToken);
   const api = {
-    calls, state, users, rows, tokens,
+    calls, state, users, rows, tokens, revokedSids, sidOf,
     async sendCode(email) { calls.push(["sendCode", email]); return state.online ? { ok: true } : net; },
     async verifyCode(email, code) {
       calls.push(["verifyCode", email]);
@@ -77,9 +80,23 @@ function fakeCloud() {
       calls.push(["refresh", s?.refreshToken]);
       if (!state.online) return net;
       const uid = tokens.get(s?.refreshToken);
-      return uid ? { ok: true, session: issue(uid, s.email) } : authErr;
+      const sid = sidOf.get(s?.refreshToken);
+      if (!uid || revokedSids.has(sid)) return { ok: false, kind: "auth", message: "Invalid Refresh Token: Refresh Token Not Found" };
+      return { ok: true, session: issue(uid, s.email, sid) };
     },
-    async signOut() { calls.push(["signOut"]); return { ok: true }; },
+    async signOut(s, scope = "global") {
+      calls.push(["signOut", scope]);
+      const mode = state.signOutMode || "ok"; // ok | fail(没撤销，返回断网) | lost-response(已撤销，但响应丢了) | invalid(401)
+      if (mode === "fail") return net;
+      if (mode === "invalid") return authErr;
+      const uid = tokens.get(s?.accessToken), sid = sidOf.get(s?.accessToken);
+      if (!uid) return authErr;
+      for (const [x, u] of sidUser) {
+        if (u !== uid) continue;
+        if (scope === "global" || (scope === "local" && x === sid) || (scope === "others" && x !== sid)) revokedSids.add(x);
+      }
+      return mode === "lost-response" ? net : { ok: true };
+    },
     async getProgress(s) {
       calls.push(["getProgress", s?.accessToken]);
       if (!state.online) return net;
@@ -1123,7 +1140,7 @@ for (const kind of ["network", "server", "auth"]) {
   cloud.signOut = async () => { throw new Error("500 Internal Server Error"); };
   const out = await sy.logout();
   check("Case 7a：普通退出时 signOut 失败 → 保持登录", out.ok === false && out.stayed === true && sy.account() !== null && st.getItem(AUTH_KEY) === authBefore, JSON.stringify(out));
-  check("Case 7a：signOut 失败时本机副本还在", sumXp(loadAccount(st, sy.account().userId, { now: NOW }).copy.doc) === copyBefore);
+  check("Case 7a：signOut 失败时本机副本还在", (() => { const c = loadAccount(st, sy.account()?.userId, { now: NOW }).copy; return !!c && sumXp(c.doc) === copyBefore; })());
 }
 {
   const st = mem(), cloud = fakeCloud();
@@ -1548,6 +1565,160 @@ for (const choice of ["cloud", "merge"]) {
       && !!afterLogout && sumXp(afterLogout.doc) === 25 && afterLogout.dirty.content === true,
     JSON.stringify({ retriedLogout, current: getCurrentAccount(st), dirty: afterLogout?.dirty })
   );
+}
+
+// ======================================================================
+// O. DB-3.1：退出顺序与云端会话撤销（GPT 独立审查发现，2026-11-06）
+//    云端撤销 refresh token 不可逆 → 本机能失败的步骤必须排在云端撤销之前；退出只结束这台设备的会话（scope=local）。
+//    fakeCloud 现在真实模拟：每次登录一个会话，signOut 按 scope 撤销 refresh token，access token 到期前仍有效，默认 scope=global。
+// ======================================================================
+async function twoDevices(email = "two@example.com") {
+  const cloud = fakeCloud();
+  const stA = flakyStore(mem()), stB = mem();
+  stA.setItem(DEVICE_KEY, "devA"); stB.setItem(DEVICE_KEY, "devB");
+  const A = makeSync(stA, cloud), B = makeSync(stB, cloud);
+  const la = await login(A, email, freshState()), lb = await login(B, email, freshState());
+  const uid = A.account().userId;
+  return { cloud, stA, stB, A, B, la, lb, uid, devA: { sync: A, state: la.state } };
+}
+const copyXp = (st, uid) => { const c = loadAccount(st, uid, { now: NOW }).copy; return c ? sumXp(c.doc) : -1; };
+const authSession = (st) => JSON.parse(st.getItem(AUTH_KEY)).session;
+const refreshAlive = async (cloud, sess) => (await cloud.refresh(sess)).ok === true;
+const signOutCalls = (cloud) => cloud.calls.filter((c) => c[0] === "signOut");
+// 让某些键的 setItem / removeItem 抛错（flakyStore 已支持 failSet；这里补 failRemove）
+function breakRemove(st, ...keys) { const real = st.removeItem; st.removeItem = (k) => { if (keys.includes(k)) throw new Error("remove denied: " + k); return real(k); }; return () => { st.removeItem = real; }; }
+function breakSet(st, ...keys) { keys.forEach((k) => st.failSet.add(k)); return () => keys.forEach((k) => st.failSet.delete(k)); }
+
+// ---- O.1 普通退出只结束这台设备的会话：其他设备的 refresh token 仍然有效 ----
+{
+  const t = await twoDevices();
+  const sA = authSession(t.stA), sB = authSession(t.stB);
+  const r = await t.A.logout();
+  check("O.1 普通退出成功；云端 signOut 以 scope=local 调用（不是默认 global）", r.ok === true && JSON.stringify(signOutCalls(t.cloud)) === JSON.stringify([["signOut", "local"]]), JSON.stringify({ r, calls: signOutCalls(t.cloud) }));
+  check("O.1 这台设备的 refresh token 被云端撤销；另一台设备的会话仍然有效", (await refreshAlive(t.cloud, sA)) === false && (await refreshAlive(t.cloud, sB)) === true);
+  const sync2 = await t.B.syncNow();
+  check("O.1 另一台设备照常同步（没被误退出）", sync2.ok === true && t.B.account() !== null && t.B.status().status === "synced", JSON.stringify(sync2));
+  check("O.1 这台设备本机：账号指针、凭证、已同步副本都清了", t.A.account() === null && getCurrentAccount(t.stA) === null && t.stA.getItem(AUTH_KEY) === null && loadAccount(t.stA, t.uid, { now: NOW }).copy === null);
+}
+
+// ---- O.2 本机删除失败（副本删不掉 / 指针清不掉）：不联网、不撤销云端会话，本机原样 ----
+for (const [label, breakIt] of [["副本删不掉", (t) => breakRemove(t.stA, "suipian.acct." + t.uid)], ["账号指针清不掉", (t) => breakRemove(t.stA, "suipian.session")]]) {
+  const t = await twoDevices("two-" + label.length + "@example.com");
+  const sA = authSession(t.stA), authRaw = t.stA.getItem(AUTH_KEY), copyRaw = t.stA.getItem("suipian.acct." + t.uid);
+  const fix = breakIt(t);
+  t.cloud.calls.length = 0;
+  const r = await t.A.logout();
+  check(`O.2[${label}] 普通退出：本机清理失败 → 不退出，且完全没调用云端 signOut`, r.ok === false && r.kind === "local" && r.cloudUntouched === true && signOutCalls(t.cloud).length === 0, JSON.stringify({ r, calls: t.cloud.calls }));
+  check(`O.2[${label}] 云端会话原封不动（refresh 仍有效）；本机登录状态、凭证、副本逐字恢复`, (await refreshAlive(t.cloud, sA)) === true && t.A.account() !== null && getCurrentAccount(t.stA) === t.uid && t.stA.getItem(AUTH_KEY) === authRaw && copyXp(t.stA, t.uid) === sumXp(JSON.parse(copyRaw).doc), JSON.stringify({ account: t.A.account(), cur: getCurrentAccount(t.stA) }));
+  fix();
+  const r2 = await t.A.logout();
+  check(`O.2[${label}] 故障排除后重试退出成功：这台设备会话撤销，另一台设备仍有效`, r2.ok === true && (await refreshAlive(t.cloud, sA)) === false && (await refreshAlive(t.cloud, authSession(t.stB))) === true, JSON.stringify(r2));
+}
+
+// ---- O.3 强制退出遇凭证清理失败（删不掉也写不了撤销标记）：回滚，不联网；未上传副本保留；恢复后重试成功 ----
+{
+  const t = await twoDevices("two-auth@example.com");
+  learn(t.devA, "U1L1", 25); // 本机有未上传进度
+  const sA = authSession(t.stA), authRaw = t.stA.getItem(AUTH_KEY);
+  const fixR = breakRemove(t.stA, AUTH_KEY), fixS = breakSet(t.stA, AUTH_KEY);
+  t.cloud.calls.length = 0;
+  const r = await t.A.logout({ force: true });
+  const kept = loadAccount(t.stA, t.uid, { now: NOW }).copy;
+  check("O.3 凭证清不掉：强制退出失败，没联网、没撤销云端会话", r.ok === false && r.kind === "local" && signOutCalls(t.cloud).length === 0 && (await refreshAlive(t.cloud, sA)) === true, JSON.stringify({ r, calls: t.cloud.calls.length }));
+  check("O.3 登录状态恢复：账号指针、凭证原文、未上传副本(25 XP, dirty)都在", t.A.account() !== null && getCurrentAccount(t.stA) === t.uid && t.stA.getItem(AUTH_KEY) === authRaw && !!kept && sumXp(kept.doc) === 25 && kept.dirty.content === true, JSON.stringify({ cur: getCurrentAccount(t.stA), dirty: kept?.dirty }));
+  fixR(); fixS();
+  const r2 = await t.A.logout({ force: true });
+  check("O.3 恢复后重试：已退出；尽力撤销了这台设备的云端会话(scope=local)；未上传副本保留；另一台设备不受影响", r2.ok === true && signOutCalls(t.cloud).length === 1 && signOutCalls(t.cloud)[0][1] === "local" && (await refreshAlive(t.cloud, sA)) === false && (await refreshAlive(t.cloud, authSession(t.stB))) === true && copyXp(t.stA, t.uid) === 25, JSON.stringify(r2));
+}
+
+// ---- O.4 云端退出成功之后本机清凭证失败：已退出（云端已撤销），只提示残留的凭证已失效；重开不会复活登录 ----
+{
+  const t = await twoDevices("two-leftover@example.com");
+  const sA = authSession(t.stA);
+  breakRemove(t.stA, AUTH_KEY); breakSet(t.stA, AUTH_KEY);
+  const r = await t.A.logout();
+  check("O.4 云端会话已撤销、本机副本和指针已清；清凭证失败只给警告(local-auth-leftover)，仍算已退出", r.ok === true && r.warning === "local-auth-leftover" && t.A.account() === null && getCurrentAccount(t.stA) === null && (await refreshAlive(t.cloud, sA)) === false, JSON.stringify(r));
+  const reopened = makeSync(t.stA, t.cloud);
+  check("O.4 重开页面：不会靠残留的已失效凭证复活登录", reopened.restore(freshState()) === null && reopened.account() === null);
+}
+
+// ---- O.5 云端 signOut 失败（没撤销）：回滚本机，保持登录，副本 / 指针 / 凭证原样；联网后重试成功 ----
+{
+  const t = await twoDevices("two-signfail@example.com");
+  const sA = authSession(t.stA), authRaw = t.stA.getItem(AUTH_KEY), copyBefore = copyXp(t.stA, t.uid);
+  t.cloud.state.signOutMode = "fail";
+  const r = await t.A.logout();
+  check("O.5 signOut 失败：ok:false stayed，保持登录，本机指针 / 凭证 / 副本恢复", r.ok === false && r.stayed === true && t.A.account() !== null && getCurrentAccount(t.stA) === t.uid && t.stA.getItem(AUTH_KEY) === authRaw && !!loadAccount(t.stA, t.uid, { now: NOW }).copy && copyXp(t.stA, t.uid) === copyBefore, JSON.stringify(r));
+  check("O.5 云端会话没被撤销（refresh 仍有效）", (await refreshAlive(t.cloud, sA)) === true);
+  t.cloud.state.signOutMode = "ok";
+  const r2 = await t.A.logout();
+  check("O.5 联网后重试退出成功", r2.ok === true && (await refreshAlive(t.cloud, sA)) === false && t.A.account() === null, JSON.stringify(r2));
+}
+
+// ---- O.6 signOut 响应丢失（云端其实撤销了）：不假装已退出、不丢进度；之后 token 过期会被如实要求重新登录 ----
+{
+  const t = await twoDevices("two-lost@example.com");
+  learn(t.devA, "U1L1", 30);
+  await t.A.syncNow();
+  const xp = copyXp(t.stA, t.uid);
+  t.cloud.state.signOutMode = "lost-response";
+  const r = await t.A.logout();
+  check("O.6 响应丢失：报告退出失败(stayed)，保持登录，学习副本一个字不少", r.ok === false && r.stayed === true && t.A.account() !== null && copyXp(t.stA, t.uid) === xp, JSON.stringify(r));
+  // access token 过期后才会发现 refresh token 已经被撤销：如实 need-login，进度仍在
+  const stored = JSON.parse(t.stA.getItem(AUTH_KEY)); stored.session.expiresAt = NOW + 1000; t.stA.setItem(AUTH_KEY, JSON.stringify(stored));
+  const sy2 = makeSync(t.stA, t.cloud); sy2.restore(freshState());
+  const rs = await sy2.syncNow();
+  check("O.6 token 过期后同步：如实要求重新登录(auth / need-login)，进度仍在本机", rs.ok === false && rs.kind === "auth" && sy2.status().status === "need-login" && copyXp(t.stA, t.uid) === xp, JSON.stringify({ rs, st: sy2.status() }));
+}
+
+// ---- O.7 forceLocalLogout 是纯本机退出：零网络、不撤销云端会话；未上传副本保留；同一账号重登接着传 ----
+{
+  const t = await twoDevices("two-local@example.com");
+  learn(t.devA, "U1L1", 40);
+  const sA = authSession(t.stA);
+  t.cloud.calls.length = 0;
+  const r = await t.A.forceLocalLogout();
+  check("O.7 纯本机退出：没有任何网络请求，返回云端会话可能仍有效", r.ok === true && r.cloudSessionMaybeValid === true && t.cloud.calls.length === 0, JSON.stringify({ r, calls: t.cloud.calls }));
+  check("O.7 云端会话没被撤销（refresh 仍有效）；未上传的 40 XP 副本保留", (await refreshAlive(t.cloud, sA)) === true && copyXp(t.stA, t.uid) === 40 && t.A.account() === null);
+  const A2 = makeSync(t.stA, t.cloud);
+  const re = await login(A2, "two-local@example.com", freshState());
+  await A2.syncNow();
+  check("O.7 同一账号重新登录：接着上传，40 XP 到云端且不重复", re.ok && sumXp(t.cloud.rows.get(t.uid).doc) === 40, JSON.stringify({ xp: sumXp(t.cloud.rows.get(t.uid).doc) }));
+}
+
+// ---- O.8 强制退出 + 云端 signOut 失败：本机照常退出，明确提示云端会话可能仍有效 ----
+{
+  const t = await twoDevices("two-forcefail@example.com");
+  learn(t.devA, "U1L1", 15);
+  t.cloud.state.signOutMode = "fail";
+  const r = await t.A.logout({ force: true });
+  check("O.8 强制退出遇断网：已在本机退出，提示云端会话可能仍有效，未上传副本保留", r.ok === true && r.cloudSessionMaybeValid === true && t.A.account() === null && copyXp(t.stA, t.uid) === 15, JSON.stringify(r));
+}
+
+// ---- O.9 云端说会话本来就失效(401)，或 refresh 被拒：等于已退出，不应卡死 ----
+{
+  const t = await twoDevices("two-401@example.com");
+  t.cloud.state.signOutMode = "invalid";
+  const r = await t.A.logout();
+  check("O.9 signOut 返回 401(会话已失效)：视为已退出，本机清理完成", r.ok === true && t.A.account() === null && getCurrentAccount(t.stA) === null, JSON.stringify(r));
+  const t2 = await twoDevices("two-expired@example.com");
+  t2.cloud.revokedSids.add(t2.cloud.sidOf.get(authSession(t2.stA).refreshToken)); // 云端已把这台设备的会话撤销（比如别处退出）
+  const stored = JSON.parse(t2.stA.getItem(AUTH_KEY)); stored.session.expiresAt = NOW + 1000; t2.stA.setItem(AUTH_KEY, JSON.stringify(stored));
+  const sy = makeSync(t2.stA, t2.cloud); sy.restore(freshState());
+  const r2 = await sy.logout();
+  check("O.9 access token 已过期且 refresh 被拒：不卡在“退出失败”，直接完成本机退出", r2.ok === true && sy.account() === null && getCurrentAccount(t2.stA) === null, JSON.stringify(r2));
+}
+
+// ---- O.10 cloud-api：signOut 的请求带 scope；默认 local；非法值回落 local；失败如实返回 ----
+{
+  const urls = []; let status = 204;
+  const api = createApi({ url: "https://x.supabase.co", anonKey: "anon", fetchFn: async (u, o) => { urls.push([o.method, u]); return { ok: status < 300, status, text: async () => (status < 300 ? "" : JSON.stringify({ msg: "boom" })) }; } });
+  const sess = { accessToken: "at", refreshToken: "rt", expiresAt: NOW + 1, userId: "u", email: "a@b.c" };
+  await api.signOut(sess); await api.signOut(sess, "global"); await api.signOut(sess, "others"); await api.signOut(sess, "bogus");
+  check("O.10 signOut 请求：POST /auth/v1/logout?scope=...，默认 local，非法值回落 local", JSON.stringify(urls.map((x) => x[0] + " " + x[1].replace("https://x.supabase.co", ""))) === JSON.stringify(["POST /auth/v1/logout?scope=local", "POST /auth/v1/logout?scope=global", "POST /auth/v1/logout?scope=others", "POST /auth/v1/logout?scope=local"]), JSON.stringify(urls));
+  status = 500;
+  const bad = await api.signOut(sess);
+  check("O.10 signOut 服务器返回 500：如实返回 ok:false（不当成成功）", bad.ok === false && bad.kind === "server", JSON.stringify(bad));
 }
 
 const failed = results.filter((r) => !r).length;

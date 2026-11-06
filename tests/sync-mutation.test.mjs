@@ -49,7 +49,7 @@ try {
     {
       name: "强制退出也删除未上传的本机副本",
       file: "sync.js",
-      from: "const localOk = (force && pending) ? setCurrentAccount(storage, null) : logoutLocal(storage, uid);",
+      from: "const localOk = keepCopy ? setCurrentAccount(storage, null) : logoutLocal(storage, uid);",
       to: "const localOk = logoutLocal(storage, uid);",
     },
     {
@@ -160,8 +160,8 @@ try {
     {
       name: "普通退出在 signOut 失败时仍清掉登录",
       file: "sync.js",
-      from: "if (signOutFailed && !force && !forceLocal) {",
-      to: "if (false && signOutFailed && !force && !forceLocal) {",
+      from: "    if (!rv.ok) {\n      const rb = rollbackLocal(uid, c.snap);",
+      to: "    if (false) {\n      const rb = rollbackLocal(uid, c.snap);",
     },
     {
       name: "五次冲突后仍盲目重试",
@@ -208,8 +208,60 @@ try {
     {
       name: "DB-3：强制退出不核对凭证是否真的清掉",
       file: "sync.js",
-      from: "if (!clearStoredAuthVerified()) {",
-      to: "if (false && !clearStoredAuthVerified()) {",
+      from: "const authOk = localOk && (!clearAuth || clearStoredAuthVerified());",
+      to: "const authOk = localOk && (!clearAuth || (clearStoredAuthVerified(), true));",
+    },
+    {
+      name: "DB-3.1：退出不带 scope（Supabase 默认 global，会把其他设备一起踢掉）",
+      file: "sync.js",
+      from: 'const so = await api.signOut(sess, "local");',
+      to: 'const so = await api.signOut(sess);',
+    },
+    {
+      name: "DB-3.1：cloud-api 的 logout 请求不带 scope 参数",
+      file: "cloud-api.js",
+      from: 'query: "scope=" + sc',
+      to: 'query: undefined',
+    },
+    {
+      name: "DB-3.1：普通退出先撤销云端会话、再清本机（本机失败时云端已不可逆）",
+      file: "sync.js",
+      from: `    const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
+    if (!c.ok) return c.result;
+    const rv = await revokeCloudSession(session);`,
+      to: `    const rv0 = await revokeCloudSession(session);
+    const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
+    if (!c.ok) return c.result;
+    const rv = rv0;`,
+    },
+    {
+      name: "DB-3.1：强制退出先撤销云端会话、再清本机",
+      file: "sync.js",
+      from: `      const c = cleanLocal(uid, { clearAuth: true, keepCopy });
+      if (!c.ok) return c.result;
+      if (forceLocal)`,
+      to: `      if (!forceLocal) await revokeCloudSession(sess);
+      const c = cleanLocal(uid, { clearAuth: true, keepCopy });
+      if (!c.ok) return c.result;
+      if (forceLocal)`,
+    },
+    {
+      name: "DB-3.1：forceLocalLogout 也去联网撤销云端会话（不再是纯本机退出）",
+      file: "sync.js",
+      from: "if (forceLocal) { finishLocalLogout();",
+      to: "if (false) { finishLocalLogout();",
+    },
+    {
+      name: "DB-3.1：云端 signOut 失败后不回滚本机（副本和指针已删却还停在登录）",
+      file: "sync.js",
+      from: "      const rb = rollbackLocal(uid, c.snap);\n      const message = rb.all",
+      to: "      const rb = { all: true, copyRestored: true, accountRestored: true };\n      const message = rb.all",
+    },
+    {
+      name: "DB-3.1：signOut 返回 401（会话本来就失效）被当成失败，退出卡死",
+      file: "sync.js",
+      from: 'if (so.kind === "auth" || so.status === 404) return { ok: true, alreadyInvalid: true };',
+      to: "",
     },
     {
       name: "删号后本机清理失败仍宣称成功",

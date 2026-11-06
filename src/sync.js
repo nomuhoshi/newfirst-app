@@ -609,9 +609,63 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       return marker?.revoked === true && !marker.session && !marker.accessToken && !marker.refreshToken;
     } catch { return false; }
   }
-  // 有没同步的内容时先试着同步一次；同步失败就返回 { ok:false, pending:true }，界面让用户确认；force 才会继续退出。
-  // 普通退出：云端 signOut 失败，或本机仍有未上传副本时，保持登录，不删副本。
-  // 强制退出：即使 signOut 失败也清本机凭证；未上传副本留着。本机清理失败则不宣称已退出。
+  // ---- 退出的顺序（DB-3.1）----
+  // 云端撤销 refresh token 是不可逆的（Supabase：退出后 refresh token 被撤销，access token 到过期前仍可用）。
+  // 所以“可能失败、又能回滚”的本机步骤必须排在云端撤销之前；云端撤销之后只允许做“失败也无害”的事（清掉已失效的凭证）。
+  //   普通退出：① 先把没上传的同步掉  ② 本机清理（副本 + 当前账号指针；凭证先不动），失败 → 回滚、不联网，云端会话原封不动
+  //            ③ 云端 signOut（scope=local，只结束这台设备的会话，不影响其他设备），失败 → 回滚本机、保持登录
+  //            ④ 清本机凭证（读回确认）；失败时云端已撤销、凭证已失效，仍算已退出，只提示残留
+  //   强制退出（force）：① 本机清理（含凭证，读回确认），失败 → 回滚、不联网  ② 尽力云端 signOut（scope=local），失败 → 已退出，提示云端会话可能仍有效
+  //   forceLocalLogout：只做本机清理，不联网、不撤销云端会话（提示云端会话可能仍有效）
+  function snapshotLocal(uid) {
+    const L = loadAccount(storage, uid, { now: now() });
+    if (!L.ok) return { ok: false };
+    let authRaw = null;
+    try { authRaw = storage.getItem(AUTH_KEY); } catch {}
+    return { ok: true, copy: L.copy ? clone(L.copy) : null, authRaw };
+  }
+  function rollbackLocal(uid, snap) {
+    const copyRestored = !snap.copy || saveAccount(storage, uid, snap.copy, { now: now() });
+    const accountRestored = setCurrentAccount(storage, uid);
+    let authRestored = true;
+    if (typeof snap.authRaw === "string") {
+      try {
+        if (storage.getItem(AUTH_KEY) !== snap.authRaw) storage.setItem(AUTH_KEY, snap.authRaw);
+        authRestored = storage.getItem(AUTH_KEY) === snap.authRaw;
+      } catch { authRestored = false; }
+    }
+    pending = copyStillUnsent(uid) || pending;
+    return { copyRestored, accountRestored, authRestored, all: copyRestored && accountRestored && authRestored };
+  }
+  // 本机清理：副本 + 账号指针；clearAuth 时再清凭证（读回确认）。任何一步失败 → 全部回滚，返回失败结果（调用方不得联网）。
+  function cleanLocal(uid, { clearAuth, keepCopy }) {
+    const snap = snapshotLocal(uid);
+    if (!snap.ok) return { ok: false, result: { ok: false, kind: "local", pending: true, message: "无法确认本机副本状态，暂未退出" } };
+    const localOk = keepCopy ? setCurrentAccount(storage, null) : logoutLocal(storage, uid);
+    const authOk = localOk && (!clearAuth || clearStoredAuthVerified());
+    if (localOk && authOk) return { ok: true, snap };
+    const rb = rollbackLocal(uid, snap);
+    const why = localOk ? "无法确认本机凭证已清除" : "本机退出未完成";
+    const message = rb.all ? `${why}，登录状态和学习副本已恢复；云端会话没有动` : `${why}；请检查本机登录状态和学习副本`;
+    setStatus(pending ? "pending" : "error", message);
+    return { ok: false, result: { ok: false, kind: "local", pending: true, copyRestored: rb.copyRestored, accountRestored: rb.accountRestored, authRestored: rb.authRestored, cloudUntouched: true, message } };
+  }
+  // 云端只结束这台设备的会话。401/403/404 = 这个会话本来就失效了，等于已经退出（和 Supabase 客户端的处理一致）。
+  async function revokeCloudSession(sess) {
+    if (!sess || !isSessionShape(sess)) return { ok: true, alreadyInvalid: true };
+    try {
+      const so = await api.signOut(sess, "local");
+      if (!so || so.ok !== false) return { ok: true };
+      if (so.kind === "auth" || so.status === 404) return { ok: true, alreadyInvalid: true };
+      return { ok: false, kind: so.kind || "server", message: so.message || "退出云端失败" };
+    } catch { return { ok: false, kind: "server", message: "退出云端失败" }; }
+  }
+  function finishLocalLogout() {
+    clearStale();
+    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
+    setStatus(null);
+  }
+
   async function logout({ force = false, forceLocal = false } = {}) {
     if (!userId) return { ok: true };
     const dropping = force || forceLocal;
@@ -625,48 +679,36 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       setStatus("pending", "还有进度没上传，没有退出");
       return { ok: false, pending: true, kind: "pending", message: "还有进度没上传，没有退出" };
     }
-    let signOutFailed = false, signOutKind = "server", signOutMessage = "退出云端失败";
-    if (session && isSessionShape(session)) {
-      try {
-        const so = await api.signOut(session);
-        if (so && so.ok === false) { signOutFailed = true; signOutKind = so.kind || "server"; signOutMessage = so.message || signOutMessage; }
-      } catch {
-        signOutFailed = true;
-      }
+    const sess = session;
+    // 没上传的东西还在时，强制退出也保留本机副本；同一个账号再登录会接着上传。
+    const keepCopy = dropping && (pending || copyStillUnsent(uid));
+    if (dropping) {
+      const c = cleanLocal(uid, { clearAuth: true, keepCopy });
+      if (!c.ok) return c.result;
+      if (forceLocal) { finishLocalLogout(); return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出（没有联网）。云端会话可能仍有效。" }; }
+      const rv = await revokeCloudSession(sess);
+      finishLocalLogout();
+      if (!rv.ok) return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出。云端会话可能仍有效。" };
+      return { ok: true };
     }
-    // 普通退出：云端没退出成功就保持登录，未上传副本一个字不动。
-    if (signOutFailed && !force && !forceLocal) {
-      return { ok: false, stayed: true, kind: signOutKind, pending: copyStillUnsent(uid), message: signOutMessage };
+    // 普通退出
+    if (sess && isSessionShape(sess)) {
+      // access token 快过期就先刷新；刷新被拒 = 会话已经失效，不用再撤销；断网等其他失败 → 不退出（没法撤销云端会话）。
+      const t = await ensureToken();
+      if (!t.ok && t.kind !== "auth") return { ok: false, stayed: true, kind: t.kind || "server", pending: copyStillUnsent(uid), message: t.message || "退出云端失败" };
     }
-    // 强制退出（没上传的内容还在）：本机副本留着，不删。同一个账号再登录时会接着上传；只有已同步的账号才删副本。
-    const beforeLocal = loadAccount(storage, uid, { now: now() });
-    if (!beforeLocal.ok) return { ok: false, kind: "local", pending: true, message: "无法确认本机副本状态，暂未退出" };
-    const beforeCopy = beforeLocal.copy ? clone(beforeLocal.copy) : null;
-    const localOk = (force && pending) ? setCurrentAccount(storage, null) : logoutLocal(storage, uid);
-    if (!localOk) {
-      const copyRestored = !beforeCopy || saveAccount(storage, uid, beforeCopy, { now: now() });
-      const accountRestored = setCurrentAccount(storage, uid);
-      pending = copyStillUnsent(uid);
-      const message = copyRestored && accountRestored
-        ? "本机退出未完成，登录状态和学习副本已恢复"
-        : "本机退出未完成；请检查本机登录状态和学习副本";
-      setStatus(pending ? "pending" : "error", message);
-      return { ok: false, kind: "local", pending: true, copyRestored, accountRestored, message };
+    const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
+    if (!c.ok) return c.result;
+    const rv = await revokeCloudSession(session);
+    if (!rv.ok) {
+      const rb = rollbackLocal(uid, c.snap);
+      const message = rb.all ? rv.message : `${rv.message}（本机状态恢复不完整，请检查登录状态和学习副本）`;
+      return { ok: false, stayed: true, kind: rv.kind, pending: copyStillUnsent(uid), copyRestored: rb.copyRestored, accountRestored: rb.accountRestored, message };
     }
-    if (!clearStoredAuthVerified()) {
-      const copyRestored = !beforeCopy || saveAccount(storage, uid, beforeCopy, { now: now() });
-      const accountRestored = setCurrentAccount(storage, uid);
-      pending = copyStillUnsent(uid);
-      const message = copyRestored && accountRestored
-        ? "无法确认本机凭证已清除，登录状态和学习副本已恢复"
-        : "无法确认本机凭证已清除；请检查本机登录状态和学习副本";
-      setStatus(pending ? "pending" : "error", message);
-      return { ok: false, kind: "local", pending: true, copyRestored, accountRestored, message };
-    }
-    clearStale();
-    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
-    setStatus(null);
-    if (signOutFailed) return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出。云端会话可能仍有效。" };
+    // 云端已撤销，本机副本和账号指针已清。最后清凭证：失败也只是残留一份已失效的令牌，不能再回头。
+    const authCleared = clearStoredAuthVerified();
+    finishLocalLogout();
+    if (!authCleared) return { ok: true, warning: "local-auth-leftover", message: "已退出。这台设备上残留的登录凭证没清掉，但它已被云端撤销、不能再用。" };
     return { ok: true };
   }
 

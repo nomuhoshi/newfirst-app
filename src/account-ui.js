@@ -148,16 +148,16 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       button(okLabel, async () => { close(); await okFn(); }, "btn3d wide " + (danger ? "danger" : "primary")), button("取消", close, "btn3d ghost wide"))]);
     async function doLogout(then) {
       const r = await sync.logout();
-      if (r.ok) { onSwitchedOut(); showToast(r.cloudSessionMaybeValid ? r.message : "已退出登录。"); if (then) then(); return; }
+      if (r.ok) { onSwitchedOut(); showToast(r.warning ? r.message : "已退出登录。"); if (then) then(); return; }
       if (r.stayed) sheetConfirm("云端退出失败", "这台设备仍保持登录，还没上传的进度也留在这里。可以稍后再试，或只在这台设备退出（云端会话可能仍有效）。", "只在这台设备退出", async () => {
         const f = await sync.forceLocalLogout();
         if (!f.ok) { showToast(f.message || "还没退出。"); return; }
-        onSwitchedOut(); showToast(f.cloudSessionMaybeValid ? f.message : "已退出登录。"); if (then) then();
+        onSwitchedOut(); showToast(f.warning ? f.message : "已退出登录。"); if (then) then();
       }, true);
       else if (r.pending) sheetConfirm("有进度还没上传", "现在连不上云端。退出后这些进度会先留在这台设备上，用同一个账号重新登录时会接着上传；建议联网后再退出。", "仍然退出", async () => {
         const f = await sync.logout({ force: true });
         if (!f.ok) { showToast(f.message || "还没退出。"); return; }
-        onSwitchedOut(); showToast(f.cloudSessionMaybeValid ? f.message : "已退出登录。"); if (then) then();
+        onSwitchedOut(); showToast(f.warning ? f.message : "已退出登录。"); if (then) then();
       }, true);
       else showToast(errorText(r));
     }

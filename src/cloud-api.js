@@ -52,8 +52,10 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
       const s = toSession(r.data);
       return s ? { ok: true, session: s } : { ok: false, kind: "server", message: "刷新登录返回的内容无法识别" };
     },
-    async signOut(session) {
-      const r = await req("/auth/v1/logout", { method: "POST", token: session.accessToken });
+    // scope：local 只结束这台设备的会话；global（Supabase 默认）会撤销该用户所有设备的 refresh token，所以默认用 local。
+    async signOut(session, scope = "local") {
+      const sc = scope === "global" || scope === "others" ? scope : "local";
+      const r = await req("/auth/v1/logout", { method: "POST", token: session.accessToken, query: "scope=" + sc });
       return r.ok ? { ok: true } : r;
     },
     // 读自己的进度（行级权限只会返回自己的那一行）：{ ok:true, row:null | { doc, rev } }
