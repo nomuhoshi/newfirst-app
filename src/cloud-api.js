@@ -1,6 +1,17 @@
 // Supabase 的最小客户端（只用 fetch，不依赖 SDK）：邮箱验证码登录 + 读取 / 保存进度。fetch 可以注入，所以能在 Node 里用假服务器测试。
 // 每个方法都返回 { ok:true, ... } 或 { ok:false, kind, message }，kind：
 //   "network" 连不上（离线 / 超时）；"auth" 登录失效或验证码不对；"rate-limit" 请求太频繁；"server" 其他服务器错误；"config" 没配置。
+const SESSION_GONE_CODES = new Set(["session_not_found", "user_not_found", "session_expired"]);
+function classifySignOutFailure(r) {
+  if (r.status !== 401 && r.status !== 403 && r.status !== 404) return null;
+  const code = r.errorCode || "";
+  if (SESSION_GONE_CODES.has(code)) return "gone";
+  if (code === "bad_jwt") return "token-invalid";
+  // 老版本 GoTrue 没有 error_code：只认 401 + 消息明确说 JWT / token 无效或过期
+  if (!code && r.status === 401 && /(jwt|token)[^]*(invalid|expired|malformed)|(invalid|expired|malformed)[^]*(jwt|token)/i.test(String(r.message || ""))) return "token-invalid";
+  return null;
+}
+
 export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeoutMs = 15000 }) {
   const base = String(url || "").replace(/\/+$/, "");
   const configured = !!(base && anonKey);
@@ -25,7 +36,8 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
     if (resp.ok) return { ok: true, status: resp.status, data };
     const msg = (data && (data.msg || data.message || data.error_description || data.error)) || `服务器返回 ${resp.status}`;
     const kind = resp.status === 429 ? "rate-limit" : resp.status === 401 || resp.status === 403 ? "auth" : "server";
-    return { ok: false, kind, status: resp.status, message: String(msg) };
+    const errorCode = data && typeof data === "object" && typeof data.error_code === "string" ? data.error_code : undefined;
+    return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}) };
   }
 
   const toSession = (d) => d && d.access_token && d.user?.id ? {
@@ -53,10 +65,18 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
       return s ? { ok: true, session: s } : { ok: false, kind: "server", message: "刷新登录返回的内容无法识别" };
     },
     // scope：local 只结束这台设备的会话；global（Supabase 默认）会撤销该用户所有设备的 refresh token，所以默认用 local。
+    // 失败时额外给出 sessionState，告诉调用方“这个失败是不是意味着会话已经没了”：
+    //   "gone"          服务器明确说这个会话 / 用户已不存在（session_not_found / user_not_found / session_expired）→ 等于已退出
+    //   "token-invalid" 服务器说访问令牌（JWT）无效或过期（bad_jwt）→ 访问令牌死了，但 refresh token 的会话还在不在不知道，要再核实
+    //   不设置          其他一切（通用 403、路由 404、代理错误、5xx、400、429、没带令牌 401）→ 不能当成已退出
+    // 依据：supabase-js(auth-js) 的 _signOut 对 401/403/404 一律按状态码忽略；GoTrue /logout 本身不返回这三种，
+    // 它们来自鉴权中间件（bad_jwt / session_not_found / user_not_found 是 403，no_authorization 是 401）。我们收紧为看错误码。
     async signOut(session, scope = "local") {
       const sc = scope === "global" || scope === "others" ? scope : "local";
       const r = await req("/auth/v1/logout", { method: "POST", token: session.accessToken, query: "scope=" + sc });
-      return r.ok ? { ok: true } : r;
+      if (r.ok) return { ok: true };
+      const sessionState = classifySignOutFailure(r);
+      return sessionState ? { ...r, sessionState } : r;
     },
     // 读自己的进度（行级权限只会返回自己的那一行）：{ ok:true, row:null | { doc, rev } }
     async getProgress(session) {

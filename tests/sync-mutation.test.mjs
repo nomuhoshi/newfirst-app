@@ -214,8 +214,8 @@ try {
     {
       name: "DB-3.1：退出不带 scope（Supabase 默认 global，会把其他设备一起踢掉）",
       file: "sync.js",
-      from: 'const so = await api.signOut(sess, "local");',
-      to: 'const so = await api.signOut(sess);',
+      from: 'let so = await api.signOut(sess, "local");',
+      to: 'let so = await api.signOut(sess);',
     },
     {
       name: "DB-3.1：cloud-api 的 logout 请求不带 scope 参数",
@@ -228,11 +228,11 @@ try {
       file: "sync.js",
       from: `    const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
-    const rv = await revokeCloudSession(session);`,
+    const rv = await revokeCloudSession(session, {`,
       to: `    const rv0 = await revokeCloudSession(session);
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
-    const rv = rv0;`,
+    const rv = rv0; ({`,
     },
     {
       name: "DB-3.1：强制退出先撤销云端会话、再清本机",
@@ -258,10 +258,64 @@ try {
       to: "      const rb = { all: true, copyRestored: true, accountRestored: true };\n      const message = rb.all",
     },
     {
-      name: "DB-3.1：signOut 返回 401（会话本来就失效）被当成失败，退出卡死",
+      name: "DB-3.1：session_not_found 也被当成失败，退出卡死",
       file: "sync.js",
-      from: 'if (so.kind === "auth" || so.status === 404) return { ok: true, alreadyInvalid: true };',
+      from: "if (so.sessionState === \"gone\") return { ok: true, alreadyInvalid: true };\n      if (so.sessionState !== \"token-invalid\") return fail(so);",
+      to: "if (so.sessionState !== \"token-invalid\") return fail(so);",
+    },
+    {
+      name: "DB-3.1：通用 403 / 路由 404 被当成“会话已失效”（假退出）",
+      file: "cloud-api.js",
+      from: "if (SESSION_GONE_CODES.has(code)) return \"gone\";",
+      to: "if (SESSION_GONE_CODES.has(code) || r.status === 403 || r.status === 404) return \"gone\";",
+    },
+    {
+      name: "DB-3.1：bad_jwt 不核实 refresh token 就当已退出",
+      file: "sync.js",
+      from: "if (so.sessionState !== \"token-invalid\") return fail(so);",
+      to: "if (so.sessionState === \"token-invalid\") return { ok: true, alreadyInvalid: true };\n      return fail(so);",
+    },
+    {
+      name: "DB-3.1：bad_jwt 刷新后没更新回滚快照（回滚会恢复已被轮换作废的旧凭证）",
+      file: "sync.js",
+      from: "      if (onSession) onSession();\n",
       to: "",
+    },
+    {
+      name: "DB-3.1：bad_jwt 时断网无法核实也当成已退出",
+      file: "sync.js",
+      from: "return rf.kind === \"auth\" ? { ok: true, alreadyInvalid: true } : fail(rf);",
+      to: "return { ok: true, alreadyInvalid: true };",
+    },
+    {
+      name: "DB-3.1：cloud-api 丢掉 error_code",
+      file: "cloud-api.js",
+      from: "...(errorCode ? { errorCode } : {})",
+      to: "",
+    },
+    {
+      name: "DB-3.1：云端撤销后凭证清不掉，不留残留标记",
+      file: "sync.js",
+      from: "      leftoverAuth = true;\n      const until",
+      to: "      leftoverAuth = false;\n      const until",
+    },
+    {
+      name: "DB-3.1：再次清理不读回确认就宣称成功",
+      file: "sync.js",
+      from: "if (clearStoredAuthVerified()) { leftoverAuth = false; return { ok: true }; }",
+      to: "clearStoredAuthVerified(); leftoverAuth = false; return { ok: true };",
+    },
+    {
+      name: "DB-3.1：登录中也允许“清理残留凭证”（会清掉在用的凭证）",
+      file: "sync.js",
+      from: "if (userId || getCurrentAccount(storage)) return { ok: false, kind: \"logged-in\"",
+      to: "if (false) return { ok: false, kind: \"logged-in\"",
+    },
+    {
+      name: "DB-3.1：别的标签页已登录时仍把凭证当残留",
+      file: "sync.js",
+      from: "if (userId || getCurrentAccount(storage)) return false;",
+      to: "if (userId) return false;",
     },
     {
       name: "删号后本机清理失败仍宣称成功",

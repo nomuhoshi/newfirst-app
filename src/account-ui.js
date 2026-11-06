@@ -55,9 +55,19 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           h("h2", { text: "登录 / 注册" }),
           h("p", { text: reason || "用邮箱登录，换手机或 iPad 也能接着学。没有账号会自动创建；不用设密码。" }),
           input, go, msg,
+          ...(sync.hasLeftoverAuth && sync.hasLeftoverAuth() ? [leftoverButton()] : []),
           button("先不登录", done, "btn3d ghost wide"),
         );
         setTimeout(() => input.focus(), 50);
+      }
+      // 上次退出时云端已撤销、但这台设备的登录凭证没清掉：给一个再次清理的入口（不联网，读回确认才算成功）
+      function leftoverButton() {
+        const b = button("清理本机残留的登录凭证", async () => {
+          b.disabled = true;
+          const r = await sync.retryAuthCleanup();
+          if (r.ok) { b.remove(); say("已清理本机残留的登录凭证。", false); } else { b.disabled = false; say(r.message || "还是没清掉，请检查浏览器的存储权限后再试。"); }
+        }, "btn3d ghost wide", { "data-clean-auth": "" });
+        return b;
       }
 
       function stepCode() {

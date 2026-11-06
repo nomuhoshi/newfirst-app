@@ -650,14 +650,28 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     setStatus(pending ? "pending" : "error", message);
     return { ok: false, result: { ok: false, kind: "local", pending: true, copyRestored: rb.copyRestored, accountRestored: rb.accountRestored, authRestored: rb.authRestored, cloudUntouched: true, message } };
   }
-  // 云端只结束这台设备的会话。401/403/404 = 这个会话本来就失效了，等于已经退出（和 Supabase 客户端的处理一致）。
-  async function revokeCloudSession(sess) {
+  // 云端只结束这台设备的会话。只有“明确表示会话已经失效”的响应才算已退出：
+  //   sessionState "gone"（session_not_found / user_not_found / session_expired）→ 会话本来就没了，等于已退出；
+  //   sessionState "token-invalid"（bad_jwt）→ 只能说明访问令牌坏了，会话还在不在要核实：refresh 被拒 = 已死；
+  //     refresh 还活着 = 拿新令牌再 signOut 一次（刷新会轮换 refresh token，新凭证必须写回存储，onSession 通知调用方更新回滚快照）；
+  //   通用 403、路由 404、代理错误、5xx、断网等一律算失败，调用方要回滚并保持登录。
+  async function revokeCloudSession(sess, { onSession } = {}) {
     if (!sess || !isSessionShape(sess)) return { ok: true, alreadyInvalid: true };
+    const fail = (so) => ({ ok: false, kind: so.kind || "server", message: so.message || "退出云端失败" });
     try {
-      const so = await api.signOut(sess, "local");
+      let so = await api.signOut(sess, "local");
       if (!so || so.ok !== false) return { ok: true };
-      if (so.kind === "auth" || so.status === 404) return { ok: true, alreadyInvalid: true };
-      return { ok: false, kind: so.kind || "server", message: so.message || "退出云端失败" };
+      if (so.sessionState === "gone") return { ok: true, alreadyInvalid: true };
+      if (so.sessionState !== "token-invalid") return fail(so);
+      const rf = await api.refresh(sess);
+      if (!rf.ok) return rf.kind === "auth" ? { ok: true, alreadyInvalid: true } : fail(rf);
+      if (!isSessionShape(rf.session) || rf.session.userId !== userId) return { ok: false, kind: "auth", message: "登录账号不一致，暂未退出" };
+      session = rf.session; email = session.email || email; writeAuth();
+      if (onSession) onSession();
+      so = await api.signOut(session, "local");
+      if (!so || so.ok !== false) return { ok: true };
+      if (so.sessionState === "gone") return { ok: true, alreadyInvalid: true };
+      return fail(so);
     } catch { return { ok: false, kind: "server", message: "退出云端失败" }; }
   }
   function finishLocalLogout() {
@@ -699,17 +713,40 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
-    const rv = await revokeCloudSession(session);
+    const rv = await revokeCloudSession(session, { onSession: () => { try { c.snap.authRaw = storage.getItem(AUTH_KEY); } catch { /* 读不到就保留旧快照 */ } } });
     if (!rv.ok) {
       const rb = rollbackLocal(uid, c.snap);
       const message = rb.all ? rv.message : `${rv.message}（本机状态恢复不完整，请检查登录状态和学习副本）`;
       return { ok: false, stayed: true, kind: rv.kind, pending: copyStillUnsent(uid), copyRestored: rb.copyRestored, accountRestored: rb.accountRestored, message };
     }
     // 云端已撤销，本机副本和账号指针已清。最后清凭证：失败也只是残留一份已失效的令牌，不能再回头。
+    const expiresAt = isSessionShape(session) ? session.expiresAt : null;
     const authCleared = clearStoredAuthVerified();
     finishLocalLogout();
-    if (!authCleared) return { ok: true, warning: "local-auth-leftover", message: "已退出。这台设备上残留的登录凭证没清掉，但它已被云端撤销、不能再用。" };
+    if (!authCleared) {
+      // 云端撤销的是 refresh token（这个会话）；访问令牌（JWT）要到期才失效，所以不能说“已完全失效”。
+      leftoverAuth = true;
+      const until = Number.isFinite(expiresAt) ? new Date(expiresAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : null;
+      return { ok: true, warning: "local-auth-leftover", authLeftover: true, accessTokenValidUntil: expiresAt,
+        message: `已退出，云端已撤销这台设备的登录。但本机残留的登录凭证没清掉：它的刷新令牌已失效，访问令牌${until ? "最晚到 " + until + " 前" : "在到期前"}仍可能有效。请再次清理。` };
+    }
     return { ok: true };
+  }
+
+  // 云端已撤销、但本机凭证没清掉：没有账号（已退出）时，存储里还有一份真凭证。
+  let leftoverAuth = false;
+  function hasLeftoverAuth() {
+    if (userId || getCurrentAccount(storage)) return false; // 别的标签页已登录同一份存储：那份凭证是在用的，不是残留
+    if (leftoverAuth) return true;
+    try { return !!readAuth(); } catch { return false; }
+  }
+  // 用户可以随时再次清理（不联网）。只在没登录时执行，绝不清登录中的凭证；清理成功必须读回确认。
+  async function retryAuthCleanup() {
+    if (userId || getCurrentAccount(storage)) return { ok: false, kind: "logged-in", message: "还在登录状态，不能清理登录凭证" };
+    if (!hasLeftoverAuth()) { leftoverAuth = false; return { ok: true, nothingToClean: true }; }
+    if (clearStoredAuthVerified()) { leftoverAuth = false; return { ok: true }; }
+    leftoverAuth = true;
+    return { ok: false, kind: "local", message: "本机登录凭证还是没清掉；请检查浏览器的存储权限后再试" };
   }
 
   function forceLocalLogout() {
@@ -755,7 +792,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   return {
-    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, forceLocalLogout, deleteAccount,
+    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, deleteAccount,
     account: () => (userId ? { userId, email } : null),
     status: () => ({ status, pending, message: lastError }),
   };

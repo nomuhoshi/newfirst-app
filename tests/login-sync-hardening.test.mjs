@@ -47,6 +47,19 @@ function noNetApi() {
     async signOut() { calls.push("signOut"); return { ok: true }; },
   };
 }
+// DB-3.1 退出异常：用真实的 cloud-api 把“服务器返回什么”翻译成 signOut 的返回值，fake 直接复用，保证测试和真实翻译一致
+const SHAPE_SESS = { accessToken: "at", refreshToken: "rt", expiresAt: 1, userId: "u", email: "a@b.c" };
+async function signOutShape(status, body) {
+  const api = createApi({ url: "https://x.supabase.co", anonKey: "anon", fetchFn: async () => ({ ok: false, status, text: async () => (typeof body === "string" ? body : JSON.stringify(body)) }) });
+  return api.signOut(SHAPE_SESS);
+}
+const SO_SHAPES = {
+  gone: await signOutShape(403, { code: 403, error_code: "session_not_found", msg: "Session from session_id claim in JWT does not exist" }),
+  forbidden: await signOutShape(403, { code: 403, error_code: "not_admin", msg: "User not allowed" }),
+  route404: await signOutShape(404, "404 page not found"),
+  proxy502: await signOutShape(502, "<html>Bad Gateway</html>"),
+  badJwt: await signOutShape(403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired" }),
+};
 function fakeCloud() {
   const users = new Map(), rows = new Map(), tokens = new Map(), calls = [];
   let seq = 0;
@@ -61,6 +74,7 @@ function fakeCloud() {
     tokens.set(at, uid); tokens.set(rt, uid); sidOf.set(at, sid); sidOf.set(rt, sid); sidUser.set(sid, uid);
     return { accessToken: at, refreshToken: rt, expiresAt: NOW + 3600_000, userId: uid, email };
   };
+  const usedRt = new Set();
   const uidOf = (s) => tokens.get(s?.accessToken);
   const api = {
     calls, state, users, rows, tokens, revokedSids, sidOf,
@@ -82,13 +96,18 @@ function fakeCloud() {
       const uid = tokens.get(s?.refreshToken);
       const sid = sidOf.get(s?.refreshToken);
       if (!uid || revokedSids.has(sid)) return { ok: false, kind: "auth", message: "Invalid Refresh Token: Refresh Token Not Found" };
+      if (usedRt.has(s.refreshToken)) return { ok: false, kind: "auth", message: "Invalid Refresh Token: Already Used" }; // 刷新令牌一次性：旧的用过就作废（真实 Supabase 同样）
+      usedRt.add(s.refreshToken);
       return { ok: true, session: issue(uid, s.email, sid) };
     },
     async signOut(s, scope = "global") {
       calls.push(["signOut", scope]);
       const mode = state.signOutMode || "ok"; // ok | fail(没撤销，返回断网) | lost-response(已撤销，但响应丢了) | invalid(401)
       if (mode === "fail") return net;
-      if (mode === "invalid") return authErr;
+      if (mode === "invalid" || mode === "gone") return SO_SHAPES.gone;
+      if (mode === "forbidden" || mode === "route404" || mode === "proxy502") return SO_SHAPES[mode];
+      if (mode === "bad-jwt") return SO_SHAPES.badJwt;
+      if (mode === "bad-jwt-once") { state.signOutMode = "ok"; return SO_SHAPES.badJwt; }
       const uid = tokens.get(s?.accessToken), sid = sidOf.get(s?.accessToken);
       if (!uid) return authErr;
       for (const [x, u] of sidUser) {
@@ -1719,6 +1738,144 @@ for (const [label, breakIt] of [["副本删不掉", (t) => breakRemove(t.stA, "s
   status = 500;
   const bad = await api.signOut(sess);
   check("O.10 signOut 服务器返回 500：如实返回 ok:false（不当成成功）", bad.ok === false && bad.kind === "server", JSON.stringify(bad));
+}
+
+// ======================================================================
+// P. DB-3.1 退出异常处理（2026-11-06 19:23）
+//    依据：supabase-js auth-js 的 _signOut 对 401/403/404 一律忽略（按状态码）；GoTrue 服务端 /logout 自己不返回这三种，
+//    它们来自鉴权中间件：bad_jwt / session_not_found / user_not_found 为 403，no_authorization 为 401。
+//    我们收紧为“明确的错误码”才算会话已失效；其余 403 / 404 / 5xx / 代理错误都不是退出成功。
+// ======================================================================
+// ---- P.1 cloud-api 对 signOut 失败的判断（真实翻译）----
+{
+  const sh = async (status, body) => signOutShape(status, body);
+  const st = async (status, body) => (await sh(status, body)).sessionState ?? null;
+  check("P.1 403 session_not_found → 会话已不存在 (gone)", (await st(403, { error_code: "session_not_found" })) === "gone");
+  check("P.1 403 user_not_found / 404 user_not_found（旧版）→ gone", (await st(403, { error_code: "user_not_found" })) === "gone" && (await st(404, { error_code: "user_not_found" })) === "gone");
+  check("P.1 403 bad_jwt → 访问令牌无效，但不等于会话已撤销 (token-invalid，需再核实)", (await st(403, { error_code: "bad_jwt" })) === "token-invalid");
+  check("P.1 老版本 GoTrue 没有 error_code：401 + 消息明确说 JWT 过期 → token-invalid", (await st(401, { msg: "invalid JWT: token is expired" })) === "token-invalid");
+  check("P.1 通用权限拒绝 403 not_admin → 不是会话失效", (await st(403, { error_code: "not_admin", msg: "denied" })) === null);
+  check("P.1 403 纯文本 / 代理拦截 → 不是会话失效", (await st(403, "Forbidden")) === null && (await st(403, "<html>blocked by proxy</html>")) === null);
+  check("P.1 404 路由不存在（没有 user_not_found）→ 不是会话失效", (await st(404, "404 page not found")) === null && (await st(404, { msg: "no Route matched" })) === null);
+  check("P.1 401 no_authorization（我们没带令牌）→ 不是会话失效", (await st(401, { error_code: "no_authorization", msg: "This endpoint requires a valid Bearer token" })) === null);
+  check("P.1 401 apikey 问题 → 不是会话失效", (await st(401, { message: "Invalid API key" })) === null);
+  check("P.1 5xx / 400(scope 非法) / 429 → 不是会话失效", (await st(502, "bad gateway")) === null && (await st(500, { msg: "Error logging out user" })) === null && (await st(400, { error_code: "validation_failed" })) === null && (await st(429, { error_code: "over_request_rate_limit" })) === null);
+  check("P.1 gone 码配了不相干的状态（如 500）不算 gone", (await st(500, { error_code: "session_not_found" })) === null);
+  const g = await sh(403, { error_code: "session_not_found", msg: "x" });
+  check("P.1 失败结果保留 status 和 errorCode 供排查", g.ok === false && g.status === 403 && g.errorCode === "session_not_found", JSON.stringify(g));
+}
+
+// ---- P.2 通用 403 / 路由 404 / 代理 502：不是退出成功 —— 回滚、保持登录、云端会话没动，恢复后重试成功 ----
+for (const mode of ["forbidden", "route404", "proxy502"]) {
+  const t = await twoDevices("p2-" + mode + "@example.com");
+  const sA = authSession(t.stA), authBefore = t.stA.getItem(AUTH_KEY), xp0 = copyXp(t.stA, t.uid);
+  t.cloud.state.signOutMode = mode;
+  const r = await t.A.logout();
+  check("P.2 " + mode + "：不当成退出成功（ok:false, stayed:true），仍是登录态", r.ok === false && r.stayed === true && t.A.account() !== null && getCurrentAccount(t.stA) === t.uid, JSON.stringify(r));
+  check("P.2 " + mode + "：凭证和本机副本原样，XP 没变，云端会话还活着", t.stA.getItem(AUTH_KEY) === authBefore && copyXp(t.stA, t.uid) === xp0 && (await refreshAlive(t.cloud, sA)) === true);
+  t.cloud.state.signOutMode = "ok";
+  const r2 = await t.A.logout();
+  check("P.2 " + mode + "：恢复后再退出一次成功，云端会话被撤销", r2.ok === true && t.A.account() === null && (await refreshAlive(t.cloud, sA)) === false, JSON.stringify(r2));
+}
+
+// ---- P.3 云端明确说会话不存在(session_not_found)：才按已退出处理 ----
+{
+  const t = await twoDevices("p3@example.com");
+  t.cloud.state.signOutMode = "gone";
+  const r = await t.A.logout();
+  check("P.3 session_not_found：按已退出处理，本机清理完成，只调用了一次 signOut", r.ok === true && t.A.account() === null && getCurrentAccount(t.stA) === null && signOutCalls(t.cloud).length === 1, JSON.stringify(r));
+}
+
+// ---- P.4 bad_jwt（访问令牌无效）不等于会话已撤销：先核实 refresh token ----
+{
+  // (a) refresh 也被拒：会话确实死了 → 已退出，不卡死
+  const a = await twoDevices("p4a@example.com");
+  a.cloud.revokedSids.add(a.cloud.sidOf.get(authSession(a.stA).refreshToken));
+  a.cloud.state.signOutMode = "bad-jwt";
+  const ra = await a.A.logout();
+  check("P.4a bad_jwt 且 refresh token 也被拒：会话已死，按已退出处理", ra.ok === true && a.A.account() === null && getCurrentAccount(a.stA) === null, JSON.stringify(ra));
+  // (b) refresh 还活着：刷新后拿新令牌重试 signOut，真的撤销了才算退出
+  const b = await twoDevices("p4b@example.com");
+  const sB0 = authSession(b.stA);
+  b.cloud.state.signOutMode = "bad-jwt-once";
+  const rb = await b.A.logout();
+  const sCalls = signOutCalls(b.cloud).length;
+  check("P.4b bad_jwt 一次、refresh 还活着：刷新后重试 signOut 成功，云端会话真的被撤销", rb.ok === true && sCalls === 2 && (await refreshAlive(b.cloud, sB0)) === false && b.A.account() === null, JSON.stringify({ rb, sCalls }));
+  const sOther = authSession(b.stB);
+  check("P.4b 重试仍是 scope=local：另一台设备不受影响", (await refreshAlive(b.cloud, sOther)) === true && JSON.stringify(signOutCalls(b.cloud).map((c) => c[1])) === JSON.stringify(["local", "local"]));
+  // (c) 一直 bad_jwt 但 refresh 活着：不能宣称退出；保持登录；存储里是刷新后的新凭证（旧的已被轮换作废），且仍能用
+  const c = await twoDevices("p4c@example.com");
+  const xpC = copyXp(c.stA, c.uid);
+  c.cloud.state.signOutMode = "bad-jwt";
+  const rc = await c.A.logout();
+  const stored = authSession(c.stA);
+  check("P.4c 一直 bad_jwt 但 refresh 还活着：不宣称退出，保持登录，副本不丢", rc.ok === false && rc.stayed === true && c.A.account() !== null && getCurrentAccount(c.stA) === c.uid && copyXp(c.stA, c.uid) === xpC, JSON.stringify(rc));
+  check("P.4c 回滚后存储里是刷新后的有效凭证（没有恢复成已被轮换的旧令牌）", (await refreshAlive(c.cloud, stored)) === true, JSON.stringify(stored));
+  c.cloud.state.signOutMode = "ok";
+  const rc2 = await c.A.logout();
+  check("P.4c 之后重试退出成功", rc2.ok === true && c.A.account() === null && (await refreshAlive(c.cloud, stored)) === false, JSON.stringify(rc2));
+  // (d) bad_jwt 时断网无法核实：不宣称退出
+  const d = await twoDevices("p4d@example.com");
+  d.cloud.state.signOutMode = "bad-jwt";
+  const origRefresh = d.cloud.refresh; d.cloud.refresh = async (s) => { d.cloud.calls.push(["refresh", s?.refreshToken]); return { ok: false, kind: "network", message: "网络连不上，请检查网络后重试" }; };
+  const stored0 = d.stA.getItem(AUTH_KEY);
+  const rd = await d.A.logout();
+  check("P.4d bad_jwt 且无法核实 refresh token（断网）：不宣称退出，保持登录", rd.ok === false && rd.stayed === true && d.A.account() !== null && d.stA.getItem(AUTH_KEY) === stored0, JSON.stringify(rd));
+  d.cloud.refresh = origRefresh;
+}
+
+// ---- P.5 强制退出遇到同样的失败：本机照常退出，但不能说云端已撤销 ----
+for (const mode of ["forbidden", "route404", "proxy502", "bad-jwt"]) {
+  const t = await twoDevices("p5-" + mode + "@example.com");
+  t.cloud.state.signOutMode = mode;
+  const r = await t.A.logout({ force: true });
+  check("P.5 强制退出 + " + mode + "：本机已退出，明确标注云端会话可能仍有效", r.ok === true && r.cloudSessionMaybeValid === true && r.warning === "cloud-session-maybe-valid" && t.A.account() === null, JSON.stringify(r));
+}
+
+// ---- P.6 云端已撤销、本机凭证清不掉：如实说明（访问令牌可能还没过期），保留可再次清理的入口 ----
+{
+  const t = await twoDevices("p6@example.com");
+  const sA = authSession(t.stA);
+  const restoreRm = breakRemove(t.stA, AUTH_KEY), restoreSet = breakSet(t.stA, AUTH_KEY);
+  const r = await t.A.logout();
+  check("P.6 返回 local-auth-leftover，并明确 authLeftover / accessTokenValidUntil（令牌到期时间）", r.ok === true && r.warning === "local-auth-leftover" && r.authLeftover === true && r.accessTokenValidUntil === sA.expiresAt, JSON.stringify(r));
+  check("P.6 不再声称“已失效、不能再用”：说明访问令牌到期前可能仍可用，并提示再清理", typeof r.message === "string" && /访问令牌/.test(r.message) && /再次清理|重新清理|再清理/.test(r.message) && !/不能再用/.test(r.message), r.message);
+  check("P.6 云端：刷新令牌确实已撤销；访问令牌（JWT）到期前仍能读云端（所以不能说完全失效）", (await refreshAlive(t.cloud, sA)) === false && (await t.cloud.getProgress(sA)).ok === true);
+  check("P.6 本机：账号指针和副本已清；hasLeftoverAuth() 为 true", getCurrentAccount(t.stA) === null && t.A.hasLeftoverAuth() === true);
+  const realGet = t.stA.getItem; t.stA.getItem = (k) => { if (k === AUTH_KEY) throw new Error("read denied"); return realGet(k); };
+  check("P.6 存储读不出来时，内存里的残留标记仍让 hasLeftoverAuth() 为 true", t.A.hasLeftoverAuth() === true);
+  t.stA.getItem = realGet;
+  const again = await t.A.retryAuthCleanup();
+  check("P.6 存储还坏着时再次清理：如实返回失败，仍标记有残留", again.ok === false && t.A.hasLeftoverAuth() === true, JSON.stringify(again));
+  restoreRm(); restoreSet();
+  const fixed = await t.A.retryAuthCleanup();
+  check("P.6 存储恢复后再次清理：成功，凭证被清掉，残留标记消失", fixed.ok === true && t.stA.getItem(AUTH_KEY) === null && t.A.hasLeftoverAuth() === false, JSON.stringify(fixed));
+  // 页面重开后（新的 sync 实例，没有内存标记）也能发现并清理
+  const t2 = await twoDevices("p6b@example.com");
+  const un1 = breakRemove(t2.stA, AUTH_KEY), un2 = breakSet(t2.stA, AUTH_KEY);
+  await t2.A.logout(); un1(); un2();
+  const reopened = makeSync(t2.stA, t2.cloud);
+  check("P.6 页面重开：没有账号但存储里还留着登录凭证 → hasLeftoverAuth() 为 true，restore() 仍不会复活登录", reopened.restore(freshState()) === null && reopened.hasLeftoverAuth() === true);
+  const f2 = await reopened.retryAuthCleanup();
+  check("P.6 页面重开后也能再次清理", f2.ok === true && t2.stA.getItem(AUTH_KEY) === null && reopened.hasLeftoverAuth() === false, JSON.stringify(f2));
+}
+
+// ---- P.7 retryAuthCleanup 不能误清登录中的凭证 ----
+{
+  const t = await twoDevices("p7@example.com");
+  const before = t.stA.getItem(AUTH_KEY);
+  const r = await t.A.retryAuthCleanup();
+  check("P.7 还在登录状态时 retryAuthCleanup 拒绝执行，凭证原样", r.ok === false && t.stA.getItem(AUTH_KEY) === before && t.A.account() !== null && t.A.hasLeftoverAuth() === false, JSON.stringify(r));
+}
+
+// ---- P.7b 另一个标签页已登录（共用存储）：本标签页不能把它的凭证当“残留”清掉 ----
+{
+  const t = await twoDevices("p7b@example.com");
+  const tabB = makeSync(t.stA, t.cloud); // 同一份存储，还没 restore（没有内存账号）
+  const before = t.stA.getItem(AUTH_KEY);
+  check("P.7b 同存储别的标签页已登录：hasLeftoverAuth() 为 false", tabB.hasLeftoverAuth() === false);
+  const r = await tabB.retryAuthCleanup();
+  check("P.7b 同存储别的标签页已登录：拒绝清理，凭证原样，登录那边照常同步", r.ok === false && t.stA.getItem(AUTH_KEY) === before && (await t.A.syncNow()).ok === true, JSON.stringify(r));
 }
 
 const failed = results.filter((r) => !r).length;
