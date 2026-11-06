@@ -1,7 +1,7 @@
 // 账号进度的本机存储：每个账号一份独立副本，按账号编号隔离；游客记录（suipian.progress）完全不碰。
 // 所有函数都接收一个“像 localStorage 的对象”（getItem / setItem / removeItem），所以可以在 Node 里用假存储测试。
 // 读写都包在 try/catch 里：存储被禁用或写满时返回失败，不抛错、不留下写了一半的内容。
-import { normalizeDoc, docsEquivalent, isId, newId } from "./account-data.js";
+import { normalizeDoc, docsEquivalent, isId, newId, guestFingerprint } from "./account-data.js";
 import { HEARTS_MAX, HEART_REGEN_MS, regenHearts } from "./storage.js";
 
 export const GUEST_KEY = "suipian.progress";      // 游客记录（storage.js 在用，这里只读，只有 clearGuestAfterVerified 一处会删）
@@ -108,6 +108,14 @@ export function loadPendingImport(storage, userId) {
     && typeof p.fingerprint === "string" && FP_RE.test(p.fingerprint)
     && typeof p.guestRaw === "string" && p.guestState && typeof p.guestState === "object" && !Array.isArray(p.guestState);
   if (!ok) return { ok: false, code: "corrupt", message: "游客导入待办损坏" };
+  // 指纹格式正确仍可能指向另一份游客进度。保留原文，拒绝把篡改快照当作已授权导入。
+  let rawState;
+  try { rawState = JSON.parse(p.guestRaw); } catch { return { ok: false, code: "corrupt", message: "游客导入待办损坏" }; }
+  if (!rawState || typeof rawState !== "object" || Array.isArray(rawState)
+    || JSON.stringify(rawState) !== JSON.stringify(p.guestState)
+    || guestFingerprint(p.guestState) !== p.fingerprint) {
+    return { ok: false, code: "corrupt", message: "游客导入待办损坏" };
+  }
   return { ok: true, record: { version: 1, userId, guestId: p.guestId, choice: p.choice, fingerprint: p.fingerprint, guestRaw: p.guestRaw, guestState: p.guestState, createdAt: Number.isFinite(p.createdAt) ? p.createdAt : 0 } };
 }
 export function savePendingImport(storage, userId, record) {

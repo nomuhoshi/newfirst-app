@@ -7,7 +7,7 @@
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
 import { emptyDoc, mergeDocs, docsEquivalent, docToState, syncStateIntoDoc, guestHasLearning, guestImportStatus, guestFingerprint, markGuestImported, mergeGuestProgress, normalizeDoc, sumXp, isId } from "./account-data.js";
-import { SESSION_KEY, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport } from "./account-store.js";
+import { SESSION_KEY, PENDING_IMPORT_PREFIX, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
@@ -61,6 +61,41 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   };
   const writeAuth = () => { try { if (isSessionShape(session)) storage.setItem(AUTH_KEY, JSON.stringify(projectId ? { session, project: projectId } : { session })); else storage.removeItem(AUTH_KEY); } catch {} };
   const isUnsent = (c) => !!c && (c.base == null || !!(c.dirty && (c.dirty.hearts || c.dirty.prefs || c.dirty.content)));
+  // 损坏/不可读的游客导入待办是硬锁：任何普通同步都不得绕过它。
+  // 保持两种错误独立，且不安排自动重试；恢复交由后续专门流程处理。
+  function importGuard(result = null, uid = userId) {
+    if (!uid) return null;
+    const pi = result ?? loadPendingImport(storage, uid);
+    if (pi.ok) return null;
+    const corrupt = pi.code === "corrupt";
+    const failure = {
+      ok: false, kind: corrupt ? "import-corrupt" : "import-read-failed",
+      code: pi.code, pending: true, pendingImport: true, retryable: false,
+      message: corrupt
+        ? "游客导入待办损坏，云端同步已暂停。请保留本机数据，等待恢复处理。"
+        : "无法读取游客导入待办，云端同步已暂停。请检查本机存储后重试。",
+    };
+    pending = true;
+    setStatus(corrupt ? "import-recovery-required" : "import-read-failed", failure.message);
+    return failure;
+  }
+  // 专用导入必须绑定开始时的待办原文；其他标签页替换记录后，旧操作无权删游客或新待办。
+  function pendingIdentityGuard(uid, record, expectedRaw) {
+    const pi = loadPendingImport(storage, uid);
+    const invalid = importGuard(pi, uid);
+    if (invalid) return invalid;
+    let currentRaw;
+    try { currentRaw = storage.getItem(PENDING_IMPORT_PREFIX + uid); }
+    catch { return importGuard({ ok: false, code: "read-failed" }, uid); }
+    // 原文仍须逐字一致；解析记录逐字段比较，避免合法对象仅因字段顺序不同而被误判替换。
+    if (!pi.record || currentRaw !== expectedRaw || Object.keys(pi.record).some((key) => JSON.stringify(pi.record[key]) !== JSON.stringify(record[key]))) {
+      const message = "游客导入待办已被其他页面替换，当前导入已停止。请保留本机数据。";
+      pending = true;
+      setStatus("import-recovery-required", message);
+      return { ok: false, kind: "import-changed", pending: true, pendingImport: true, retryable: false, message };
+    }
+    return null;
+  }
   const readStale = () => { try { const r = JSON.parse(storage.getItem(STALE_KEY)); return r && typeof r.userId === "string" ? r : null; } catch { return null; } };
   const clearStale = () => { try { storage.removeItem(STALE_KEY); } catch {} };
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
@@ -121,8 +156,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
     // 专用待办也算“还有没上传的东西”：不能因为本机副本看起来干净就当成已完成。
     const pi = loadPendingImport(storage, uid);
-    pending = isUnsent(L.copy) || (pi.ok && !!pi.record);
-    setStatus(session ? "pending" : "need-login");
+    pending = isUnsent(L.copy) || !pi.ok || !!pi.record;
+    if (!importGuard(pi)) setStatus(session ? "pending" : "need-login");
     return { userId, email, state };
   }
 
@@ -138,6 +173,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const ok = saveAccount(storage, userId, { doc, base: L.copy.base, dirty }, { now: now() });
     if (!ok) return { ok: false, code: "save-failed", message: "无法保存到本机" };
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
+    // 本机学习继续正常保存，但不能因为 dirty 更新把恢复锁改回 pending 或启动定时同步。
+    const guard = importGuard();
+    if (guard) return { ok: true, syncBlocked: guard.kind };
     if (!isUnsent({ base: L.copy.base, dirty })) return { ok: true }; // 这次保存没有新内容（比如只是打开页面）：不标记“有没上传的进度”，也不触发同步
     pending = true;
     if (status !== "offline" && status !== "need-login") setStatus("pending");
@@ -146,7 +184,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   function scheduleSync(ms = 1500) {
-    if (!userId || !session) return;
+    if (!userId || !session || importGuard()) return;
     if (timer) return;
     timer = schedule(() => { timer = null; syncNow(); }, ms);
   }
@@ -154,6 +192,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   // ---------- 同步：读云端 → 合并 → 带版本号写回；被抢先就重来 ----------
   function syncNow() {
     if (!userId) return Promise.resolve({ ok: false, kind: "no-account" });
+    const guard = importGuard();
+    if (guard) return Promise.resolve(guard);
     if (running) { again = true; return running; }
     running = (async () => {
       try {
@@ -175,12 +215,15 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     return running;
   }
   function scheduleRetry() {
-    if (retryTimer || !userId || !session) return;
+    if (retryTimer || !userId || !session || importGuard()) return;
     const delay = [3000, 10000, 30000, 60000][Math.min(netFails, 3)]; netFails++;
     retryTimer = schedule(() => { retryTimer = null; syncNow(); }, delay);
   }
 
   async function syncOnce() {
+    // 必须早于 ensureToken()（它可能发出 refresh 请求）及任何云端读写。
+    const initialGuard = importGuard();
+    if (initialGuard) return initialGuard;
     setStatus("syncing");
     if (inCooldown()) {
       const limited = rateLimited();
@@ -197,10 +240,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // 先重试“游客导入”专用待办，再跑普通同步。否则普通合并可能把云端旧 true 当成最新，
     // 让用户已经做过的选择永远写不上去。
     const pi = loadPendingImport(storage, userId);
-    if (!pi.ok) { setStatus("error", pi.message); return { ok: false, kind: "local", message: pi.message }; }
+    // refresh 是异步的：再次检查，避免刷新期间待办变坏后继续写云端。
+    const afterTokenGuard = importGuard(pi);
+    if (afterTokenGuard) return afterTokenGuard;
     if (pi.record) {
       const pr = await runPendingImport(pi.record, session, { notify: true });
       if (!pr.ok || pr.pending) {
+        if (pr.kind === "import-corrupt" || pr.kind === "import-read-failed" || pr.kind === "import-changed") return { ...pr, retryable: false };
         pending = true;
         setStatus(pr.kind === "auth" ? "need-login" : "pending", pr.error || pr.message || "游客导入还没同步完，联网后会自动重试");
         return { ok: false, kind: pr.kind || "verify", message: pr.error || pr.message || "游客导入还没同步完", pendingImport: true, retryable: pr.kind !== "local" && pr.kind !== "data" && pr.kind !== "conflict" && pr.kind !== "auth" };
@@ -208,13 +254,19 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     for (let attempt = 0; attempt < 5; attempt++) {
       const remote = await api.getProgress(session);
+      const midFlightGuard = importGuard();
+      if (midFlightGuard) return midFlightGuard;
       if (!remote.ok) { noteRateLimit(remote); setStatus(statusFromFailure(remote), remote.message); return remote.kind === "rate-limit" ? { ...remote, retryable: false } : remote; }
       const L = loadAccount(storage, userId, { now: now() });
       if (!L.ok || !L.copy) { setStatus("error", "本机账号记录读取失败"); return { ok: false, kind: "local", message: "本机账号记录读取失败" }; }
       const copy = L.copy;
       let finalDoc, rev, replaced = false;
       if (!remote.row) {
+        const beforeCreateGuard = importGuard();
+        if (beforeCreateGuard) return beforeCreateGuard;
         const c = await api.createProgress(session, copy.doc);
+        const afterCreateGuard = importGuard();
+        if (afterCreateGuard) return afterCreateGuard;
         if (!c.ok) { noteRateLimit(c); setStatus(statusFromFailure(c), c.message); return c.kind === "rate-limit" ? { ...c, retryable: false } : c; }
         if (c.rev === null) continue; // 刚好有别的设备抢先创建了：重新读
         finalDoc = copy.doc; rev = c.rev;
@@ -225,7 +277,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         finalDoc = m.doc; rev = remote.row.rev;
         if (m.outcome === "remote-newer" && copy.dirty.content) replaced = true;
         if (!docsEquivalent(finalDoc, remote.row.doc)) {
+          const beforeSaveGuard = importGuard();
+          if (beforeSaveGuard) return beforeSaveGuard;
           const s = await api.saveProgress(session, remote.row.rev, finalDoc);
+          const afterSaveGuard = importGuard();
+          if (afterSaveGuard) return afterSaveGuard;
           if (!s.ok) { noteRateLimit(s); setStatus(statusFromFailure(s), s.message); return s.kind === "rate-limit" ? { ...s, retryable: false } : s; }
           if (s.rev === null) continue; // 被抢先：重新读、合并、再写
           rev = s.rev;
@@ -437,7 +493,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   // 选“安全合并”：重读最新云端 → 以云端为底合并游客 XP/次数（按设备取较大值）、关卡/日期并集 →
   // CAS 写入 → 读回与上传文档一致才允许删游客。冲突重读再合并再写，绝不 gen + 1 整份覆盖。
-  async function writeMergeGuest(uid, deviceId, record, sess) {
+  async function writeMergeGuest(uid, deviceId, record, sess, expectedRaw) {
     const guestId = record.guestId, guestState = record.guestState;
     const first = loadAccount(storage, uid, { now: now() });
     if (!first.ok) return { ok: false, kind: "local", message: first.message || "本机账号记录读取失败" };
@@ -489,6 +545,14 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!saveLoginCopy(uid, localDoc, rev, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
       return { ok: true, doc: localDoc, rev, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind: rbKind || "verify", error: rbError || "上传成功，但读回校验失败，游客记录已保留" };
     }
+    // readback 是异步的；清 dirty 和删游客之前，必须确认待办原文仍与开始时一致。
+    const beforeGuestClear = pendingIdentityGuard(uid, record, expectedRaw);
+    if (beforeGuestClear) {
+      const localDoc = withoutGuestImport(doc, guestId, lastCloud);
+      const dirty = { hearts: !!first.copy?.dirty.hearts, prefs: !!first.copy?.dirty.prefs, content: true };
+      if (!saveLoginCopy(uid, localDoc, rev, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
+      return { ...beforeGuestClear, doc: localDoc, rev, synced: false, verified: true, guestCleared: false, saved: true };
+    }
     // 先确保本机副本落盘，再删游客；两步都成功才清游客原文。
     if (!saveLoginCopy(uid, readBack, rev, cleanDirty, false)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
     let guestCleared = false, pending = false, clearError = "";
@@ -506,16 +570,23 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   // 执行一条专用待办：选中“保留云端”或“安全合并”，写云 + 读回确认。成功才清待办。
   async function runPendingImport(record, sess, { notify = false } = {}) {
     const uid = record.userId;
+    let expectedRaw;
+    try { expectedRaw = storage.getItem(PENDING_IMPORT_PREFIX + uid); }
+    catch { return importGuard({ ok: false, code: "read-failed" }, uid); }
+    const startGuard = pendingIdentityGuard(uid, record, expectedRaw);
+    if (startGuard) return startGuard;
     let r;
     if (record.choice === "cloud") {
       r = await writeKeepCloud(uid, record.guestId, record.guestState, record.fingerprint, sess);
     } else {
       const d = getDeviceId(storage);
       if (!d.ok) return { ok: false, kind: "local", message: d.message };
-      r = await writeMergeGuest(uid, d.id, record, sess);
+      r = await writeMergeGuest(uid, d.id, record, sess, expectedRaw);
     }
     if (!r.ok) return r;
     if (r.pending) { pending = true; return r; }
+    const finalGuard = pendingIdentityGuard(uid, record, expectedRaw);
+    if (finalGuard) return finalGuard;
     if (!clearPendingImport(storage, uid)) {
       pending = true;
       return { ...r, pending: true, synced: false, error: "游客导入已完成，但待办清除失败，将重试" };
@@ -597,6 +668,36 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   async function logout({ force = false, forceLocal = false } = {}) {
     if (!userId) return { ok: true };
     const dropping = force || forceLocal;
+    const guard = importGuard();
+    if (guard) {
+      if (!dropping) return guard; // 普通退出不能把损坏待办当成已完成。
+      // 用户明确选择本机强制退出：不调用云端、不删账号副本、游客或损坏待办。
+      const uid = userId;
+      const sessionRemoved = setCurrentAccount(storage, null);
+      let sessionGone = false;
+      try { sessionGone = storage.getItem(SESSION_KEY) === null; } catch {}
+      if (!sessionRemoved || !sessionGone) {
+        const rollback = setCurrentAccount(storage, uid);
+        let restored = false;
+        try { restored = storage.getItem(SESSION_KEY) === uid; } catch {}
+        return { ok: false, kind: "local", pending: true, rollbackFailed: !rollback || !restored,
+          message: restored ? "账号指针删除失败，退出未完成；本机数据仍保留" : "账号指针清理与恢复均失败，请保留本机数据并人工恢复" };
+      }
+      // 凭证删除失败后必须验证账号指针是否成功回滚，避免把半退出当作成功。
+      let authCleared = false;
+      try { storage.removeItem(AUTH_KEY); authCleared = storage.getItem(AUTH_KEY) === null; } catch {}
+      if (!authCleared) {
+        const rollback = setCurrentAccount(storage, uid);
+        let restored = false;
+        try { restored = storage.getItem(SESSION_KEY) === uid; } catch {}
+        return { ok: false, kind: "local", pending: true, rollbackFailed: !rollback || !restored,
+          message: restored ? "本机凭证清理失败，退出未完成；数据仍保留" : "凭证清理失败且账号指针回滚失败，请保留本机数据并人工恢复" };
+      }
+      clearStale();
+      session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
+      setStatus(null);
+      return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出。损坏的游客导入记录和本机进度已保留；云端会话可能仍有效。" };
+    }
     if (pending && !dropping) {
       const r = await syncNow();
       if (!r.ok) return { ok: false, pending: true, kind: r.kind, message: r.message };
@@ -647,8 +748,12 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   async function deleteAccount() {
     if (!userId) return { ok: false, kind: "no-account" };
+    const guard = importGuard();
+    if (guard) return guard;
     const t = await ensureToken();
     if (!t.ok) return t;
+    const afterTokenGuard = importGuard();
+    if (afterTokenGuard) return afterTokenGuard;
     const r = await api.deleteAccount(session);
     if (!r.ok) return r;
     const uid = userId;
