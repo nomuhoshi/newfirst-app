@@ -545,7 +545,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (result) {
       synced = result.synced; guestCleared = !!result.guestCleared; syncError = result.error || "";
       pending = !synced || !!result.pending;
-      if (synced && result.verified !== false) setStatus("synced");
+      // 云端已写入并读回一致，但还有收尾没完成（例如游客记录删除失败、待办清除失败）：仍是“待同步”，不得显示已同步。
+      if (synced && result.verified !== false && !result.pending) setStatus("synced");
+      else if (synced && result.verified !== false) setStatus("pending", syncError || "游客导入还有收尾没完成，联网后会自动重试");
       else if (synced) setStatus("error", syncError);
       else setStatus("pending", syncError || result.message || "游客导入还没同步完，联网后会自动重试");
     } else {

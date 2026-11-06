@@ -127,6 +127,36 @@ try {
       to: `    if (false) {
       const localDoc = withoutGuestImport(doc, guestId, lastCloud);`,
     },
+    {
+      name: "游客删除失败 / 待办未清时仍显示已同步",
+      file: "sync.js",
+      from: 'if (synced && result.verified !== false && !result.pending) setStatus("synced");',
+      to: 'if (synced && result.verified !== false) setStatus("synced");',
+    },
+    {
+      name: "删游客前不核对快照（会误删重试期间游客新学的内容）",
+      file: "sync.js",
+      from: "if (gnow.status === \"ok\" && gnow.raw === record.guestRaw) {",
+      to: "if (gnow.status === \"ok\") {",
+    },
+    {
+      name: "清游客时不核对快照原文（clearGuestAfterVerified 失去最后一道防线）",
+      file: "account-store.js",
+      from: "if (!cur.ok || cur.value !== guestSnapshotRaw) return false;",
+      to: "if (!cur.ok) return false;",
+    },
+    {
+      name: "安全合并重试把游客 XP 再加一次（按设备取较大值改成相加）",
+      file: "account-data.js",
+      from: "if (gxp > 0 || Object.hasOwn(out.xp, deviceId)) out.xp[deviceId] = Math.max(out.xp[deviceId] ?? 0, gxp);",
+      to: "if (gxp > 0 || Object.hasOwn(out.xp, deviceId)) out.xp[deviceId] = (out.xp[deviceId] ?? 0) + gxp;",
+    },
+    {
+      name: "安全合并失败时本机副本不标 dirty.content（重试前会被当成已同步）",
+      file: "sync.js",
+      from: "const dirty = { hearts: !!first.copy?.dirty.hearts, prefs: !!first.copy?.dirty.prefs, content: true };\n      if (!saveLoginCopy(uid, localDoc, lastBase, dirty, !first.copy))",
+      to: "const dirty = { hearts: !!first.copy?.dirty.hearts, prefs: !!first.copy?.dirty.prefs, content: false };\n      if (!saveLoginCopy(uid, localDoc, lastBase, dirty, !first.copy))",
+    },
   ];
 
   for (const m of mutations) {
