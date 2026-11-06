@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApi } from '../src/cloud-api.js';
 import { createSync, AUTH_KEY } from '../src/sync.js';
-import { GUEST_KEY, DEVICE_KEY, saveAccount, setCurrentAccount, getCurrentAccount } from '../src/account-store.js';
+import { GUEST_KEY, DEVICE_KEY, SESSION_KEY, saveAccount, setCurrentAccount, getCurrentAccount } from '../src/account-store.js';
 import { emptyDoc } from '../src/account-data.js';
 import { freshState } from '../src/storage.js';
 
@@ -24,7 +24,7 @@ const BAD_JWT = json(403, { code: 403, error_code: 'bad_jwt', msg: 'invalid JWT:
 const REFRESH_GENERIC_403 = json(403, { code: 403, error_code: 'not_admin', msg: 'User not allowed' });
 const REFRESH_DEAD = json(400, { code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token: Refresh Token Not Found' });
 
-function fixture({ pendingRaw = '{bad json', readFailure = false, refreshReply = REFRESH_DEAD } = {}) {
+function fixture({ pendingRaw = '{bad json', readFailure = false, refreshReply = REFRESH_DEAD, wrap = null } = {}) {
   const raw = mem(); raw.setItem(DEVICE_KEY, 'devX');
   const guestRaw = JSON.stringify({ ...freshState(), onboarded: true, xp: 40, lessonsCompleted: 3, done: { U1L1: true }, streak: 1, lastDay: TODAY });
   raw.setItem(GUEST_KEY, guestRaw);
@@ -32,7 +32,8 @@ function fixture({ pendingRaw = '{bad json', readFailure = false, refreshReply =
   assert.equal(setCurrentAccount(raw, UID), true);
   raw.setItem(AUTH_KEY, JSON.stringify({ session: SESSION() }));
   if (pendingRaw !== null) raw.setItem(PENDING_KEY, pendingRaw);
-  const storage = readFailure ? { ...raw, getItem(k) { if (k === PENDING_KEY) throw new Error('storage read failure'); return raw.getItem(k); } } : raw;
+  let storage = readFailure ? { ...raw, getItem(k) { if (k === PENDING_KEY) throw new Error('storage read failure'); return raw.getItem(k); } } : raw;
+  if (wrap) storage = wrap(raw);
   const urls = [];
   const fetchFn = async (url) => {
     urls.push(String(url));
@@ -92,4 +93,22 @@ test('X5: 对照（待办正常）+ bad_jwt 后刷新返回明确死亡码：才
   const r = await f.sync.logout();
   assert.equal(r.ok, true);
   assert.equal(f.snap().pointer, null);
+});
+
+test('X6: 故障注入——凭证删除「静默无效」（不抛错但没删掉）：强制退出必须读回发现，回滚账号指针，报告失败，数据原样', async () => {
+  const f = fixture({ wrap: (raw) => ({ ...raw, removeItem(k) { if (k === AUTH_KEY) return; return raw.removeItem(k); } }) });
+  const before = f.snap();
+  const r = await f.sync.forceLocalLogout();
+  assert.equal(r.ok, false); assert.equal(r.kind, 'local'); assert.equal(r.rollbackFailed, false);
+  assert.deepEqual(f.urls, []);
+  assert.deepEqual(f.snap(), before, '指针已回滚，凭证、游客、损坏待办、账号副本全部原样');
+});
+
+test('X7: 故障注入——账号指针「删掉后才报错」但回滚可用：强制退出失败，指针恢复，rollbackFailed=false，数据原样', async () => {
+  const f = fixture({ wrap: (raw) => ({ ...raw, removeItem(k) { if (k === SESSION_KEY) { raw.removeItem(k); throw new Error('removed then failed'); } return raw.removeItem(k); } }) });
+  const before = f.snap();
+  const r = await f.sync.forceLocalLogout();
+  assert.equal(r.ok, false); assert.equal(r.kind, 'local'); assert.equal(r.rollbackFailed, false);
+  assert.deepEqual(f.urls, []);
+  assert.deepEqual(f.snap(), before);
 });
