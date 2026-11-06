@@ -21,11 +21,14 @@ try {
   resetSource();
   cpSync(join(ROOT, "tests", "fixtures"), join(W, "tests", "fixtures"), { recursive: true });
   cpSync(join(ROOT, TEST), TMP_TEST);
+  const R1_TESTS = ["pending-import-corrupt-guard.test.mjs", "r1-logout-integration.test.mjs"]; // node:test 风格，失败行以 "not ok" 开头
+  for (const t of R1_TESTS) cpSync(join(ROOT, "tests", t), join(W, "tests", t));
   writeFileSync(join(W, "package.json"), JSON.stringify({ type: "module" }));
 
-  const run = () => spawnSync(process.execPath, [TMP_TEST], { cwd: W, encoding: "utf8", timeout: 60000 });
+  const run = (file = TMP_TEST) => spawnSync(process.execPath, [file], { cwd: W, encoding: "utf8", timeout: 120000 });
   const baseline = run();
   check("未改源码的对照：专项测试全绿", baseline.status === 0, (baseline.stdout + baseline.stderr).split("\n").slice(-4).join(" | "));
+  for (const t of R1_TESTS) { const b = run(join(W, "tests", t)); check("未改源码的对照：" + t + " 全绿", b.status === 0, (b.stdout + b.stderr).split("\n").slice(-4).join(" | ")); }
 
   const mutations = [
     {
@@ -366,6 +369,41 @@ try {
       to: "return base;",
     },
     {
+      name: "R1×退出：损坏待办下普通退出不再被拦（继续联网退出）",
+      file: "sync.js",
+      test: "r1-logout-integration.test.mjs",
+      from: "if (!dropping) return guard; // 普通退出不能把损坏待办当成已完成。",
+      to: "// (不拦)",
+    },
+    {
+      name: "R1×退出：强制退出清凭证只看有没有抛错、不读回（先删后报错会被误判为失败）",
+      file: "sync.js",
+      test: "r1-logout-integration.test.mjs",
+      from: "try { storage.removeItem(AUTH_KEY); } catch {}\n      try { authCleared = storage.getItem(AUTH_KEY) === null; } catch {}",
+      to: "try { storage.removeItem(AUTH_KEY); authCleared = storage.getItem(AUTH_KEY) === null; } catch {}",
+    },
+    {
+      name: "R1×退出：强制退出凭证没清掉也宣称成功",
+      file: "sync.js",
+      test: "r1-logout-integration.test.mjs",
+      from: "if (!authCleared) {",
+      to: "if (false) {",
+    },
+    {
+      name: "R1×退出：强制退出账号指针没清掉也宣称成功",
+      file: "sync.js",
+      test: "r1-logout-integration.test.mjs",
+      from: "if (!sessionRemoved || !sessionGone) {",
+      to: "if (false) {",
+    },
+    {
+      name: "R1×退出：凭证清理失败后不回滚账号指针（半退出）",
+      file: "sync.js",
+      test: "r1-logout-integration.test.mjs",
+      from: "        const rollback = setCurrentAccount(storage, uid);\n        let restored = false;\n        try { restored = storage.getItem(SESSION_KEY) === uid; } catch {}\n        return { ok: false, kind: \"local\", pending: true, rollbackFailed: !rollback || !restored,\n          message: restored ? \"本机凭证清理失败",
+      to: "        const rollback = true;\n        let restored = true;\n        return { ok: false, kind: \"local\", pending: true, rollbackFailed: !rollback || !restored,\n          message: restored ? \"本机凭证清理失败",
+    },
+    {
       name: "删号后本机清理失败仍宣称成功",
       file: "sync.js",
       from: `        ok: false,
@@ -381,9 +419,9 @@ try {
     const before = readFileSync(path, "utf8");
     if (!before.includes(m.from)) { check(`故障注入「${m.name}」能施加到源码上`, false, "找不到要替换的代码"); continue; }
     writeFileSync(path, before.replace(m.from, m.to));
-    const r = run();
+    const r = m.test ? run(join(W, "tests", m.test)) : run();
     const output = (r.stdout || "") + (r.stderr || "");
-    const red = output.split("\n").filter((line) => line.startsWith("❌")).length;
+    const red = output.split("\n").filter((line) => line.startsWith("❌") || line.startsWith("not ok")).length;
     check(`故障注入「${m.name}」被测试抓到（不是永远通过）`, r.status !== 0 && red > 0, `退出码 ${r.status}，变红 ${red} 项`);
   }
 } finally {

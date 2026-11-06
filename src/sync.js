@@ -772,8 +772,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           message: restored ? "账号指针删除失败，退出未完成；本机数据仍保留" : "账号指针清理与恢复均失败，请保留本机数据并人工恢复" };
       }
       // 凭证删除失败后必须验证账号指针是否成功回滚，避免把半退出当作成功。
+      // 以读回为准：removeItem 抛错不等于没删掉（先删后报错），只有读回仍有凭证才算失败，否则会出现“凭证已没了却回滚成登录态”的不一致。
       let authCleared = false;
-      try { storage.removeItem(AUTH_KEY); authCleared = storage.getItem(AUTH_KEY) === null; } catch {}
+      try { storage.removeItem(AUTH_KEY); } catch {}
+      try { authCleared = storage.getItem(AUTH_KEY) === null; } catch {}
       if (!authCleared) {
         const rollback = setCurrentAccount(storage, uid);
         let restored = false;

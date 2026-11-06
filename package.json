@@ -15,7 +15,7 @@
     "test:mobile": "node tests/webkit/run.mjs",
     "test:preview-build": "node tests/preview-build-isolation.test.mjs",
     "verify:content": "python3 scripts/verify-content.py",
-    "test:hardening": "node tests/login-sync-hardening.test.mjs && node tests/sync-mutation.test.mjs && node tests/pending-import-corrupt-guard.test.mjs && node tests/r1-exit-interaction.test.mjs",
+    "test:hardening": "node tests/login-sync-hardening.test.mjs && node tests/sync-mutation.test.mjs && node tests/pending-import-corrupt-guard.test.mjs && node tests/r1-exit-interaction.test.mjs && node tests/r1-logout-integration.test.mjs",
     "test:edges": "node tests/cloud-sync-edges.test.mjs && node tests/data-compat-edges.test.mjs",
     "test:db": "bash supabase/tests/run-all.sh"
   },
