@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>sync two-tabs harness</title>
+<!-- 双标签页互斥测试的测试页：真实 sync.js + 真实 localStorage + 真实 navigator.locks；云端和定时器是假的。只给 tests/sync-two-tabs-browser.test.mjs 用。 -->
+<script type="module">
+import { createSync, AUTH_KEY } from "/src/sync.js";
+import { saveAccount, setCurrentAccount } from "/src/account-store.js";
+import { emptyDoc } from "/src/account-data.js";
+import { freshState } from "/src/storage.js";
+
+const USER = "u1", KEY = `suipian.acct.${USER}`, RETRY_KEY = `suipian.acct.writebackRetry.${USER}`;
+window.H = {
+  KEY, RETRY_KEY, freshState,
+  // 只由其中一个页面调用一次：写入账号副本（有未上传内容）、账号指针、登录凭证；清掉旧计数
+  seed() {
+    const real = window.localStorage; real.clear();
+    const local = emptyDoc({ gen: 1, lineage: "L-u1" });
+    local.xp.devA = 80; local.runs.devA = 5; local.done.U1L1 = "2026-11-01"; local.days = ["2026-11-01"];
+    const ok = saveAccount(real, USER, { doc: local, base: 2, dirty: { hearts: false, prefs: false, content: true } }, { now: Date.now() })
+      && setCurrentAccount(real, USER);
+    real.setItem(AUTH_KEY, JSON.stringify({ session: { userId: USER, email: "t@example.test", accessToken: "at", refreshToken: "rt", expiresAt: Date.now() + 3600_000 } }));
+    return ok;
+  },
+  boot() {
+    const real = window.localStorage;
+    const faults = { writeback: false };
+    const storage = {
+      getItem: (k) => real.getItem(k),
+      setItem(k, v) { if (k === KEY && faults.writeback) throw new Error("simulated quota error"); real.setItem(k, v); },
+      removeItem: (k) => real.removeItem(k),
+    };
+    const calls = { get: 0, save: 0, create: 0 };
+    let gate = null;
+    const doc = () => emptyDoc({ gen: 1, lineage: "L-u1" });
+    const api = {
+      async getProgress() { calls.get++; if (gate) await gate.promise; return { ok: true, row: { doc: doc(), rev: 2 } }; },
+      async saveProgress(_s, exp) { calls.save++; return { ok: true, rev: exp + 1 }; },
+      async createProgress() { calls.create++; return { ok: true, rev: 1 }; },
+      async refresh() { throw new Error("refresh must not be called"); },
+    };
+    const jobs = [];
+    const sync = createSync({ storage, api, now: () => Date.now(), today: () => "2026-11-04", schedule: (fn, ms) => { jobs.push({ fn, ms }); return jobs.length; } });
+    const restored = !!sync.restore(freshState());
+    // 与 src/app.js 一致的自动触发源：全部无参调用 syncNow()，即“自动”；只有账号卡片的“立即同步”按钮传 manual:true
+    addEventListener("online", () => { if (sync.account()) sync.syncNow(); });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && sync.account()) sync.syncNow(); });
+    let release = null;
+    Object.assign(window, {
+      sync, faults, calls, jobs, restored,
+      hold() { gate = { promise: new Promise((r) => { release = r; }) }; },
+      releaseGate() { const r = release; gate = null; release = null; if (r) r(); },
+    });
+    return restored;
+  },
+};
+window.pageReady = true;
+</script>

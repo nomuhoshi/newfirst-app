@@ -25,11 +25,33 @@ export function scopedStorage(raw, ns) {
   return { getItem: (k) => raw.getItem(scoped(k)), setItem: (k, v) => raw.setItem(scoped(k), v), removeItem: (k) => raw.removeItem(scoped(k)) };
 }
 
-export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {} }) {
+export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, retryLocks = null }) {
   const storage = scopedStorage(rawStorage, projectNamespace(projectId, legacyProject));
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "";
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
+  // 本机写回失败与网络退避完全分开；按账号共享最佳努力计数，刷新页面也不能重新开始无限轮询。
+  const LOCAL_RETRY_LIMIT = 3;
+  let localWritebackFails = 0, localRetryUser = null, localRetryTimer = null, localRetryEpoch = 0, localRetryUnknown = false;
+  let retryLockHeld = false;
+  const retryLockProvider = retryLocks || (typeof navigator !== "undefined" ? navigator.locks : null);
+  const retryLockName = () => `suipian:writeback:${projectNamespace(projectId, legacyProject)}:${userId}`;
+  async function withLocalRetryLock(fn, manual) {
+    if (retryLockProvider && typeof retryLockProvider.request === "function") {
+      let entered = false;
+      try {
+        return await retryLockProvider.request(retryLockName(), { mode: "exclusive" }, async () => {
+          entered = true; retryLockHeld = true;
+          try { return await fn(); } finally { retryLockHeld = false; }
+        });
+      } catch (err) {
+        if (entered) throw err;
+        localRetryUnknown = true; return localRetryBlocked();
+      }
+    }
+    // Node 单进程测试可直接执行；浏览器没有 Web Locks 时普通自动同步安全停机。
+    return fn();
+  }
   let cooldownUntil = 0; // 收到 429 之后的本地冷却截止时间（用注入的 now，测试可以拨快，不会真的发验证码）
   const COOLDOWN_MS = 60_000;
   let baseline = null, lastError = "";
@@ -183,25 +205,150 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     return { ok: true };
   }
 
+  const localRetryKey = (uid) => `suipian.acct.writebackRetry.${uid}`;
+  const cancelLocalRetry = () => { localRetryEpoch++; localRetryTimer = null; };
+  function localFailureCount() {
+    if (!userId) return 0;
+    if (localRetryUser !== userId) {
+      cancelLocalRetry(); localRetryUser = userId; localWritebackFails = 0;
+    }
+    // 同一浏览器的其他标签页、刷新后的页面读取同一上限。读取失败时自动同步保守停机，手动仍可尝试。
+    try {
+      const raw = storage.getItem(localRetryKey(userId));
+      if (raw !== null) {
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n < 0 || n > LOCAL_RETRY_LIMIT) { localRetryUnknown = true; return LOCAL_RETRY_LIMIT; }
+        if (localRetryUnknown) return LOCAL_RETRY_LIMIT;
+        localWritebackFails = n; // 其他标签页手动恢复清零后，当前标签页也可恢复。
+      }
+    } catch { localRetryUnknown = true; return LOCAL_RETRY_LIMIT; }
+    return localRetryUnknown ? LOCAL_RETRY_LIMIT : localWritebackFails;
+  }
+  function retryCounterWritable() {
+    try {
+      const key = localRetryKey(userId);
+      const raw = storage.getItem(key);
+      if (raw !== null && !/^[0-3]$/.test(raw)) { localRetryUnknown = true; return false; }
+      const value = raw === null ? "0" : raw;
+      storage.setItem(key, value); // 云端请求前确认计数器可写；不可写时自动停机。
+      if (storage.getItem(key) !== value) throw new Error("retry counter did not persist");
+      return !localRetryUnknown;
+    } catch { localRetryUnknown = true; return false; }
+  }
+  function noteLocalWritebackFailure() {
+    localWritebackFails = Math.min(LOCAL_RETRY_LIMIT, localFailureCount() + 1);
+    try {
+      storage.setItem(localRetryKey(userId), String(localWritebackFails));
+      if (storage.getItem(localRetryKey(userId)) !== String(localWritebackFails)) throw new Error("retry counter did not persist");
+    } catch {
+      // 计数无法持久化时立即停止自动重试，防止新标签页继续轮询云端。
+      localRetryUnknown = true; localWritebackFails = LOCAL_RETRY_LIMIT;
+    }
+    return localWritebackFails;
+  }
+  function resetLocalWritebackFailures() {
+    const hadFailures = localWritebackFails > 0 || localFailureCount() > 0;
+    cancelLocalRetry();
+    if (!hadFailures) return true;
+    // 清零必须写入并读回确认；否则另一个标签页仍看到旧上限，不能声称自动同步已恢复。
+    try {
+      storage.setItem(localRetryKey(userId), "0");
+      if (storage.getItem(localRetryKey(userId)) !== "0") throw new Error("retry counter writeback mismatch");
+      localWritebackFails = 0; localRetryUnknown = false;
+      return true;
+    } catch {
+      localWritebackFails = LOCAL_RETRY_LIMIT; localRetryUnknown = true;
+      return false;
+    }
+  }
+  function autoRetryGuard() {
+    const pi = loadPendingImport(storage, userId);
+    if (!pi.ok || pi.record) return null; // 专用游客导入流程不受本任务上限影响。
+    if (typeof window !== "undefined" && !retryLockHeld) {
+      localRetryUnknown = true; return localRetryBlocked();
+    }
+    if (!retryCounterWritable() || localFailureCount() >= LOCAL_RETRY_LIMIT) return localRetryBlocked();
+    return null;
+  }
+  const localRetryMessage = () => localRetryUnknown
+    ? "本机同步重试计数无法确认，已暂停自动同步；请检查浏览器存储空间或权限，然后点击“立即同步”手动重试。"
+    : "本机副本写回连续失败 3 次，已停止自动同步；原有进度仍在本机。请检查浏览器存储空间或权限，然后点击“立即同步”手动重试。";
+  // 上限只拦截普通同步。专用游客导入待办仍由原流程处理，读取异常也保留原错误处理。
+  function ordinaryAutoBlocked() {
+    if (localFailureCount() < LOCAL_RETRY_LIMIT) return false;
+    const pi = loadPendingImport(storage, userId);
+    return pi.ok && !pi.record;
+  }
+  function localRetryBlocked() {
+    pending = true;
+    const message = localRetryMessage();
+    setStatus("pending", message);
+    return { ok: false, kind: "local", localWritebackFailed: true, retryLimitReached: true, retryable: false, message };
+  }
+  function scheduleLocalRetry() {
+    const failures = localFailureCount();
+    if (localRetryTimer !== null || failures < 1 || failures >= LOCAL_RETRY_LIMIT || !userId || !session) return;
+    const delay = failures === 1 ? 3000 : 10000;
+    const epoch = ++localRetryEpoch;
+    localRetryTimer = schedule(() => {
+      if (epoch !== localRetryEpoch) return;
+      localRetryTimer = null;
+      const count = localFailureCount();
+      if (count > 0 && count < LOCAL_RETRY_LIMIT) syncNow();
+    }, delay);
+  }
   function scheduleSync(ms = 1500) {
-    if (!userId || !session || importGuard()) return;
+    if (!userId || !session || importGuard() || ordinaryAutoBlocked()) return;
     if (timer) return;
     timer = schedule(() => { timer = null; syncNow(); }, ms);
   }
 
   // ---------- 同步：读云端 → 合并 → 带版本号写回；被抢先就重来 ----------
-  function syncNow() {
+  // 手动入口只由账号卡片的“立即同步”传 manual:true；联网、可见性、跨标签触发和定时器一律是自动。
+  // 顺序：无账号 → R1 损坏待办硬锁（手动也不能绕过）→ v4 本机写回重试上限（只拦自动）。
+  function syncNow({ manual = false } = {}) {
     if (!userId) return Promise.resolve({ ok: false, kind: "no-account" });
     const guard = importGuard();
     if (guard) return Promise.resolve(guard);
+    if (!manual && ordinaryAutoBlocked()) return Promise.resolve(localRetryBlocked());
+    if (manual) cancelLocalRetry(); // 已排定的旧定时器不得在手动尝试后再重复读取云端。
     if (running) { again = true; return running; }
     running = (async () => {
       try {
+        return await withLocalRetryLock(async () => {
+        if (!manual) {
+          const blocked = autoRetryGuard();
+          if (blocked) return blocked;
+        }
         let r, joinedRetry = 0, replaced = false;
         for (;;) {
-          again = false; r = await syncOnce();
+          again = false; r = await syncOnce({ manual });
           if (r.replacedLocal) replaced = true;
-          if (r.ok) { netFails = 0; if (again) continue; break; }
+          if (r.ok) {
+            netFails = 0;
+            if (!resetLocalWritebackFailures()) {
+              pending = true;
+              const message = "本机同步重试计数无法清零；云端与本机进度已一致，但自动同步仍暂停。请检查浏览器存储权限并点击“立即同步”手动重试。";
+              setStatus("pending", message);
+              r = { ok: false, kind: "local", retryLimitReached: true, retryable: false, message };
+              break;
+            }
+            if (again) continue;
+            setStatus(pending ? "pending" : "synced");
+            break;
+          }
+          if (r.retryLimitReached) break;
+          if (r.localWritebackFailed) {
+            cancelLocalRetry(); // 另一触发源提前失败时，废弃旧的 3 秒计时，从当前失败次数重新计时。
+            const failures = noteLocalWritebackFailure();
+            if (failures >= LOCAL_RETRY_LIMIT) {
+              cancelLocalRetry();
+              r = { ...r, ...localRetryBlocked() };
+            } else {
+              scheduleLocalRetry();
+            }
+            break; // 本机故障不进入网络退避，也不响应 again 立即再试。
+          }
           if (r.kind === "network" || r.retryable) {
             // 联网了但这一轮因为“断网时发出的请求”失败：如果期间有人又要求同步（again），立刻再试一次，不能把旧的失败当成结果还给他
             if (again && joinedRetry++ < 1) continue;
@@ -210,17 +357,18 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           break;
         }
         return replaced && r.ok ? { ...r, replacedLocal: true } : r;
+        }, manual);
       } finally { running = null; }
     })();
     return running;
   }
   function scheduleRetry() {
-    if (retryTimer || !userId || !session || importGuard()) return;
+    if (retryTimer || !userId || !session || importGuard() || ordinaryAutoBlocked()) return;
     const delay = [3000, 10000, 30000, 60000][Math.min(netFails, 3)]; netFails++;
     retryTimer = schedule(() => { retryTimer = null; syncNow(); }, delay);
   }
 
-  async function syncOnce() {
+  async function syncOnce({ manual = false } = {}) {
     // 必须早于 ensureToken()（它可能发出 refresh 请求）及任何云端读写。
     const initialGuard = importGuard();
     if (initialGuard) return initialGuard;
@@ -252,6 +400,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         return { ok: false, kind: pr.kind || "verify", message: pr.error || pr.message || "游客导入还没同步完", pendingImport: true, retryable: pr.kind !== "local" && pr.kind !== "data" && pr.kind !== "conflict" && pr.kind !== "auth" };
       }
     }
+    if (!manual) {
+      const blocked = autoRetryGuard();
+      if (blocked) return blocked;
+    }
     for (let attempt = 0; attempt < 5; attempt++) {
       const remote = await api.getProgress(session);
       const midFlightGuard = importGuard();
@@ -260,7 +412,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const L = loadAccount(storage, userId, { now: now() });
       if (!L.ok || !L.copy) { setStatus("error", "本机账号记录读取失败"); return { ok: false, kind: "local", message: "本机账号记录读取失败" }; }
       const copy = L.copy;
-      let finalDoc, rev, replaced = false;
+      let finalDoc, rev, replaced = false, cloudWriteConfirmed = false;
       if (!remote.row) {
         const beforeCreateGuard = importGuard();
         if (beforeCreateGuard) return beforeCreateGuard;
@@ -269,7 +421,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         if (afterCreateGuard) return afterCreateGuard;
         if (!c.ok) { noteRateLimit(c); setStatus(statusFromFailure(c), c.message); return c.kind === "rate-limit" ? { ...c, retryable: false } : c; }
         if (c.rev === null) continue; // 刚好有别的设备抢先创建了：重新读
-        finalDoc = copy.doc; rev = c.rev;
+        finalDoc = copy.doc; rev = c.rev; cloudWriteConfirmed = true;
       } else {
         const m = mergeDocs(copy.doc, remote.row.doc, { localHeartsDirty: copy.dirty.hearts, localPrefsDirty: copy.dirty.prefs });
         if (m.error) { setStatus("error", m.error.message); return { ok: false, kind: "data", code: m.error.code, message: m.error.message }; }
@@ -284,7 +436,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           if (afterSaveGuard) return afterSaveGuard;
           if (!s.ok) { noteRateLimit(s); setStatus(statusFromFailure(s), s.message); return s.kind === "rate-limit" ? { ...s, retryable: false } : s; }
           if (s.rev === null) continue; // 被抢先：重新读、合并、再写
-          rev = s.rev;
+          rev = s.rev; cloudWriteConfirmed = true;
         }
       }
       // 同步期间用户可能又学了新内容：把云端结果合并进新的本机副本，下一轮再上传
@@ -302,7 +454,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const localSaved = saveAccount(storage, userId, { doc: saveDoc, base: rev, dirty }, { now: now() });
       if (!localSaved) {
         pending = true;
-        const message = "云端已保存，但本机副本写回失败；原有副本已保留，稍后可重试";
+        const message = cloudWriteConfirmed
+          ? "进度已保存在云端，但本机副本写回失败；原有副本已保留，稍后自动重试"
+          : "本机副本写回失败；原有副本已保留，稍后自动重试";
         setStatus("pending", message);
         return { ok: false, kind: "local", retryable: true, localWritebackFailed: true, rev, message };
       }
@@ -312,7 +466,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         onState(saveDoc);
       }
       pending = again;
-      setStatus(again ? "pending" : "synced");
+      // 等待外层确认计数器清零后才允许宣称“已同步”。
+      setStatus(again ? "pending" : "syncing");
       if (replaced) { try { onNotice("replaced", {}); } catch {} }
       return replaced ? { ok: true, rev, replacedLocal: true } : { ok: true, rev };
     }
@@ -748,6 +903,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     } catch { return { ok: false, kind: "server", message: "退出云端失败" }; }
   }
   function finishLocalLogout() {
+    if (userId) {
+      cancelLocalRetry();
+      try { storage.removeItem(localRetryKey(userId)); } catch { /* 保留失败计数，后续自动同步仍安全停机 */ }
+      localRetryUser = null; localWritebackFails = 0; localRetryUnknown = false;
+    }
     clearStale();
     session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
     setStatus(null);
@@ -783,9 +943,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         return { ok: false, kind: "local", pending: true, rollbackFailed: !rollback || !restored,
           message: restored ? "本机凭证清理失败，退出未完成；数据仍保留" : "凭证清理失败且账号指针回滚失败，请保留本机数据并人工恢复" };
       }
-      clearStale();
-      session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
-      setStatus(null);
+      // 与其他本机退出共用同一个收尾（清 stale、重置内存状态、清本机写回重试计数）；只有走到这里才算退出成功，
+      // 前面任何一步失败都已回滚并 return，计数和账号副本不会被动。
+      finishLocalLogout();
       return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出。损坏的游客导入记录和本机进度已保留；云端会话可能仍有效。" };
     }
     if (pending && !dropping) {

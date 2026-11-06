@@ -6,7 +6,7 @@ export function statusText(s) {
   if (st === "import-read-failed") return "无法读取游客导入记录：云端同步已暂停。请检查本机存储后重试。";
   if (st === "synced") return "已同步 ✓";
   if (st === "syncing") return "同步中…";
-  if (st === "pending") return "有进度等待上传（联网后自动同步）";
+  if (st === "pending") return s?.message && (s.message.includes("本机副本写回") || s.message.includes("本机同步重试计数")) ? s.message : "有进度等待上传（联网后自动同步）";
   if (st === "offline") return "现在离线：进度已存在这台设备，联网后自动同步";
   if (st === "need-login") return "登录已过期，需要重新登录才能同步（进度还在这台设备上）";
   if (st === "conflict") return "这个账号在别处被覆盖过，需要选择保留哪一份";
@@ -179,7 +179,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       else showToast(errorText(r));
     }
     card.append(h("h3", { text: "账号" }), h("p", { class: "acct-email", text: acc.email || "已登录" }), st,
-      button("立即同步", async () => { const r = await sync.syncNow(); if (!r.ok) showToast(errorText(r)); else rerender(); }, "btn3d wide", { "data-sync-now": "" }),
+      button("立即同步", async () => { const r = await sync.syncNow({ manual: true }); if (!r.ok) showToast(errorText(r)); else rerender(); }, "btn3d wide", { "data-sync-now": "" }),
       h("div", { class: "acct-row" },
         button("退出登录", () => doLogout(), "btn3d", { "data-logout": "" }),
         button("切换账号", () => doLogout(() => openLogin()), "btn3d", { "data-switch": "" })),
