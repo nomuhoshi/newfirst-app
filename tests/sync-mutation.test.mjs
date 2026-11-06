@@ -21,7 +21,7 @@ try {
   resetSource();
   cpSync(join(ROOT, "tests", "fixtures"), join(W, "tests", "fixtures"), { recursive: true });
   cpSync(join(ROOT, TEST), TMP_TEST);
-  const R1_TESTS = ["pending-import-corrupt-guard.test.mjs", "r1-logout-integration.test.mjs"]; // node:test 风格，失败行以 "not ok" 开头
+  const R1_TESTS = ["pending-import-corrupt-guard.test.mjs", "r1-exit-interaction.test.mjs", "r1-logout-integration.test.mjs"]; // node:test 风格，失败行以 "not ok" 开头
   for (const t of R1_TESTS) cpSync(join(ROOT, "tests", t), join(W, "tests", t));
   writeFileSync(join(W, "package.json"), JSON.stringify({ type: "module" }));
 
