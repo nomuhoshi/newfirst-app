@@ -67,7 +67,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const b = button("清理本机残留的登录凭证", async () => {
           b.disabled = true;
           const r = await sync.retryAuthCleanup();
-          if (r.ok) { b.remove(); say("已清理本机残留的登录凭证。", false); } else { b.disabled = false; say(r.message || "还是没清掉，请检查浏览器的存储权限后再试。"); }
+          if (r.ok) { b.remove(); say(r.nothingToClean ? "没有发现需要清理的登录凭证。" : "已清理本机残留的登录凭证。", false); } else { b.disabled = false; say(r.message || "还是没清掉，请检查浏览器的存储权限后再试。"); }
         }, "btn3d ghost wide", { "data-clean-auth": "" });
         return b;
       }

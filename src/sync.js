@@ -7,7 +7,7 @@
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
 import { emptyDoc, mergeDocs, docsEquivalent, docToState, syncStateIntoDoc, guestHasLearning, guestImportStatus, guestFingerprint, markGuestImported, mergeGuestProgress, normalizeDoc, sumXp, isId } from "./account-data.js";
-import { SESSION_KEY, PENDING_IMPORT_PREFIX, getDeviceId, getGuestId, readGuest, getCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport } from "./account-store.js";
+import { SESSION_KEY, PENDING_IMPORT_PREFIX, getDeviceId, getGuestId, readGuest, getCurrentAccount, readCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
@@ -987,11 +987,12 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     // 云端已撤销，本机副本和账号指针已清。最后清凭证：失败也只是残留一份已失效的令牌，不能再回头。
     const expiresAt = isSessionShape(session) ? session.expiresAt : null;
+    const leftRt = isSessionShape(session) ? session.refreshToken : null; // finishLocalLogout 之后 session 就是 null 了
     const authCleared = clearStoredAuthVerified();
     finishLocalLogout();
     if (!authCleared) {
       // 云端撤销的是 refresh token（这个会话）；访问令牌（JWT）要到期才失效，所以不能说“已完全失效”。
-      leftoverAuth = true;
+      leftoverAuth = true; leftoverRt = leftRt;
       const until = Number.isFinite(expiresAt) ? new Date(expiresAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : null;
       return { ok: true, warning: "local-auth-leftover", authLeftover: true, accessTokenValidUntil: expiresAt,
         message: `已退出，云端已撤销这台设备的登录。但本机残留的登录凭证没清掉：它的刷新令牌已失效，访问令牌${until ? "最晚到 " + until + " 前" : "在到期前"}仍可能有效。请再次清理。` };
@@ -1001,16 +1002,49 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   // 云端已撤销、但本机凭证没清掉：没有账号（已退出）时，存储里还有一份真凭证。
   let leftoverAuth = false;
-  function hasLeftoverAuth() {
-    if (userId || getCurrentAccount(storage)) return false; // 别的标签页已登录同一份存储：那份凭证是在用的，不是残留
-    if (leftoverAuth) return true;
-    try { return !!readAuth(); } catch { return false; }
+  let leftoverRt = null; // 留下的那份凭证的 refresh token：清理时存储里已不是这一份，说明被别的标签页换过，不能删
+  // 本机登录凭证的“三态”读取：读取失败不能折叠成“没有”（旧实现 readAuth 把抛错当成 null，页面重开后读不出凭证就被当成“没有凭证”）。
+  //   absent 确定没有；read-failed 读不出来（抛错或返回了非字符串）；inert 有内容但不是可用凭证（撤销标记 / 无法识别）；
+  //   other 别的云端项目的凭证（绝不碰）；ours 这个项目的真凭证。
+  function inspectAuth() {
+    let raw;
+    try { raw = storage.getItem(AUTH_KEY); } catch { return { state: "read-failed" }; }
+    if (raw === null) return { state: "absent" };
+    if (typeof raw !== "string") return { state: "read-failed" };
+    let r; try { r = JSON.parse(raw); } catch { return { state: "inert" }; }
+    if (!r || !isSessionShape(r.session)) return { state: "inert" };
+    if (projectId && (r.project || legacyProject) !== projectId) return { state: "other" };
+    return { state: "ours", session: r.session };
   }
-  // 用户可以随时再次清理（不联网）。只在没登录时执行，绝不清登录中的凭证；清理成功必须读回确认。
+  function hasLeftoverAuth() {
+    if (userId) return false;
+    const p = readCurrentAccount(storage);
+    if (!p.ok) return true;  // 账号指针读不出来：无法排除“有残留”，也无法排除“别的标签页在登录”——让用户看到入口，点击时如实说明
+    if (p.id) return false;  // 别的标签页已登录同一份存储：那份凭证是在用的，不是残留
+    if (leftoverAuth) return true;
+    const a = inspectAuth();
+    return a.state === "ours" || a.state === "read-failed";
+  }
+  // 用户可以随时再次清理（不联网）。规则：
+  //   ① 只在确认“没有登录”时才动：账号指针读不出来 → 失败（read-failed），指针有账号 → 拒绝（logged-in）；
+  //   ② 凭证读不出来 → 失败（read-failed），绝不当成“没有凭证”；
+  //   ③ 存储里的已不是当时留下的那份 → 拒绝（changed）；
+  //   ④ 清理成功必须读回确认；确认不了就是失败。
   async function retryAuthCleanup() {
-    if (userId || getCurrentAccount(storage)) return { ok: false, kind: "logged-in", message: "还在登录状态，不能清理登录凭证" };
-    if (!hasLeftoverAuth()) { leftoverAuth = false; return { ok: true, nothingToClean: true }; }
-    if (clearStoredAuthVerified()) { leftoverAuth = false; return { ok: true }; }
+    if (userId) return { ok: false, kind: "logged-in", message: "还在登录状态，不能清理登录凭证" };
+    const p = readCurrentAccount(storage);
+    if (!p.ok) return { ok: false, kind: "read-failed", message: "无法读取本机的登录状态，不能确认别的标签页是否还在登录，所以没有清理。请检查浏览器的存储权限后再试。" };
+    if (p.id) return { ok: false, kind: "logged-in", message: "这台设备上已经有账号在登录（可能是另一个标签页），不能清理登录凭证" };
+    const a = inspectAuth();
+    if (a.state === "read-failed") { leftoverAuth = true; return { ok: false, kind: "read-failed", message: "无法读取本机的登录凭证，无法确认有没有清干净。请检查浏览器的存储权限后再试。" }; }
+    if (a.state !== "ours") { leftoverAuth = false; leftoverRt = null; return { ok: true, nothingToClean: true }; }
+    if (leftoverRt && a.session.refreshToken !== leftoverRt) return { ok: false, kind: "changed", message: "本机的登录凭证已经不是上次退出时留下的那一份（可能被另一个标签页重新登录），没有清理。" };
+    const p2 = readCurrentAccount(storage); // 动手前再确认一次，缩小和别的标签页登录之间的空档
+    if (!p2.ok || p2.id) return { ok: false, kind: p2.ok ? "logged-in" : "read-failed", message: "刚刚检测到登录状态变化，没有清理。" };
+    if (clearStoredAuthVerified()) {
+      const after = inspectAuth(); // 读回：必须确认已经没有可用凭证
+      if (after.state === "absent" || after.state === "inert") { leftoverAuth = false; leftoverRt = null; return { ok: true }; }
+    }
     leftoverAuth = true;
     return { ok: false, kind: "local", message: "本机登录凭证还是没清掉；请检查浏览器的存储权限后再试" };
   }

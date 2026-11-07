@@ -51,6 +51,13 @@ export function getCurrentAccount(storage) {
   const r = safeRead(storage, SESSION_KEY);
   return r.ok && isId(r.value) ? r.value : null;
 }
+// 三态读取：{ ok:true, id } 有账号，{ ok:true, id:null } 确定没有账号，{ ok:false } 读取失败（抛错，或返回了既不是字符串也不是 null 的东西）。
+// getCurrentAccount 把“读取失败”和“没有”折叠成同一个 null；要据此做不可恢复的事（如删凭证）的调用方必须用这个。
+export function readCurrentAccount(storage) {
+  const r = safeRead(storage, SESSION_KEY);
+  if (!r.ok || (r.value !== null && typeof r.value !== "string")) return { ok: false };
+  return { ok: true, id: isId(r.value) ? r.value : null };
+}
 export function setCurrentAccount(storage, userId) {
   if (userId === null) return safeRemove(storage, SESSION_KEY);
   return isId(userId) ? safeSet(storage, SESSION_KEY, userId) : false;

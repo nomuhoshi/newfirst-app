@@ -2058,6 +2058,132 @@ for (const [name, mk] of Object.entries(DEAD)) {
   check("Q.7 别的标签页刚轮换过令牌：用最新令牌核实并重试 logout（共 2 次，第二次用刷新后的新令牌），真的退出", r.ok === true && t.h.logoutAuth.length === 2 && t.h.logoutAuth[1] === "Bearer at-10" && t.sync.account() === null, JSON.stringify({ r, auth: t.h.logoutAuth, calls: t.h.calls }));
 }
 
+// ======================================================================
+// R. retryAuthCleanup / hasLeftoverAuth 的读取失败（2026-11-07）
+//    旧实现：getCurrentAccount / readAuth 把“读取失败”折叠成 null —— 指针读不出来就当成“没有别的标签页在登录”并删凭证；
+//    页面重开后凭证读不出来就当成“没有凭证”，retryAuthCleanup 返回 ok:true（界面显示已清理）。
+//    要求：读取失败必须明确报告“无法确认”，不能当成没有；有别的标签页的有效登录时不能删它的凭证；成功必须以读回确认。
+// ======================================================================
+const SESSION_KEY = "suipian.session";
+// 读取故障：getItem 对指定键抛错 / 静默返回 undefined（非字符串也非 null）
+function breakGet(st, keys, mode = "throw") { const real = st.getItem; st.getItem = (k) => { if (keys.includes(k)) { if (mode === "throw") throw new Error("read denied: " + k); return undefined; } return real(k); }; return () => { st.getItem = real; }; }
+// 制造“云端已撤销但本机凭证没清掉”的现场，返回 { t, authRaw, reopen(), fixStorage() }
+async function leftoverScene(email) {
+  const t = await twoDevices(email);
+  const authRaw = t.stA.getItem(AUTH_KEY);
+  const u1 = breakRemove(t.stA, AUTH_KEY), u2 = breakSet(t.stA, AUTH_KEY);
+  const r = await t.A.logout();
+  assert(r.ok === true && r.authLeftover === true, "leftoverScene: " + JSON.stringify(r));
+  return { t, authRaw, fixStorage: () => { u1(); u2(); }, reopen: () => makeSync(t.stA, t.cloud) };
+}
+function assert(c, m) { if (!c) throw new Error("场景搭建失败：" + m); }
+
+for (const mode of ["throw", "undefined"]) {
+  const tag = mode === "throw" ? "读取抛错" : "读取静默返回 undefined";
+  // ---- R.1 账号指针读不出来：无法确认别的标签页是否还在登录 → 不清理、不删凭证、明确失败 ----
+  {
+    const sc = await leftoverScene("r1-" + mode + "@example.com");
+    sc.fixStorage(); // 存储本身能删：如果代码误以为“没有别的标签页”，凭证就真的会被删掉
+    const reopened = sc.reopen();
+    const undo = breakGet(sc.t.stA, [SESSION_KEY], mode);
+    const r = await reopened.retryAuthCleanup();
+    undo();
+    check("R.1 指针" + tag + "：retryAuthCleanup 明确失败（read-failed），不是 ok", r.ok === false && r.kind === "read-failed" && /无法/.test(r.message || ""), JSON.stringify(r));
+    check("R.1 指针" + tag + "：凭证没有被删（可能是别的标签页在用的）", sc.t.stA.getItem(AUTH_KEY) === sc.authRaw);
+    const undo2 = breakGet(sc.t.stA, [SESSION_KEY], mode);
+    check("R.1 指针" + tag + "：hasLeftoverAuth() 不能说“没有”（无法确认）→ true", reopened.hasLeftoverAuth() === true);
+    undo2();
+  }
+  // ---- R.2 凭证读不出来（页面重开，没有内存标记）：不是“没有凭证” ----
+  {
+    const sc = await leftoverScene("r2-" + mode + "@example.com");
+    const reopened = sc.reopen();
+    const undo = breakGet(sc.t.stA, [AUTH_KEY], mode);
+    const has = reopened.hasLeftoverAuth();
+    const r = await reopened.retryAuthCleanup();
+    undo();
+    check("R.2 凭证" + tag + "：hasLeftoverAuth() 为 true（无法排除残留）", has === true);
+    check("R.2 凭证" + tag + "：retryAuthCleanup 明确失败（read-failed），不是 ok / nothingToClean", r.ok === false && r.kind === "read-failed" && !r.nothingToClean && /无法/.test(r.message || ""), JSON.stringify(r));
+    check("R.2 凭证" + tag + "：存储原样", sc.t.stA.getItem(AUTH_KEY) === sc.authRaw);
+    // 读取恢复后可以清理成功，并以读回确认
+    sc.fixStorage();
+    const ok = await reopened.retryAuthCleanup();
+    check("R.2 读取和存储都恢复后再清理：成功，读回确认凭证没了，残留标记消失", ok.ok === true && sc.t.stA.getItem(AUTH_KEY) === null && reopened.hasLeftoverAuth() === false, JSON.stringify(ok));
+  }
+}
+
+// ---- R.3 清理时读回失败：删除“看起来”成功，但读回抛错 / 返回 undefined → 不能算清理成功 ----
+for (const mode of ["throw", "undefined"]) {
+  const sc = await leftoverScene("r3-" + mode + "@example.com");
+  sc.fixStorage();
+  const reopened = sc.reopen();
+  // 只在“清理动作发生之后”才让读取坏掉：用 removeItem 钩子触发
+  const realRemove = sc.t.stA.removeItem; let undoGet = null;
+  sc.t.stA.removeItem = (k) => { realRemove(k); if (k === AUTH_KEY) undoGet = breakGet(sc.t.stA, [AUTH_KEY], mode); };
+  const r = await reopened.retryAuthCleanup();
+  sc.t.stA.removeItem = realRemove; if (undoGet) undoGet();
+  check("R.3 清理后读回" + (mode === "throw" ? "抛错" : "返回 undefined") + "：不算清理成功（ok:false），因为读回无法确认", r.ok === false, JSON.stringify(r));
+}
+
+// ---- R.4 别的标签页有有效登录：不能删它的凭证 ----
+{
+  const sc = await leftoverScene("r4@example.com");
+  sc.fixStorage();
+  const stA = sc.t.stA;
+  const other = makeSync(stA, sc.t.cloud); // 同一份存储里“另一个标签页”重新登录
+  const lg = await login(other, "r4@example.com", freshState());
+  const newAuth = stA.getItem(AUTH_KEY);
+  const mine = sc.t.A; // 本标签页内存里还有 leftover 标记
+  const hl = mine.hasLeftoverAuth();
+  const r = await mine.retryAuthCleanup();
+  check("R.4 另一个标签页已有有效登录：拒绝清理（logged-in），不是 ok", hl === false && r.ok === false && r.kind === "logged-in", JSON.stringify(r));
+  check("R.4 另一个标签页的凭证原样，账号指针还在，它还能同步", stA.getItem(AUTH_KEY) === newAuth && getCurrentAccount(stA) !== null && (await other.syncNow()).ok === true && lg.state !== undefined);
+}
+// ---- R.4b 没有指针，但存储里的凭证已经不是当时留下的那份（被别的标签页换过）：不删 ----
+{
+  const sc = await leftoverScene("r4b@example.com");
+  sc.fixStorage();
+  const stA = sc.t.stA;
+  const other = JSON.parse(sc.authRaw); other.session = { ...other.session, accessToken: "at-other", refreshToken: "rt-other" };
+  stA.setItem(AUTH_KEY, JSON.stringify(other));
+  const r = await sc.t.A.retryAuthCleanup();
+  check("R.4b 留下的凭证已被换成另一份：拒绝清理（changed），存储原样", r.ok === false && r.kind === "changed" && stA.getItem(AUTH_KEY) === JSON.stringify(other), JSON.stringify(r));
+}
+
+// ---- R.5 清理失败后重试：失败如实报告并保留标记，修好后重试成功 ----
+{
+  const sc = await leftoverScene("r5@example.com");
+  const r1 = await sc.t.A.retryAuthCleanup();
+  check("R.5 存储仍坏：失败（local），仍有残留标记，凭证原样", r1.ok === false && r1.kind === "local" && sc.t.A.hasLeftoverAuth() === true && sc.t.stA.getItem(AUTH_KEY) === sc.authRaw, JSON.stringify(r1));
+  const r2 = await sc.t.A.retryAuthCleanup();
+  check("R.5 再试一次仍如实失败（不会第二次就算成功）", r2.ok === false);
+  sc.fixStorage();
+  const r3 = await sc.t.A.retryAuthCleanup();
+  check("R.5 存储修好后重试成功，读回确认", r3.ok === true && !r3.nothingToClean && sc.t.stA.getItem(AUTH_KEY) === null && sc.t.A.hasLeftoverAuth() === false, JSON.stringify(r3));
+  const r4 = await sc.t.A.retryAuthCleanup();
+  check("R.5 已经干净：明确是“没有可清理的”（nothingToClean），不是清理成功", r4.ok === true && r4.nothingToClean === true);
+}
+
+// ---- R.6 没有任何残留、读取也正常：nothingToClean；别的项目的凭证绝不碰 ----
+{
+  const t = await twoDevices("r6@example.com");
+  await t.A.logout();
+  const r = await t.A.retryAuthCleanup();
+  check("R.6 正常退出后没有残留：hasLeftoverAuth() false，retry 为 nothingToClean", t.A.hasLeftoverAuth() === false && r.ok === true && r.nothingToClean === true, JSON.stringify(r));
+}
+
+// ---- R.7 动手前再确认一次：第一次读指针时还是空，清理前别的标签页刚好登录了 → 不删 ----
+{
+  const sc = await leftoverScene("r7@example.com");
+  sc.fixStorage();
+  const stA = sc.t.stA, reopened = sc.reopen();
+  const real = stA.getItem; let n = 0;
+  stA.getItem = (k) => { if (k === SESSION_KEY && ++n >= 2) return "u0000000001"; return real(k); }; // 第 2 次读起，指针出现
+  const r = await reopened.retryAuthCleanup();
+  stA.getItem = real;
+  check("R.7 清理前指针刚好出现：拒绝（logged-in），凭证原样", r.ok === false && r.kind === "logged-in" && stA.getItem(AUTH_KEY) === sc.authRaw, JSON.stringify(r));
+}
+
 const failed = results.filter((r) => !r).length;
 console.log(`\n登录/同步加固专项：共 ${results.length} 项，失败 ${failed} 项`);
 process.exit(failed ? 1 : 0);
