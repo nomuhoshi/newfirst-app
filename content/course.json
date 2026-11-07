@@ -18,7 +18,7 @@
     {
       "id": "U3",
       "title": "比较与判断",
-      "subtitle": "比较、True/False、if",
+      "subtitle": "比较、if/else/elif、and/or/not",
       "available": true,
       "file": "unit3.json"
     },

@@ -1,4 +1,4 @@
-// 第 3 单元第一部分（U3L1–U3L4）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
+// 第 3 单元（U3L1–U3L8）：真实构建 + 真实 Pyodide，在手机视口里按正确答案通关，并各答错一次。
 // 运行：npm run build && node tests/step8-u3.test.mjs [chromium|webkit]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -27,7 +27,7 @@ const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 
-check("U1、U2 通关后 U3L1 是当前关，U3L2–L4 锁定", await page.evaluate(() => document.querySelector('[data-lesson="U3L1"]')?.classList.contains("current") && ["U3L2", "U3L3", "U3L4"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
+check("U1、U2 通关后 U3L1 是当前关，U3L2–L8 锁定", await page.evaluate(() => document.querySelector('[data-lesson="U3L1"]')?.classList.contains("current") && ["U3L2", "U3L3", "U3L4", "U3L5", "U3L6", "U3L7", "U3L8"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
 check("第 4、5 单元仍显示即将推出", (await page.locator(".unit.locked").count()) === 2);
 
 async function answer(ex, right) {
@@ -43,6 +43,8 @@ async function answer(ex, right) {
   }
 }
 for (const l of unit3.lessons) {
+  // 每关故意答错一次会扣 1 颗红心；8 关会扣光，所以每关开始前补满（只改测试状态，不改红心规则）
+  await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); });
   await page.locator(`[data-lesson="${l.id}"]`).click(); await page.locator(".overlay .btn3d.primary").click();
   await page.getByRole("button", { name: "继续", exact: true }).click(); // 讲解页
   const queue = [...l.exercises]; let wrongDone = false, steps = 0, outs = [];
@@ -62,7 +64,7 @@ for (const l of unit3.lessons) {
     if (!right) { wrongDone = true; check(`${l.id}：答错一次显示“不对哦”和解释`, fb.includes("不对哦"), fb.slice(0, 80)); }
     else { check(`${l.id}：${exm.type} 正确答案判为答对`, fb.includes("答对了"), fb.slice(0, 120)); queue.splice(queue.indexOf(exm), 1); }
     await page.locator("[data-continue]:not([disabled])").click();
-    await page.waitForSelector("[data-check], .finish");
+    await page.waitForSelector("[data-check], .finish").catch(async (e) => { await page.screenshot({ path: "/workspace/u3p2/shots/stuck.png" }); console.log("STUCK", (await page.locator("#app").innerText()).slice(0, 400)); throw e; });
   }
   for (const [ex, right, out] of outs) if (right) check(`${l.id}：${ex.type} 真实运行结果与 expected 一致`, out.includes(ex.expected.split("\n")[0]), out.slice(0, 80));
   await page.waitForSelector(".finish");
