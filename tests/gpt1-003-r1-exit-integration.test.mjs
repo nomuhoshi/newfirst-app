@@ -19,11 +19,11 @@ const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(
 
 function memory() {
   const map = new Map();
-  const faults = { writeback: false, silentAuthRemove: false, silentPointerRemove: false, pointerRemoveThrows: false, silentRetryRemove: false };
+  const faults = { writeback: false, silentAuthRemove: false, silentPointerRemove: false, pointerRemoveThrows: false, silentRetryRemove: false, authWriteThrows: false };
   return {
     map, faults,
     getItem(k) { return map.has(k) ? map.get(k) : null; },
-    setItem(k, v) { if (k === KEY && faults.writeback) throw Error('simulated quota error'); map.set(k, String(v)); },
+    setItem(k, v) { if (k === KEY && faults.writeback) throw Error('simulated quota error'); if (k === AUTH_KEY && faults.authWriteThrows) throw Error('auth write denied'); map.set(k, String(v)); },
     removeItem(k) {
       if (k === AUTH_KEY && faults.silentAuthRemove) return;
       if (k === RETRY_KEY && faults.silentRetryRemove) return;
@@ -167,4 +167,47 @@ test('G8: 计数键删除静默无效：守卫路径退出仍成功（不困住�
   const r2 = await sync2.syncNow(); await settle();
   assert.equal(f.storage.getItem(RETRY_KEY), '3');
   assert.equal(r2.retryLimitReached, true);
+});
+
+// ---- aedba6b（retryAuthCleanup 读取失败修复）× v4 计数 × R1 守卫 的交叉点 ----
+
+test('G9: 普通退出时凭证清不掉（aedba6b 的残留路径）：退出成功但提示残留；计数键为空；再清理不联网、不碰游客和账号副本', async () => {
+  const f = fixture(); await failTimes(f, 1);
+  f.storage.faults.writeback = false; // 本机写回恢复：普通退出会先同步，成功后才继续
+  f.storage.faults.silentAuthRemove = true; f.storage.faults.authWriteThrows = true; // 凭证删不掉，撤销标记也写不进去
+  const r = await f.sync.logout();
+  assert.equal(r.ok, true); assert.equal(r.warning, 'local-auth-leftover'); assert.equal(r.authLeftover, true);
+  assert.equal(f.storage.getItem(RETRY_KEY), null, '残留路径的退出收尾同样要清掉重试计数');
+  assert.equal(getCurrentAccount(f.storage), null);
+  assert.ok(f.storage.getItem(AUTH_KEY), '凭证确实还在存储里');
+  assert.equal(f.sync.hasLeftoverAuth(), true);
+  const guestBefore = f.storage.getItem(GUEST_KEY); const cloudBefore = f.cloud.calls.length;
+  const bad = await f.sync.retryAuthCleanup();      // 存储仍坏：如实失败，入口保留
+  assert.equal(bad.ok, false); assert.equal(bad.kind, 'local'); assert.equal(f.sync.hasLeftoverAuth(), true);
+  f.storage.faults.silentAuthRemove = false; f.storage.faults.authWriteThrows = false;
+  const good = await f.sync.retryAuthCleanup();
+  assert.equal(good.ok, true); assert.notEqual(good.nothingToClean, true);
+  assert.equal(f.storage.getItem(AUTH_KEY), null);
+  assert.equal(f.sync.hasLeftoverAuth(), false);
+  assert.equal(f.storage.getItem(RETRY_KEY), null, '清理凭证不会让重试计数复活');
+  assert.equal(f.storage.getItem(GUEST_KEY), guestBefore);
+  assert.equal(f.cloud.calls.length, cloudBefore, '清理凭证零网络请求');
+});
+
+test('G10: R1 守卫的强制退出成功后没有“残留”（凭证已验证删除）；守卫退出失败时仍是登录态，retryAuthCleanup 拒绝且不动凭证', async () => {
+  const ok = fixture(); await failTimes(ok, 2); corruptPending(ok);
+  ok.storage.faults.writeback = false;
+  assert.equal((await ok.sync.forceLocalLogout()).ok, true);
+  assert.equal(ok.sync.hasLeftoverAuth(), false);
+  const r0 = await ok.sync.retryAuthCleanup();
+  assert.equal(r0.ok, true); assert.equal(r0.nothingToClean, true);
+
+  const bad = fixture(); await failTimes(bad, 2); corruptPending(bad);
+  bad.storage.faults.writeback = false; bad.storage.faults.silentAuthRemove = true;
+  assert.equal((await bad.sync.forceLocalLogout()).ok, false);
+  const authBefore = bad.storage.getItem(AUTH_KEY);
+  const r1 = await bad.sync.retryAuthCleanup();
+  assert.equal(r1.ok, false); assert.equal(r1.kind, 'logged-in');
+  assert.equal(bad.storage.getItem(AUTH_KEY), authBefore, '还在登录：凭证原样');
+  assert.equal(bad.storage.getItem(RETRY_KEY), '2');
 });
