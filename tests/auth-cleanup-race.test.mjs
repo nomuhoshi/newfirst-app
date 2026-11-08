@@ -41,12 +41,14 @@ test('A1: 对照：没有竞争时，残留凭证被清掉并读回确认', asyn
   assert.equal(raw._m.has(AUTH_KEY), false);
 });
 
-test('A2: 竞争①——最后一次账号指针检查之后、删除之前，另一个标签页登录了：不能删对方刚写的凭证', async () => {
+test('A2: 竞争①——账号指针最后一次检查之后、删除之前，另一个标签页登录了：不能删对方刚写的凭证', async () => {
   const { raw, sync } = setup();
+  // 入口检查读一次指针，“动手前再确认”读第二次；对方在第二次指针读取之后的第一次凭证读取前登录。
   let pointerReads = 0;
-  raw.hooks.get = (k, o) => { if (k === SESSION_KEY && ++pointerReads === 2 && !o.flags?.done) { o.flags = { done: true }; otherTabLogsIn(o); } };
-  // 第 1 次读指针是入口检查，第 2 次是“动手前再确认一次”（p2）；对方在 p2 读完之后登录（hook 在读之前改存储会被 p2 看到，所以用第 3 次读 = 紧随其后的任何读取）
-  raw.hooks.get = (k, o) => { if (k === SESSION_KEY) { pointerReads++; } if (k === AUTH_KEY && pointerReads >= 2 && !o.flags?.done) { o.flags = { done: true }; otherTabLogsIn(o); } };
+  raw.hooks.get = (k, o) => {
+    if (k === SESSION_KEY) pointerReads++;
+    if (k === AUTH_KEY && pointerReads >= 2 && !o.flags?.done) { o.flags = { done: true }; otherTabLogsIn(o); }
+  };
   const r = await sync.retryAuthCleanup();
   assert.equal(r.ok, false, '不能宣称清理成功'); assert.equal(r.kind, 'changed');
   assert.equal(raw._m.get(AUTH_KEY), authRaw('rt-new', 'at-new'), '对方刚写的有效登录凭证必须原样保留');
@@ -64,17 +66,13 @@ test('A3: 竞争②——删除静默无效、改写撤销标记之前，另一�
   assert.equal(raw.log.filter(([op, k]) => op === 'set' && k === AUTH_KEY).length, 0, '没有往凭证键写任何东西');
 });
 
-test('A4: 竞争③——对方在读回之前把凭证“刷新”成新令牌（同一账号的正常刷新）：同样不清、不覆盖', async () => {
+test('A4: 竞争③——对方在清理前把凭证“刷新”成新令牌（同一账号的正常刷新）：同样不清、不覆盖', async () => {
   const { raw, sync } = setup();
-  raw.hooks.get = (k, o) => { if (k === AUTH_KEY && o.log.some(([op, kk]) => op === 'remove' && kk === AUTH_KEY) === false && o.flags?.armed && !o.flags.done) { o.flags.done = true; o._m.set(AUTH_KEY, authRaw('rt-rotated', 'at-rotated')); } };
-  raw.flags = { armed: false };
-  // 在 inspectAuth 之后、清理之前轮换：用“第 2 次读凭证”触发
-  let authReads = 0; const base = raw.hooks.get;
-  raw.hooks.get = (k, o) => { if (k === AUTH_KEY) { authReads++; if (authReads === 2 && !o.flags.done) { o.flags.done = true; o._m.set(AUTH_KEY, authRaw('rt-rotated', 'at-rotated')); } } };
+  let authReads = 0; // 第 1 次是 inspectAuth；第 2 次是删除前的比对——对方的刷新恰好发生在两者之间
+  raw.hooks.get = (k, o) => { if (k === AUTH_KEY && ++authReads === 2) o._m.set(AUTH_KEY, authRaw('rt-rotated', 'at-rotated')); };
   const r = await sync.retryAuthCleanup();
   assert.equal(r.ok, false); assert.equal(r.kind, 'changed');
   assert.equal(raw._m.get(AUTH_KEY), authRaw('rt-rotated', 'at-rotated'));
-  void base;
 });
 
 test('A5: 清理失败后“残留”标记不丢：被判 changed 之后用户还能再点（对方登出后可以清掉）', async () => {

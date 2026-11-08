@@ -537,6 +537,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (ctx.resume) {
       // “恢复后重新选择”：弹窗期间令牌可能已被刷新轮换，必须用当前会话，不能把挂起时那份旧令牌写回去。
       if (!session || !userId || userId !== ctx.session.userId) { waiting = null; return { ok: false, kind: "auth", message: "登录状态已变化，请重新操作" }; }
+      const tk = await ensureToken(); // 先刷新（若需要），再取“刷新之后的当前会话”：后面所有联网和收尾写回都用同一个对象，不会把旧令牌写回存储
+      if (!tk.ok) return tk;          // 保留 waiting：用户可以稍后在同一个弹窗里重试
       ctx.session = session;
     }
     const r = await finish(ctx, choice);

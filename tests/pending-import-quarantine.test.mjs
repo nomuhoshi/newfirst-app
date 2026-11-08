@@ -33,12 +33,12 @@ function cloudDoc(gid, kind) {
   return d;
 }
 function makeApi(initial, { failUpload = false } = {}) {
-  const calls = [], state = { row: { doc: clone(initial), rev: 7 } };
-  return { calls, state,
+  const calls = [], tokens = [], state = { row: { doc: clone(initial), rev: 7 } };
+  return { calls, tokens, state,
     async verifyCode() { calls.push('verifyCode'); return { ok: true, session: session() }; },
     async refresh() { calls.push('refresh'); return { ok: true, session: session() }; },
-    async getProgress() { calls.push('getProgress'); return { ok: true, row: clone(state.row) }; },
-    async saveProgress(_s, expected, doc) { calls.push('saveProgress'); if (failUpload) return { ok: false, kind: 'network', message: '写入失败（注入）' }; if (expected !== state.row.rev) return { ok: true, rev: null }; state.row = { doc: clone(doc), rev: state.row.rev + 1 }; return { ok: true, rev: state.row.rev }; },
+    async getProgress(sess) { calls.push('getProgress'); tokens.push(sess?.accessToken); return { ok: true, row: clone(state.row) }; },
+    async saveProgress(sess, expected, doc) { calls.push('saveProgress'); tokens.push(sess?.accessToken); if (failUpload) return { ok: false, kind: 'network', message: '写入失败（注入）' }; if (expected !== state.row.rev) return { ok: true, rev: null }; state.row = { doc: clone(doc), rev: state.row.rev + 1 }; return { ok: true, rev: state.row.rev }; },
     async createProgress(_s, doc) { calls.push('createProgress'); state.row = { doc: clone(doc), rev: 1 }; return { ok: true, rev: 1 }; },
     async signOut() { calls.push('signOut'); return { ok: true }; } };
 }
@@ -58,9 +58,10 @@ function fixture({ pendingRaw = BAD, cloud = 'new', guestXp = 80, projectId = nu
   if (pendingRaw !== null) st.setItem(PENDING_KEY, pendingRaw);
   raw.flags = {}; raw.removed.length = 0;
   const api = makeApi(cdoc, { failUpload });
-  const sync = createSync({ storage: raw, api, projectId, legacyProject: projectId ? 'legacyhost' : null, now: () => NOW, today: () => TODAY, schedule: () => 1 });
+  const clock = { t: NOW };
+  const sync = createSync({ storage: raw, api, projectId, legacyProject: projectId ? 'legacyhost' : null, now: () => clock.t, today: () => TODAY, schedule: () => 1 });
   assert.ok(sync.restore(freshState()));
-  return { raw, st, ns, guest, guestRaw, gid, cdoc, api, sync };
+  return { raw, st, ns, guest, guestRaw, gid, cdoc, api, sync, clock };
 }
 const snap = (f) => ({ guest: f.st.getItem(GUEST_KEY), acct: f.st.getItem(ACCT_KEY), auth: f.st.getItem(AUTH_KEY), ptr: f.st.getItem(SESSION_KEY), device: f.st.getItem(DEVICE_KEY) });
 const backupKeys = (f) => [...f.raw._m.keys()].filter((k) => k.includes('suipian.acct.quarantine.'));
@@ -308,16 +309,17 @@ test('Q19: 隔离后写云失败：游客记录和账号副本保留，新待办
   assert.equal(readQuarantineBackup(f.st, UID, rawDigest(BAD)).raw, BAD, '备份仍在');
 });
 
-test('Q20: 隔离后的重新选择在令牌已轮换时使用当前会话（不把挂起时的旧令牌写回存储）', async () => {
+test('Q20: 重新选择的弹窗挂起期间令牌进入刷新窗口：先刷新，之后所有联网都用新令牌，存储里留下的是新令牌（不是挂起时的旧令牌）', async () => {
   const f = fixture();
   assert.equal((await f.sync.quarantinePendingImport()).ok, true);
   const r = await f.sync.resumeGuestImportChoice(freshState()); assert.equal(r.needChoice, true);
-  // 弹窗期间别的流程轮换了令牌：直接把存储里的凭证换成新令牌，再让 sync 重新读（模拟 adoptStoredSession 之后的当前会话）
-  const rotated = { ...session(), accessToken: 'fake-at-2', refreshToken: 'fake-rt-2' };
+  const rotated = { ...session(), accessToken: 'fake-at-2', refreshToken: 'fake-rt-2', expiresAt: NOW + 7_200_000 };
   f.api.refresh = async () => { f.api.calls.push('refresh'); return { ok: true, session: rotated }; };
-  const fr = await f.sync.finishChoice('cloud');
-  assert.equal(fr.ok, true);
-  const auth = JSON.parse(f.raw._m.get(AUTH_KEY));
-  assert.ok(['fake-rt', 'fake-rt-2'].includes(auth.session.refreshToken));
-  assert.equal(auth.session.userId, UID);
+  f.clock.t = NOW + 3_600_000 - 30_000;      // 离过期不到 60 秒：下一次联网前必须先刷新
+  f.api.tokens.length = 0;
+  const fr = await f.sync.finishChoice('transfer');
+  assert.equal(fr.ok, true, JSON.stringify(fr));
+  assert.ok(f.api.calls.includes('refresh'), '确实触发了刷新');
+  assert.ok(f.api.tokens.length > 0 && f.api.tokens.every((t) => t === 'fake-at-2'), '刷新之后的所有云端请求都用新令牌：' + f.api.tokens.join());
+  assert.equal(JSON.parse(f.raw._m.get(AUTH_KEY)).session.refreshToken, 'fake-rt-2', '存储里不能被写回挂起时的旧令牌');
 });

@@ -21,7 +21,7 @@ try {
   resetSource();
   cpSync(join(ROOT, "tests", "fixtures"), join(W, "tests", "fixtures"), { recursive: true });
   cpSync(join(ROOT, TEST), TMP_TEST);
-  const R1_TESTS = ["pending-import-corrupt-guard.test.mjs", "r1-exit-interaction.test.mjs", "r1-logout-integration.test.mjs"]; // node:test 风格，失败行以 "not ok" 开头
+  const R1_TESTS = ["pending-import-corrupt-guard.test.mjs", "r1-exit-interaction.test.mjs", "r1-logout-integration.test.mjs", "pending-import-quarantine.test.mjs", "auth-cleanup-race.test.mjs"]; // node:test 风格，失败行以 "not ok" 开头
   for (const t of R1_TESTS) cpSync(join(ROOT, "tests", t), join(W, "tests", t));
   writeFileSync(join(W, "package.json"), JSON.stringify({ type: "module" }));
 
@@ -305,8 +305,8 @@ try {
     {
       name: "DB-3.1：再次清理不读回确认就宣称成功",
       file: "sync.js",
-      from: "    if (clearStoredAuthVerified()) {\n      const after = inspectAuth(); // 读回：必须确认已经没有可用凭证\n      if (after.state === \"absent\" || after.state === \"inert\") { leftoverAuth = false; leftoverRt = null; return { ok: true }; }\n    }",
-      to: "    clearStoredAuthVerified();\n    { leftoverAuth = false; leftoverRt = null; return { ok: true }; }",
+      from: "    if (cleared.ok) {\n      const after = inspectAuth(); // 读回：必须确认已经没有可用凭证\n      if (after.state === \"absent\" || after.state === \"inert\") { leftoverAuth = false; leftoverRt = null; return { ok: true }; }\n    }",
+      to: "    { leftoverAuth = false; leftoverRt = null; return { ok: true }; }",
     },
     {
       name: "DB-3.1：账号指针有账号（别的标签页在登录）也允许清理",
@@ -450,6 +450,111 @@ try {
       file: "sync.js",
       from: "return a.state === \"ours\" || a.state === \"read-failed\";",
       to: "return a.state === \"ours\";",
+    },
+    {
+      name: '恢复：备份失败也照样删原待办',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "if (!bk.ok) return fail(\"backup-failed\"",
+      to: "if (false) return fail(\"backup-failed\"",
+    },
+    {
+      name: '恢复：备份读回不校验（写进去的东西不对也算备份成功）',
+      file: "account-store.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "if (!back.ok || typeof back.value !== \"string\" || !same(back.value)) return",
+      to: "if (!back.ok) return",
+    },
+    {
+      name: '恢复：同一个备份键里是别的内容也当成同一份（覆盖 / 误复用）',
+      file: "account-store.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "return same(existing.value) ? { ok: true, key, digest, reused: true } : { ok: false, code: \"backup-conflict\" };",
+      to: "return { ok: true, key, digest, reused: true };",
+    },
+    {
+      name: '恢复：读取失败（非字符串）也当成待办原文去隔离',
+      file: "account-store.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "const r = safeRead(storage, pendingImportKey(userId));\n  if (!r.ok || (r.value !== null && typeof r.value !== \"string\")) return { ok: false };\n  return { ok: true, raw: r.value };",
+      to: "const r = safeRead(storage, pendingImportKey(userId));\n  if (!r.ok) return { ok: false };\n  return { ok: true, raw: r.value };",
+    },
+    {
+      name: '恢复：删除原待办后不读回确认（删不掉也宣称恢复成功）',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "if (r3.raw === raw) return fail(\"remove-failed\"",
+      to: "if (false) return fail(\"remove-failed\"",
+    },
+    {
+      name: '恢复：删除前不复核待办原文（别的标签页换了新待办也删）',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "if (r2.raw !== raw) return fail(\"pending-changed\"",
+      to: "if (false) return fail(\"pending-changed\"",
+    },
+    {
+      name: '恢复：删除前不复核账号指针（别的标签页换了账号也删）',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "if (!sameAccount()) return fail(\"account-changed\", \"登录的账号刚刚变了",
+      to: "if (false) return fail(\"account-changed\", \"登录的账号刚刚变了",
+    },
+    {
+      name: '恢复：用户确认的那份和现在不是同一份也继续（不比对摘要）',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "if (expectedDigest && expectedDigest !== digest)",
+      to: "if (false)",
+    },
+    {
+      name: '恢复：隔离时顺手删了游客记录',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "    pending = true;\n    setStatus(\"pending\", \"已备份并移除损坏的游客导入待办。",
+      to: "    try { storage.removeItem(\"suipian.progress\"); } catch {}\n    pending = true;\n    setStatus(\"pending\", \"已备份并移除损坏的游客导入待办。",
+    },
+    {
+      name: '恢复：隔离过程联网',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "    const bk = backupCorruptPending(",
+      to: "    await api.getProgress(session);\n    const bk = backupCorruptPending(",
+    },
+    {
+      name: '恢复：完好的待办也允许隔离',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "if (parsed.ok) return fail(\"not-corrupt\"",
+      to: "if (false) return fail(\"not-corrupt\"",
+    },
+    {
+      name: '恢复：云端已导入过也再弹选择（重复导入风险）',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "if (!guestHas || importStatus === \"same\") {",
+      to: "if (!guestHas) {",
+    },
+    {
+      name: '恢复：重新选择不先刷新令牌（挂起期间的旧令牌被写回存储）',
+      file: "sync.js",
+      test: "pending-import-quarantine.test.mjs",
+      from: "      const tk = await ensureToken();",
+      to: "      const tk = { ok: true }; void ensureToken;\n      void 0;",
+    },
+    {
+      name: '清理残留：删除前不比对原文（盲删，别的标签页刚写的登录凭证也删）',
+      file: "sync.js",
+      test: "auth-cleanup-race.test.mjs",
+      from: "    if (c.v !== expectRaw) return { ok: false, changed: true };\n    try { storage.removeItem(AUTH_KEY); } catch {}",
+      to: "    try { storage.removeItem(AUTH_KEY); } catch {}",
+    },
+    {
+      name: '清理残留：写撤销标记前不比对（用撤销标记覆盖别的标签页的新凭证）',
+      file: "sync.js",
+      test: "auth-cleanup-race.test.mjs",
+      from: "    if (c.v !== expectRaw) return { ok: false, changed: true }; // 删除期间被换成了别的内容：那是别人的登录，绝不能再覆盖\n",
+      to: "",
     },
     {
       name: "删号后本机清理失败仍宣称成功",
