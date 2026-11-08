@@ -57,7 +57,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   let baseline = null, lastError = "";
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
 
-  const setStatus = (s, msg = "") => { status = s; lastError = msg; try { onStatus(s, msg); } catch {} };
+  // 最近一次状态变化和最近一次“确认已同步”的时间（只在内存里，不写存储；测试入口的信息面板读它，重开页面后从头算）。
+  let lastStatusAt = null, lastSyncedAt = null;
+  const setStatus = (s, msg = "") => { status = s; lastError = msg; lastStatusAt = now(); if (s === "synced") lastSyncedAt = lastStatusAt; try { onStatus(s, msg); } catch {} };
   const normalizedEmail = (x) => String(x || "").trim().toLowerCase();
   // 一份能用于联网的凭证必须字段齐全：没有访问令牌 / 刷新令牌 / 过期时间的残缺凭证只当作“需要重新登录”，
   // 绝不把 undefined / 旧项目 / 别的账号的令牌拼进 Authorization 发出去。
@@ -1201,6 +1203,6 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   return {
     restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount,
     account: () => (userId ? { userId, email } : null),
-    status: () => ({ status, pending, message: lastError }),
+    status: () => ({ status, pending, message: lastError, lastStatusAt, lastSyncedAt }),
   };
 }

@@ -26,6 +26,8 @@ import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
 import { createSync } from "./sync.js";
 import { createAccountUi } from "./account-ui.js";
+import { createPreviewInfo } from "./preview-info.js";
+import { cloudTarget } from "./cloud-config.js";
 import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
@@ -239,9 +241,11 @@ function replacedFor(view) {
   else if (replacedOn !== view) replacedOn = null;
   return replacedOn === view ? REPLACED_TEXT : null;
 }
+// 测试入口信息面板（正式构建里 isPreview 为 false，什么都不创建）。getStatus 等在 sync 创建之后才有值，所以用到时再取。
+let previewInfo = null;
 const sync = safeStorage ? createSync({
   storage: safeStorage, api: cloudApi, projectId: hostOf(CLOUD.url) || "cloud-off", legacyProject: PROD_HOST,
-  onStatus: () => accountUi?.refreshStatus(),
+  onStatus: () => { accountUi?.refreshStatus(); previewInfo?.refresh(); },
   onNotice: (kind) => { if (kind !== "replaced") return; pendingReplaced = true; if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); },
   onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
 }) : null;
@@ -262,7 +266,16 @@ accountUi = createAccountUi({
   onSwitchedIn: (r) => { state = r.state; feel.setPrefs(state.prefs); notice = null; currentView === "me" ? renderMe() : renderPath(); },
   onSwitchedOut: () => { const l = loadState(); state = l.state; notice = l.notice; feel.setPrefs(state.prefs); currentView === "me" ? renderMe() : renderPath(); },
 });
+previewInfo = createPreviewInfo({
+  h, isPreview: typeof __PREVIEW_ID__ !== "undefined" && !!__PREVIEW_ID__,
+  sha: typeof __SOURCE_SHA__ !== "undefined" ? __SOURCE_SHA__ : "", previewId: typeof __PREVIEW_ID__ !== "undefined" ? __PREVIEW_ID__ : "",
+  build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", target: cloudTarget(),
+  getStatus: () => (sync ? sync.status() : {}), getAccount: () => (sync ? sync.account() : null),
+  getRecovery: () => (sync && sync.account() ? sync.pendingRecoveryInfo().state : "none"), getOnline: () => navigator.onLine !== false,
+});
 if (sync && restored) sync.syncNow(); // 打开应用时后台同步一次（失败也不影响学习）
+addEventListener("online", () => previewInfo?.refresh());
+addEventListener("offline", () => previewInfo?.refresh());
 if (sync) {
   addEventListener("online", () => { if (sync.account()) sync.syncNow(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && sync.account()) sync.syncNow(); });
@@ -794,6 +807,7 @@ function renderMe() {
         statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
       accountUi?.accountCard(),
+      previewInfo?.card(),
       backupCard(),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),

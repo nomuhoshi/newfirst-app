@@ -39,3 +39,10 @@ function pick() {
   return IS_PREVIEW ? testCloud() : DEFAULT;
 }
 export const CLOUD = pick();
+
+// 当前构建实际连接的云项目（给测试入口的信息面板和自动测试用）：只返回主机名和项目编号，不含密钥。
+export function cloudTarget() {
+  const host = hostOf(CLOUD.url);
+  if (!host) return { mode: "off", host: "", ref: "" };
+  return { mode: IS_PREVIEW ? "test" : "prod", host, ref: host.endsWith(".supabase.co") ? host.split(".")[0] : "" };
+}

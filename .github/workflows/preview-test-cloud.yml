@@ -1,0 +1,60 @@
+# 测试云独立预览（只连接 suipian-test）：用 PREVIEW_ID（默认 acc1）构建，推到分支 preview-dist-<id>。
+# 只能手动触发；不部署任何网站、不碰正式站和正式 Supabase。产物由人工 / 受权限的步骤复制到预览仓库 newfirst-app-preview 的 <id>/ 目录。
+# 云配置只来自仓库变量（Settings → Secrets and variables → Actions → Variables）：TEST_SUPABASE_URL、TEST_SUPABASE_ANON_KEY（公开密钥）、
+# 可选 EXPECTED_TEST_PROJECT_REF（不设就用下面的默认 suipian-test 项目编号）。构建走严格模式：配置错（正式项目 / secret 密钥 / 项目编号不符 / 没有云配置）会让构建失败。
+name: Test-cloud preview
+on:
+  workflow_dispatch:
+    inputs:
+      preview_id:
+        description: 预览编号（本地存储键前缀 / 缓存前缀 / 目录名）
+        default: acc1
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: preview-test-cloud-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_ID: ${{ inputs.preview_id }}
+      TEST_SUPABASE_URL: ${{ vars.TEST_SUPABASE_URL }}
+      TEST_SUPABASE_ANON_KEY: ${{ vars.TEST_SUPABASE_ANON_KEY }}
+      EXPECTED_TEST_PROJECT_REF: ${{ vars.EXPECTED_TEST_PROJECT_REF || 'tqdwhtrextqlmctkryyg' }}
+      REQUIRE_TEST_CLOUD: "1"
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 必须先有测试云变量
+        run: |
+          if [ -z "$TEST_SUPABASE_URL" ] || [ -z "$TEST_SUPABASE_ANON_KEY" ]; then
+            echo "::error::仓库变量 TEST_SUPABASE_URL / TEST_SUPABASE_ANON_KEY 还没设置（只放 suipian-test 的项目网址和公开密钥，绝不放 secret / service_role）。"
+            exit 1
+          fi
+      - run: npm ci
+      - name: 构建测试入口（严格模式，日志打印云端模式和源码提交号）
+        shell: bash
+        run: npm run build 2>&1 | tee build.log
+      - name: 核对产物
+        run: |
+          set -e
+          grep -q "云端：测试云项目 ${EXPECTED_TEST_PROJECT_REF}" build.log
+          grep -q "源码提交：${GITHUB_SHA}" build.log
+          grep -q "PREFIX = \"${PREVIEW_ID}-suipian-\"" dist/sw.js
+          grep -rq "${GITHUB_SHA}" dist/assets/main-*.js
+          grep -rq "${EXPECTED_TEST_PROJECT_REF}.supabase.co" dist/assets/main-*.js
+          ! grep -rqE "sb_secret_[A-Za-z0-9]|service_role" dist/assets/main-*.js
+      - name: 推到 preview-dist-${{ inputs.preview_id }}
+        run: |
+          cd dist
+          echo "${GITHUB_SHA}" > SOURCE_SHA.txt
+          printf '{"sha":"%s","previewId":"%s","cloudRef":"%s","builtAt":"%s"}\n' "$GITHUB_SHA" "$PREVIEW_ID" "$EXPECTED_TEST_PROJECT_REF" "$(date -u +%FT%TZ)" > PREVIEW_INFO.json
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          git add -A && git commit -q -m "test-cloud preview ${PREVIEW_ID} from ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "dist:preview-dist-${PREVIEW_ID}"
