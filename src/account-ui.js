@@ -158,6 +158,54 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     const st = h("p", { class: "acct-status", role: "status", "data-sync-status": "" }); statusEls.add(st);
     const sheetConfirm = (title, body, okLabel, okFn, danger = false) => sheet((close) => [h("div", { class: "lsheet" }, h("h2", { text: title }), h("p", { text: body }),
       button(okLabel, async () => { close(); await okFn(); }, "btn3d wide " + (danger ? "danger" : "primary")), button("取消", close, "btn3d ghost wide"))]);
+    // ---------- 损坏的游客导入待办：恢复入口 ----------
+    // 确认损坏（corrupt）才给“备份并重新导入”；读取失败（read-failed）只给“重试读取”，绝不隔离。
+    // 恢复成功只在隔离确实完成（原文已备份并读回、原待办已删除并读回）之后才说；任何一步失败都如实告诉用户原待办还在。
+    function openImportChoice(info) {
+      const g = `${info.guest.xp} XP、${info.guest.lessons} 关`;
+      sheet((close) => {
+        const msg = h("p", { class: "login-msg", role: "alert", "data-choice-msg": "" });
+        const pick = async (choice) => {
+          msg.textContent = "正在处理…"; msg.classList.remove("bad");
+          const r = await sync.finishChoice(choice);
+          if (!r.ok) { msg.textContent = errorText(r); msg.classList.add("bad"); return; }
+          close(); onSwitchedIn(r);
+          showToast(r.synced ? "游客进度已处理，已同步。" : "游客进度已处理。" + (r.syncError ? "云端暂时没同步上（" + r.syncError + "），联网后会自动补上。" : ""));
+        };
+        return [h("div", { class: "lsheet", "data-import-choice": "" },
+          info.cloudHasData
+            ? [h("h2", { text: "这个账号已有学习进度" }), h("p", { text: `云端已经有这个账号的进度。这台设备上还有没登录时学的进度（${g}）。` }),
+              button("保留云端进度（推荐）", () => pick("cloud"), "btn3d primary wide", { "data-choice": "cloud" }),
+              button("安全合并游客进度", () => pick("transfer"), "btn3d wide", { "data-choice": "transfer" })]
+            : [h("h2", { text: "转存这台设备上的进度？" }), h("p", { text: `这台设备上有没登录时学的进度（${g}）。要放进这个账号吗？` }),
+              button("安全合并到账号", () => pick("transfer"), "btn3d primary wide", { "data-choice": "transfer" }),
+              button("不转存，用全新账号", () => pick("cloud"), "btn3d wide", { "data-choice": "cloud" })],
+          msg, button("稍后再说", close, "btn3d ghost wide"))];
+      });
+    }
+    async function runRecovery(digest) {
+      const q = await sync.quarantinePendingImport({ expectedDigest: digest });
+      if (!q.ok) { showToast(q.message || "没有处理成功，原来的待办还在。"); rerender(); return; }
+      showToast("损坏的待办已备份并移除。");
+      const r = await sync.resumeGuestImportChoice(getState());
+      if (!r.ok) { showToast("待办已处理，但还没能确认云端：" + errorText(r) + " 点“立即同步”可重试。"); rerender(); return; }
+      if (r.needChoice) { rerender(); openImportChoice(r); return; }
+      showToast(r.alreadyImported ? "云端已经有这份游客进度，不会重复加分。" : "已同步。"); rerender();
+    }
+    function recoveryBox() {
+      const info = sync.pendingRecoveryInfo();
+      if (info.state === "corrupt") {
+        return h("div", { class: "acct-recover", "data-recovery": "corrupt" },
+          h("p", { class: "muted small", text: "游客导入待办损坏，云端同步已锁定。可以先把损坏的内容备份在本机，再重新确认游客进度怎么处理；游客记录、账号副本和登录都不会被删。" }),
+          button("备份并重新导入", () => sheetConfirm("备份损坏的待办？", "会把损坏的待办原文备份在这台设备上（读回确认后才移除原待办），不联网。之后会重新问你游客进度怎么处理，不会重复加分。", "备份并继续", () => runRecovery(info.digest)), "btn3d wide", { "data-quarantine": "" }));
+      }
+      if (info.state === "read-failed") {
+        return h("div", { class: "acct-recover", "data-recovery": "read-failed" },
+          h("p", { class: "muted small", text: "现在读不出游客导入待办。这只是读取失败，不能当作损坏，所以不会备份或删除任何东西。请检查浏览器存储权限后重试。" }),
+          button("重试读取", async () => { const r = await sync.syncNow({ manual: true }); if (!r.ok) showToast(errorText(r)); rerender(); }, "btn3d wide", { "data-pending-retry": "" }));
+      }
+      return null;
+    }
     async function doLogout(then) {
       const r = await sync.logout();
       if (r.ok) { onSwitchedOut(); showToast(r.warning ? r.message : "已退出登录。"); if (then) then(); return; }
@@ -178,7 +226,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       }, true);
       else showToast(errorText(r));
     }
-    card.append(h("h3", { text: "账号" }), h("p", { class: "acct-email", text: acc.email || "已登录" }), st,
+    card.append(h("h3", { text: "账号" }), h("p", { class: "acct-email", text: acc.email || "已登录" }), st, ...[recoveryBox()].filter(Boolean),
       button("立即同步", async () => { const r = await sync.syncNow({ manual: true }); if (!r.ok) showToast(errorText(r)); else rerender(); }, "btn3d wide", { "data-sync-now": "" }),
       h("div", { class: "acct-row" },
         button("退出登录", () => doLogout(), "btn3d", { "data-logout": "" }),

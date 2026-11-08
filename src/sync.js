@@ -7,7 +7,7 @@
 //  - 游客记录只有在“用户明确选择转存 + 上传成功 + 读回一致”时才会清掉，其余情况一律保留。
 import { dayKey, freshState } from "./storage.js";
 import { emptyDoc, mergeDocs, docsEquivalent, docToState, syncStateIntoDoc, guestHasLearning, guestImportStatus, guestFingerprint, markGuestImported, mergeGuestProgress, normalizeDoc, sumXp, isId } from "./account-data.js";
-import { SESSION_KEY, PENDING_IMPORT_PREFIX, getDeviceId, getGuestId, readGuest, getCurrentAccount, readCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport } from "./account-store.js";
+import { SESSION_KEY, PENDING_IMPORT_PREFIX, getDeviceId, getGuestId, readGuest, getCurrentAccount, readCurrentAccount, setCurrentAccount, loadAccount, saveAccount, logoutLocal, clearGuestAfterVerified, loadPendingImport, savePendingImport, clearPendingImport, parsePendingImport, readPendingImportRaw, rawDigest, backupCorruptPending } from "./account-store.js";
 
 export const STALE_KEY = "suipian.staleAuth"; // 因换了 Supabase 项目而作废的登录：只记账号编号和邮箱（不含令牌），用来让“同邮箱重新登录”接住旧存档
 export const AUTH_KEY = "suipian.auth"; // 登录凭证（访问令牌 + 刷新令牌）。退出登录时删除。
@@ -534,6 +534,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   async function finishChoice(choice) {
     const ctx = waiting;
     if (!ctx) return { ok: false, kind: "local", message: "没有等待选择的登录" };
+    if (ctx.resume) {
+      // “恢复后重新选择”：弹窗期间令牌可能已被刷新轮换，必须用当前会话，不能把挂起时那份旧令牌写回去。
+      if (!session || !userId || userId !== ctx.session.userId) { waiting = null; return { ok: false, kind: "auth", message: "登录状态已变化，请重新操作" }; }
+      ctx.session = session;
+    }
     const r = await finish(ctx, choice);
     // 网络 / 读云端失败时保留挂起状态，用户可以在同一个弹窗里重试；成功才清掉。
     if (r.ok) waiting = null;
@@ -544,6 +549,81 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (c.ok && c.copy) ctx.copy = c.copy;
     }
     return r;
+  }
+
+  // ---------- 损坏导入待办的恢复（只在本机、不联网）----------
+  // 当前状态的只读描述，给界面决定显示什么：corrupt（确认损坏，可隔离）| read-failed（读不出来，只能重试）| healthy | none。
+  function pendingRecoveryInfo() {
+    if (!userId) return { state: "none" };
+    const r = readPendingImportRaw(storage, userId);
+    if (!r.ok) return { state: "read-failed" };
+    if (r.raw === null) return { state: "none" };
+    const pi = parsePendingImport(r.raw, userId);
+    if (pi.ok) return { state: "healthy" };
+    if (pi.code !== "corrupt") return { state: "read-failed" };
+    return { state: "corrupt", digest: rawDigest(r.raw), bytes: r.raw.length };
+  }
+  // 隔离：把确认损坏的待办原文备份（读回确认）→ 再删除原待办。游客记录、账号副本、登录凭证一概不动；全程零网络请求。
+  // 每一步前后都核对“还是同一个账号、还是同一份原文”：被别的标签页替换就立刻停，不删任何东西。
+  // 任何失败都保留原文，返回 ok:false，绝不让界面说“已恢复”。
+  async function quarantinePendingImport({ expectedDigest = null } = {}) {
+    const fail = (kind, message, extra = {}) => ({ ok: false, kind, message, quarantined: false, originalKept: true, ...extra });
+    if (!userId) return fail("no-account", "没有登录的账号");
+    if (running) return fail("busy", "正在同步，请稍后再试");
+    const uid = userId;
+    const sameAccount = () => { const p = readCurrentAccount(storage); return userId === uid && p.ok && p.id === uid; };
+    if (!sameAccount()) return fail("account-changed", "登录的账号已变化，没有处理待办");
+    const r1 = readPendingImportRaw(storage, uid);
+    if (!r1.ok) return fail("read-failed", "无法读取游客导入待办。这只是读取失败，不是确认损坏：请检查浏览器存储权限后重试，没有隔离任何内容。");
+    if (r1.raw === null) return fail("no-pending", "当前没有游客导入待办，不需要处理");
+    const raw = r1.raw;
+    const parsed = parsePendingImport(raw, uid);
+    if (parsed.ok) return fail("not-corrupt", "游客导入待办是完好的，不需要隔离");
+    if (parsed.code !== "corrupt") return fail("read-failed", "无法确认待办是否损坏，没有隔离任何内容");
+    const digest = rawDigest(raw);
+    if (expectedDigest && expectedDigest !== digest) return fail("pending-changed", "游客导入待办在你确认之后又变了，没有处理。请重新查看再确认。");
+    const bk = backupCorruptPending(storage, uid, raw, { now: now() });
+    if (!bk.ok) return fail("backup-failed", "损坏的待办没能备份（" + bk.code + "），所以没有动它；本机数据都还在。");
+    // 备份落盘后、删除前，再核对一次：账号没换、待办原文还是这一份。
+    if (!sameAccount()) return fail("account-changed", "登录的账号刚刚变了，已停止；原待办没动", { backedUp: true });
+    const r2 = readPendingImportRaw(storage, uid);
+    if (!r2.ok) return fail("read-failed", "备份后再次读取待办失败，已停止；原待办没动", { backedUp: true });
+    if (r2.raw !== raw) return fail("pending-changed", "游客导入待办刚刚被其他页面替换，已停止；没有删除任何待办", { backedUp: true });
+    let removeThrew = false;
+    try { storage.removeItem(PENDING_IMPORT_PREFIX + uid); } catch { removeThrew = true; }
+    const r3 = readPendingImportRaw(storage, uid);
+    if (!r3.ok) return fail("remove-unverified", "删除后无法读回确认，没有当作已恢复；备份已保留", { backedUp: true });
+    if (r3.raw === raw) return fail("remove-failed", removeThrew ? "原待办删除失败，仍保留在本机；备份已保留" : "原待办没有删掉，仍保留在本机；备份已保留", { backedUp: true });
+    pending = true;
+    setStatus("pending", "已备份并移除损坏的游客导入待办。请重新确认游客进度怎么处理。");
+    return { ok: true, quarantined: true, originalKept: false, digest, bytes: raw.length, reusedBackup: !!bk.reused, replacedByOtherTab: r3.raw !== null,
+      message: "损坏的待办已备份到本机并移除。游客记录、账号副本和登录都没动。接下来请重新确认游客进度怎么处理。" };
+  }
+  // 隔离之后重新走“游客进度怎么处理”：读最新云端 → 按指纹判断（已导入过 / 没导入过 / 游客又有新进度）。
+  //   已导入过或游客没有学习记录 → 不需要选择，直接做一次手动同步；否则返回 needChoice，和登录时的选择完全同一条路（finishChoice）。
+  async function resumeGuestImportChoice(baseState = null) {
+    if (!userId || !session) return { ok: false, kind: "auth", message: "需要先登录" };
+    const g = importGuard(); if (g) return g;
+    if (running) return { ok: false, kind: "busy", message: "正在同步，请稍后再试" };
+    const t = await ensureToken(); if (!t.ok) return t;
+    const sess = session, uid = userId;
+    const remote = await api.getProgress(sess);
+    if (!remote.ok) return remote;
+    const remoteDoc = remote.row ? normalizeDoc(remote.row.doc) : null;
+    if (remoteDoc && !remoteDoc.ok) return { ok: false, kind: "data", code: remoteDoc.code, message: "云端记录：" + remoteDoc.message };
+    const L = loadAccount(storage, uid, { now: now() });
+    if (!L.ok) return { ok: false, kind: "local", message: L.message };
+    const guest = readGuest(storage);
+    const guestHas = guest.status === "ok" && guestHasLearning(guest.state);
+    const gid = getGuestId(storage);
+    const importStatus = remoteDoc && gid.ok ? guestImportStatus(remoteDoc.doc, gid.id, guest.state) : "new";
+    if (!guestHas || importStatus === "same") {
+      const r = await syncNow({ manual: true });
+      return { ok: r.ok, noChoiceNeeded: true, alreadyImported: importStatus === "same", sync: r, message: r.ok ? "" : r.message };
+    }
+    waiting = { session: sess, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, guestHas, baseState, leaveStale: false, resume: true };
+    return { ok: true, needChoice: true, resume: true, cloudHasData: !!remoteDoc && sumXp(remoteDoc.doc) + Object.keys(remoteDoc.doc.done).length > 0,
+      guest: { xp: guest.state.xp ?? 0, lessons: Object.keys(guest.state.done ?? {}).filter((k) => guest.state.done[k]).length } };
   }
 
   // 登录弹窗挂起期间，别的设备可能已经往云端写了新进度。所有实际写入前都必须重新读最新云端，
@@ -1014,7 +1094,26 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     let r; try { r = JSON.parse(raw); } catch { return { state: "inert" }; }
     if (!r || !isSessionShape(r.session)) return { state: "inert" };
     if (projectId && (r.project || legacyProject) !== projectId) return { state: "other" };
-    return { state: "ours", session: r.session };
+    return { state: "ours", session: r.session, raw };
+  }
+  // 只删“我们检查过的那一份”残留凭证：删之前、写撤销标记之前都再读一次，存储里已经不是这一份（别的标签页刚登录 / 刚刷新令牌）就立刻停。
+  // 返回 { ok:true } | { ok:false, changed:true } | { ok:false }。仍有一个同步语句之间的极小空档（浏览器没有跨标签页的原子比较删除），文档里如实写明。
+  function clearLeftoverAuthIf(expectRaw) {
+    const cur = () => { try { const v = storage.getItem(AUTH_KEY); return { ok: true, v }; } catch { return { ok: false }; } };
+    let c = cur();
+    if (!c.ok) return { ok: false };
+    if (c.v !== expectRaw) return { ok: false, changed: true };
+    try { storage.removeItem(AUTH_KEY); } catch {}
+    c = cur();
+    if (!c.ok) return { ok: false };
+    if (c.v === null) return { ok: true };
+    if (c.v !== expectRaw) return { ok: false, changed: true }; // 删除期间被换成了别的内容：那是别人的登录，绝不能再覆盖
+    try { storage.setItem(AUTH_KEY, JSON.stringify({ revoked: true, reason: "logout-cleanup-failed" })); } catch {}
+    c = cur();
+    if (!c.ok) return { ok: false };
+    if (c.v === null) return { ok: true };
+    try { const m = JSON.parse(c.v); if (m?.revoked === true && !m.session && !m.accessToken && !m.refreshToken) return { ok: true }; } catch {}
+    return { ok: false };
   }
   function hasLeftoverAuth() {
     if (userId) return false;
@@ -1041,7 +1140,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (leftoverRt && a.session.refreshToken !== leftoverRt) return { ok: false, kind: "changed", message: "本机的登录凭证已经不是上次退出时留下的那一份（可能被另一个标签页重新登录），没有清理。" };
     const p2 = readCurrentAccount(storage); // 动手前再确认一次，缩小和别的标签页登录之间的空档
     if (!p2.ok || p2.id) return { ok: false, kind: p2.ok ? "logged-in" : "read-failed", message: "刚刚检测到登录状态变化，没有清理。" };
-    if (clearStoredAuthVerified()) {
+    const cleared = clearLeftoverAuthIf(a.raw); // 比对后再删：存储里不再是刚检查的那一份就不动
+    if (cleared.changed) return { ok: false, kind: "changed", message: "本机的登录凭证刚刚被另一个标签页换过，没有清理。" };
+    if (cleared.ok) {
       const after = inspectAuth(); // 读回：必须确认已经没有可用凭证
       if (after.state === "absent" || after.state === "inert") { leftoverAuth = false; leftoverRt = null; return { ok: true }; }
     }
@@ -1096,7 +1197,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   return {
-    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, deleteAccount,
+    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount,
     account: () => (userId ? { userId, email } : null),
     status: () => ({ status, pending, message: lastError }),
   };

@@ -107,9 +107,14 @@ export function loadPendingImport(storage, userId) {
   if (!isId(userId)) return { ok: false, code: "bad-user", message: "账号编号无效" };
   const r = safeRead(storage, pendingImportKey(userId));
   if (!r.ok) return { ok: false, code: "read-failed", message: "无法读取游客导入待办" };
-  if (r.value === null) return { ok: true, record: null };
+  return parsePendingImport(r.value, userId);
+}
+// 只解析、不读存储：同一段原文永远得到同一个判断（隔离流程要对“同一份原文”判断损坏，不能读两次各判一次）。
+export function parsePendingImport(value, userId) {
+  if (!isId(userId)) return { ok: false, code: "bad-user", message: "账号编号无效" };
+  if (value === null) return { ok: true, record: null };
   let p;
-  try { p = JSON.parse(r.value); } catch { return { ok: false, code: "corrupt", message: "游客导入待办损坏" }; }
+  try { p = JSON.parse(value); } catch { return { ok: false, code: "corrupt", message: "游客导入待办损坏" }; }
   const ok = p && p.version === 1 && p.userId === userId && isId(p.guestId)
     && (p.choice === "cloud" || p.choice === "merge")
     && typeof p.fingerprint === "string" && FP_RE.test(p.fingerprint)
@@ -137,6 +142,53 @@ export function savePendingImport(storage, userId, record) {
 }
 export function clearPendingImport(storage, userId) {
   return isId(userId) ? safeRemove(storage, pendingImportKey(userId)) : false;
+}
+
+// ---------- 损坏导入待办的隔离备份 ----------
+// 键：suipian.acct.quarantine.<账号>.<原文摘要>。以 "suipian.acct." 开头，所以在测试云项目里会和待办、账号副本一样带上项目命名空间前缀
+// （sync.js 的 scopedStorage），换项目 / 换账号都不会碰到别人的备份。同一份原文永远落在同一个键上（可重复执行）；不同原文各有各的键，从不覆盖。
+export const QUARANTINE_PREFIX = ACCT_PREFIX + "quarantine.";
+export const quarantineKey = (userId, digest) => QUARANTINE_PREFIX + userId + "." + digest;
+// 文本摘要：长度 + 两个不同种子的 32 位 FNV-1a。不是密码学哈希——只用来给“同一份原文”起名和比对身份；内容是否一致仍以逐字比较为准。
+export function rawDigest(text) {
+  const s = String(text);
+  let a = 0x811c9dc5, b = 0x9747b28c;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193) >>> 0;
+    b = Math.imul(b ^ c ^ (i & 0xff), 0x01000193) >>> 0;
+  }
+  return s.length.toString(16) + "-" + a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+}
+// 三态读取待办原文：{ ok:true, raw:null } 没有；{ ok:true, raw } 有（必须是字符串）；{ ok:false } 读不出来（抛错，或返回了不是字符串的东西）。
+export function readPendingImportRaw(storage, userId) {
+  if (!isId(userId)) return { ok: false };
+  const r = safeRead(storage, pendingImportKey(userId));
+  if (!r.ok || (r.value !== null && typeof r.value !== "string")) return { ok: false };
+  return { ok: true, raw: r.value };
+}
+function parseBackup(text) { try { const e = JSON.parse(text); return e && typeof e === "object" ? e : null; } catch { return null; } }
+// 把损坏原文备份进去并读回确认。返回 { ok:true, key, digest, reused } 或 { ok:false, code }。
+//   同一份原文已经备份过（上次备份成功但后面一步失败）→ 直接复用；同一个键里是别的内容 → 拒绝，绝不覆盖。
+export function backupCorruptPending(storage, userId, raw, { now = 0 } = {}) {
+  if (!isId(userId) || typeof raw !== "string") return { ok: false, code: "bad-input" };
+  const digest = rawDigest(raw), key = quarantineKey(userId, digest);
+  const same = (text) => { const e = parseBackup(text); return !!e && e.version === 1 && e.kind === "pending-import" && e.userId === userId && e.digest === digest && e.raw === raw; };
+  const existing = safeRead(storage, key);
+  if (!existing.ok || (existing.value !== null && typeof existing.value !== "string")) return { ok: false, code: "read-failed" };
+  if (existing.value !== null) return same(existing.value) ? { ok: true, key, digest, reused: true } : { ok: false, code: "backup-conflict" };
+  const payload = JSON.stringify({ version: 1, kind: "pending-import", userId, digest, quarantinedAt: Number.isFinite(now) ? now : 0, raw });
+  if (!safeSet(storage, key, payload)) return { ok: false, code: "backup-write-failed" };
+  const back = safeRead(storage, key);
+  if (!back.ok || typeof back.value !== "string" || !same(back.value)) return { ok: false, code: "backup-readback-failed" };
+  return { ok: true, key, digest, reused: false };
+}
+// 读取某个账号、某个摘要对应的隔离备份（测试和人工恢复用）。
+export function readQuarantineBackup(storage, userId, digest) {
+  const r = safeRead(storage, quarantineKey(userId, digest));
+  if (!r.ok || typeof r.value !== "string") return null;
+  const e = parseBackup(r.value);
+  return e && e.version === 1 && e.userId === userId && e.digest === digest ? e : null;
 }
 
 // 退出登录：删除这个账号在本机的副本，回到游客。云端不动。
