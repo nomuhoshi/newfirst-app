@@ -1,5 +1,7 @@
 // 登录 / 账号界面：邮箱验证码登录、同步状态、退出、切换账号、删除账号。
 // 不直接碰数据：全部通过 sync（src/sync.js）；元素创建函数和弹窗从 app.js 传进来，所以样式和无障碍行为和其他弹窗一致。
+import { describeSendError, describeVerifyError } from "./auth-errors.js";
+
 export function statusText(s) {
   const st = s?.status;
   if (st === "import-recovery-required") return "游客导入记录损坏：云端同步已暂停。学习进度仍保存在本机，请保留数据等待恢复处理。";
@@ -21,36 +23,6 @@ const ERR = {
 };
 export const errorText = (r) => ERR[r.kind] || r.message || "出错了，请稍后再试。";
 
-// 发验证码失败时的提示：先用中文说清“大概是哪一类问题”，再附上服务器给的状态码、错误码和原文，
-// 方便截图给开发者对照 Supabase 日志。只按服务器给的错误码分类，不猜原因；认不出的码只显示原文。
-const SEND_HINT = {
-  email_address_not_authorized: "这个邮箱不在当前发信服务允许的名单里（默认发信服务只发给项目团队成员）。",
-  over_email_send_rate_limit: "发验证码的次数已达上限，请稍后再试。",
-  over_request_rate_limit: "请求太频繁了，请稍后再试。",
-  email_address_invalid: "服务器不接受这个邮箱地址。",
-  otp_disabled: "这个邮箱没有登录资格（此环境已关闭公开注册）。",
-  signup_disabled: "这个邮箱没有登录资格（此环境已关闭公开注册）。",
-  email_provider_disabled: "此环境没有开启邮箱登录。",
-  unexpected_failure: "服务器这边发信失败了，不是你的操作问题。",
-};
-export function sendCodeErrorText(r) {
-  if (!r || r.ok) return "";
-  if (r.kind === "network") return ERR.network;
-  if (r.kind === "config") return ERR.config;
-  let lead = r.errorCode && SEND_HINT[r.errorCode];
-  if (!lead) {
-    if (r.kind === "rate-limit") lead = ERR["rate-limit"];
-    else if (r.status >= 500) lead = "服务器这边出错了，不是你的操作问题。";
-    else lead = "验证码没发出去。";
-  }
-  const bits = [];
-  if (r.status) bits.push(`服务器返回 ${r.status}`);
-  if (r.errorCode) bits.push(r.errorCode);
-  const raw = r.message && !/^服务器返回 \d+$/.test(r.message) ? r.message : "";
-  const detail = bits.join(" · ") + (raw ? (bits.length ? "：" : "") + raw : "");
-  return detail ? `${lead}（${detail}）` : lead;
-}
-
 export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, getState, onSwitchedIn, onSwitchedOut, rerender }) {
   const statusEls = new Set();
   function refreshStatus() {
@@ -66,7 +38,12 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       const box = h("div", { class: "lsheet login", "data-login": "" });
       let email = "", busy = false, cooldownTimer = null, cooldownUntil = 0;
       const msg = h("p", { class: "login-msg", role: "alert", "data-login-msg": "" });
-      const say = (t, bad = true) => { msg.textContent = t; msg.classList.toggle("bad", bad); };
+      const diagEl = h("p", { class: "login-diag", "data-login-diag": "" });
+      const xpEl = h("p", { class: "login-xp", "data-login-xp": "" });
+      const say = (t, bad = true, extra = null) => { msg.textContent = t; msg.classList.toggle("bad", bad); diagEl.textContent = extra?.diag || ""; xpEl.textContent = extra?.xp || ""; };
+      const localXp = () => { try { const x = getState()?.xp; return Number.isFinite(x) ? x : 0; } catch { return 0; } };
+      // 失败提示：中文说明 + 过滤后的诊断行 + （有 XP 时）进度安全提示。绝不显示服务器原文。
+      const sayFail = (d) => say(d.text, true, d);
       const done = () => { clearInterval(cooldownTimer); close(); };
 
       function stepEmail() {
@@ -75,18 +52,30 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const go = button("发送验证码", async () => {
           const v = input.value.trim();
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { say("请输入有效的邮箱地址。"); return; }
-          if (busy) return; busy = true; go.disabled = true; say("正在发送…", false);
+          if (busy || Date.now() < cooldownUntil) return; busy = true; go.disabled = true; say("正在发送…", false);
           const r = await sync.sendCode(v);
-          busy = false; go.disabled = false;
-          if (!r.ok) { if (r.kind === "rate-limit") cooldownUntil = Date.now() + 60000; say(sendCodeErrorText(r)); return; }
+          busy = false;
+          if (!r.ok) {
+            const d = describeSendError(r, { xp: localXp() });
+            if (d.cooldownMs) cooldownUntil = Date.now() + d.cooldownMs;
+            if (d.uncertainSent) { email = v; stepCode(); sayFail(d); return; } // 超时：邮件可能已发出，直接去输验证码、先查邮箱，不鼓励马上重发
+            sayFail(d); sendTick(); return;
+          }
           email = v; cooldownUntil = Date.now() + 60000; say("");
           stepCode();
         }, "btn3d primary wide", { "data-send-code": "" });
+        const sendTick = () => {
+          const left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+          go.disabled = busy || left > 0;
+          go.textContent = left > 0 ? `发送验证码（${left} 秒后可再发）` : "发送验证码";
+          if (left > 0) { clearInterval(cooldownTimer); cooldownTimer = setInterval(() => { if (!box.isConnected) { clearInterval(cooldownTimer); return; } sendTick(); if (Date.now() >= cooldownUntil) clearInterval(cooldownTimer); }, 1000); }
+        };
+        sendTick();
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
         box.replaceChildren(
           h("h2", { text: "登录 / 注册" }),
           h("p", { text: reason || "用邮箱登录，换手机或 iPad 也能接着学。没有账号会自动创建；不用设密码。" }),
-          input, go, msg,
+          input, go, msg, diagEl, xpEl,
           ...(sync.hasLeftoverAuth && sync.hasLeftoverAuth() ? [leftoverButton()] : []),
           button("先不登录", done, "btn3d ghost wide"),
         );
@@ -107,7 +96,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const resend = button("重新发送", async () => {
           if (Date.now() < cooldownUntil || busy) return;
           busy = true; const r = await sync.sendCode(email); busy = false;
-          if (!r.ok) { if (r.kind === "rate-limit") cooldownUntil = Date.now() + 60000; say(sendCodeErrorText(r)); tick(); return; }
+          if (!r.ok) { const d = describeSendError(r, { xp: localXp() }); if (d.cooldownMs) cooldownUntil = Date.now() + d.cooldownMs; sayFail(d); tick(); return; }
           cooldownUntil = Date.now() + 60000; say("已重新发送。", false); tick();
         }, "btn3d ghost", { "data-resend": "" });
         const tick = () => { const left = Math.ceil((cooldownUntil - Date.now()) / 1000); resend.disabled = left > 0; resend.textContent = left > 0 ? `重新发送（${left} 秒）` : "重新发送"; };
@@ -118,7 +107,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           if (busy) return; busy = true; go.disabled = true; say("正在登录…", false);
           const r = await sync.verify(email, c, getState());
           busy = false; go.disabled = false;
-          if (!r.ok) { say(r.kind === "auth" ? "验证码错误或已过期，请检查后重试，或点“重新发送”。" : errorText(r)); return; }
+          if (!r.ok) { if (r.kind === "other-account" || r.kind === "data") { say(errorText(r)); return; } const d = describeVerifyError(r, { xp: localXp() }); if (d.cooldownMs) cooldownUntil = Math.max(cooldownUntil, Date.now() + d.cooldownMs); sayFail(d); tick(); return; }
           if (r.needChoice) { stepChoice(r); return; }
           success(r);
         }, "btn3d primary wide", { "data-verify": "" });
@@ -126,8 +115,8 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         box.replaceChildren(
           h("h2", { text: "输入验证码" }),
           h("p", { text: `验证码已发到 ${email}。没收到？看看垃圾邮件，或稍等再重新发送。` }),
-          input, go, resend, msg,
-          button("换个邮箱", () => { say(""); stepEmail(); }, "btn3d ghost wide"),
+          input, go, resend, msg, diagEl, xpEl,
+          button("换个邮箱", () => { say(""); cooldownUntil = 0; stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着
         );
         setTimeout(() => input.focus(), 50);
       }

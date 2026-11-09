@@ -360,3 +360,8 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .backup-msg { min-height: 1.4em; margin: 8px 0 0; }
 .backup-msg.bad { color: var(--g-bad); }
 .backup .confirm { margin-top: 10px; }
+/* 登录失败的诊断行和进度安全提示（AUTH-MAIL-01）：320px 宽也不横向溢出，长错误码可断行 */
+.login-diag { margin: 0; font-size: 12px; color: var(--g-muted); font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; word-break: break-word; }
+.login-diag:empty, .login-xp:empty { display: none; }
+.login-xp { margin: 2px 0 0; font-size: 14px; color: var(--g-primary); font-weight: 600; overflow-wrap: anywhere; }
+.login-msg { overflow-wrap: anywhere; }

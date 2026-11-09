@@ -30,7 +30,8 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
   async function req(path, { method = "GET", body, token, query } = {}) {
     if (!configured) return { ok: false, kind: "config", message: "云端暂未开通" };
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
+    let timedOut = false; // 自己的超时计时器触发的中止，要和断网区分开（超时时邮件可能已经发出）
+    const timer = ctl ? setTimeout(() => { timedOut = true; ctl.abort(); }, timeoutMs) : null;
     let resp;
     try {
       resp = await fetchFn(base + path + (query ? "?" + query : ""), {
@@ -39,7 +40,7 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (e) {
-      return { ok: false, kind: "network", message: "网络连不上，请检查网络后重试" };
+      return { ok: false, kind: "network", message: "网络连不上，请检查网络后重试", ...(timedOut ? { timedOut: true } : {}) };
     } finally { if (timer) clearTimeout(timer); }
     let data = null;
     const text = await resp.text().catch(() => "");
@@ -49,7 +50,8 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
     const kind = resp.status === 429 ? "rate-limit" : resp.status === 401 || resp.status === 403 ? "auth" : "server";
     const errorCode = data && typeof data === "object" && typeof data.error_code === "string" ? data.error_code : undefined;
     const oauthError = data && typeof data === "object" && typeof data.error === "string" ? data.error : undefined; // 老版本 / OAuth 风格：{ error: "invalid_grant", error_description }
-    return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}), ...(oauthError ? { oauthError } : {}) };
+    const ra = Number(typeof resp.headers?.get === "function" ? resp.headers.get("retry-after") : NaN); // 只认秒数形式
+    return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}), ...(oauthError ? { oauthError } : {}), ...(Number.isFinite(ra) && ra > 0 ? { retryAfterSec: ra } : {}) };
   }
 
   const toSession = (d) => d && d.access_token && d.user?.id ? {
@@ -66,7 +68,7 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
     },
     async verifyCode(email, code) {
       const r = await req("/auth/v1/verify", { method: "POST", body: { type: "email", email, token: String(code).trim() } });
-      if (!r.ok) return r.kind === "server" && r.status && r.status < 500 ? { ...r, kind: "auth" } : r;
+      if (!r.ok) return { ...(r.kind === "server" && r.status && r.status < 500 ? { ...r, kind: "auth" } : r), stage: "verify" }; // stage：这是“验证码这一步”失败，和登录后读云端记录失败区分
       const session = toSession(r.data);
       return session ? { ok: true, session } : { ok: false, kind: "server", message: "登录返回的内容无法识别" };
     },

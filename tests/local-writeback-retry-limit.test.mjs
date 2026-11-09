@@ -305,7 +305,7 @@ test('13: mutation removing automatic cap is killed by runtime assertions', { sk
   try {
     mkdirSync(join(temp, 'src'), { recursive: true });
     mkdirSync(join(temp, 'tests'), { recursive: true });
-    for (const name of ['sync.js', 'account-data.js', 'account-store.js', 'storage.js', 'account-ui.js']) {
+    for (const name of ['sync.js', 'account-data.js', 'account-store.js', 'storage.js', 'account-ui.js', 'auth-errors.js']) {
       cpSync(join(root, 'src', name), join(temp, 'src', name));
     }
     cpSync(join(root, 'tests', 'local-writeback-retry-limit.test.mjs'), join(temp, 'tests', 'local-writeback-retry-limit.test.mjs'));
