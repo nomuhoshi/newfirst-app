@@ -247,7 +247,7 @@ await scenario("键盘弹出（可视高度 315）时错误区和发送按钮都
 // ---------- 回归：选择弹窗保护（G3 / G4 / C1），游客进度不被覆盖 ----------
 const okVerify = (r) => json(r, 200, { access_token: "at-1", refresh_token: "rt-1", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: "11111111-1111-4111-8111-111111111111", email: "t@example.com" } });
 const toChoice = async (d) => { await sendTap(d); await d.page.locator("[data-code]").waitFor(); await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap(); await d.page.locator('[data-choice="transfer"]').waitFor(); };
-await scenario("选择弹窗：处理中不能关，失败后可重试，游客进度不丢", { verify: okVerify, progress: async (r) => { await new Promise((x) => setTimeout(x, 1200)); return json(r, 500, { code: 500, error_code: "unexpected_failure", msg: CAN }); } }, async (d) => {
+await scenario("选择弹窗：处理中不能关，失败后可重试，游客进度不丢", { verify: okVerify, progress: async (r) => { await new Promise((x) => setTimeout(x, 4000)); return json(r, 500, { code: 500, error_code: "unexpected_failure", msg: CAN }); } }, async (d) => {
   await toChoice(d);
   const guestKey = await d.page.evaluate(() => localStorage.getItem("suipian.progress"));
   check("选择弹窗：有「稍后再说」按钮", (await d.page.locator("[data-choice-later]").count()) === 1);
