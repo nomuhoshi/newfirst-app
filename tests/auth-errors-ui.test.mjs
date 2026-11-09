@@ -35,16 +35,16 @@ const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers
 const json = (route, status, body, headers = {}) => route.fulfill({ status, headers: { ...CORS, "content-type": "application/json", ...headers }, body: body === undefined ? "" : JSON.stringify(body) });
 
 // 每个场景的假服务器应答由场景决定：函数 (route) => ...。progress 相关的路由默认返回“云端没有进度”。
-async function device({ xp = 50, otp, verify, progress, online = true, fakeVv = false, nav = "login" } = {}) {
+async function device({ xp = 50, otp, verify, progress, getProgress, online = true, fakeVv = false, nav = "login" } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 320, height: 568 }, userAgent: UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
-  const hits = { otp: 0, verify: 0, create: 0, save: 0 };
+  const hits = { otp: 0, verify: 0, create: 0, save: 0, get: 0 };
   const rows = { n: 0 };
   await ctx.route(FAKE + "/**", async (route) => {
     const req = route.request(), u = new URL(req.url());
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
     if (u.pathname === "/auth/v1/otp") { hits.otp++; return (otp || ((r) => json(r, 200, {})))(route); }
     if (u.pathname === "/auth/v1/verify") { hits.verify++; return (verify || ((r) => json(r, 403, { msg: "Token has expired or is invalid" })))(route); }
-    if (u.pathname === "/rest/v1/progress") return json(route, 200, []);
+    if (u.pathname === "/rest/v1/progress") { hits.get++; return (getProgress || ((r) => json(r, 200, [])))(route, hits.get); }
     if (u.pathname === "/rest/v1/rpc/create_progress") { hits.create++; return (progress || ((r) => json(r, 200, 1)))(route); }
     if (u.pathname === "/rest/v1/rpc/save_progress") { hits.save++; return json(route, 200, null); }
     if (u.pathname === "/auth/v1/logout") return json(route, 204);
@@ -247,7 +247,7 @@ await scenario("键盘弹出（可视高度 315）时错误区和发送按钮都
 // ---------- 回归：选择弹窗保护（G3 / G4 / C1），游客进度不被覆盖 ----------
 const okVerify = (r) => json(r, 200, { access_token: "at-1", refresh_token: "rt-1", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: "11111111-1111-4111-8111-111111111111", email: "t@example.com" } });
 const toChoice = async (d) => { await sendTap(d); await d.page.locator("[data-code]").waitFor(); await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap(); await d.page.locator('[data-choice="transfer"]').waitFor(); };
-await scenario("选择弹窗：处理中不能关，失败后可重试，游客进度不丢", { verify: okVerify, progress: async (r) => { await new Promise((x) => setTimeout(x, 4000)); return json(r, 500, { code: 500, error_code: "unexpected_failure", msg: CAN }); } }, async (d) => {
+await scenario("选择弹窗：处理中不能关，失败后可重试，游客进度不丢", { verify: okVerify, getProgress: async (r, n) => { if (n < 2) return json(r, 200, []); await new Promise((x) => setTimeout(x, 4000)); return json(r, 500, { code: 500, error_code: "unexpected_failure", msg: CAN }); } }, async (d) => {
   await toChoice(d);
   const guestKey = await d.page.evaluate(() => localStorage.getItem("suipian.progress"));
   check("选择弹窗：有「稍后再说」按钮", (await d.page.locator("[data-choice-later]").count()) === 1);
@@ -262,6 +262,14 @@ await scenario("选择弹窗：处理中不能关，失败后可重试，游客�
   check("C1：失败文案（游客进度原样留在这台设备上）+ XP 句子；两个按钮恢复可点", /游客进度原样留在这台设备上，可以再试一次/.test(await T(d.page, "[data-login-msg]")) && (await T(d.page, "[data-login-xp]")) === XP50 && !(await d.page.locator('[data-choice="transfer"]').isDisabled()) && !(await d.page.locator('[data-choice="cloud"]').isDisabled()));
   check("C1：页面上没有服务器原文；游客进度逐字节不变，XP 仍是 50", (await noRaw(d.page)) && (await d.page.evaluate(() => localStorage.getItem("suipian.progress"))) === guestKey && (await d.page.evaluate(() => window.__app.getState().xp)) === 50);
   const bad = await layoutOk(d.page); check("C1：320px 布局无溢出", bad.length === 0, bad.join("; "));
+});
+await scenario("选择后上传失败：登录已完成，提示是中文，没有服务器原文", { verify: okVerify, progress: (r) => json(r, 500, { code: 500, error_code: "unexpected_failure", msg: CAN }) }, async (d) => {
+  await toChoice(d);
+  await d.page.locator('[data-choice="transfer"]').tap();
+  await d.page.waitForFunction(() => !document.querySelector("[data-login]"), null, { timeout: 15000 });
+  const t = await T(d.page, ".toast");
+  check("上传失败：弹窗关闭，提示“登录成功…没同步上…你的进度在这台设备上”，无英文原文", /登录成功/.test(t) && /没同步上/.test(t) && !t.includes(CAN), t);
+  check("上传失败：没有 JS 报错且仍是已登录状态", await d.page.evaluate(() => !!window.__app.sync.account()));
 });
 await scenario("选择弹窗：「稍后再说」不处理，也不会自动覆盖云端", { verify: okVerify }, async (d) => {
   await toChoice(d);
