@@ -119,7 +119,9 @@ export function describeChoiceError(r, o = {}) {
 // ---------- 同步状态 / 提示条里的失败 ----------
 // 只在文字里没有英文单词（4 个及以上连续字母）、且有汉字时，才认为是应用自己写的中文，可以原样显示；
 // 其余一律视为可能来自服务器，换成通用文案。
-export const isOwnChinese = (m) => typeof m === "string" && /[一-鿿]/.test(m) && !/[A-Za-z]{4,}/.test(m);
+// 中文全角括号里的短代号（如“（quota-exceeded）”）是应用自己拼进去的，不算英文原文。
+const stripCodes = (m) => m.replace(/（[A-Za-z0-9_.:-]{1,40}）/g, "");
+export const isOwnChinese = (m) => typeof m === "string" && /[一-鿿]/.test(m) && !/[A-Za-z]{4,}/.test(stripCodes(m));
 export function safeMessage(m, fallback = SYNC_COPY.GENERIC) { return isOwnChinese(m) ? m : fallback; }
 // 同步失败（状态值 error）在状态栏里的文字。detail = { kind, status, errorCode, code }。返回 { text, diag }。
 export function syncErrorText(message, detail = null) {

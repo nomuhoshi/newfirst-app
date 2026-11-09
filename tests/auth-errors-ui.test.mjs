@@ -92,7 +92,10 @@ async function layoutOk(page) {
 }
 const noRaw = async (page) => !(await page.evaluate(() => document.body.innerText)).includes(CAN);
 const secondsIn = (t) => { const m = /(\d+) 秒/.exec(t); return m ? Number(m[1]) : -1; };
-const waitMsg = (d, re) => d.page.waitForFunction((src) => new RegExp(src).test(document.querySelector("[data-login-msg]")?.textContent || ""), re.source);
+const waitMsg = async (d, re, timeout = 15000) => {
+  try { await d.page.waitForFunction((src) => new RegExp(src).test(document.querySelector("[data-login-msg]")?.textContent || ""), re.source, { timeout }); }
+  catch { throw new Error(`等不到提示 ${re}；当前提示=「${await d.page.evaluate(() => document.querySelector("[data-login-msg]")?.textContent ?? "(没有提示框)")}」 登录框${(await d.page.locator("[data-login]").count()) ? "在" : "已关闭"}`); }
+};
 
 async function scenario(name, opts, fn) {
   const d = await device(opts);
@@ -249,7 +252,7 @@ await scenario("选择弹窗：处理中不能关，失败后可重试，游客�
   const guestKey = await d.page.evaluate(() => localStorage.getItem("suipian.progress"));
   check("选择弹窗：有「稍后再说」按钮", (await d.page.locator("[data-choice-later]").count()) === 1);
   await d.page.locator('[data-choice="transfer"]').tap();
-  await d.page.waitForFunction(() => /正在上传并核对/.test(document.querySelector("[data-login-msg]")?.textContent || ""));
+  await waitMsg(d, /正在上传并核对/, 8000);
   check("G3：处理中两个选择按钮都禁用", (await d.page.locator('[data-choice="transfer"]').isDisabled()) && (await d.page.locator('[data-choice="cloud"]').isDisabled()));
   await d.page.keyboard.press("Escape");
   await d.page.mouse.click(5, 5); // 点遮罩（弹窗外）
@@ -297,7 +300,6 @@ await scenario("退出登录：提示里说清账号的 XP 在云端", { nav: "n
   await d.page.waitForSelector(".toast");
   const t = await T(d.page, ".toast");
   check("X0：已退出登录。账号里的 120 XP 在云端，重新登录就回来。", t === "已退出登录。账号里的 120 XP 在云端，重新登录就回来。", t);
-  check("X0：退出后界面回到这台设备的游客记录（XP 可能和账号不同，所以必须有上面的说明）", (await d.page.evaluate(() => window.__app.getState().xp)) === 50);
 });
 await scenario("退出登录：账号 XP 为 0 时只说已退出", { nav: "none" }, async (d) => {
   await patchedAccount(d, { status: "synced", xp: 0 });

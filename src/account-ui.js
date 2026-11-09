@@ -104,7 +104,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
             const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails }) : d0;
             if (d.cooldownMs) cooldownUntil = Date.now() + d.cooldownMs;
             sendLabel = d.cooldownLabel;
-            if (d.uncertainSent) { email = v; stepCode(); sayFail(d); return; } // 超时：邮件可能已发出，直接去输验证码、先查邮箱，不鼓励马上重发
+            if (d.uncertainSent) { email = v; cooldownUntil = Date.now() + 60000; stepCode(); sayFail(d); return; } // 超时：邮件可能已发出，直接去输验证码、先查邮箱，不鼓励马上重发
             sayFail(d);
             if (d.secondary === "enter-code") extra.append(button("我已收到，去输入验证码", () => { email = v; stepCode(); }, "btn3d ghost wide", { "data-enter-code": "" }));
             sendTick(); return;
@@ -233,6 +233,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
             feedback, later,
           );
         }
+        try { btns[0]?.focus({ preventScroll: true }); } catch {} // 焦点留在弹窗内，Esc / Tab 才有效（原按钮已被替换掉）
       }
 
       function success(r) {

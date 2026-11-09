@@ -371,6 +371,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .lsheet .login-feedback .login-diag { font-size: 12px; line-height: 1.5; color: var(--g-muted); font-family: ui-monospace, Menlo, monospace; user-select: text; -webkit-user-select: text; }
 /* 发送 / 登录按钮吸底：弹窗内容超高时错误区在它上面滚动，按钮始终看得见 */
 .lsheet .login-actions { position: sticky; bottom: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 0; background: var(--g-bg); }
+.lsheet.kb-open .login-actions, .login-sheet .kb-open .login-actions { position: static; } /* 键盘弹出时可视区很矮：按钮跟在错误区后面，不再盖住它 */
 .lsheet .login-extra { display: flex; flex-direction: column; gap: 8px; }
 .lsheet .login-extra:empty { display: none; }
 .lsheet .login-hint { font-size: 14px; color: var(--g-muted); }

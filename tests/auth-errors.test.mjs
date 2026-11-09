@@ -186,6 +186,14 @@ check("V4：验证 500 → 登录服务暂时出问题；诊断行 诊断：500�
   check("规范里的“L1 不超过约 38 个汉字×2 行”：每条 L1 文案不超过 80 个字符", texts.every((t) => [...t].length <= 80), texts.filter((t) => [...t].length > 80).join(" | "));
   check("没有“安全”一词出现在失败文案里（规范 §1 第 3 条）", texts.every((t) => !t.includes("安全")));
 }
+{
+  const { isOwnChinese, safeMessage } = await import("../src/auth-errors.js");
+  check("应用自己拼的中文 + 全角括号里的短代号算中文（没能备份（quota-exceeded））", isOwnChinese("损坏的待办没能备份（quota-exceeded），所以没有动它；本机数据都还在。"));
+  check("括号外的英文单词仍被挡住（防服务器原文夹在中文里）", !isOwnChinese("云端记录：Invalid JWT token") && !isOwnChinese("失败（x）Invalid token"));
+  check("全角括号里的英文句子（带空格）不放行", !isOwnChinese("没能保存（Invalid JWT token）"));
+  check("纯英文 / 半角括号英文不是自己的中文", !isOwnChinese("Error sending magic link email") && !isOwnChinese("无法保存(quota-exceeded)"));
+  check("safeMessage 把英文原文换成备用文案", safeMessage("Invalid JWT token", "备用") === "备用");
+}
 const bad = results.filter((v) => !v).length;
 console.log(`\n${results.length - bad}/${results.length} 通过`);
 process.exit(bad ? 1 : 0);
