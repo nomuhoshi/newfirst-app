@@ -379,7 +379,7 @@ function focusables(root) {
     return r.width > 0 && r.height > 0; // 祖先 display:none 时也是 0 尺寸
   });
 }
-function sheet(content, { onClose, cls = "" } = {}) {
+function sheet(content, { onClose, cls = "", canClose } = {}) {
   const opener = document.activeElement;
   const close = () => {
     if (!wrap.isConnected) return;
@@ -391,10 +391,10 @@ function sheet(content, { onClose, cls = "" } = {}) {
   };
   const openedAt = Date.now();
   const wrap = h("div", { class: "overlay " + cls, role: "dialog", "aria-modal": "true", tabindex: "-1" }, h("div", { class: "sheet" }, content(close)));
-  wrap.addEventListener("click", (e) => { if (e.target === wrap && Date.now() - openedAt > 800) close(); });
+  wrap.addEventListener("click", (e) => { if (e.target === wrap && Date.now() - openedAt > 800 && (!canClose || canClose())) close(); }); // canClose：处理中（发送 / 登录 / 上传核对）不允许点遮罩关掉
   // 键盘：Esc 关闭；Tab 在弹窗内循环；打开时焦点移入弹窗（iPad 外接键盘 / 读屏）
   wrap.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { e.preventDefault(); close(); return; }
+    if (e.key === "Escape") { e.preventDefault(); if (!canClose || canClose()) close(); return; }
     if (e.key !== "Tab") return;
     const f = focusables(wrap);
     if (!f.length) { e.preventDefault(); wrap.focus({ preventScroll: true }); return; } // 没有可聚焦的控件：焦点留在弹窗本身

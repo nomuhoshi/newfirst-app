@@ -23,7 +23,7 @@ function classifyRefreshFailure(r) {
   return r.oauthError === "invalid_grant" || /^Invalid Refresh Token/i.test(String(r.message || ""));
 }
 
-export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeoutMs = 15000 }) {
+export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeoutMs = 15000, isOnline = () => typeof navigator === "undefined" || navigator.onLine !== false }) {
   const base = String(url || "").replace(/\/+$/, "");
   const configured = !!(base && anonKey);
 
@@ -40,7 +40,7 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (e) {
-      return { ok: false, kind: "network", message: "网络连不上，请检查网络后重试", ...(timedOut ? { timedOut: true } : {}) };
+      return { ok: false, kind: "network", message: "网络连不上，请检查网络后重试", ...(timedOut ? { timedOut: true } : !isOnline() ? { offline: true } : {}) };
     } finally { if (timer) clearTimeout(timer); }
     let data = null;
     const text = await resp.text().catch(() => "");

@@ -54,12 +54,12 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
   let cooldownUntil = 0; // 收到 429 之后的本地冷却截止时间（用注入的 now，测试可以拨快，不会真的发验证码）
   const COOLDOWN_MS = 60_000;
-  let baseline = null, lastError = "";
+  let baseline = null, lastError = "", lastDetail = null; // lastDetail：失败的 {kind,status,errorCode,code}，只给界面分类用（界面不显示服务器原文）
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
 
   // 最近一次状态变化和最近一次“确认已同步”的时间（只在内存里，不写存储；测试入口的信息面板读它，重开页面后从头算）。
   let lastStatusAt = null, lastSyncedAt = null;
-  const setStatus = (s, msg = "") => { status = s; lastError = msg; lastStatusAt = now(); if (s === "synced") lastSyncedAt = lastStatusAt; try { onStatus(s, msg); } catch {} };
+  const setStatus = (s, msg = "", detail = null) => { status = s; lastError = msg; lastDetail = detail; lastStatusAt = now(); if (s === "synced") lastSyncedAt = lastStatusAt; try { onStatus(s, msg); } catch {} };
   const normalizedEmail = (x) => String(x || "").trim().toLowerCase();
   // 一份能用于联网的凭证必须字段齐全：没有访问令牌 / 刷新令牌 / 过期时间的残缺凭证只当作“需要重新登录”，
   // 绝不把 undefined / 旧项目 / 别的账号的令牌拼进 Authorization 发出去。
@@ -122,6 +122,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
   const readStale = () => { try { const r = JSON.parse(storage.getItem(STALE_KEY)); return r && typeof r.userId === "string" ? r : null; } catch { return null; } };
   const clearStale = () => { try { storage.removeItem(STALE_KEY); } catch {} };
+  const detailOf = (r) => (r ? { kind: r.kind, status: r.status, errorCode: r.errorCode, code: r.code } : null);
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
   const armCooldown = () => { cooldownUntil = now() + COOLDOWN_MS; };
   const inCooldown = () => now() < cooldownUntil;
@@ -386,7 +387,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       return miss;
     }
     const t = await ensureToken();
-    if (!t.ok) { noteRateLimit(t); setStatus(statusFromFailure(t), t.message); return t.kind === "rate-limit" ? { ...t, retryable: false } : t; }
+    if (!t.ok) { noteRateLimit(t); setStatus(statusFromFailure(t), t.message, detailOf(t)); return t.kind === "rate-limit" ? { ...t, retryable: false } : t; }
     // 先重试“游客导入”专用待办，再跑普通同步。否则普通合并可能把云端旧 true 当成最新，
     // 让用户已经做过的选择永远写不上去。
     const pi = loadPendingImport(storage, userId);
@@ -410,7 +411,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const remote = await api.getProgress(session);
       const midFlightGuard = importGuard();
       if (midFlightGuard) return midFlightGuard;
-      if (!remote.ok) { noteRateLimit(remote); setStatus(statusFromFailure(remote), remote.message); return remote.kind === "rate-limit" ? { ...remote, retryable: false } : remote; }
+      if (!remote.ok) { noteRateLimit(remote); setStatus(statusFromFailure(remote), remote.message, detailOf(remote)); return remote.kind === "rate-limit" ? { ...remote, retryable: false } : remote; }
       const L = loadAccount(storage, userId, { now: now() });
       if (!L.ok || !L.copy) { setStatus("error", "本机账号记录读取失败"); return { ok: false, kind: "local", message: "本机账号记录读取失败" }; }
       const copy = L.copy;
@@ -421,12 +422,12 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         const c = await api.createProgress(session, copy.doc);
         const afterCreateGuard = importGuard();
         if (afterCreateGuard) return afterCreateGuard;
-        if (!c.ok) { noteRateLimit(c); setStatus(statusFromFailure(c), c.message); return c.kind === "rate-limit" ? { ...c, retryable: false } : c; }
+        if (!c.ok) { noteRateLimit(c); setStatus(statusFromFailure(c), c.message, detailOf(c)); return c.kind === "rate-limit" ? { ...c, retryable: false } : c; }
         if (c.rev === null) continue; // 刚好有别的设备抢先创建了：重新读
         finalDoc = copy.doc; rev = c.rev; cloudWriteConfirmed = true;
       } else {
         const m = mergeDocs(copy.doc, remote.row.doc, { localHeartsDirty: copy.dirty.hearts, localPrefsDirty: copy.dirty.prefs });
-        if (m.error) { setStatus("error", m.error.message); return { ok: false, kind: "data", code: m.error.code, message: m.error.message }; }
+        if (m.error) { setStatus("error", m.error.message, { kind: "data", code: m.error.code }); return { ok: false, kind: "data", code: m.error.code, message: m.error.message }; }
         if (m.outcome === "conflict") { setStatus("conflict"); return { ok: false, kind: "conflict", message: "这个账号在别处被“覆盖”过，需要选择保留哪一份" }; }
         finalDoc = m.doc; rev = remote.row.rev;
         if (m.outcome === "remote-newer" && copy.dirty.content) replaced = true;
@@ -436,7 +437,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           const s = await api.saveProgress(session, remote.row.rev, finalDoc);
           const afterSaveGuard = importGuard();
           if (afterSaveGuard) return afterSaveGuard;
-          if (!s.ok) { noteRateLimit(s); setStatus(statusFromFailure(s), s.message); return s.kind === "rate-limit" ? { ...s, retryable: false } : s; }
+          if (!s.ok) { noteRateLimit(s); setStatus(statusFromFailure(s), s.message, detailOf(s)); return s.kind === "rate-limit" ? { ...s, retryable: false } : s; }
           if (s.rev === null) continue; // 被抢先：重新读、合并、再写
           rev = s.rev; cloudWriteConfirmed = true;
         }
@@ -1203,6 +1204,6 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   return {
     restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount,
     account: () => (userId ? { userId, email } : null),
-    status: () => ({ status, pending, message: lastError, lastStatusAt, lastSyncedAt }),
+    status: () => ({ status, pending, message: lastError, detail: lastDetail, lastStatusAt, lastSyncedAt }),
   };
 }

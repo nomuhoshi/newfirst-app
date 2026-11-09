@@ -351,7 +351,8 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .login-input.code { letter-spacing: 6px; text-align: center; font: 600 24px ui-monospace, Menlo, monospace; }
 .login-msg { min-height: 1.4em; font-size: 14px; margin: 4px 0; }
 .login-msg.bad { color: var(--g-bad); }
-.login-sheet .sheet { max-height: 92dvh; overflow: auto; }
+.overlay.login-sheet { bottom: auto; height: var(--app-h, 100dvh); } /* 弹窗底边贴在键盘上沿（--app-h = visualViewport.height） */
+.login-sheet .sheet { max-height: calc(var(--app-h, 100dvh) - 8px); overflow: auto; scroll-padding-bottom: 84px; } /* scrollIntoView 时给吸底按钮留位置 */
 
 /* 备份学习记录 */
 .backup { margin: 12px 0; }
@@ -360,8 +361,20 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .backup-msg { min-height: 1.4em; margin: 8px 0 0; }
 .backup-msg.bad { color: var(--g-bad); }
 .backup .confirm { margin-top: 10px; }
-/* 登录失败的诊断行和进度安全提示（AUTH-MAIL-01）：320px 宽也不横向溢出，长错误码可断行 */
-.login-diag { margin: 0; font-size: 12px; color: var(--g-muted); font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; word-break: break-word; }
-.login-diag:empty, .login-xp:empty { display: none; }
-.login-xp { margin: 2px 0 0; font-size: 14px; color: var(--g-primary); font-weight: 600; overflow-wrap: anywhere; }
-.login-msg { overflow-wrap: anywhere; }
+/* 登录错误区（DESIGN-AUTH-02 §2.1）：L1 原因与动作（红）、L2 进度行（灰）、L3 诊断行（灰、等宽）；放在输入框正下方、发送按钮上方 */
+.lsheet .login-feedback { margin: 4px 0; }
+.lsheet .login-feedback p { margin: 0; overflow-wrap: anywhere; word-break: break-word; }
+.lsheet .login-feedback p:empty { display: none; }
+.lsheet .login-feedback .login-msg { min-height: 0; font-size: 15px; line-height: 1.6; color: var(--g-muted); }
+.lsheet .login-feedback .login-msg.bad { color: var(--g-bad); font-weight: 600; }
+.lsheet .login-feedback .login-xp { font-size: 14px; font-weight: 400; line-height: 1.6; color: var(--g-muted); }
+.lsheet .login-feedback .login-diag { font-size: 12px; line-height: 1.5; color: var(--g-muted); font-family: ui-monospace, Menlo, monospace; user-select: text; -webkit-user-select: text; }
+/* 发送 / 登录按钮吸底：弹窗内容超高时错误区在它上面滚动，按钮始终看得见 */
+.lsheet .login-actions { position: sticky; bottom: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 0; background: var(--g-bg); }
+.lsheet .login-extra { display: flex; flex-direction: column; gap: 8px; }
+.lsheet .login-extra:empty { display: none; }
+.lsheet .login-hint { font-size: 14px; color: var(--g-muted); }
+.lsheet .login-sent { overflow-wrap: anywhere; }
+/* 键盘弹出：说明缩成一行；有错误时说明整段隐藏，只留错误区 */
+.lsheet.login.kb-open .login-sent { display: none; }
+.lsheet.login.kb-open.has-error .login-desc { display: none; }

@@ -1,7 +1,8 @@
 // 登录 / 账号界面：邮箱验证码登录、同步状态、退出、切换账号、删除账号。
 // 不直接碰数据：全部通过 sync（src/sync.js）；元素创建函数和弹窗从 app.js 传进来，所以样式和无障碍行为和其他弹窗一致。
-import { describeSendError, describeVerifyError } from "./auth-errors.js";
+import { describeSendError, describeVerifyError, describeChoiceError, syncErrorText, safeMessage, SYNC_COPY } from "./auth-errors.js";
 
+// 同步状态的文字。出错类状态不显示服务器原文（Y3b/Y3c/Y3d）；诊断行只带过滤后的状态码和错误码。
 export function statusText(s) {
   const st = s?.status;
   if (st === "import-recovery-required") return "游客导入记录损坏：云端同步已暂停。学习进度仍保存在本机，请保留数据等待恢复处理。";
@@ -11,9 +12,10 @@ export function statusText(s) {
   if (st === "pending") return s?.message && (s.message.includes("本机副本写回") || s.message.includes("本机同步重试计数")) ? s.message : "有进度等待上传（联网后自动同步）";
   if (st === "offline") return "现在离线：进度已存在这台设备，联网后自动同步";
   if (st === "need-login") return "登录已过期，需要重新登录才能同步（进度还在这台设备上）";
-  if (st === "conflict") return "这个账号在别处被覆盖过，需要选择保留哪一份";
+  // Y9a：多设备冲突目前没有“选一份留下”的界面（Y9b 需要新的业务逻辑）。至少说清：同步已暂停、本机进度还在、下一步做什么。
+  if (st === "conflict") return "这个账号在别处被覆盖过，同步已暂停。你在这台设备上的进度还在，可以继续学习。请先在下面的“备份学习记录”里导出进度文件，再联系我们处理。";
   if (st === "pending-local-cleanup") return "账号已在云端删除，但这台设备还没清理完。请不要继续用这个登录。";
-  if (st === "error") return "同步失败：" + (s.message || "请稍后再试");
+  if (st === "error") { const e = syncErrorText(s.message, s.detail); return e.text + (e.diag ? e.diag : ""); }
   return "已登录，正在准备同步…";
 }
 const ERR = {
@@ -21,7 +23,17 @@ const ERR = {
   "rate-limit": "发送太频繁了，请等一分钟再试。",
   config: "云端暂未开通。",
 };
-export const errorText = (r) => ERR[r.kind] || r.message || "出错了，请稍后再试。";
+// 提示条 / 弹窗里的失败文字：应用自己写的中文原样显示，其余（可能是服务器英文原文）换成通用中文，绝不直接显示 r.message。
+export const errorText = (r) => {
+  if (ERR[r?.kind]) return ERR[r.kind];
+  if (r?.kind === "auth") return SYNC_COPY.AUTH;
+  if (r?.status >= 500 || r?.kind === "server") return "云端暂时出问题，请稍后再试。进度还在这台设备上。";
+  return safeMessage(r?.message, "出错了，请稍后再试。进度还在这台设备上。");
+};
+// 登录成功但这次没同步上（D1）：不拼接服务器原文。
+const syncedToast = (r, okText, notText) => (r.synced ? okText : notText + (r.syncError ? "云端这次没同步上，联网后会自动补上，你的进度在这台设备上。" : ""));
+
+const fmtWait = (ms) => { const s = Math.max(1, Math.ceil(ms / 1000)); return s <= 90 ? `${s} 秒` : `约 ${Math.ceil(s / 60)} 分钟`; };
 
 export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, getState, onSwitchedIn, onSwitchedOut, rerender }) {
   const statusEls = new Set();
@@ -32,50 +44,91 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
   function paint(el, s) { el.textContent = statusText(s); el.dataset.status = s.status || ""; if (el.isConnected) el.__shown = true; }
 
   // ---------- 登录弹窗 ----------
-  function openLogin({ reason = "" } = {}) {
+  // 版面（规范 §5.1）：标题、说明、输入、错误区（输入框正下方）、发送按钮（吸底）、先不登录。
+  // 键盘弹出时按钮不能被挡：弹窗高度跟着 --app-h（= visualViewport.height），错误区和按钮放在最先看到的位置。
+  function openLogin({ reason = "", email: prefill = "" } = {}) {
     if (!api.configured) { showToast("云端暂未开通，现在只能在这台设备上学习。"); return; }
+    let busy = false, inChoice = false, finished = false;
     return sheet((close) => {
       const box = h("div", { class: "lsheet login", "data-login": "" });
-      let email = "", busy = false, cooldownTimer = null, cooldownUntil = 0;
-      const msg = h("p", { class: "login-msg", role: "alert", "data-login-msg": "" });
-      const diagEl = h("p", { class: "login-diag", "data-login-diag": "" });
+      let email = prefill, cooldownTimer = null, cooldownUntil = 0, verifyUntil = 0, sendLabel = "", s4Fails = 0, kb = false;
+      // 错误区：一个始终存在的 role=alert 容器，里面最多三层——L1 原因与动作（红）、L2 进度行（灰）、L3 诊断行（灰、等宽）。
+      const msg = h("p", { class: "login-msg", "data-login-msg": "" });
       const xpEl = h("p", { class: "login-xp", "data-login-xp": "" });
-      const say = (t, bad = true, extra = null) => { msg.textContent = t; msg.classList.toggle("bad", bad); diagEl.textContent = extra?.diag || ""; xpEl.textContent = extra?.xp || ""; };
+      const diagEl = h("p", { class: "login-diag", "data-login-diag": "" });
+      const feedback = h("div", { class: "login-feedback", role: "alert", "data-login-feedback": "" }, msg, xpEl, diagEl);
+      const extra = h("div", { class: "login-extra", "data-login-extra": "" });
+      const say = (t, bad = true, more = null) => {
+        msg.textContent = t; msg.classList.toggle("bad", bad); diagEl.textContent = more?.diag || ""; xpEl.textContent = more?.xp || ""; extra.replaceChildren();
+        box.classList.toggle("has-error", !!t && bad); applyKb();
+        if (t && feedback.scrollIntoView) { try { feedback.scrollIntoView({ block: "nearest" }); } catch {} }
+      };
       const localXp = () => { try { const x = getState()?.xp; return Number.isFinite(x) ? x : 0; } catch { return 0; } };
-      // 失败提示：中文说明 + 过滤后的诊断行 + （有 XP 时）进度安全提示。绝不显示服务器原文。
       const sayFail = (d) => say(d.text, true, d);
-      const done = () => { clearInterval(cooldownTimer); close(); };
+      const done = () => { clearInterval(cooldownTimer); finished = true; close(); };
+      // 键盘判断（规范 §5.1 第 4 条）：可视高度不到窗口高度的 75% 就算键盘弹出，说明文字缩成一行；有错误时说明整段隐藏。
+      const desc = h("p", { class: "login-desc", "data-login-desc": "" });
+      const descText = () => {
+        const xp = localXp();
+        if (kb) return xp > 0 ? `你的 ${Math.floor(xp)} XP 保存在这台设备上。不用设密码。` : "不用设密码。";
+        const base = reason || "用邮箱登录，换手机或 iPad 也能接着学。没有账号会自动创建；不用设密码。";
+        return xp > 0 ? (reason ? `${reason}你现在的 ${Math.floor(xp)} XP 保存在这台设备上。` : `你现在的 ${Math.floor(xp)} XP 保存在这台设备上。登录后会多存一份到云端，换手机或 iPad 也能接着学。没有账号会自动创建；不用设密码。`) : base;
+      };
+      function applyKb() {
+        const vv = window.visualViewport;
+        kb = !!vv && vv.height < window.innerHeight * 0.75;
+        box.classList.toggle("kb-open", kb);
+        if (inStepEmail || inStepCode) desc.textContent = descText();
+      }
+      let inStepEmail = false, inStepCode = false, tickNow = () => {};
+      const vv = window.visualViewport;
+      const onVv = () => { if (!box.isConnected) { vv?.removeEventListener("resize", onVv); return; } applyKb(); };
+      vv?.addEventListener("resize", onVv);
+      // 取验证码要切到邮件 App：iOS 会暂停后台页面的计时器，回到前台时按时间戳立刻重算（规范 §2.3 第 2 条）
+      const onVis = () => { if (!box.isConnected) { document.removeEventListener("visibilitychange", onVis); return; } if (document.visibilityState === "visible") tickNow(); };
+      document.addEventListener("visibilitychange", onVis);
 
       function stepEmail() {
+        inStepEmail = true; inStepCode = false; inChoice = false;
         const input = h("input", { class: "login-input", type: "email", inputmode: "email", autocomplete: "email", autocapitalize: "off", spellcheck: "false", placeholder: "you@example.com", "aria-label": "邮箱", "data-email": "" });
         input.value = email;
         const go = button("发送验证码", async () => {
           const v = input.value.trim();
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { say("请输入有效的邮箱地址。"); return; }
-          if (busy || Date.now() < cooldownUntil) return; busy = true; go.disabled = true; say("正在发送…", false);
+          if (busy || Date.now() < cooldownUntil) return; busy = true; go.disabled = true; go.textContent = "发送中…"; say("正在发送…", false);
           const r = await sync.sendCode(v);
           busy = false;
           if (!r.ok) {
-            const d = describeSendError(r, { xp: localXp() });
+            const d0 = describeSendError(r, { xp: localXp(), fails: 1 });
+            s4Fails = d0.id === "S4" ? s4Fails + 1 : 0; // S4 连续失败计数只放内存，成功一次清零
+            const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails }) : d0;
             if (d.cooldownMs) cooldownUntil = Date.now() + d.cooldownMs;
+            sendLabel = d.cooldownLabel;
             if (d.uncertainSent) { email = v; stepCode(); sayFail(d); return; } // 超时：邮件可能已发出，直接去输验证码、先查邮箱，不鼓励马上重发
-            sayFail(d); sendTick(); return;
+            sayFail(d);
+            if (d.secondary === "enter-code") extra.append(button("我已收到，去输入验证码", () => { email = v; stepCode(); }, "btn3d ghost wide", { "data-enter-code": "" }));
+            sendTick(); return;
           }
+          s4Fails = 0; sendLabel = "";
           email = v; cooldownUntil = Date.now() + 60000; say("");
           stepCode();
         }, "btn3d primary wide", { "data-send-code": "" });
         const sendTick = () => {
-          const left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+          const left = cooldownUntil - Date.now();
           go.disabled = busy || left > 0;
-          go.textContent = left > 0 ? `发送验证码（${left} 秒后可再发）` : "发送验证码";
-          if (left > 0) { clearInterval(cooldownTimer); cooldownTimer = setInterval(() => { if (!box.isConnected) { clearInterval(cooldownTimer); return; } sendTick(); if (Date.now() >= cooldownUntil) clearInterval(cooldownTimer); }, 1000); }
+          go.textContent = busy ? "发送中…" : left > 0 ? (sendLabel === "可再发" ? `${fmtWait(left)}后可再发` : sendLabel || `${fmtWait(left)}后可再发`) : "发送验证码";
+          clearInterval(cooldownTimer);
+          if (left > 0) cooldownTimer = setInterval(() => { if (!box.isConnected) { clearInterval(cooldownTimer); return; } sendTick(); if (Date.now() >= cooldownUntil) clearInterval(cooldownTimer); }, 1000);
         };
+        tickNow = sendTick;
         sendTick();
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
+        desc.textContent = descText();
         box.replaceChildren(
           h("h2", { text: "登录 / 注册" }),
-          h("p", { text: reason || "用邮箱登录，换手机或 iPad 也能接着学。没有账号会自动创建；不用设密码。" }),
-          input, go, msg, diagEl, xpEl,
+          desc,
+          input, feedback,
+          h("div", { class: "login-actions" }, go, extra),
           ...(sync.hasLeftoverAuth && sync.hasLeftoverAuth() ? [leftoverButton()] : []),
           button("先不登录", done, "btn3d ghost wide"),
         );
@@ -86,67 +139,98 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const b = button("清理本机残留的登录凭证", async () => {
           b.disabled = true;
           const r = await sync.retryAuthCleanup();
-          if (r.ok) { b.remove(); say(r.nothingToClean ? "没有发现需要清理的登录凭证。" : "已清理本机残留的登录凭证。", false); } else { b.disabled = false; say(r.message || "还是没清掉，请检查浏览器的存储权限后再试。"); }
+          if (r.ok) { b.remove(); say(r.nothingToClean ? "没有发现需要清理的登录凭证。" : "已清理本机残留的登录凭证。", false); } else { b.disabled = false; say(safeMessage(r.message, "还是没清掉，请检查浏览器的存储权限后再试。")); }
         }, "btn3d ghost wide", { "data-clean-auth": "" });
         return b;
       }
 
       function stepCode() {
+        inStepEmail = false; inStepCode = true; inChoice = false;
+        let resends = 0;
         const input = h("input", { class: "login-input code", type: "text", inputmode: "numeric", pattern: "[0-9]*", autocomplete: "one-time-code", maxlength: "10", placeholder: "验证码", "aria-label": "邮箱验证码", "data-code": "" });
         const resend = button("重新发送", async () => {
           if (Date.now() < cooldownUntil || busy) return;
-          busy = true; const r = await sync.sendCode(email); busy = false;
-          if (!r.ok) { const d = describeSendError(r, { xp: localXp() }); if (d.cooldownMs) cooldownUntil = Date.now() + d.cooldownMs; sayFail(d); tick(); return; }
-          cooldownUntil = Date.now() + 60000; say("已重新发送。", false); tick();
+          busy = true; resend.disabled = true; resend.textContent = "发送中…"; const r = await sync.sendCode(email); busy = false;
+          if (!r.ok) {
+            const d0 = describeSendError(r, { xp: localXp(), fails: 1 });
+            s4Fails = d0.id === "S4" ? s4Fails + 1 : 0;
+            const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails }) : d0;
+            if (d.cooldownMs) cooldownUntil = Date.now() + d.cooldownMs;
+            sayFail(d); tick(); return;
+          }
+          s4Fails = 0; resends++;
+          cooldownUntil = Date.now() + 60000; say("已重新发送。请查收邮件（含垃圾邮件）。", false);
+          if (resends >= 2) extra.append(h("p", { class: "login-hint", text: `还是没收到？确认邮箱 ${email} 拼写正确，或点「换个邮箱」。` })); // P2-2
+          tick();
         }, "btn3d ghost", { "data-resend": "" });
-        const tick = () => { const left = Math.ceil((cooldownUntil - Date.now()) / 1000); resend.disabled = left > 0; resend.textContent = left > 0 ? `重新发送（${left} 秒）` : "重新发送"; };
-        clearInterval(cooldownTimer); cooldownTimer = setInterval(() => { if (!box.isConnected) { clearInterval(cooldownTimer); return; } tick(); }, 1000); tick();
+        const tick = () => {
+          const left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+          if (!busy) { resend.disabled = left > 0; resend.textContent = left > 0 ? `重新发送（${left} 秒）` : "重新发送"; }
+          if (!busy && verifyUntil > Date.now()) go.disabled = true; else if (!busy) go.disabled = false;
+        };
+        tickNow = tick;
+        clearInterval(cooldownTimer); cooldownTimer = setInterval(() => { if (!box.isConnected) { clearInterval(cooldownTimer); return; } tick(); }, 1000);
         const go = button("登录", async () => {
           const c = input.value.replace(/\s+/g, "");
           if (c.length < 4) { say("请输入邮件里的验证码。"); return; }
-          if (busy) return; busy = true; go.disabled = true; say("正在登录…", false);
+          if (busy) return; busy = true; go.disabled = true; go.textContent = "登录中…"; say("正在登录…", false);
           const r = await sync.verify(email, c, getState());
-          busy = false; go.disabled = false;
-          if (!r.ok) { if (r.kind === "other-account" || r.kind === "data") { say(errorText(r)); return; } const d = describeVerifyError(r, { xp: localXp() }); if (d.cooldownMs) cooldownUntil = Math.max(cooldownUntil, Date.now() + d.cooldownMs); sayFail(d); tick(); return; }
+          busy = false; go.disabled = false; go.textContent = "登录";
+          if (!r.ok) {
+            if (r.kind === "other-account" || r.kind === "data" || r.kind === "local") { say(errorText(r)); tick(); return; }
+            const d = describeVerifyError(r, { xp: localXp() });
+            if (d.id === "V2") { verifyUntil = Date.now() + d.cooldownMs; cooldownUntil = Math.max(cooldownUntil, verifyUntil); }
+            sayFail(d); tick();
+            if (d.id === "V1") { try { input.focus(); input.select(); } catch {} } // 保留已输入的内容并全选，方便重输
+            return;
+          }
           if (r.needChoice) { stepChoice(r); return; }
           success(r);
         }, "btn3d primary wide", { "data-verify": "" });
+        tick();
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
+        desc.textContent = "";
         box.replaceChildren(
           h("h2", { text: "输入验证码" }),
-          h("p", { text: `验证码已发到 ${email}。没收到？看看垃圾邮件，或稍等再重新发送。` }),
-          input, go, resend, msg, diagEl, xpEl,
-          button("换个邮箱", () => { say(""); cooldownUntil = 0; stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着
+          h("p", { class: "login-sent", text: `验证码已发到 ${email}。没收到？看看垃圾邮件，或稍等再重新发送。` }),
+          input, feedback,
+          h("div", { class: "login-actions" }, go, resend, extra),
+          button("换个邮箱", () => { say(""); cooldownUntil = 0; sendLabel = ""; stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着
         );
         setTimeout(() => input.focus(), 50);
       }
 
       function stepChoice(info) {
+        inStepEmail = false; inStepCode = false; inChoice = true;
         const g = `${info.guest.xp} XP、${info.guest.lessons} 关`;
-        const pick = async (choice, label) => {
-          if (busy) return; busy = true; say("正在处理…", false);
+        const btns = [];
+        // G3：处理中两个按钮都禁用，点遮罩和 Esc 也不会关掉弹窗；C1：失败后恢复可点，游客进度原样留在这台设备上。
+        const pick = async (choice) => {
+          if (busy) return; busy = true; btns.forEach((b) => { b.disabled = true; }); say("正在上传并核对…", false);
           const r = await sync.finishChoice(choice);
-          busy = false;
-          if (!r.ok) { say(errorText(r)); return; }
+          busy = false; btns.forEach((b) => { b.disabled = false; });
+          if (!r.ok) { sayFail(describeChoiceError(r, { xp: info.guest.xp })); return; }
           success(r);
         };
+        const mk = (label, choice, cls) => { const b = button(label, () => pick(choice), cls, { "data-choice": choice }); btns.push(b); return b; };
+        const later = button("稍后再说", () => { if (!busy) close(); }, "btn3d ghost wide", { "data-choice-later": "" }); // G4：不处理就关掉；游客进度原样保留，不会自动覆盖云端
         if (!info.cloudHasData) {
           box.replaceChildren(
             h("h2", { text: "转存这台设备上的进度？" }),
             h("p", { text: `这台设备上有没登录时学的进度（${g}）。要放进这个账号吗？` }),
-            button("安全合并到账号", () => pick("transfer"), "btn3d primary wide", { "data-choice": "transfer" }),
-            button("不转存，用全新账号", () => pick("cloud"), "btn3d wide", { "data-choice": "cloud" }),
+            mk("安全合并到账号", "transfer", "btn3d primary wide"),
+            mk("不转存，用全新账号", "cloud", "btn3d wide"),
             h("p", { class: "muted small", text: "安全合并：XP / 次数按设备取较大值，关卡和日期取并集；上传成功并确认云端一致后，游客记录才会清除。不转存则原样保留。" }),
-            msg,
+            feedback, later,
           );
         } else {
           box.replaceChildren(
             h("h2", { text: "这个账号已有学习进度" }),
             h("p", { text: `云端已经有这个账号的进度。这台设备上还有没登录时学的进度（${g}）。` }),
-            button("保留云端进度（推荐）", () => pick("cloud"), "btn3d primary wide", { "data-choice": "cloud" }),
-            button("安全合并游客进度", () => pick("transfer"), "btn3d wide", { "data-choice": "transfer" }),
+            mk("保留云端进度（推荐）", "cloud", "btn3d primary wide"),
+            mk("安全合并游客进度", "transfer", "btn3d wide"),
             h("p", { class: "muted small", text: "安全合并不会整份覆盖：其他设备的 XP、关卡、红心和设置都会保留，XP / 次数按设备取较大值，关卡和日期取并集。选“保留云端进度”时游客记录原样保留，只记下它的指纹，之后游客再变才会再次提示。" }),
-            msg,
+            feedback, later,
           );
         }
       }
@@ -154,11 +238,15 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       function success(r) {
         done();
         onSwitchedIn(r);
-        showToast(r.synced ? "登录成功，进度已同步。" : "登录成功。" + (r.syncError ? "云端暂时没同步上（" + r.syncError + "），联网后会自动补上。" : ""));
+        showToast(syncedToast(r, "登录成功，进度已同步。", "登录成功。"));
       }
       stepEmail();
       return [box];
-    }, { cls: "login-sheet" });
+    }, {
+      cls: "login-sheet",
+      canClose: () => !busy, // 发送 / 登录 / 处理中不允许点遮罩或按 Esc 关掉
+      onClose: () => { if (inChoice && !finished) { const x = Math.floor(getState()?.xp ?? 0); showToast("已取消登录。" + (x > 0 ? `你的 ${x} XP 还在这台设备上。` : "你的进度原样留在这台设备上。")); } },
+    });
   }
 
   // ---------- “我的”页里的账号卡片 ----------
@@ -187,9 +275,9 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const pick = async (choice) => {
           msg.textContent = "正在处理…"; msg.classList.remove("bad");
           const r = await sync.finishChoice(choice);
-          if (!r.ok) { msg.textContent = errorText(r); msg.classList.add("bad"); return; }
+          if (!r.ok) { msg.textContent = describeChoiceError(r, { xp: info.guest.xp }).text; msg.classList.add("bad"); return; }
           close(); onSwitchedIn(r);
-          showToast(r.synced ? "游客进度已处理，已同步。" : "游客进度已处理。" + (r.syncError ? "云端暂时没同步上（" + r.syncError + "），联网后会自动补上。" : ""));
+          showToast(syncedToast(r, "游客进度已处理，已同步。", "游客进度已处理。"));
         };
         return [h("div", { class: "lsheet", "data-import-choice": "" },
           info.cloudHasData
@@ -204,7 +292,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     }
     async function runRecovery(digest) {
       const q = await sync.quarantinePendingImport({ expectedDigest: digest });
-      if (!q.ok) { showToast(q.message || "没有处理成功，原来的待办还在。"); rerender(); return; }
+      if (!q.ok) { showToast(safeMessage(q.message, "没有处理成功，原来的待办还在。")); rerender(); return; }
       showToast("损坏的待办已备份并移除。");
       const r = await sync.resumeGuestImportChoice(getState());
       if (!r.ok) { showToast("待办已处理，但还没能确认云端：" + errorText(r) + " 点“立即同步”可重试。"); rerender(); return; }
@@ -225,35 +313,40 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       }
       return null;
     }
+    // X0：退出后界面回到这台设备的游客记录，合并过的用户会看到 0 XP，所以提示里必须说清账号里的 XP 在云端。
+    const xpBeforeLogout = () => { try { const x = Math.floor(getState()?.xp ?? 0); return x > 0 ? x : 0; } catch { return 0; } };
+    const loggedOutText = (xp) => "已退出登录。" + (xp > 0 ? `账号里的 ${xp} XP 在云端，重新登录就回来。` : "");
     async function doLogout(then) {
+      const xp0 = xpBeforeLogout();
       const r = await sync.logout();
-      if (r.ok) { onSwitchedOut(); showToast(r.warning ? r.message : "已退出登录。"); if (then) then(); return; }
-      if (r.stayed) sheetConfirm("云端退出失败", "这台设备仍保持登录，还没上传的进度也留在这里。可以稍后再试，或只在这台设备退出（云端会话可能仍有效）。", "只在这台设备退出", async () => {
+      if (r.ok) { onSwitchedOut(); showToast(r.warning ? safeMessage(r.message, loggedOutText(xp0)) : loggedOutText(xp0)); if (then) then(); return; }
+      if (r.stayed) sheetConfirm("云端退出失败", "这台设备仍保持登录。已同步的进度在云端；没同步的留在这台设备上，用同一个账号重新登录会接着上传，XP 会回来。可以稍后再试，或只在这台设备退出（云端会话可能仍有效）。", "只在这台设备退出", async () => {
         const f = await sync.forceLocalLogout();
-        if (!f.ok) { showToast(f.message || "还没退出。"); return; }
-        onSwitchedOut(); showToast(f.warning ? f.message : "已退出登录。"); if (then) then();
+        if (!f.ok) { showToast(safeMessage(f.message, "还没退出。")); return; }
+        onSwitchedOut(); showToast(f.warning ? safeMessage(f.message, loggedOutText(xp0)) : loggedOutText(xp0)); if (then) then();
       }, true);
       else if (r.kind === "import-corrupt" || r.kind === "import-read-failed") sheetConfirm("游客导入待办需要恢复", "云端同步已锁定，继续学习可保存在本机。仅在本机退出会保留游客记录、损坏待办和未上传账号副本；重新登录后仍需专门恢复，云端会话可能仍有效。", "仅在本机退出", async () => {
         const f = await sync.forceLocalLogout();
-        if (!f.ok) { showToast(f.message || "还没退出。"); return; }
-        onSwitchedOut(); showToast(f.message || "已在本机退出，数据已保留。"); if (then) then();
+        if (!f.ok) { showToast(safeMessage(f.message, "还没退出。")); return; }
+        onSwitchedOut(); showToast(safeMessage(f.message, "已在本机退出，数据已保留。")); if (then) then();
       }, true);
-      else if (r.pending) sheetConfirm("有进度还没上传", "现在连不上云端。退出后这些进度会先留在这台设备上，用同一个账号重新登录时会接着上传；建议联网后再退出。", "仍然退出", async () => {
+      else if (r.pending) sheetConfirm("有进度还没上传", "现在连不上云端。退出后这些进度会先留在这台设备上，用同一个账号重新登录时会接着上传，XP 会回来；建议联网后再退出。", "仍然退出", async () => {
         const f = await sync.logout({ force: true });
-        if (!f.ok) { showToast(f.message || "还没退出。"); return; }
-        onSwitchedOut(); showToast(f.warning ? f.message : "已退出登录。"); if (then) then();
+        if (!f.ok) { showToast(safeMessage(f.message, "还没退出。")); return; }
+        onSwitchedOut(); showToast(f.warning ? safeMessage(f.message, loggedOutText(xp0)) : loggedOutText(xp0)); if (then) then();
       }, true);
       else showToast(errorText(r));
     }
     card.append(h("h3", { text: "账号" }), h("p", { class: "acct-email", text: acc.email || "已登录" }), st, ...[recoveryBox()].filter(Boolean),
-      button("立即同步", async () => { const r = await sync.syncNow({ manual: true }); if (!r.ok) showToast(errorText(r)); else rerender(); }, "btn3d wide", { "data-sync-now": "" }),
+      ...(sync.status().status === "need-login" ? [button("重新登录", () => openLogin({ reason: "登录已过期，重新登录后会接着上传。", email: acc.email || "" }), "btn3d primary wide", { "data-relogin": "" })] : []), // Y7
+      (() => { const conflict = sync.status().status === "conflict"; const b = button("立即同步", async () => { const r = await sync.syncNow({ manual: true }); if (!r.ok) showToast(errorText(r)); else rerender(); }, "btn3d wide", { "data-sync-now": "" }); if (conflict) { b.disabled = true; b.title = "同步已暂停：这个账号在别处被覆盖过"; } return b; })(),
       h("div", { class: "acct-row" },
         button("退出登录", () => doLogout(), "btn3d", { "data-logout": "" }),
         button("切换账号", () => doLogout(() => openLogin()), "btn3d", { "data-switch": "" })),
       button("删除账号和云端记录", () => sheetConfirm("删除账号？", "会永久删除这个账号和云端的学习记录，不能恢复。这台设备上也会退出登录。", "永久删除", async () => {
         const r = await sync.deleteAccount();
         if (r.ok) { onSwitchedOut(); showToast("账号已删除。"); }
-        else if (r.pendingLocalCleanup) { onSwitchedOut(); showToast(r.message); }
+        else if (r.pendingLocalCleanup) { onSwitchedOut(); showToast(safeMessage(r.message, "账号已在云端删除，但这台设备还没清理完。")); }
         else showToast(errorText(r));
       }, true), "btn3d danger-ghost wide", { "data-delete-account": "" }));
     paint(st, sync.status());
