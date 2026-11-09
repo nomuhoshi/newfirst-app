@@ -21,6 +21,36 @@ const ERR = {
 };
 export const errorText = (r) => ERR[r.kind] || r.message || "出错了，请稍后再试。";
 
+// 发验证码失败时的提示：先用中文说清“大概是哪一类问题”，再附上服务器给的状态码、错误码和原文，
+// 方便截图给开发者对照 Supabase 日志。只按服务器给的错误码分类，不猜原因；认不出的码只显示原文。
+const SEND_HINT = {
+  email_address_not_authorized: "这个邮箱不在当前发信服务允许的名单里（默认发信服务只发给项目团队成员）。",
+  over_email_send_rate_limit: "发验证码的次数已达上限，请稍后再试。",
+  over_request_rate_limit: "请求太频繁了，请稍后再试。",
+  email_address_invalid: "服务器不接受这个邮箱地址。",
+  otp_disabled: "这个邮箱没有登录资格（此环境已关闭公开注册）。",
+  signup_disabled: "这个邮箱没有登录资格（此环境已关闭公开注册）。",
+  email_provider_disabled: "此环境没有开启邮箱登录。",
+  unexpected_failure: "服务器这边发信失败了，不是你的操作问题。",
+};
+export function sendCodeErrorText(r) {
+  if (!r || r.ok) return "";
+  if (r.kind === "network") return ERR.network;
+  if (r.kind === "config") return ERR.config;
+  let lead = r.errorCode && SEND_HINT[r.errorCode];
+  if (!lead) {
+    if (r.kind === "rate-limit") lead = ERR["rate-limit"];
+    else if (r.status >= 500) lead = "服务器这边出错了，不是你的操作问题。";
+    else lead = "验证码没发出去。";
+  }
+  const bits = [];
+  if (r.status) bits.push(`服务器返回 ${r.status}`);
+  if (r.errorCode) bits.push(r.errorCode);
+  const raw = r.message && !/^服务器返回 \d+$/.test(r.message) ? r.message : "";
+  const detail = bits.join(" · ") + (raw ? (bits.length ? "：" : "") + raw : "");
+  return detail ? `${lead}（${detail}）` : lead;
+}
+
 export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, getState, onSwitchedIn, onSwitchedOut, rerender }) {
   const statusEls = new Set();
   function refreshStatus() {
@@ -48,7 +78,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           if (busy) return; busy = true; go.disabled = true; say("正在发送…", false);
           const r = await sync.sendCode(v);
           busy = false; go.disabled = false;
-          if (!r.ok) { if (r.kind === "rate-limit") cooldownUntil = Date.now() + 60000; say(errorText(r)); return; }
+          if (!r.ok) { if (r.kind === "rate-limit") cooldownUntil = Date.now() + 60000; say(sendCodeErrorText(r)); return; }
           email = v; cooldownUntil = Date.now() + 60000; say("");
           stepCode();
         }, "btn3d primary wide", { "data-send-code": "" });
@@ -77,7 +107,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const resend = button("重新发送", async () => {
           if (Date.now() < cooldownUntil || busy) return;
           busy = true; const r = await sync.sendCode(email); busy = false;
-          if (!r.ok) { if (r.kind === "rate-limit") cooldownUntil = Date.now() + 60000; say(errorText(r)); tick(); return; }
+          if (!r.ok) { if (r.kind === "rate-limit") cooldownUntil = Date.now() + 60000; say(sendCodeErrorText(r)); tick(); return; }
           cooldownUntil = Date.now() + 60000; say("已重新发送。", false); tick();
         }, "btn3d ghost", { "data-resend": "" });
         const tick = () => { const left = Math.ceil((cooldownUntil - Date.now()) / 1000); resend.disabled = left > 0; resend.textContent = left > 0 ? `重新发送（${left} 秒）` : "重新发送"; };
