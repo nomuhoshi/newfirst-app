@@ -4,8 +4,9 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 import { chromium, webkit } from "playwright";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname, DIST = join(ROOT, "dist");
+const ROOT = fileURLToPath(new URL("..", import.meta.url)), DIST = join(ROOT, "dist");
 const PORT = 4373 + (process.argv[2] === "webkit" ? 1 : 0), BASE = `http://localhost:${PORT}/`;
 const unitN = JSON.parse(readFileSync(join(ROOT, "content/unit4.json")));
 const prev = [...JSON.parse(readFileSync(join(ROOT, "content/unit1.json"))).lessons, ...JSON.parse(readFileSync(join(ROOT, "content/unit2.json"))).lessons, ...JSON.parse(readFileSync(join(ROOT, "content/unit3.json"))).lessons].map((l) => l.id);

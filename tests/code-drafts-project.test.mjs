@@ -5,8 +5,9 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import { fileURLToPath } from "node:url";
 
-const DIST = resolve(new URL("../dist", import.meta.url).pathname);
+const DIST = resolve(fileURLToPath(new URL("../dist", import.meta.url)));
 const PORT = 4347, BASE = `http://localhost:${PORT}/`;
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm" };
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";

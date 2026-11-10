@@ -6,8 +6,9 @@ import { readFileSync, existsSync, statSync, cpSync, mkdtempSync, writeFileSync,
 import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { chromium } from "playwright";
+import { fileURLToPath } from "node:url";
 
-const DIST = resolve(new URL("../dist", import.meta.url).pathname);
+const DIST = resolve(fileURLToPath(new URL("../dist", import.meta.url)));
 const PORT = 4331;
 const BASE = `http://localhost:${PORT}/`;
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm", ".wav": "audio/wav", ".txt": "text/plain", ".zip": "application/zip" };

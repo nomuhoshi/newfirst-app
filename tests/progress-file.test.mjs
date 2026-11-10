@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { chromium } from "playwright";
 import { buildExport, parseImport, mergeImport, exportFileName, summarize, FILE_FORMAT } from "../src/progress-file.js";
 import { DATA_VERSION } from "../src/storage.js";
+import { fileURLToPath } from "node:url";
 
 const results = [];
 function check(name, ok, detail = "") { results.push({ ok: !!ok }); console.log(`${ok ? "✅" : "❌"} ${name}${detail ? "  — " + detail : ""}`); }
@@ -50,7 +51,7 @@ const base = JSON.parse(FIX);
 }
 
 // ===== 浏览器：我的页 =====
-const DIST = resolve(new URL("../dist", import.meta.url).pathname);
+const DIST = resolve(fileURLToPath(new URL("../dist", import.meta.url)));
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/json", ".wasm": "application/wasm" };
 const srv = createServer((req, resp) => {
   const url = new URL(req.url, "http://x/"); let p = join(DIST, decodeURIComponent(url.pathname));
