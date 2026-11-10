@@ -63,3 +63,24 @@ jobs:
           fi
           git add -A && git commit -q -m "test-cloud preview ${PREVIEW_ID} from ${GITHUB_SHA}"
           git push "$REMOTE" "dist:preview-dist-${PREVIEW_ID}"
+      # 发布候选的 Lighthouse（mobile 预设，3 次）：量的是这次的候选构建本身，结果打印在日志里并作为产物保存。
+      # 只读测量，失败不影响预览发布。
+      - name: Lighthouse（mobile，3 次）
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -e
+          npx vite preview --port 4173 --strictPort > /tmp/preview.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
+          mkdir -p lh
+          for n in 1 2 3; do
+            npx -y lighthouse@12.8.2 http://localhost:4173/ --quiet --output=json --output-path="lh/lh12-mobile-run$n.report.json" --chrome-flags="--headless=new --no-sandbox"
+          done
+          node scripts/lighthouse-summary.cjs lh
+      - name: 保存 Lighthouse 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-v1rc-${{ github.sha }}
+          path: lh/
+          if-no-files-found: ignore
