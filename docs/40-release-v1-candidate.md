@@ -19,7 +19,7 @@
 | #50 测试定位 dist 改用 `fileURLToPath`（`253c4fe`） | 挑入并扩大：基线比 #50 的底多 9 处旧写法（含 `npm test` 运行器 `scripts/run-tests.mjs`）一并改掉；路径回归测试同时检查 `scripts/`，接在 `test:chain` 第一条 | `1fa638c` |
 | CSP | 新增，见 §2 | `a8d6c33^` |
 | 隐私说明 | 新增，见 §3 | `a8d6c33` |
-| 发布候选预览工作流 | 新增 `.github/workflows/v1rc-preview.yml`（推 `preview/v1rc` 触发，只连测试 Supabase，产物检查多了 CSP 和隐私页） | 本提交 |
+| 发布候选预览工作流 | 新增 `.github/workflows/v1rc-preview.yml`（推 `preview/v1rc` 触发，只连测试 Supabase，产物检查多了 CSP 和隐私页）。**不强推**：先取回 `preview-dist-v1rc` 现有提交，把这次产物作为下一个提交快进推送（本机用裸仓库模拟过：两次推送都是快进，旧文件不残留）。现有 `acc2-preview.yml`、`preview-test-cloud.yml`、`pr11-preview.yml` 仍用 `push -f`，没改（它们服务的预览还在用），列入后续 | `4fcafb2` 及之后 |
 
 ## 2. 内容安全策略（CSP）
 
@@ -30,7 +30,7 @@ default-src 'self';
 script-src 'self' 'sha256-<兜底内联脚本>' 'wasm-unsafe-eval';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:;
-connect-src 'self' https://*.supabase.co;
+connect-src 'self' <这次构建连接的云项目> https://fake.supabase.test;
 worker-src 'self'; manifest-src 'self';
 object-src 'none'; base-uri 'self'; form-action 'self'
 ```
@@ -38,8 +38,9 @@ object-src 'none'; base-uri 'self'; form-action 'self'
 - 脚本最严：没有 `'unsafe-inline'`、没有 `'unsafe-eval'`。内联的只有 index.html 那段“页面没加载出来”的兜底脚本，构建时按最终 HTML 现算哈希。
 - `'wasm-unsafe-eval'`：Pyodide 编译 WebAssembly 需要。Pyodide 跑在模块 Worker 里，Chromium 不把页面 meta CSP 套到 Worker 上，但旧版 Safari 会，所以放行。
 - `style-src 'unsafe-inline'` 是有意放宽：应用用 style 属性传动画时长、偏移、进度条宽度；CodeMirror 在旧版 Safari 会插 `<style>`。样式注入远不如脚本注入危险。
-- `connect-src` 用 `*.supabase.co`，正式和测试项目都覆盖。比只写正式项目宽一点，但让同一份构建规则对正式 / 测试入口都成立。
-- 测试：`tests/csp.test.mjs`（Chromium + WebKit）——在 CSP 下真 Pyodide 运行出结果、Supabase 请求放行、应用运行零拦截；注入的内联脚本、`eval`、发往别的网站的请求都被拦。其余所有浏览器测试也都在 CSP 下跑。
+- `connect-src` 只放行这一份构建实际连接的那一个云项目（vite.config.js 算出来传给插件）：正式构建 = 正式项目 `aqlcunkmggzzvyavlkjg`；测试入口 = 构建时给的测试项目；云端关闭的测试入口 = 不放行任何云项目。产品官审查后从 `*.supabase.co` 收紧：通配会让注入的脚本把数据发到别人开的 Supabase 项目。
+- `https://fake.supabase.test` 是本机自动测试的假服务器。`.test` 是 RFC 2606 保留的顶级域名，公网上永远解析不到；自动测试和正式发布用的是同一份构建产物（CI 的 build 任务测完直接上传），所以它必须在策略里，对线上用户没有放行效果。
+- 测试：`tests/csp.test.mjs`（Chromium + WebKit）——在 CSP 下真 Pyodide 运行出结果、允许的云项目请求放行、应用运行零拦截；注入的内联脚本、发往别的网站和别人的 Supabase 项目的请求都被拦。`eval` 由静态断言保证（Playwright 的 evaluate 走调试协议，在里面调 eval 不受页面 CSP 约束，CI 第一轮实测 Chromium 返回 2，浏览器里测不准）。其余所有浏览器测试也都在 CSP 下跑。
 
 剩余风险：
 - meta 里设不了 `frame-ancestors`，别的网站可以把本站嵌进 iframe（点击劫持）。本站危险操作（删账号、清记录）都有二次确认，风险低；要彻底解决需要能设响应头的托管（例如前面加 Cloudflare）。
@@ -49,11 +50,15 @@ object-src 'none'; base-uri 'self'; form-action 'self'
 
 `public/privacy.html`：静态页、不含脚本、自带 `default-src 'none'` 的 CSP、进离线缓存。入口：登录框底部、账号卡片、“我的”页底部（点按区域 44 高）。
 
-**待老大确认后再上线：**
-1. 联系渠道：暂写 GitHub Issues。若要用邮箱，告诉我地址。
-2. 未成年人年龄线：暂写 14 周岁（中国个人信息保护法把不满 14 周岁的个人信息列为敏感个人信息）。
-3. 邮件服务商：Resend 未定前写“邮件发送服务”。定了以后写名字。
-4. Supabase 数据所在地区：页面没写地区。老大在 Supabase 后台 Project Settings → General 能看到 Region，需要的话补上。
+产品官审查后改了四处（不替老大做政策决定，查不到的不编）：
+1. 联系方式：没有专门渠道。页面写“专门的隐私联系邮箱会在正式上线前补充”，GitHub Issues 只作临时入口，并加粗写明“内容公开，不要写邮箱、验证码或任何个人信息”。
+2. 删除：改成“从我们的数据库里删除，删除后无法恢复；云服务商自己的定期备份里可能还有副本，按服务商的备份周期覆盖，我们没法提前清除”。源码能证明的只有删账号 + 级联删 progress 行。
+3. 未成年人：应用里没有监护人同意机制，所以改成“账号功能只面向年满 14 周岁；不满 14 周岁可以不登录使用全部课程，记录只在本机”。这是默认的保守写法，**采用年龄限制还是加监护人授权流程，由老大定**。
+4. 数据地区、日志保留期限、邮件服务商：页面写“正式上线前补充”，不写具体值。
+
+**正式上线前老大要给的：** 隐私联系邮箱；未成年人政策（年龄限制 / 监护人授权）；Supabase 项目 Region（后台 Project Settings → General）；日志保留期限（后台 Logs 设置 / 套餐说明）；邮件服务商名称（Resend 决定后）。
+
+**登录前明确确认（评估，未实现）：** 现在是“登录即表示你已阅读隐私说明”。改成必须勾选“我已阅读并同意”才能发验证码，好处是同意动作明确可证；代价是登录流程多一步，8 个浏览器测试文件的登录步骤都要跟着改（多一次勾选）。建议第一版上线前做，做法：勾选框默认不勾，记在本机（同一设备不再重复问），“发送验证码”在没勾时不可点并提示原因。属于界面改动，需要设计bot 给样式、产品官批准后我再做。
 
 ## 4. 正式 Supabase：需要老大在后台操作的只读核查
 

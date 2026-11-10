@@ -53,6 +53,13 @@ jobs:
           cd dist
           echo "${GITHUB_SHA}" > SOURCE_SHA.txt
           printf '{"sha":"%s","previewId":"%s","cloudRef":"%s","builtAt":"%s"}\n' "$GITHUB_SHA" "$PREVIEW_ID" "$EXPECTED_TEST_PROJECT_REF" "$(date -u +%FT%TZ)" > PREVIEW_INFO.json
+          # 不强推：先取回产物分支现在的提交，把这次的产物作为它的下一个提交（快进推送）。重复构建也能正常更新；
+          # 分支还不存在时第一次推送就是新建。产物树 = 这次的 dist（reset --soft 只挪 HEAD，索引从空开始，旧文件不会残留）。
+          REMOTE="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
           git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          if git ls-remote --exit-code "$REMOTE" "refs/heads/preview-dist-${PREVIEW_ID}" >/dev/null; then
+            git fetch -q --depth 1 "$REMOTE" "preview-dist-${PREVIEW_ID}"
+            git reset -q --soft FETCH_HEAD
+          fi
           git add -A && git commit -q -m "test-cloud preview ${PREVIEW_ID} from ${GITHUB_SHA}"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "dist:preview-dist-${PREVIEW_ID}"
+          git push "$REMOTE" "dist:preview-dist-${PREVIEW_ID}"

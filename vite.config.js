@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import { execSync } from "node:child_process";
 import swPlugin from "./scripts/vite-sw-plugin.mjs";
 import cspPlugin from "./scripts/vite-csp-plugin.mjs";
+import { PROD_HOST, isProdUrl } from "./src/cloud-config.js";
 import { checkPreviewCloud, resolveSourceSha } from "./scripts/preview-cloud-check.mjs";
 // base: "./" 让网站放在任何子路径下（例如 /newfirst-app/）都能找到资源。
 // 两个页面：index.html 是正式的学习应用；lab.html 是第 1 步的技术验证页（保留做回归测试）。
@@ -20,6 +21,8 @@ if (PREVIEW_ID && process.env.REQUIRE_TEST_CLOUD === "1" && !/^[0-9a-f]{40}$/.te
 console.log(`[构建] ${PREVIEW_ID ? "测试入口 " + PREVIEW_ID : "正式构建"} | 云端：${CLOUD_CHECK.info.cloud} | 源码提交：${SOURCE_SHA}`);
 for (const n of CLOUD_CHECK.notes) console.log("[构建] " + n);
 if (CLOUD_CHECK.errors.length) throw new Error("测试入口云配置校验失败，构建已中止：\n  - " + CLOUD_CHECK.errors.join("\n  - "));
+// CSP 的 connect-src 只放行这一份构建实际连接的云项目：正式构建 = 正式项目；测试入口 = 构建时给的测试项目（指向正式的已在上面被拒绝）；没给 = 不放行。
+const CSP_CLOUD_URL = PREVIEW_ID ? (TEST_CLOUD.url && !isProdUrl(TEST_CLOUD.url) ? TEST_CLOUD.url : "") : `https://${PROD_HOST}`;
 export default defineConfig({
   base: "./",
   build: {
@@ -27,6 +30,6 @@ export default defineConfig({
     rollupOptions: { input: { main: "index.html", lab: "lab.html" } },
   },
   worker: { format: "es" },
-  plugins: [cspPlugin(), swPlugin({ version: BUILD, prefix: PREVIEW_ID ? `${PREVIEW_ID}-suipian-` : "suipian-" })],
+  plugins: [cspPlugin({ cloudUrl: CSP_CLOUD_URL }), swPlugin({ version: BUILD, prefix: PREVIEW_ID ? `${PREVIEW_ID}-suipian-` : "suipian-" })],
   define: { __SOURCE_SHA__: JSON.stringify(SOURCE_SHA), __BUILD__: JSON.stringify(BUILD), __PREVIEW_ID__: JSON.stringify(PREVIEW_ID), __TEST_CLOUD__: JSON.stringify(TEST_CLOUD) },
 });
