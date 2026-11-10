@@ -1,0 +1,65 @@
+# u6c（content/u6-on-candidate 课程预览，不进第一版）测试云独立预览（只连接 suipian-test）：推送分支 preview/u6c 时构建，推到分支 preview-dist-u6c。
+# （非默认分支上的工作流不能手动触发，所以用推送触发；）不部署任何网站、不碰正式站和正式 Supabase。产物由人工 / 受权限的步骤复制到预览仓库 newfirst-app-preview 的 <id>/ 目录。
+# 云配置只来自仓库变量（Settings → Secrets and variables → Actions → Variables）：TEST_SUPABASE_URL、TEST_SUPABASE_ANON_KEY（公开密钥）、
+# 可选 EXPECTED_TEST_PROJECT_REF（不设就用下面的默认 suipian-test 项目编号）。构建走严格模式：配置错（正式项目 / secret 密钥 / 项目编号不符 / 没有云配置）会让构建失败。
+name: Test-cloud preview u6c
+on:
+  push:
+    branches: [preview/u6c]
+permissions:
+  contents: write
+concurrency:
+  group: preview-u6c-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_ID: u6c
+      TEST_SUPABASE_URL: ${{ vars.TEST_SUPABASE_URL }}
+      TEST_SUPABASE_ANON_KEY: ${{ vars.TEST_SUPABASE_ANON_KEY }}
+      EXPECTED_TEST_PROJECT_REF: ${{ vars.EXPECTED_TEST_PROJECT_REF || 'tqdwhtrextqlmctkryyg' }}
+      REQUIRE_TEST_CLOUD: "1"
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 必须先有测试云变量
+        run: |
+          if [ -z "$TEST_SUPABASE_URL" ] || [ -z "$TEST_SUPABASE_ANON_KEY" ]; then
+            echo "::error::仓库变量 TEST_SUPABASE_URL / TEST_SUPABASE_ANON_KEY 还没设置（只放 suipian-test 的项目网址和公开密钥，绝不放 secret / service_role）。"
+            exit 1
+          fi
+      - run: npm ci
+      - name: 构建测试入口（严格模式，日志打印云端模式和源码提交号）
+        shell: bash
+        run: npm run build 2>&1 | tee build.log
+      - name: 核对产物
+        run: |
+          set -e
+          grep -q "云端：测试云项目 ${EXPECTED_TEST_PROJECT_REF}" build.log
+          grep -q "源码提交：${GITHUB_SHA}" build.log
+          grep -q "PREFIX = \"${PREVIEW_ID}-suipian-\"" dist/sw.js
+          grep -rq "${GITHUB_SHA}" dist/assets/main-*.js
+          grep -rq "${EXPECTED_TEST_PROJECT_REF}.supabase.co" dist/assets/main-*.js
+          ! grep -rqE "sb_secret_[A-Za-z0-9]|service_role" dist/assets/main-*.js
+          grep -q 'http-equiv="Content-Security-Policy"' dist/index.html
+          test -f dist/privacy.html
+      - name: 推到 preview-dist-u6c
+        run: |
+          cd dist
+          echo "${GITHUB_SHA}" > SOURCE_SHA.txt
+          printf '{"sha":"%s","previewId":"%s","cloudRef":"%s","builtAt":"%s"}\n' "$GITHUB_SHA" "$PREVIEW_ID" "$EXPECTED_TEST_PROJECT_REF" "$(date -u +%FT%TZ)" > PREVIEW_INFO.json
+          # 不强推：先取回产物分支现在的提交，把这次的产物作为它的下一个提交（快进推送）。重复构建也能正常更新；
+          # 分支还不存在时第一次推送就是新建。产物树 = 这次的 dist（reset --soft 只挪 HEAD，索引从空开始，旧文件不会残留）。
+          REMOTE="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          if git ls-remote --exit-code "$REMOTE" "refs/heads/preview-dist-${PREVIEW_ID}" >/dev/null; then
+            git fetch -q --depth 1 "$REMOTE" "preview-dist-${PREVIEW_ID}"
+            git reset -q --soft FETCH_HEAD
+          fi
+          git add -A && git commit -q -m "test-cloud preview ${PREVIEW_ID} from ${GITHUB_SHA}"
+          git push "$REMOTE" "dist:preview-dist-${PREVIEW_ID}"
