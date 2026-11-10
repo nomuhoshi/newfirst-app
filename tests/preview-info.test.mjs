@@ -182,6 +182,8 @@ try {
     {
       const t = await open(out("good"));
       await t.page.evaluate(() => window.__app.startLesson(window.__app.allLessons()[0]));
+      await t.page.waitForSelector(".intro-title");
+      await t.page.locator(".lessonfoot .btn3d.primary").evaluate((b) => b.click()); // 关卡开头的讲解屏 → 继续
       await t.page.waitForSelector("[data-check]");
       await answerAll(t.page);
       const guest = await t.page.evaluate(() => { const s = window.__app.getState(); return { done: !!s.done.U1L1, on: s.doneOn?.U1L1 }; });
