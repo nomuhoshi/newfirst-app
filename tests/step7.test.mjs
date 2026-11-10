@@ -7,8 +7,9 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { chromium } from "playwright";
+import { fileURLToPath } from "node:url";
 
-const DIST = resolve(new URL("../dist", import.meta.url).pathname);
+const DIST = resolve(fileURLToPath(new URL("../dist", import.meta.url)));
 const PORT = 4337;
 const BASE = `http://localhost:${PORT}/`;
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm", ".wav": "audio/wav", ".zip": "application/zip", ".txt": "text/plain" };

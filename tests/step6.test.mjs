@@ -7,8 +7,9 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { chromium } from "playwright";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise, exerciseId } from "../src/practice.js";
+import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const DIST = join(ROOT, "dist");
 const course = JSON.parse(readFileSync(join(ROOT, "content/course.json"), "utf8"));
 // 已开放的单元都读进来（U3 起不再只有 U1、U2；新单元开放后不用再改这里）
