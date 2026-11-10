@@ -1,0 +1,870 @@
+{
+  "id": "U7",
+  "title": "字典",
+  "subtitle": "dict：按名字存取",
+  "lessons": [
+    {
+      "id": "U7L1",
+      "title": "按名字查库存",
+      "concept": "字典、键和值、stock[键]",
+      "story": "列表按位置找，字典（dict）按名字找：stock = {\"奶茶\": 12, \"果茶\": 5}。每一对写成“键: 值”，这里键是饮品名，值是杯数。stock[\"果茶\"] 查出果茶的值 5。查字典里没有的键，会报 KeyError。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock[\"奶茶\"])\nprint(stock[\"果茶\"])",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock[\"果茶\"])",
+          "options": [
+            {
+              "text": "5",
+              "correct": true,
+              "why": "按键“果茶”查，得到它的值 5。"
+            },
+            {
+              "text": "12",
+              "correct": false,
+              "why": "12 是奶茶的值；方括号里写的是“果茶”。"
+            },
+            {
+              "text": "果茶",
+              "correct": false,
+              "why": "查出来的是值，不是键本身。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "字典不按位置找，方括号里写的是键。"
+            }
+          ],
+          "tip": "stock[键] 得到这个键的值。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nname = \"奶茶\"\nprint(name, stock[name])",
+          "options": [
+            {
+              "text": "奶茶 12",
+              "correct": true,
+              "why": "name 里是 \"奶茶\"，stock[name] 就是 stock[\"奶茶\"]，得 12。"
+            },
+            {
+              "text": "name 12",
+              "correct": false,
+              "why": "name 是变量，显示的是它里面的文字：奶茶。"
+            },
+            {
+              "text": "奶茶 5",
+              "correct": false,
+              "why": "5 是果茶的值，奶茶的值是 12。"
+            }
+          ],
+          "tip": "方括号里可以放变量：变量里是哪个键，就查哪个键。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示咖啡的库存：8",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5, \"咖啡\": 8}\nprint(stock[{0}])",
+          "tokens": [
+            "\"咖啡\"",
+            "咖啡",
+            "2",
+            "\"果茶\""
+          ],
+          "answer": [
+            "\"咖啡\""
+          ],
+          "expected": "8",
+          "why": {
+            "咖啡": "没有引号，Python 把咖啡当变量名，报 NameError。键是文字，要带引号。",
+            "2": "字典不按位置找：stock[2] 找的是叫 2 的键，没有，报 KeyError。",
+            "\"果茶\"": "果茶的值是 5，不是 8。"
+          },
+          "hint": "方括号里写键 \"咖啡\"，带引号。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock[\"奶茶\"] + stock[\"果茶\"])",
+          "options": [
+            {
+              "text": "17",
+              "correct": true,
+              "why": "两个值都是整数：12 + 5 = 17。"
+            },
+            {
+              "text": "奶茶果茶",
+              "correct": false,
+              "why": "相加的是查出来的值，不是键。"
+            },
+            {
+              "text": "125",
+              "correct": false,
+              "why": "值是整数 12 和 5，不是文字，+ 是做加法。"
+            }
+          ],
+          "tip": "查出来的值可以直接拿去计算。"
+        }
+      ]
+    },
+    {
+      "id": "U7L2",
+      "title": "改库存",
+      "concept": "stock[键] = 新值",
+      "story": "stock[\"果茶\"] = 9 把果茶的值换成 9。在旧值上改：stock[\"奶茶\"] = stock[\"奶茶\"] - 3，先算右边，再存回去。这一关只改已经有的键。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果茶\"] = 9\nstock[\"奶茶\"] = stock[\"奶茶\"] - 3\nprint(stock[\"奶茶\"], stock[\"果茶\"])",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果茶\"] = 9\nprint(stock[\"奶茶\"], stock[\"果茶\"])",
+          "options": [
+            {
+              "text": "12 9",
+              "correct": true,
+              "why": "第 2 行把果茶换成 9；奶茶没动，还是 12。"
+            },
+            {
+              "text": "12 14",
+              "correct": false,
+              "why": "= 是换成，不是加上。"
+            },
+            {
+              "text": "12 5",
+              "correct": false,
+              "why": "第 2 行已经改了果茶，后面查到的是新值 9。"
+            },
+            {
+              "text": "9 5",
+              "correct": false,
+              "why": "被改的是方括号里写的果茶，不是奶茶。"
+            }
+          ],
+          "tip": "stock[键] = 新值：替换这个键的旧值。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"奶茶\"] = stock[\"奶茶\"] - 3\nprint(stock[\"奶茶\"], stock[\"果茶\"])",
+          "options": [
+            {
+              "text": "9 5",
+              "correct": true,
+              "why": "先算右边 12 - 3 = 9，再存回奶茶。"
+            },
+            {
+              "text": "12 5",
+              "correct": false,
+              "why": "算出的 9 已经存回奶茶了。"
+            },
+            {
+              "text": "-3 5",
+              "correct": false,
+              "why": "右边先查出旧值 12，再减 3。"
+            }
+          ],
+          "tip": "等号右边先算，结果存回左边的键。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果茶\"] - 1\nprint(stock[\"果茶\"])",
+          "options": [
+            {
+              "text": "5",
+              "correct": true,
+              "why": "第 2 行只算出 4，没有用 = 存回去，库存不变。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "算出了 4，但没存回字典。"
+            },
+            {
+              "text": "报错 KeyError",
+              "correct": false,
+              "why": "果茶这个键存在，不会报错；只是结果没存。"
+            }
+          ],
+          "tip": "不写 stock[键] = …，字典就不会变。"
+        },
+        {
+          "type": "fill",
+          "prompt": "顾客买了 cups 杯 name。补全，让库存减掉卖出的杯数，屏幕显示：2",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nname = \"果茶\"\ncups = 3\nstock[name] = {0} - cups\nprint(stock[name])",
+          "tokens": [
+            "stock[name]",
+            "name",
+            "cups"
+          ],
+          "answer": [
+            "stock[name]"
+          ],
+          "expected": "2",
+          "why": {
+            "name": "name 是文字 \"果茶\"，文字减整数报 TypeError。要减的是库存 stock[name]。",
+            "cups": "cups - cups 得 0，库存被清空了。"
+          },
+          "hint": "新库存 = 旧库存 - 卖出的杯数。"
+        }
+      ]
+    },
+    {
+      "id": "U7L3",
+      "title": "先问再取",
+      "concept": "in、.get()、None",
+      "story": "取之前先问：\"咖啡\" in stock 看咖啡是不是一个键，得 True 或 False，只看键不看值。或者用 stock.get(\"咖啡\")：有就给值，没有就给 None（表示“没有”），不报错。写成 stock.get(\"咖啡\", 0)，没有时给 0。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(\"咖啡\" in stock)\nprint(stock.get(\"咖啡\"))\nprint(stock.get(\"咖啡\", 0))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(\"奶茶\" in stock)\nprint(12 in stock)",
+          "options": [
+            {
+              "text": "True\nFalse",
+              "correct": true,
+              "why": "奶茶是键；12 是值不是键，in 只看键。"
+            },
+            {
+              "text": "True\nTrue",
+              "correct": false,
+              "why": "12 是奶茶的值，in 只看键。"
+            },
+            {
+              "text": "False\nFalse",
+              "correct": false,
+              "why": "奶茶是字典里的键，是 True。"
+            }
+          ],
+          "tip": "字典的 in 只看键。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock.get(\"果茶\", 0))\nprint(stock.get(\"咖啡\"))\nprint(stock.get(\"咖啡\", 0))",
+          "options": [
+            {
+              "text": "5\nNone\n0",
+              "correct": true,
+              "why": "果茶有，给真实的值 5；咖啡没有：不写默认值给 None，写了给 0。"
+            },
+            {
+              "text": "0\nNone\n0",
+              "correct": false,
+              "why": "果茶存在时，默认值不起作用，给真实的值 5。"
+            },
+            {
+              "text": "5\n0\n0",
+              "correct": false,
+              "why": "第 2 行没写默认值，没有时给 None。"
+            },
+            {
+              "text": "5\nNone\nNone",
+              "correct": false,
+              "why": "第 3 行写了默认值 0，没有时给 0。"
+            }
+          ],
+          "tip": "有：给真实的值；没有：给默认值，没写默认值就是 None。"
+        },
+        {
+          "type": "fill",
+          "prompt": "咖啡还没进货。屏幕要显示：没有这个饮品",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nname = \"咖啡\"\nif {0}:\n    print(stock[name])\nelse:\n    print(\"没有这个饮品\")",
+          "tokens": [
+            "name in stock",
+            "name not in stock",
+            "stock[name]"
+          ],
+          "answer": [
+            "name in stock"
+          ],
+          "expected": "没有这个饮品",
+          "why": {
+            "name not in stock": "条件反了：咖啡不在，条件成立，去取 stock[name]，报 KeyError。",
+            "stock[name]": "算条件时就在查咖啡，没有这个键，报 KeyError。"
+          },
+          "hint": "有才取：先问 name 在不在 stock 里。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nprint(stock.get(\"咖啡\", 0))\nprint(\"咖啡\" in stock)",
+          "options": [
+            {
+              "text": "0\nFalse",
+              "correct": true,
+              "why": ".get() 只是查，没有时给 0；不会把咖啡加进字典。"
+            },
+            {
+              "text": "0\nTrue",
+              "correct": false,
+              "why": ".get(\"咖啡\", 0) 不会新增键，咖啡还是不在。"
+            },
+            {
+              "text": "None\nFalse",
+              "correct": false,
+              "why": "写了默认值 0，没有时给 0。"
+            }
+          ],
+          "tip": ".get() 只查不改。"
+        }
+      ]
+    },
+    {
+      "id": "U7L4",
+      "title": "进货与下架",
+      "concept": "新增、del、print(字典)",
+      "story": "给没有的键赋值就是新增：stock[\"咖啡\"] = 8。键名打错也会悄悄新增，不报错。del stock[\"果茶\"] 删掉这一对；删没有的键报 KeyError。print(stock) 显示 {'奶茶': 12, '咖啡': 8}，新增的排在最后。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"咖啡\"] = 8\ndel stock[\"果茶\"]\nprint(stock)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"咖啡\"] = 8\nprint(stock)",
+          "options": [
+            {
+              "text": "{'奶茶': 12, '果茶': 5, '咖啡': 8}",
+              "correct": true,
+              "why": "咖啡原来没有，赋值就新增一对，排在最后。"
+            },
+            {
+              "text": "{'奶茶': 12, '果茶': 5}",
+              "correct": false,
+              "why": "第 2 行已经把咖啡加进去了。"
+            },
+            {
+              "text": "{'咖啡': 8, '奶茶': 12, '果茶': 5}",
+              "correct": false,
+              "why": "新增的排在最后，不是最前。"
+            },
+            {
+              "text": "报错 KeyError",
+              "correct": false,
+              "why": "给没有的键赋值是新增，不报错；读取没有的键才报错。"
+            }
+          ],
+          "tip": "键已有：替换；键没有：新增。"
+        },
+        {
+          "type": "predict",
+          "prompt": "小码想把果茶改成 4，却把“茶”打成了“查”。点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nstock[\"果查\"] = 4\nprint(stock[\"果茶\"])\nprint(stock[\"果查\"])",
+          "options": [
+            {
+              "text": "5\n4",
+              "correct": true,
+              "why": "第 2 行新增了一个叫“果查”的键；果茶没被改，还是 5。"
+            },
+            {
+              "text": "4\n4",
+              "correct": false,
+              "why": "“果查”和“果茶”是两个不同的键，果茶没变。"
+            },
+            {
+              "text": "5\n报错 KeyError",
+              "correct": false,
+              "why": "第 2 行已经新增了“果查”，再读它不会报错。"
+            }
+          ],
+          "tip": "键名打错不会报错，会多出一个新键。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\ndel stock[\"果茶\"]\nprint(stock)",
+          "options": [
+            {
+              "text": "{'奶茶': 12}",
+              "correct": true,
+              "why": "del 把果茶的键和值一起删掉。"
+            },
+            {
+              "text": "{'奶茶': 12, '果茶': 0}",
+              "correct": false,
+              "why": "del 是整对删掉，不是把值改成 0。"
+            },
+            {
+              "text": "{'奶茶': 12, '果茶': 5}",
+              "correct": false,
+              "why": "第 2 行已经删掉了果茶。"
+            }
+          ],
+          "tip": "del 字典[键]：键和值一起删。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：进货 5 杯果茶，字典里没有果茶就先记成 0。屏幕显示：{'奶茶': 12, '果茶': 5}",
+          "lines": [
+            "stock = {\"奶茶\": 12}",
+            "if \"果茶\" not in stock:",
+            "    stock[\"果茶\"] = 0",
+            "stock[\"果茶\"] = stock[\"果茶\"] + 5",
+            "print(stock)"
+          ],
+          "shuffled": [
+            3,
+            1,
+            4,
+            0,
+            2
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4
+            ]
+          ],
+          "expected": "{'奶茶': 12, '果茶': 5}",
+          "hint": "先有字典；没有果茶先记 0；再加 5；最后显示。"
+        }
+      ]
+    },
+    {
+      "id": "U7L5",
+      "title": "一个一个看",
+      "concept": "for name in stock",
+      "story": "for name in stock: 每一轮 name 是一个键（饮品名），按字典里的顺序。要这个键的值，写 stock[name]。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nfor name in stock:\n    print(name, stock[name])",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nfor name in stock:\n    print(name)",
+          "options": [
+            {
+              "text": "奶茶\n果茶",
+              "correct": true,
+              "why": "遍历字典，name 依次是每个键。"
+            },
+            {
+              "text": "12\n5",
+              "correct": false,
+              "why": "name 是键，不是值；值要写 stock[name]。"
+            },
+            {
+              "text": "奶茶 12\n果茶 5",
+              "correct": false,
+              "why": "循环里只 print(name)，只有键。"
+            }
+          ],
+          "tip": "for 遍历字典，拿到的是键。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\ntotal = 0\nfor name in stock:\n    total = total + stock[name]\nprint(total)",
+          "options": [
+            {
+              "text": "17",
+              "correct": true,
+              "why": "每轮加上这个键的值：12 + 5 = 17。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "2 是键的个数；这里加的是 stock[name]。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "total = total + …，每轮累加，不是只留最后一个。"
+            }
+          ],
+          "tip": "累加值：total = total + stock[name]。"
+        },
+        {
+          "type": "fill",
+          "prompt": "库存少于 5 杯算低库存（正好 5 杯不算）。屏幕要显示低库存有几种：1",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5, \"咖啡\": 3}\nlow = 0\nfor name in stock:\n    if stock[name] {0} 5:\n        low = low + 1\nprint(low)",
+          "tokens": [
+            "<",
+            "<=",
+            ">="
+          ],
+          "answer": [
+            "<"
+          ],
+          "expected": "1",
+          "why": {
+            "<=": "果茶正好 5 杯也被数进去，得 2。",
+            ">=": "数的是不少于 5 杯的，得 2。"
+          },
+          "hint": "少于 5：只有咖啡 3 杯。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 0, \"咖啡\": 0}\nfor name in stock:\n    if stock[name] == 0:\n        print(name, \"卖完了\")",
+          "options": [
+            {
+              "text": "果茶 卖完了\n咖啡 卖完了",
+              "correct": true,
+              "why": "值等于 0 的键有果茶和咖啡，按字典顺序显示。"
+            },
+            {
+              "text": "果茶 卖完了",
+              "correct": false,
+              "why": "for 会看完每一个键，咖啡也是 0。"
+            },
+            {
+              "text": "0 卖完了\n0 卖完了",
+              "correct": false,
+              "why": "name 是键（饮品名），不是值。"
+            }
+          ],
+          "tip": "遍历时用 stock[name] 判断，用 name 显示名字。"
+        }
+      ]
+    },
+    {
+      "id": "U7L6",
+      "title": "项目：库存小程序",
+      "concept": "先问有没有，再问够不够，最后才改",
+      "story": "顾客点了 name 饮品 cups 杯。规则：没有这个饮品，显示“没有这个饮品”；杯数比库存多，显示“库存不足”；否则减库存，显示“成交，剩 N 杯”（正好卖完也算成交）。最后都 print(stock)。",
+      "introCode": "stock = {\"奶茶\": 12, \"果茶\": 5}\nname = \"果茶\"\ncups = 8\nstock[name] = stock[name] - cups\nprint(\"成交，剩\", stock[name], \"杯\")\nprint(stock)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "起始程序只会“成交”。点 8 杯果茶（只有 5 杯），屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nname = \"果茶\"\ncups = 8\nstock[name] = stock[name] - cups\nprint(\"成交，剩\", stock[name], \"杯\")\nprint(stock)",
+          "options": [
+            {
+              "text": "成交，剩 -3 杯\n{'奶茶': 12, '果茶': -3}",
+              "correct": true,
+              "why": "程序没检查够不够，直接减成了 -3。不报错，但结果是错的。"
+            },
+            {
+              "text": "库存不足\n{'奶茶': 12, '果茶': 5}",
+              "correct": false,
+              "why": "程序里还没有检查库存的 if。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "果茶存在，5 - 8 能算，不会报错。"
+            }
+          ],
+          "tip": "没报错不等于对：要对一对输出。"
+        },
+        {
+          "type": "fill",
+          "prompt": "先处理“没有这个饮品”。点 2 杯咖啡，屏幕要显示：没有这个饮品，再显示原来的库存表",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nname = \"咖啡\"\ncups = 2\nif name {0} stock:\n    print(\"没有这个饮品\")\nelse:\n    stock[name] = stock[name] - cups\n    print(\"成交，剩\", stock[name], \"杯\")\nprint(stock)",
+          "tokens": [
+            "not in",
+            "in"
+          ],
+          "answer": [
+            "not in"
+          ],
+          "expected": "没有这个饮品\n{'奶茶': 12, '果茶': 5}",
+          "why": {
+            "in": "条件反了：咖啡不在，走 else 去取 stock[name]，报 KeyError。"
+          },
+          "hint": "先问：name 不在 stock 里吗？"
+        },
+        {
+          "type": "fill",
+          "prompt": "再处理“库存不足”。果茶正好 5 杯，点 5 杯算成交。屏幕要显示：成交，剩 0 杯，再显示库存表",
+          "code": "stock = {\"奶茶\": 12, \"果茶\": 5}\nname = \"果茶\"\ncups = 5\nif name not in stock:\n    print(\"没有这个饮品\")\nelif cups {0} stock[name]:\n    print(\"库存不足\")\nelse:\n    stock[name] = stock[name] - cups\n    print(\"成交，剩\", stock[name], \"杯\")\nprint(stock)",
+          "tokens": [
+            ">",
+            ">=",
+            "=="
+          ],
+          "answer": [
+            ">"
+          ],
+          "expected": "成交，剩 0 杯\n{'奶茶': 12, '果茶': 0}",
+          "why": {
+            ">=": "5 >= 5 成立，正好卖完被当成库存不足。",
+            "==": "5 == 5 成立，正好卖完被当成库存不足。"
+          },
+          "hint": "只有杯数比库存多才算不足。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：卖 3 杯奶茶，先减库存再显示。屏幕显示：成交，剩 9 杯",
+          "lines": [
+            "stock = {\"奶茶\": 12, \"果茶\": 5}",
+            "name = \"奶茶\"",
+            "cups = 3",
+            "stock[name] = stock[name] - cups",
+            "print(\"成交，剩\", stock[name], \"杯\")"
+          ],
+          "shuffled": [
+            4,
+            2,
+            0,
+            3,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            [
+              0,
+              2,
+              1,
+              3,
+              4
+            ],
+            [
+              1,
+              0,
+              2,
+              3,
+              4
+            ],
+            [
+              1,
+              2,
+              0,
+              3,
+              4
+            ],
+            [
+              2,
+              0,
+              1,
+              3,
+              4
+            ],
+            [
+              2,
+              1,
+              0,
+              3,
+              4
+            ]
+          ],
+          "expected": "成交，剩 9 杯",
+          "hint": "先准备好 stock、name、cups；再减库存；最后显示。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "replaces": 4,
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改（项目）：库存小程序；不存在、库存不足、成交三种情况，最后 print(stock)",
+          "task": {
+            "id": "U7L6-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "已经准备好 stock（库存表）、name（饮品）、cups（杯数，正整数）。规则：① name 不在 stock 里：输出“没有这个饮品”。② cups 比库存多：输出“库存不足”。③ 其余：库存减去 cups，输出“成交，剩 N 杯”（正好卖完也算成交）。①② 库存不变。最后都 print(stock)。起始程序只写了“成交”，请改好。",
+            "given": [
+              "stock",
+              "name",
+              "cups"
+            ],
+            "checkMode": "output",
+            "code": "stock[name] = stock[name] - cups\nprint(\"成交，剩\", stock[name], \"杯\")\nprint(stock)\n",
+            "tests": [
+              {
+                "name": "3 杯奶茶，够",
+                "data": {
+                  "stock": {
+                    "奶茶": 12,
+                    "果茶": 5
+                  },
+                  "name": "奶茶",
+                  "cups": 3
+                },
+                "expected": "成交，剩 9 杯\n{'奶茶': 9, '果茶': 5}"
+              },
+              {
+                "name": "8 杯果茶，库存不足",
+                "data": {
+                  "stock": {
+                    "奶茶": 12,
+                    "果茶": 5
+                  },
+                  "name": "果茶",
+                  "cups": 8
+                },
+                "expected": "库存不足\n{'奶茶': 12, '果茶': 5}"
+              },
+              {
+                "name": "咖啡，不存在",
+                "data": {
+                  "stock": {
+                    "奶茶": 12,
+                    "果茶": 5
+                  },
+                  "name": "咖啡",
+                  "cups": 2
+                },
+                "expected": "没有这个饮品\n{'奶茶': 12, '果茶': 5}"
+              },
+              {
+                "name": "正好卖完",
+                "data": {
+                  "stock": {
+                    "奶茶": 12,
+                    "果茶": 5
+                  },
+                  "name": "果茶",
+                  "cups": 5
+                },
+                "expected": "成交，剩 0 杯\n{'奶茶': 12, '果茶': 0}",
+                "hidden": true
+              },
+              {
+                "name": "库存已经是 0",
+                "data": {
+                  "stock": {
+                    "奶茶": 12,
+                    "果茶": 0
+                  },
+                  "name": "果茶",
+                  "cups": 1
+                },
+                "expected": "库存不足\n{'奶茶': 12, '果茶': 0}",
+                "hidden": true
+              },
+              {
+                "name": "换一张库存表：不存在",
+                "data": {
+                  "stock": {
+                    "咖啡": 4,
+                    "奶茶": 1
+                  },
+                  "name": "果茶",
+                  "cups": 1
+                },
+                "expected": "没有这个饮品\n{'咖啡': 4, '奶茶': 1}",
+                "hidden": true
+              },
+              {
+                "name": "换一张库存表：成交",
+                "data": {
+                  "stock": {
+                    "咖啡": 4,
+                    "奶茶": 1
+                  },
+                  "name": "咖啡",
+                  "cups": 3
+                },
+                "expected": "成交，剩 1 杯\n{'咖啡': 1, '奶茶': 1}",
+                "hidden": true
+              }
+            ],
+            "hints": [
+              "先运行，读最后一行的错误类型；不报错也要对一对三种情况的输出。",
+              "用 if / elif / else：先问 name not in stock，再问 cups > stock[name]，最后才改库存；print(stock) 写在 if 外面。"
+            ],
+            "reference": "if name not in stock:\n    print(\"没有这个饮品\")\nelif cups > stock[name]:\n    print(\"库存不足\")\nelse:\n    stock[name] = stock[name] - cups\n    print(\"成交，剩\", stock[name], \"杯\")\nprint(stock)\n",
+            "worked": {
+              "code": "books = {\"童话\": 3, \"科幻\": 0}\ntitle = \"科幻\"\nif title not in books:\n    print(\"没有这本书\")\nelif books[title] == 0:\n    print(\"已借完\")\nelse:\n    books[title] = books[title] - 1\n    print(\"借走一本\")",
+              "output": "已借完",
+              "explain": "先问在不在，再问还有没有，两个检查都过了才改数量。"
+            },
+            "alternatives": [
+              "if name in stock:\n    if cups <= stock[name]:\n        stock[name] = stock[name] - cups\n        print(\"成交，剩\", stock[name], \"杯\")\n    else:\n        print(\"库存不足\")\nelse:\n    print(\"没有这个饮品\")\nprint(stock)\n",
+              "if name not in stock:\n    print(\"没有这个饮品\")\nelif stock[name] < cups:\n    print(\"库存不足\")\nelse:\n    left = stock[name] - cups\n    stock[name] = left\n    print(\"成交，剩\", left, \"杯\")\nprint(stock)\n"
+            ],
+            "wrongAnswers": [
+              {
+                "code": "if name not in stock:\n    print(\"没有这个饮品\")\nelif cups >= stock[name]:\n    print(\"库存不足\")\nelse:\n    stock[name] = stock[name] - cups\n    print(\"成交，剩\", stock[name], \"杯\")\nprint(stock)\n",
+                "why": "边界：正好卖完也算成交，用 > 不用 >="
+              },
+              {
+                "code": "if cups > stock[name]:\n    print(\"库存不足\")\nelif name not in stock:\n    print(\"没有这个饮品\")\nelse:\n    stock[name] = stock[name] - cups\n    print(\"成交，剩\", stock[name], \"杯\")\nprint(stock)\n",
+                "why": "顺序反了：先取 stock[name]，不存在的饮品直接 KeyError"
+              },
+              {
+                "code": "if cups > stock.get(name, 0):\n    print(\"库存不足\")\nelse:\n    stock[name] = stock[name] - cups\n    print(\"成交，剩\", stock[name], \"杯\")\nprint(stock)\n",
+                "why": "把不存在当成库存 0，输出了“库存不足”；两种情况要分开"
+              }
+            ],
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U7L6-M1-V1",
+              "prompt": "库存不足时改为输出“库存不足，还差 N 杯”（N = cups 减库存），其他不变，最后仍 print(stock)。",
+              "starter": "# stock、name、cups 已经准备好\n",
+              "tests": [
+                {
+                  "name": "8 杯果茶",
+                  "data": {
+                    "stock": {
+                      "奶茶": 12,
+                      "果茶": 5
+                    },
+                    "name": "果茶",
+                    "cups": 8
+                  },
+                  "expected": "库存不足，还差 3 杯\n{'奶茶': 12, '果茶': 5}"
+                },
+                {
+                  "name": "3 杯奶茶",
+                  "data": {
+                    "stock": {
+                      "奶茶": 12,
+                      "果茶": 5
+                    },
+                    "name": "奶茶",
+                    "cups": 3
+                  },
+                  "expected": "成交，剩 9 杯\n{'奶茶': 9, '果茶': 5}"
+                },
+                {
+                  "name": "正好卖完",
+                  "data": {
+                    "stock": {
+                      "奶茶": 12,
+                      "果茶": 5
+                    },
+                    "name": "果茶",
+                    "cups": 5
+                  },
+                  "expected": "成交，剩 0 杯\n{'奶茶': 12, '果茶': 0}",
+                  "hidden": true
+                },
+                {
+                  "name": "咖啡，不存在",
+                  "data": {
+                    "stock": {
+                      "奶茶": 12,
+                      "果茶": 5
+                    },
+                    "name": "咖啡",
+                    "cups": 2
+                  },
+                  "expected": "没有这个饮品\n{'奶茶': 12, '果茶': 5}",
+                  "hidden": true
+                },
+                {
+                  "name": "差 8 杯",
+                  "data": {
+                    "stock": {
+                      "奶茶": 2
+                    },
+                    "name": "奶茶",
+                    "cups": 10
+                  },
+                  "expected": "库存不足，还差 8 杯\n{'奶茶': 2}",
+                  "hidden": true
+                }
+              ],
+              "hints": [
+                "顺序不变：先判断不存在，再判断不足，最后才改库存。",
+                "不足时：print(\"库存不足，还差\", cups - stock[name], \"杯\")。"
+              ],
+              "solution": "if name not in stock:\n    print(\"没有这个饮品\")\nelif cups > stock[name]:\n    print(\"库存不足，还差\", cups - stock[name], \"杯\")\nelse:\n    stock[name] = stock[name] - cups\n    print(\"成交，剩\", stock[name], \"杯\")\nprint(stock)\n"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
