@@ -1,0 +1,47 @@
+@import url(tokens.css);
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--font);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(var(--bg-dot) 1.2px,transparent 1.3px);background-size:20px 20px;background-position:10px 10px}
+.screen{position:relative;width:100%;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+/* 字号：只有 5 级 × 3 种字重 */
+.t-display{font-size:28px;line-height:1.25;font-weight:800;letter-spacing:.2px}
+.t-title{font-size:22px;line-height:1.3;font-weight:800}
+.t-body{font-size:17px;line-height:1.5;font-weight:600}
+.t-sub{font-size:15px;line-height:1.5;font-weight:400}
+.t-cap{font-size:13px;line-height:1.4;font-weight:600}
+.muted{color:var(--muted)}
+.mono{font-family:var(--mono)}
+*{font-variant-ligatures:none}
+.dark .code{border:1.5px solid var(--line)}
+/* 状态条（iOS 模拟，仅效果稿） */
+.ios{height:47px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 8px 34px;font:600 15px/1 var(--font);color:var(--ink)}
+.ios i{display:inline-block;width:25px;height:12px;border:1.5px solid currentColor;border-radius:4px;position:relative;opacity:.9}
+.ios i::after{content:"";position:absolute;inset:1.5px 5px 1.5px 1.5px;background:currentColor;border-radius:1.5px}
+/* 统一卡片：只有这一种 */
+.card{background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r-m);box-shadow:var(--shadow-card)}
+/* 按钮 */
+.btn{height:52px;border:0;border-radius:var(--r-m);font:800 17px/1 var(--font);display:flex;align-items:center;justify-content:center;gap:8px;width:100%;letter-spacing:.5px}
+.btn-primary{background:var(--copper);color:#fff;box-shadow:0 4px 0 var(--copper-lip)}
+.btn-ok{background:var(--ok);color:#fff;box-shadow:0 4px 0 var(--ok-lip)}
+.btn-err{background:var(--err);color:#fff;box-shadow:0 4px 0 var(--err-lip)}
+.btn-secondary{background:var(--surface);color:var(--ink);border:1.5px solid var(--line-strong);box-shadow:0 4px 0 var(--line)}
+.btn-ghost{background:none;color:var(--copper-text);height:44px;font-size:15px}
+.btn-disabled{background:var(--surface-2);color:var(--muted);opacity:.55;box-shadow:none}
+.icon-btn{width:44px;height:44px;border-radius:var(--r-full);display:grid;place-items:center;color:var(--muted);flex:none}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--r-full);background:var(--surface);border:1.5px solid var(--line);font:800 15px/1 var(--font)}
+.chip small{font:600 13px/1 var(--font);color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 10px;border-radius:var(--r-full);font:800 13px/1 var(--font)}
+.badge-copper{background:var(--copper-soft);color:var(--copper-text)}
+/* 真空管（来自 #29 energy-tube.svg 的轮廓） */
+.tube{width:14px;height:20px;display:block}
+.tubes{display:flex;gap:1px;align-items:center}
+/* 课内顶栏 */
+.lessonbar{height:56px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px 0 6px}
+.progress{flex:1;height:12px;border-radius:6px;background:var(--surface-2);overflow:hidden;position:relative}
+.progress b{position:absolute;inset:0 auto 0 0;border-radius:6px;background:linear-gradient(90deg,var(--copper),var(--glow));box-shadow:0 0 10px rgba(242,163,58,.55)}
+.progress b::after{content:"";position:absolute;left:6px;right:6px;top:3px;height:3px;border-radius:2px;background:rgba(255,255,255,.35)}
+/* 代码块 */
+.code{background:var(--code-bg);color:var(--code-fg);border-radius:var(--r-m);font:400 15px/1.7 var(--mono);padding:12px 14px;position:relative}
+.code .ln{color:var(--code-muted);display:inline-block;width:22px;user-select:none}
+.s{color:var(--tk-str)}.f{color:var(--tk-fn)}.k{color:var(--tk-kw)}
