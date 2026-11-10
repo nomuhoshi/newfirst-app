@@ -125,3 +125,33 @@ object-src 'none'; base-uri 'self'; form-action 'self'
 5. 中国大陆访问、QQ / 163 邮箱收信验证。
 6. 第 5 节清理清单的授权。
 7. 最后说“合并”。
+
+## 7. 验收结果（2026-11-10）
+
+### 阶段 1：代码开发完成 —— 是
+- 候选代码：`release/v1-candidate`。最后一个改应用代码的提交是 `f285058`；之后 `ce1cc4c`（预览工作流 + Lighthouse 汇总脚本）、`ba1ec98`（AGENTS.md）、本提交（本节）都不改应用代码。
+- 完整 CI 全绿（build + 全部 `npm test` 链、mobile Chromium、mobile WebKit；deploy 按设计跳过）：
+  - `f285058`：run 42795926357
+  - `ce1cc4c`：run 42796516261
+  - 整合前 `1fa638c`（#43 / #49 / #50）：run 42791593185
+  - `4fcafb2` 的 run 42792471604 失败过：CSP 初版只放行 `*.supabase.co`，账号测试的假服务器 `fake.supabase.test` 被拦。已在 `f285058` 修好。同一轮里 Chromium、WebKit 在 CSP 下真 Pyodide 都通过。
+
+### 阶段 2：测试预览 —— 已发布，本机验收通过；真实测试云、真机未验
+- 预览构建：`preview/v1rc` @ `ba1ec98`，run 42798520060（严格模式：只连测试项目 `tqdwhtrextqlmctkryyg`、产物含 CSP 和 privacy.html）。
+- 产物：`preview-dist-v1rc`，`SOURCE_SHA.txt` = `ba1ec9834705724df422d409ce960bb04850ed6a`；CSP 的 connect-src = `'self' https://tqdwhtrextqlmctkryyg.supabase.co https://fake.supabase.test`。
+- 预览仓库：`v1rc/` 目录，提交 `fe61e32`，Pages 部署成功（run 42798771233，部署记录指向 `fe61e32`）。
+- Lighthouse 12.8.2（mobile 预设，CI 里对候选构建本身跑 3 次）：
+
+| 次 | Performance | Accessibility | Best Practices | SEO | FCP | LCP | TBT | CLS |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 99 | 100 | 100 | 100 | 1.6 s | 1.8 s | 50 ms | 0 |
+| 2 | 99 | 100 | 100 | 100 | 1.4 s | 1.7 s | 0 ms | 0 |
+| 3 | 99 | 100 | 100 | 100 | 1.4 s | 1.7 s | 0 ms | 0 |
+
+- 本机产物验收（把 `v1rc/` 按线上同样的子路径托管；本环境连不上 `*.supabase.co`，测试项目的接口用假服务器接管）。Chromium 13/13 通过：页面 CSP 只放行测试项目；测试入口信息显示源码提交 `ba1ec98` 和测试项目；隐私说明链接；CSP 下真 Pyodide 运行（45）；邮箱登录 + 游客进度安全合并（40 XP）；第二台设备拿到 40 XP；跨设备 XP 去重（加 20 后两边和云端都是 60，反复同步不多加）；退出登录；退出后“最近确认同步”为“—”；Service Worker 接管后断网重开能进应用；离线时隐私页也能打开；全程零 CSP 拦截、零脚本错误。
+- WebKit：本环境没有 WebKit 浏览器，WebKit 结论以 CI（mobile webkit 全绿，含 CSP / Pyodide / 账号 / e2e）为准。
+- 390×450（程序员4 的范围，只做了现状测量）：U1L1 第 1 题（选输出）三个选项在 286–360、“检查”在 385–437，没有遮挡；其他题型、代码题键盘没查，仍归程序员4。
+- **还没验的**：在 github.io 上用真实测试 Supabase 发码 / 收信 / 登录 / 同步（需要设计bot 或老大打开 `v1rc/`）；iPhone Safari 和主屏幕 PWA 真机。
+
+### 阶段 3：正式上线条件 —— 未满足
+见 §6：iPhone 真机、Resend 发信域名和正式 SMTP、正式 Supabase 后台核查（§4）、隐私说明待定项（§3）、中国大陆访问和 QQ / 163 收信、390×450 其余题型和代码题键盘（程序员4）、清理授权（§5），最后老大说“合并”。
