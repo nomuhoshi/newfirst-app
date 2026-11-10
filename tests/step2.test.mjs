@@ -161,7 +161,7 @@ try {
   await tapBtn("开始学习");
   check("关卡地图：显示单元、XP、红心、连续天数", /奶茶店点单屏/.test(await text()) && (await page.locator(".statsbar").innerText()).includes("5"));
   check("关卡地图：第 1 关是当前关，其余锁住（地图上共 46 关：第 1 单元 6 关 + 第 2 单元 5 关 + 第 3 单元 8 关 + 第 4 单元 8 关 + 第 5 单元 7 关 + 第 6 单元 6 关 + 第 7 单元 6 关）", (await page.locator(".node.current").count()) === 1 && (await page.locator('[data-lesson="U1L1"]').getAttribute("class")).includes("current") && (await page.locator(".node.locked").count()) === 45);
-  check("关卡地图：后面的单元显示即将推出", /即将推出/.test(await text()));
+  check("关卡地图：七个单元都已开放，没有“即将推出”", !/即将推出/.test(await text()));
   await page.locator('[data-lesson="U1L3"]').tap();
   await page.waitForSelector(".overlay");
   check("点锁住的关卡：提示先完成前面的", /先完成前面的关卡/.test(await page.locator(".overlay").innerText()));
@@ -450,7 +450,7 @@ try {
   check("节点：46 个六边形节点（七个单元），每个都是 6 个顶点", (await page.locator(".node .hex-body").count()) === 46 && (await page.evaluate(() => [...document.querySelectorAll(".hex-body")].every((p) => p.getAttribute("points").trim().split(/\s+/).length === 6))));
   check("节点：已完成对勾、当前播放、未解锁锁、复习关回转箭头", icons.U1L1.startsWith("check|") && icons.U1L2.startsWith("play|") && icons.U1L3.startsWith("lock|") && icons.U1L6.startsWith("review|"), JSON.stringify(icons));
   check("节点：没有折角、厚底座、立体圆盘", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const c = getComputedStyle(n); return getComputedStyle(n, "::after").content === "none" && c.boxShadow === "none" && c.backgroundColor === "rgba(0, 0, 0, 0)" && c.borderRadius === "0px"; })));
-  check("节点：点击区域不小于 44px，仍带文字标签和关卡编号", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const r = n.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; }) && document.querySelectorAll(".node-label").length === 40 && document.querySelectorAll("[data-lesson]").length === 40));
+  check("节点：点击区域不小于 44px，仍带文字标签和关卡编号", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const r = n.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; }) && document.querySelectorAll(".node-label").length === 46 && document.querySelectorAll("[data-lesson]").length === 46));
   check("节点：未解锁的复习关带小锁角标", (await page.locator('[data-lesson="U1L6"] .hex-badge').count()) === 1);
   // 复习关成为当前关时显示回转箭头
   await page.evaluate(() => { const s = window.__app.getState(); for (const k of ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5"]) s.done[k] = true; window.__app.renderPath(); });
@@ -739,7 +739,7 @@ try {
     const mapText = await pu.locator("#app").innerText();
     check("第 2 单元：第 1 单元通关后，U2L1 自动成为当前关，其余 4 关锁定", (await cls("U2L1")).includes("current") && ["U2L2", "U2L3", "U2L4", "U2L5"].every(async () => true) && (await Promise.all(["U2L2", "U2L3", "U2L4", "U2L5"].map(cls))).every((c) => c.includes("locked")));
     check("第 2 单元：旧记录不清空（XP、连续天数、第 1 单元完成状态都在）", await pu.evaluate(() => { const s = window.__app.getState(); return s.xp === 330 && s.streak === 3 && ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"].every((k) => s.done[k]); }));
-    check("地图：第 2 单元标题“文字与长度”，第 1 单元显示“已完成”，第 5 单元显示“即将推出”", /文字与长度/.test(mapText) && /第 1 单元 · 已完成/.test(mapText) && !/第 2 单元 · 已完成/.test(mapText) && (mapText.match(/即将推出/g) || []).length === 1 && !/第 3 单元 · 即将推出/.test(mapText) && !/第 2 单元 · 即将推出/.test(mapText));
+    check("地图：第 2 单元标题“文字与长度”，第 1 单元显示“已完成”，所有单元都已开放（没有“即将推出”）", /文字与长度/.test(mapText) && /第 1 单元 · 已完成/.test(mapText) && !/第 2 单元 · 已完成/.test(mapText) && (mapText.match(/即将推出/g) || []).length === 0 && !/第 3 单元 · 即将推出/.test(mapText) && !/第 2 单元 · 即将推出/.test(mapText));
     // 3) 通关 5 关：每关 4 题全对，XP = 4×10 + 10，逐关解锁
     const startL = async (id) => { await pu.locator(`[data-lesson="${id}"]`).tap(); await pu.locator(".overlay .btn3d.primary").tap(); await pu.waitForSelector(".intro-title"); };
     const playU = async (wrongFirst = 0) => {
@@ -770,7 +770,7 @@ try {
       if (id === "U2L3") await pu.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); });
     }
     const doneText = await pu.locator("#app").innerText();
-    check("第 2 单元：全部通关后显示“已完成”，U3L1 成为当前关，第 5 单元仍是“即将推出”", /第 2 单元 · 已完成/.test(doneText) && (doneText.match(/即将推出/g) || []).length === 1 && !/第 3 单元 · 即将推出/.test(doneText) && (await cls("U3L1")).includes("current"));
+    check("第 2 单元：全部通关后显示“已完成”，U3L1 成为当前关，没有“即将推出”", /第 2 单元 · 已完成/.test(doneText) && (doneText.match(/即将推出/g) || []).length === 0 && !/第 3 单元 · 即将推出/.test(doneText) && (await cls("U3L1")).includes("current"));
     await pu.reload(); await pu.waitForSelector(".statsbar");
     const afterReload = await pu.evaluate(() => window.__app.getState());
     check("第 2 单元：刷新后 5 关完成状态和 XP 仍在", ["U2L1", "U2L2", "U2L3", "U2L4", "U2L5"].every((k) => afterReload.done[k]) && afterReload.xp === xp0 && /第 2 单元 · 已完成/.test(await pu.locator("#app").innerText()));
