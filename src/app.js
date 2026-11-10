@@ -17,7 +17,7 @@ import { Runner, LIMITS } from "./runner.js";
 import { makeRunnerExecutor } from "./judge.js";
 // 代码题模块（写代码 / 改代码题，含 CodeMirror 编辑器，约 120 KB gzip）按需加载：首屏只用点选题，不需要它。
 // 构建时它仍进入离线预缓存清单（vite-sw-plugin 会把动态导入也算进去），断网也能打开。
-// CODE_TYPES 必须和 code-task.js 里的同名常量一致（tests/e2e/lazy-code-task.test.mjs 会检查）。
+// CODE_TYPES 必须和 code-task.js 里的同名常量一致（tests/e2e/pwa-split.test.mjs 会检查）。
 const CODE_TYPES = ["modify", "write"];
 const isCodeTask = (ex) => CODE_TYPES.includes(ex?.type);
 let codeTaskMod = null, codeTaskLoading = null;
@@ -210,17 +210,20 @@ function mascot(size = 96, mood = "happy") {
 }
 
 // 简单的代码着色（只用于显示）
+// .lc 是 inline-flex：裸文本节点若只含空格（缩进、两个符号之间的空格）会被当作空白丢掉。
+// 所以普通文本也包进 span（继承 white-space: pre），缩进和空格才会保留。
+const plain = (t) => h("span", { class: "tk-txt", text: t });
 function codeLine(text) {
   const frag = [];
   const re = /("[^"]*"?)|(\b\d+(?:\.\d+)?\b)|(\bprint\b)|([=+\-*/()])/g;
   let last = 0; let m;
   while ((m = re.exec(text))) {
-    if (m.index > last) frag.push(document.createTextNode(text.slice(last, m.index)));
+    if (m.index > last) frag.push(plain(text.slice(last, m.index)));
     const cls = m[1] ? "tk-str" : m[2] ? "tk-num" : m[3] ? "tk-fn" : "tk-op";
     frag.push(h("span", { class: cls, text: m[0] }));
     last = m.index + m[0].length;
   }
-  if (last < text.length) frag.push(document.createTextNode(text.slice(last)));
+  if (last < text.length) frag.push(plain(text.slice(last)));
   return frag;
 }
 function codeBlock(code, cls = "") {

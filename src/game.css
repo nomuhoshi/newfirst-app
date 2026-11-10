@@ -171,6 +171,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .cl { display: flex; align-items: center; min-height: 30px; white-space: pre; }
 .ln { color: var(--g-code-dim); width: 22px; text-align: right; margin-right: 12px; flex-shrink: 0; font-size: 14px; }
 .lc { white-space: pre; display: inline-flex; align-items: center; flex-wrap: nowrap; }
+.tk-txt { white-space: pre; }
 .tk-str { color: var(--g-tk-str); } .tk-num { color: var(--g-tk-num); } .tk-fn { color: var(--g-tk-fn); } .tk-op { color: var(--g-tk-op); }
 
 .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; margin: 14px 0; }
