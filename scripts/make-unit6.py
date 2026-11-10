@@ -1,4 +1,4 @@
-# 生成 content/unit6.json（第 6 单元「类型与报错」：U6L1–U6L4，每关 4 题）。
+# 生成 content/unit6.json（第 6 单元「类型与报错」：U6L1–U6L6，每关 4 题（U6L6-M1 代码题在 pending，待开放））。
 # 内容在这里改，再运行：python3 scripts/make-unit6.py && python3 scripts/verify-content.py
 # 只用已学语法（U1–U5：print、变量、运算、字符串、len、比较、if/else、and/or/not、for/while、列表），加上本关新教的内容：
 #   U6L1 type() 和 int / float / str / bool 四种类型；U6L2 int() 和 str() 转换；U6L3 读 traceback；U6L4 按错误类型和题意修错（float() 在这一关第一次出现）。
@@ -126,7 +126,7 @@ def lineopt(idx, line, ok_why, bad_why):
     return opt(f"第 {idx + 1} 行改成：{line.strip()}", good, ok_why if good else bad_why(out, err), fixed=prog)
 L6_O1 = [
     lineopt(2, 'total = int(price) * int(cups)', "price 和 cups 都是表示整数的文字，先分别用 int() 转成整数再乘：10 × 5 = 50。", None),
-    lineopt(2, 'total = int(price) * cups', None, lambda o, e: f"cups 还是文字，整数 × 文字还是类型搭配不对，{_shows(o, e)}。"),
+    lineopt(2, 'total = int(price) * cups', None, lambda o, e: f"cups 还是文字：整数 × 文字不是乘法，是把文字重复 10 遍，得到 \"5555555555\"，后面减 5 又会出错，{_shows(o, e)}。"),
     lineopt(2, 'total = price * int(cups)', None, lambda o, e: f"price 还是文字：文字 × 整数不是乘法，是把文字重复 5 遍，后面减 5 又会出错，{_shows(o, e)}。"),
     lineopt(2, 'total = str(price) * str(cups)', None, lambda o, e: f"两个都变成文字，文字 × 文字没有意思，{_shows(o, e)}。"),
 ]
@@ -286,9 +286,7 @@ lessons = [
         opt("放在最后一行 print(total) 的下面", F, "在循环外面，只显示最后一次。", fixed=INS_D),
     ], code=P54, checks=[], expected="total: 1\ntotal: 3\ntotal: 6\n6", tip="更新之后，在同一个循环里。"),
   ]},
-]
 
-held = [
  {"id": "U6L6", "title": "修好收银程序", "concept": "一处一处修，每次重新读报错",
   "story": "项目：收银程序有好几处错。price 和 cups 是从点单屏读来的、表示整数的文字，比如 \"10\" 和 \"5\"。修的办法：先运行，读最后一行和 line 几；修好一处，再运行，看有没有新的报错；全部不报错了，也要拿几组数据对一对结果，因为有的错不会报错，只会算错。下面三个报错，是按示例的修法逐处修改时可能看到的顺序，你的写法不同，看到的顺序也可能不同。",
   "introCode": P6,
@@ -313,7 +311,7 @@ held = [
     "task": L6_TASK}]}
 ]
 
-unit = {"id": "U6", "title": "类型与报错", "subtitle": "type、int()/str()、读报错", "lessons": lessons, "heldLessons": held}
+unit = {"id": "U6", "title": "类型与报错", "subtitle": "type、int()/str()、读报错", "lessons": lessons}
 p = pathlib.Path(__file__).resolve().parent.parent / "content/unit6.json"
 p.write_text(json.dumps(unit, ensure_ascii=False, indent=2) + "\n")
 print("写入", p, "关卡", len(lessons), "题目", sum(len(l["exercises"]) for l in lessons))

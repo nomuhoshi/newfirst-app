@@ -623,9 +623,7 @@
           "tip": "更新之后，在同一个循环里。"
         }
       ]
-    }
-  ],
-  "heldLessons": [
+    },
     {
       "id": "U6L6",
       "title": "修好收银程序",
@@ -658,7 +656,7 @@
             {
               "text": "第 3 行改成：total = int(price) * cups",
               "correct": false,
-              "why": "cups 还是文字，整数 × 文字还是类型搭配不对，报错 TypeError。",
+              "why": "cups 还是文字：整数 × 文字不是乘法，是把文字重复 10 遍，得到 \"5555555555\"，后面减 5 又会出错，报错 TypeError。",
               "fixed": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * cups\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
             },
             {

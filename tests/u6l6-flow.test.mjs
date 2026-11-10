@@ -1,4 +1,4 @@
-// U6L6「修好收银程序」本地验收：用临时测试数据把 heldLessons 里的 L6 挂载成一关（不改任何内容文件、不进地图），
+// U6L6「修好收银程序」本地验收：L6 四道基础题已开放；本测试用临时数据把仍待开放的 U6L6-M1 代码题挂到第 4 题（不改内容文件），
 // 走真实编辑器 + 真实 Pyodide + 真实判题界面。确认：① 起始代码显示可读的 TypeError；② 修完类型错误但仍写 > 5 时，
 // 正好 5 杯的用例清楚指出金额差异；③ 改成 >= 5 后通过；④ 修改中的草稿刷新后保留。
 // 运行：npm run build && node tests/u6l6-flow.test.mjs        （也可以：DIST_DIR=某个构建产物目录 node tests/u6l6-flow.test.mjs）
@@ -20,10 +20,10 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
 const show = (title, text) => { if (SHOW) console.log(`   ┌ ${title}\n${String(text).split("\n").map((l) => "   │ " + l).join("\n")}\n   └`); };
 
 const unit6 = JSON.parse(readFileSync(new URL("../content/unit6.json", import.meta.url)));
-const held = unit6.heldLessons.find((l) => l.id === "U6L6");
-const task = held.pending[0].task;
+const l6 = unit6.lessons.find((l) => l.id === "U6L6");
+const task = l6.pending[0].task;
 // 临时测试数据：L6 的前三题 + 把待开放的代码题放在第 4 题（replaces: 4）
-const LESSON = { ...held, pending: undefined, exercises: [...held.exercises.slice(0, held.pending[0].replaces - 1), { ...task }] };
+const LESSON = { ...l6, pending: undefined, exercises: [...l6.exercises.slice(0, l6.pending[0].replaces - 1), { ...task }] };
 const FIX_TYPES_KEEP_GT = 'total = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint("应付：" + str(total))\n';
 const FIX_ALL = task.reference;
 
