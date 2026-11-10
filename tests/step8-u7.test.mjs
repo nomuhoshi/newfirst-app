@@ -1,5 +1,5 @@
 // 第 7 单元「字典」（U7L1–U7L6）：内容检查 + 真实构建、真实 Pyodide 里逐关答题。
-// U7 还没挂进 content/course.json（U6 在另一个分支写，U7 要等 U6 上线后再开放），app 的地图上看不到它；
+// U7 已叠在 U6 之上并接入 content/course.json 和 UNITS（联合分支）；
 // 这里用测试钩子 window.__app.startLesson(关卡) 直接打开 U7 的每一关，走和正式关卡完全相同的答题页面。
 // 运行：npm run build && node tests/step8-u7.test.mjs [chromium|webkit]
 import { createServer } from "node:http";
@@ -39,7 +39,7 @@ const wideIntro = L.flatMap((l) => l.introCode.split("\n").filter((x) => cellW(x
 check("U7：开场讲解示例每行不超过 22 格（全角算 2）", wideIntro.length === 0, wideIntro.join(" | "));
 const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
 check("U7：关卡 id 不和已有单元重复", L.every((l) => !otherIds.includes(l.id)));
-check("U7：还没开放（course.json 里没有指向 unit7.json 的单元；U7 最多是“即将推出”占位），不改现有地图", !course.units.some((u) => u.file === "unit7.json" || (u.id === "U7" && u.available)));
+check("U7：已接入课程路线（course.json 里 U7 available、指向 unit7.json），排在 U6 之后", (() => { const ids = course.units.map((u) => u.id); const u = course.units.find((x) => x.id === "U7"); return !!u && u.available === true && u.file === "unit7.json" && ids.indexOf("U7") === ids.indexOf("U6") + 1; })());
 check("U7L6-Q4：选输出题，测库存不足分支（显示“库存不足”，库存表不变）", L[5].exercises[3].type === "predict" && L[5].exercises[3].options.find((o) => o.correct)?.text === "库存不足\n{'奶茶': 12, '果茶': 5}");
 check("U7L6：项目代码题只记在 pending（待代码题运行器），不进题目", L[5].pending?.[0]?.task?.id === "U7L6-M1" && L.slice(0, 5).every((l) => !l.pending));
 const before = readFileSync(join(ROOT, "content/unit7.json"), "utf8");
