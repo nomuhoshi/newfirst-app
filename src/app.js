@@ -15,7 +15,18 @@ import unit5 from "../content/unit5.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
 import { makeRunnerExecutor } from "./judge.js";
-import { createCodeArea, isCodeTask } from "./code-task.js";
+// 代码题模块（写代码 / 改代码题，含 CodeMirror 编辑器，约 120 KB gzip）按需加载：首屏只用点选题，不需要它。
+// 构建时它仍进入离线预缓存清单（vite-sw-plugin 会把动态导入也算进去），断网也能打开。
+// CODE_TYPES 必须和 code-task.js 里的同名常量一致（tests/e2e/lazy-code-task.test.mjs 会检查）。
+const CODE_TYPES = ["modify", "write"];
+const isCodeTask = (ex) => CODE_TYPES.includes(ex?.type);
+let codeTaskMod = null, codeTaskLoading = null;
+function loadCodeTask() {
+  const once = () => import("./code-task.js").then((m) => { if (!m?.createCodeArea) throw new Error("代码题模块没有加载成功"); return m; });
+  // 失败时自动再试一次；还不行才交给调用方提示
+  if (!codeTaskLoading) codeTaskLoading = once().catch(once).then((m) => (codeTaskMod = m)).catch((e) => { codeTaskLoading = null; throw e; });
+  return codeTaskLoading;
+}
 import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
@@ -850,6 +861,7 @@ function startLesson(l, { review = false } = {}) {
     mistakes: 0,
   };
   currentRun = run;
+  if (l.exercises.some(isCodeTask)) loadCodeTask().catch(() => {}); // 开场页期间提前加载代码题模块
   renderIntro(run);
 }
 
@@ -897,6 +909,7 @@ function renderExercise(run) {
   if (run.queue.length === 0) return renderFinish(run);
   const idx = run.queue[0];
   const ex = run.lesson.exercises[idx];
+  if (isCodeTask(ex) && !codeTaskMod) return renderCodeTaskLoading(run, idx);
   window.__app.currentEx = ex; // 给自动测试用
   window.__app.renders = (window.__app.renders || 0) + 1;
   let hintShown = false;
@@ -909,7 +922,7 @@ function renderExercise(run) {
   const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
 
   // 各题型的答题区，返回 { node, ready(), lock(), mark(), isCorrect(), why(), whyWrong(), code() }
-  const area = isCode ? createCodeArea(ex, { exec: codeExec, runner, onChange, ui: { sheet, button }, pythonUnavailable: () => (typeof pythonUnavailableText === "function" ? pythonUnavailableText() : undefined) })
+  const area = isCode ? codeTaskMod.createCodeArea(ex, { exec: codeExec, runner, onChange, ui: { sheet, button }, pythonUnavailable: () => (typeof pythonUnavailableText === "function" ? pythonUnavailableText() : undefined) })
     : ex.type === "predict" ? predictArea(ex, onChange)
     : ex.type === "fill" ? fillArea(ex, onChange)
     : orderArea(ex, onChange);
@@ -1016,6 +1029,19 @@ function renderExercise(run) {
       setTimeout(() => { if (fb.isConnected) contBtn.disabled = false; }, reduce ? 0 : CONTINUE_MS - REVEAL_MS);
     }, REVEAL_MS);
   }
+}
+
+// 代码题模块还没加载完：先显示“正在加载”，加载好后再画这道题；加载失败（比如离线且没有缓存）就如实提示并给“重试”
+function renderCodeTaskLoading(run, idx) {
+  const msg = h("p", { class: "muted", role: "status", text: "正在加载代码题…" });
+  appEl.replaceChildren(circuit("edge"), lessonHeader(run), h("main", { class: "lesson" }, msg));
+  const still = () => currentRun === run && run.queue[0] === idx && msg.isConnected;
+  loadCodeTask().then(() => { if (still()) renderExercise(run); }, () => {
+    if (!still()) return;
+    // “重试”先在本页再加载一次（Safari 可以）；Chrome 会记住同一页面里失败的模块导入，再失败就重新加载页面
+    msg.textContent = "代码题没有加载成功（可能是网络问题）。联网后点“重试”；仍不行会重新加载页面：回到地图，这一关从第 1 题开始，已得的 XP 会保留。";
+    msg.after(button("重试", () => loadCodeTask().then(() => { if (currentRun === run && run.queue[0] === idx) renderExercise(run); }, () => location.reload()), "btn small", { "data-retry-code-task": "" }));
+  });
 }
 
 function correctAnswerText(ex) {
