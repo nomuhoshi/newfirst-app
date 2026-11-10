@@ -58,7 +58,7 @@ jobs:
       - name: 手机模拟测试（${{ matrix.browser }}）
         id: mobile
         run: npm run test:mobile -- ${{ matrix.browser }}
-      - name: 端到端关键流程（${{ matrix.browser }}）：开场 → 打开课程 → 运行 Python → 答题保存 → 刷新恢复
+      - name: 端到端关键流程（${{ matrix.browser }}）：开场 → 打开课程 → 运行 Python → 答题保存 → 刷新恢复；PWA 清单 / 图标 / 代码题按需加载
         id: e2e
         run: npm run test:e2e -- ${{ matrix.browser }}
       - name: 报告环境失败
