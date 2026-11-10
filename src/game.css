@@ -105,7 +105,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .hex-ring { fill: none; stroke: var(--g-primary); stroke-width: 2; stroke-linejoin: round; opacity: .35; animation: ring 2.4s ease-in-out infinite; }
 @keyframes ring { 50% { opacity: .1; } }
 .node-label { font-size: 13px; font-weight: 700; color: var(--g-muted); margin-top: 6px; background: var(--g-bg); padding: 1px 8px; border-radius: 8px; }
-.bubble { cursor: pointer; background: var(--g-card); border: 1.5px solid var(--g-line); color: var(--g-copper); font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 10px; margin-bottom: 8px; }
+.bubble { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; min-width: 44px; background: var(--g-card); border: 1.5px solid var(--g-line); color: var(--g-copper); font-weight: 700; font-size: 14px; padding: 0 14px; border-radius: 10px; margin-bottom: 8px; } /* 可点区域高度 ≥ 44（设计 4.12） */
 
 /* 流动电路背景：固定在最底层，不拦截点击和滚动；内容区都用不透明面板盖住它 */
 .circuit-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
@@ -182,7 +182,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .choice.wrong { border-color: var(--g-bad); background: var(--g-bad-bg); animation: nudge .16s ease-in-out; }
 @keyframes nudge { 25% { transform: translateX(3px); } 75% { transform: translateX(-3px); } }
 
-.slot { min-width: 54px; height: 34px; margin: 0 2px; border-radius: 8px; border: 2px dashed var(--g-code-dim); background: #0B1820; color: var(--g-code-fg); font: 16px ui-monospace, Menlo, monospace; padding: 0 6px; }
+.slot { min-width: 54px; height: 44px; box-sizing: border-box; margin: 0 2px; border-radius: 8px; border: 2px dashed var(--g-code-dim); background: #0B1820; color: var(--g-code-fg); font: 16px ui-monospace, Menlo, monospace; padding: 0 6px; }
 .slot.filled { border-style: solid; border-color: #6E8696; }
 .slot.active { border-color: var(--g-copper); background: #2A2620; }
 .slot.right { border-color: #8ED7B8; }
@@ -195,6 +195,10 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .kchip.ctrl { color: #D5DEE4; min-width: 48px; font-size: 18px; }
 .kchip:active { transform: translateY(1px) scale(.97); }
 .reset { display: block; margin: 8px 0 0 auto; }
+/* 文字按钮一律 44 高（style.css 里 button.link 只有 32） */
+button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0 12px; }
+.soundrow .chip, .chip { min-height: 44px; }
+.switch::after { content: ""; position: absolute; left: -4px; right: -4px; top: -6px; bottom: -6px; } /* 开关外观仍是 52×32，可点热区扩到 ≥ 44 高 */
 
 .order-label { font-size: 13px; font-weight: 700; color: var(--g-muted); margin: 10px 0 6px; }
 .order-mine { min-height: 64px; border: 2px dashed var(--g-line); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 8px; background: var(--g-code-bg); }
@@ -379,3 +383,16 @@ body { background: var(--g-bg); color: var(--g-fg); }
 /* 键盘弹出：说明缩成一行；有错误时说明整段隐藏，只留错误区 */
 .lsheet.login.kb-open .login-sent { display: none; }
 .lsheet.login.kb-open.has-error .login-desc { display: none; }
+
+/* 矮屏 / 键盘弹出（竖屏、可视高度不到约 520）：关卡介绍页标题必须完整出现在内容区顶部，不被底栏挡住（设计 4.11）。
+   Safari 底栏留白（80px）在这种高度下只会把内容区挤没，缩成普通安全区；内容区继续可滚动，底栏在文档流里，不遮挡内容。 */
+@media (max-height: 520px) and (orientation: portrait) {
+  .lessonfoot, .ios-browser .lessonfoot { padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .intro-screen { padding: 10px 16px; margin: 6px 0 10px; }
+  .intro-screen .codeblock.phone { max-width: 220px; font-size: 15px; }
+  .intro-title { font-size: 24px; margin: 2px 0 6px; }
+  .intro-story { font-size: 16px !important; line-height: 1.6 !important; }
+  .intro-panel { padding: 10px 14px; }
+}
+.intro-panel + .intro-screen { margin-top: 12px; }
+.intro-panel + .intro-screen + .intro-panel { margin-top: 0; }
