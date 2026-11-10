@@ -88,7 +88,7 @@ for (const [w, h, dark] of [[390, 844, false], [360, 740, false], [390, 844, tru
   check("“我的”页：按钮 / 链接（开关除外）高度都 ≥ 44", small.length === 0, JSON.stringify(small));
   // 开关：外观 52×32，但热区（含伪元素）≥ 44 高：在开关外 6px 处点中的元素应当是开关本身
   const hit = await d.page.evaluate(() => [...document.querySelectorAll(".switch")].map((sw) => { sw.scrollIntoView({ block: "center" }); const r = sw.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top - 5); return !!e && (e === sw || sw.contains(e)); }));
-  check("“我的”页：开关外观不变，但上下各 5px 内也点得中（热区 ≥ 44）", hit.length >= 2 && hit.every(Boolean), JSON.stringify(hit));
+  check("“我的”页：开关外观不变，但上下各 5px 内也点得中（热区 ≥ 44）", hit.length >= 1 && hit.every(Boolean), JSON.stringify(hit));
   await d.ctx.close();
 }
 

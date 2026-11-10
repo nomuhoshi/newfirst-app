@@ -396,3 +396,10 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 }
 .intro-panel + .intro-screen { margin-top: 12px; }
 .intro-panel + .intro-screen + .intro-panel { margin-top: 0; }
+
+/* 横屏矮屏（iPhone 横屏）：「开始」气泡升到 44 高后，当前关（气泡 + 节点 + 关名）和吸顶入口放不下，节点图案缩小一档（仍是 60×60 的按钮，≥ 44） */
+@media (max-height: 500px) and (orientation: landscape) {
+  .node { width: 60px; height: 60px; }
+  .node-face { width: 60px; height: 60px; }
+  .node-face svg { width: 100%; height: 100%; }
+}
