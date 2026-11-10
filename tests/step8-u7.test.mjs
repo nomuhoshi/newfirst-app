@@ -32,7 +32,7 @@ const shown = L.flatMap((l) => l.exercises.flatMap((e, i) => {
   const w = `${l.id}-Q${i + 1}`;
   const codes = e.type === "order" ? [e.lines.join("\n")] : e.type === "fill" ? e.tokens.map((t) => e.code.replace("{0}", t)) : [e.code];
   return [...codes.map((c) => [w, c]), ...(e.options || []).map((o) => [w + " 选项", o.text])];
-}).concat((l.pending || []).flatMap((pt) => [["起始", pt.task.code], ["答案", pt.task.reference], ["示范", pt.task.worked.code], ["变化题答案", pt.task.variation.solution]].map(([n, c]) => [`${pt.task.id} ${n}`, c]))));
+}).concat((l.pending || []).flatMap((pt) => [["起始", pt.task.code], ["答案", pt.task.reference], ["示范", pt.task.worked.code], ["变化题答案", pt.task.variation.solution], ["变化题起始", pt.task.variation.starter], ...pt.task.alternatives.map((x) => ["其他写法", x]), ...pt.task.wrongAnswers.map((x) => ["错误写法", x.code])].map(([n, c]) => [`${pt.task.id} ${n}`, c]))));
 const wide = shown.flatMap(([w, c]) => c.split("\n").filter((x) => cellW(x) > 28).map((x) => `${w}: ${x}（${cellW(x)}）`));
 check("U7：题目代码和选项每行不超过 28 格（全角算 2）", wide.length === 0, wide.join(" | "));
 const wideIntro = L.flatMap((l) => l.introCode.split("\n").filter((x) => cellW(x) > 22).map((x) => `${l.id}: ${x}（${cellW(x)}）`));
