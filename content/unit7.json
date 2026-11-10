@@ -737,8 +737,8 @@
               "explain": "先问在不在，再问还有没有，两个检查都过了才改数量。"
             },
             "alternatives": [
-              "if name in stock:\n    if cups <= stock[name]:\n        n = stock[name] - cups\n        stock[name] = n\n        print(\"成交\")\n        print(\"剩\", n, \"杯\")\n    else:\n        print(\"库存不足\")\nelse:\n    print(\"没有这个饮品\")\nprint(stock)\n",
-              "if name not in stock:\n    print(\"没有这个饮品\")\nelif stock[name] < cups:\n    print(\"库存不足\")\nelse:\n    stock[name] = stock[name] - cups\n    print(\"成交\")\n    print(\"剩\", stock[name], \"杯\")\nprint(stock)\n"
+              "if name in stock:\n    have = stock[name]\n    if cups <= have:\n        n = have - cups\n        stock[name] = n\n        print(\"成交\")\n        print(\"剩\", n, \"杯\")\n    else:\n        print(\"库存不足\")\nelse:\n    print(\"没有这个饮品\")\nprint(stock)\n",
+              "if name not in stock:\n    print(\"没有这个饮品\")\nelif stock[name] < cups:\n    print(\"库存不足\")\nelse:\n    n = stock[name] - cups\n    stock[name] = n\n    print(\"成交\")\n    print(\"剩\", n, \"杯\")\nprint(stock)\n"
             ],
             "wrongAnswers": [
               {
@@ -750,7 +750,7 @@
                 "why": "顺序反了：先取 stock[name]，不存在的饮品直接 KeyError"
               },
               {
-                "code": "if cups > stock.get(name, 0):\n    print(\"库存不足\")\nelse:\n    n = stock[name] - cups\n    stock[name] = n\n    print(\"成交\")\n    print(\"剩\", n, \"杯\")\nprint(stock)\n",
+                "code": "have = stock.get(name, 0)\nif cups > have:\n    print(\"库存不足\")\nelse:\n    n = stock[name] - cups\n    stock[name] = n\n    print(\"成交\")\n    print(\"剩\", n, \"杯\")\nprint(stock)\n",
                 "why": "把不存在当成库存 0，输出了“库存不足”；两种情况要分开"
               }
             ],

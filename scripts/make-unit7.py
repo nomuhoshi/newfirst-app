@@ -315,13 +315,13 @@ def fails(src, tests=TESTS6):
         d = t["data"]; out, err = run(f"stock = {d['stock']!r}\nname = {d['name']!r}\ncups = {d['cups']!r}\n" + src)
         if err or out != t["expected"]: res.append(t["name"])
     return res
-ALT6 = [  # 判对的其他写法（学生答案，不在题面显示）
- 'if name in stock:\n    if cups <= stock[name]:\n        n = stock[name] - cups\n        stock[name] = n\n        print("成交")\n        print("剩", n, "杯")\n    else:\n        print("库存不足")\nelse:\n    print("没有这个饮品")\nprint(stock)\n',
- 'if name not in stock:\n    print("没有这个饮品")\nelif stock[name] < cups:\n    print("库存不足")\nelse:\n    stock[name] = stock[name] - cups\n    print("成交")\n    print("剩", stock[name], "杯")\nprint(stock)\n']
+ALT6 = [  # 判对的其他写法（学生答案）；可能作为只读代码展示，也按 28 格写
+ 'if name in stock:\n    have = stock[name]\n    if cups <= have:\n        n = have - cups\n        stock[name] = n\n        print("成交")\n        print("剩", n, "杯")\n    else:\n        print("库存不足")\nelse:\n    print("没有这个饮品")\nprint(stock)\n',
+ REF6.replace("elif cups > stock[name]:", "elif stock[name] < cups:")]
 WRONG6 = [
  (REF6.replace("elif cups > stock[name]:", "elif cups >= stock[name]:"), "边界：正好卖完也算成交，用 > 不用 >=", ["正好卖完"]),
  ('if cups > stock[name]:\n    print("库存不足")\nelif name not in stock:\n    print("没有这个饮品")\nelse:\n' + SELL + 'print(stock)\n', "顺序反了：先取 stock[name]，不存在的饮品直接 KeyError", ["咖啡，不存在", "换一张库存表：不存在"]),
- ('if cups > stock.get(name, 0):\n    print("库存不足")\nelse:\n' + SELL + 'print(stock)\n', "把不存在当成库存 0，输出了“库存不足”；两种情况要分开", ["咖啡，不存在", "换一张库存表：不存在"])]
+ ('have = stock.get(name, 0)\nif cups > have:\n    print("库存不足")\nelse:\n' + SELL + 'print(stock)\n', "把不存在当成库存 0，输出了“库存不足”；两种情况要分开", ["咖啡，不存在", "换一张库存表：不存在"])]
 assert fails(REF6) == [] and all(fails(a) == [] for a in ALT6)
 for w, why, want in WRONG6: assert fails(w) == want, (why, fails(w))
 assert fails(START6) != []
@@ -363,7 +363,7 @@ def shown_lines():
             for o in e.get("options", []): yield w + "-选项", o["text"]
         for pt in l.get("pending", []):
             k = pt["task"]
-            for name, code in [("起始", k["code"]), ("答案", k["reference"]), ("示范", k["worked"]["code"]), ("变化题答案", k["variation"]["solution"]), ("变化题起始", k["variation"]["starter"])]:
+            for name, code in [("起始", k["code"]), ("答案", k["reference"]), ("示范", k["worked"]["code"]), ("变化题答案", k["variation"]["solution"]), ("变化题起始", k["variation"]["starter"])] + [("其他写法", x) for x in k["alternatives"]] + [("错误写法", x["code"]) for x in k["wrongAnswers"]]:
                 yield f"{k['id']}-{name}", code
 INTRO_MAXW = 22  # 开场讲解示例在“手机”样式代码块里（max-width 280、旋转），390 宽下实测约 22 格
 assert all(width(x) <= INTRO_MAXW for l in lessons for x in l["introCode"].split("\n")), [(l['id'], x) for l in lessons for x in l['introCode'].split('\n') if width(x) > INTRO_MAXW]
