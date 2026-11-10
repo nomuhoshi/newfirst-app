@@ -58,6 +58,9 @@ jobs:
       - name: 手机模拟测试（${{ matrix.browser }}）
         id: mobile
         run: npm run test:mobile -- ${{ matrix.browser }}
+      - name: 端到端关键流程（${{ matrix.browser }}）：开场 → 打开课程 → 运行 Python → 答题保存 → 刷新恢复
+        id: e2e
+        run: npm run test:e2e -- ${{ matrix.browser }}
       - name: 报告环境失败
         if: failure() && steps.install.outcome == 'failure'
         run: echo "::error title=环境失败::${{ matrix.browser }} 安装失败，这不是测试通过" && exit 1

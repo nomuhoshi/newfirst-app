@@ -8,3 +8,4 @@ dist-login-sync/
 .dsh-*.log
 .pw-browsers/
 .gh-cache/
+tests/e2e/failure-*.png
