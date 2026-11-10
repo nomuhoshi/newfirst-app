@@ -33,3 +33,26 @@ class Check:
             if key in KNOWN: self.known.append(f"{where}：{msg}（已知：{KNOWN[key]}）")
             else: self.fails.append(f"{where}：{msg}")
     def skip(self, where, why): self.skipped.append(f"{where}：{why}")
+
+# ---- 读报错题用：真实运行一段会出错的程序，返回出错信息（生成器和验证器共用，保证两边口径一致）----
+import traceback as _tb
+def real_error(code):
+    """程序正常结束返回 None；出错返回 {type, line, msg, stdout, code_line, trace}。
+    trace 是课程里展示的报错：和真实 Python 一样的格式（文件名 main.py），只省略代码行下面画 ^ 和 ~ 的小箭头行。"""
+    stats["runs"] += 1
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            exec(compile(code, "main.py", "exec"), {"__name__": "__main__"})
+    except BaseException as e:
+        frames = [f for f in _tb.extract_tb(e.__traceback__) if f.filename == "main.py"]
+        src = code.split("\n")
+        lines = ["Traceback (most recent call last):"]
+        for f in frames:
+            lines.append(f'  File "main.py", line {f.lineno}, in <module>')
+            lines.append("    " + src[f.lineno - 1].strip())
+        lines.append(f"{type(e).__name__}: {e}")
+        out = buf.getvalue()
+        return {"type": type(e).__name__, "line": frames[-1].lineno, "msg": str(e), "stdout": out[:-1] if out.endswith("\n") else out,
+                "code_line": src[frames[-1].lineno - 1].strip(), "trace": "\n".join(lines)}
+    return None
