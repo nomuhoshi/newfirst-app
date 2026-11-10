@@ -72,7 +72,7 @@ check("S6：401 不泄露原文", x.d.id === "S6" && !/API key/.test(x.d.text + 
   const flaky = await down(true).sendCode("a@b.co"), dFl = describeSendError(flaky); seen.send.add(dFl.id);
   check("S1b：在线但请求失败 → 不冷却，文案提醒先看邮箱；因为没超时，不跳页", dFl.id === "S1b" && dFl.cooldownMs === 0 && !dFl.uncertainSent && /看看邮箱（含垃圾邮件）/.test(dFl.text));
   const to = await hang().sendCode("a@b.co"), dTo = describeSendError(to); seen.send.add(dTo.id);
-  check("S1b：请求超时（自己的计时器中止）→ 标出 timedOut；邮件可能已发出，跳去输验证码、重发锁 60 秒", to.timedOut === true && dTo.id === "S1b" && dTo.uncertainSent === true && /先看看邮箱/.test(dTo.text), JSON.stringify(dTo));
+  check("S1b：请求超时（自己的计时器中止）→ 标出 timedOut；邮件可能已发出，跳去输验证码、重发锁 60 秒", to.timedOut === true && dTo.id === "S1b" && dTo.uncertainSent === true && /请求超时，邮件可能已发出。请先检查邮箱/.test(dTo.text), JSON.stringify(dTo));
   const toOff = await mk((u, i) => new Promise((_, rej) => i.signal.addEventListener("abort", () => rej(new Error("a")))), { timeoutMs: 30, isOnline: () => false }).sendCode("a@b.co");
   check("超时优先于离线判断：超时仍是 S1b（邮件可能已发）", describeSendError(toOff).id === "S1b" && toOff.offline === undefined);
   check("S1a 和 S1b 文案不同", dOff.text !== dTo.text);
@@ -144,6 +144,19 @@ check("V4：验证 500 → 登录服务暂时出问题；诊断行 诊断：500�
   const bad = ["0", undefined, NaN, "50", -5, null].every((v, i) => describeSendError({ ok: false, kind: "server", status: 500 }, { xp: i === 0 ? 0 : v }).xp === "");
   check("XP=0 / 未提供 / NaN / 字符串 / 负数：不显示这一句", bad);
   check("XP 取整显示（50.7 → 50）", describeSendError({ ok: false, kind: "server", status: 500 }, { xp: 50.7 }).xp === exact);
+}
+
+// ---------- XP 措辞分情形（产品官裁决）：能确认没改动才说“没有受影响”；云端状态未知说“云端同步未完成” ----------
+{
+  const c1 = describeChoiceError({ ok: false, kind: "server", status: 500 }, { xp: 50 });
+  const c1d = describeChoiceError({ ok: false, kind: "data", code: "doc_invalid" }, { xp: 50 });
+  check("C1/C1d：XP 句子是“仍在这台设备上，云端同步未完成”，不说“没有受影响”", c1.xp === "你的 50 XP 仍在这台设备上，云端同步未完成。" && c1d.xp === c1.xp && !/没有受影响/.test(JSON.stringify([c1, c1d])), JSON.stringify([c1.xp, c1d.xp]));
+  check("C1 的 XP 也取整（50.7 → 50）", describeChoiceError({ ok: false, kind: "server", status: 500 }, { xp: 50.7 }).xp === c1.xp);
+  const s1 = describeSendError({ ok: false, kind: "server", status: 500 }, { xp: 50 }), v1 = describeVerifyError({ ok: false, kind: "auth", status: 403, stage: "verify" }, { xp: 50 });
+  check("发送 / 验证码失败（登录没发生、本机没动）仍用“没有受影响”", /没有受影响/.test(s1.xp) && /没有受影响/.test(v1.xp));
+  const t1 = describeSendError({ ok: false, kind: "network", timedOut: true }, { xp: 50 }), t2 = describeSendError({ ok: false, kind: "network" }, { xp: 50 });
+  check("S1b 超时文案：请求超时，邮件可能已发出。请先检查邮箱；非超时是网络不稳版本", /^请求超时，邮件可能已发出。请先检查邮箱/.test(t1.text) && /^网络不稳/.test(t2.text) && t1.uncertainSent && !t2.uncertainSent);
+  check("冷却范围：S2、V2 只针对当前邮箱；S3、S4、S5、S6 不绑邮箱", describeSendError({ ok: false, kind: "rate-limit", status: 429, message: "after 30 seconds" }).scope === "email" && describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "verify" }).scope === "email" && ["rate-limit", "server"].every((k) => describeSendError({ ok: false, kind: k, status: k === "server" ? 500 : 429 }).scope === ""));
 }
 
 // ---------- 同步状态栏 / 提示条：不出现服务器英文原文 ----------

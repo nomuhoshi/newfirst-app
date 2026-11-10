@@ -6,13 +6,19 @@ import { readFileSync, existsSync, statSync, mkdirSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 
-const DIST = resolve(new URL("../dist", import.meta.url).pathname);
+// 默认测试普通构建（云配置由测试注入到 localStorage，请求发往假地址）。
+// 验收已发布的预览产物时：DIST_DIR=<preview-dist 目录> FAKE_URL=https://<测试项目>.supabase.co PREVIEW_PREFIX=acc2: EXPECT_SHA=<提交号>；
+// 此时请求仍被浏览器内拦截，不会真的发往任何服务器；多一条“版本 / 云项目 / 只访问测试项目”的核对。
+const DIST = resolve(process.env.DIST_DIR || new URL("../dist", import.meta.url).pathname);
+const PFX = process.env.PREVIEW_PREFIX || "";
+const EXPECT_SHA = process.env.EXPECT_SHA || "";
 const PORT = 4381, BASE = `http://localhost:${PORT}/`;
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm", ".svg": "image/svg+xml" };
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
-const FAKE = "https://fake.supabase.test";
+const FAKE = process.env.FAKE_URL || "https://fake.supabase.test";
 const CAN = "CANARY_RAW_SERVER_TEXT";
 const XP50 = "你的 50 XP 还在这台设备上，没有受影响。";
+const XPSYNC = "你的 50 XP 仍在这台设备上，云端同步未完成。";
 const results = [];
 const SHOTS = process.env.SHOTS_DIR || "";
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
@@ -51,16 +57,17 @@ async function device({ xp = 50, otp, verify, progress, getProgress, online = tr
     return json(route, 404, { message: "no route" });
   });
   const guest = { version: 3, onboarded: true, xp, hearts: 5, heartsAt: Date.now(), streak: 1, lastDay: "2026-11-03", done: xp > 0 ? { U1L1: true } : {}, lessonsCompleted: xp > 0 ? 1 : 0, installTipClosed: false, lastActive: 0, prefs: { sound: true, haptics: true, soundStyle: "J" } };
-  await ctx.addInitScript(([cfg, g, onl, fake]) => {
-    try { if (!localStorage.getItem("suipian.cloudConfig")) localStorage.setItem("suipian.cloudConfig", JSON.stringify(cfg)); if (!localStorage.getItem("suipian.progress") && !sessionStorage.getItem("g-done")) { localStorage.setItem("suipian.progress", JSON.stringify(g)); sessionStorage.setItem("g-done", "1"); } } catch {}
+  await ctx.addInitScript(([cfg, g, onl, fake, pfx]) => {
+    try { if (!pfx && !localStorage.getItem("suipian.cloudConfig")) localStorage.setItem("suipian.cloudConfig", JSON.stringify(cfg)); if (!localStorage.getItem(pfx + "suipian.progress") && !sessionStorage.getItem("g-done")) { localStorage.setItem(pfx + "suipian.progress", JSON.stringify(g)); sessionStorage.setItem("g-done", "1"); } } catch {}
     if (!onl) Object.defineProperty(navigator, "onLine", { get: () => false, configurable: true });
     if (fake) { // 模拟 iOS：键盘弹出时可视视口变矮，但布局视口不变
       const vv = new EventTarget();
       Object.defineProperties(vv, { height: { get: () => window.__vvh ?? window.innerHeight }, width: { get: () => window.innerWidth }, offsetTop: { value: 0 }, offsetLeft: { value: 0 }, scale: { value: 1 } });
       Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
     }
-  }, [{ url: FAKE, anonKey: "pub-key" }, guest, online, fakeVv]);
+  }, [{ url: FAKE, anonKey: "pub-key" }, guest, online, fakeVv, PFX]);
   const page = await ctx.newPage();
+  const hosts = new Set(); page.on("request", (rq) => { try { hosts.add(new URL(rq.url()).host); } catch {} });
   const errors = []; page.on("pageerror", (e) => errors.push(String(e.message || e)));
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.__app && window.__app.getState && window.__app.sync);
@@ -71,7 +78,7 @@ async function device({ xp = 50, otp, verify, progress, getProgress, online = tr
     await page.locator("[data-open-login]").tap();
     await page.locator("[data-email]").fill("t@example.com");
   }
-  return { ctx, page, hits, errors };
+  return { ctx, page, hits, errors, hosts };
 }
 const dump = (page) => page.evaluate(() => JSON.stringify(Object.keys(localStorage).sort().map((k) => [k, localStorage.getItem(k)])));
 const T = (page, sel) => page.locator(sel).innerText().catch(() => "");
@@ -171,7 +178,7 @@ await scenario("S1b 请求超时（服务器一直不回）", { otp: () => new P
   await sendTap(d);
   await d.page.locator("[data-code]").waitFor({ timeout: 25000 });
   const m = await T(d.page, "[data-login-msg]");
-  check("超时：跳到输验证码这一步，文案要求先看邮箱（含垃圾邮件）", /先看看邮箱/.test(m) && /垃圾邮件/.test(m), m);
+  check("超时：跳到输验证码这一步，文案要求先看邮箱（含垃圾邮件）", /请求超时，邮件可能已发出。请先检查邮箱/.test(m) && /垃圾邮件/.test(m), m);
   check("超时：没有诊断行，XP 句子在", (await T(d.page, "[data-login-diag]")) === "" && (await T(d.page, "[data-login-xp]")) === XP50);
   const rs = await T(d.page, "[data-resend]");
   check("超时：“重新发送”被冷却（约 60 秒）锁住，避免马上重复发送", (await d.page.locator("[data-resend]").isDisabled()) && secondsIn(rs) > 50 && secondsIn(rs) <= 60, rs);
@@ -259,7 +266,7 @@ await scenario("选择弹窗：处理中不能关，失败后可重试，游客�
   await d.page.waitForTimeout(900);
   check("G3：处理中按 Esc / 点遮罩都关不掉弹窗", (await d.page.locator("[data-login]").count()) === 1);
   await waitMsg(d, /没有处理完/);
-  check("C1：失败文案（游客进度原样留在这台设备上）+ XP 句子；两个按钮恢复可点", /游客进度原样留在这台设备上，可以再试一次/.test(await T(d.page, "[data-login-msg]")) && (await T(d.page, "[data-login-xp]")) === XP50 && !(await d.page.locator('[data-choice="transfer"]').isDisabled()) && !(await d.page.locator('[data-choice="cloud"]').isDisabled()));
+  check("C1：失败文案（游客进度原样留在这台设备上）+ XP 句子；两个按钮恢复可点", /游客进度原样留在这台设备上，可以再试一次/.test(await T(d.page, "[data-login-msg]")) && (await T(d.page, "[data-login-xp]")) === XPSYNC && !(await d.page.locator('[data-choice="transfer"]').isDisabled()) && !(await d.page.locator('[data-choice="cloud"]').isDisabled()));
   check("C1：页面上没有服务器原文；游客进度逐字节不变，XP 仍是 50", (await noRaw(d.page)) && (await d.page.evaluate(() => localStorage.getItem("suipian.progress"))) === guestKey && (await d.page.evaluate(() => window.__app.getState().xp)) === 50);
   const bad = await layoutOk(d.page); check("C1：320px 布局无溢出", bad.length === 0, bad.join("; "));
 });
@@ -339,6 +346,67 @@ await scenario("登录已过期：有「重新登录」按钮，邮箱预填", {
   await d.page.locator("[data-email]").waitFor();
   check("Y7：登录页邮箱已预填，说明里写“登录已过期”", (await d.page.locator("[data-email]").inputValue()) === "t@example.com" && /登录已过期/.test(await T(d.page, "[data-login-desc]")));
 });
+
+// ---------- 产品官裁决：退出时区分已同步 / 未上传；换邮箱不串冷却；冲突期间不写云端 ----------
+await scenario("退出登录：同步没完成时不报 XP 数字，说清已同步在云端、未上传留在本机", { nav: "none" }, async (d) => {
+  await patchedAccount(d, { status: "pending", xp: 120 });
+  await d.page.locator("[data-logout]").tap();
+  await d.page.waitForSelector(".toast, [data-confirm], .sheet button");
+  let t = await T(d.page, ".toast");
+  if (!t) { await d.page.getByRole("button", { name: "仍然退出" }).tap().catch(() => {}); await d.page.waitForSelector(".toast"); t = await T(d.page, ".toast"); }
+  check("X0（未同步）：已退出登录。已同步的进度在云端；还没上传的进度留在这台设备上…，且不含 120", /^已退出登录。已同步的进度在云端；还没上传的进度留在这台设备上/.test(t) && !t.includes("120"), t);
+});
+await scenario("换邮箱：针对旧邮箱的冷却不会拦住新邮箱，改回旧邮箱仍然拦", { otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN + " after 40 seconds" }) }, async (d) => {
+  await sendTap(d);
+  await waitMsg(d, /刚刚已经发过验证码/);
+  check("旧邮箱：发送按钮被冷却锁住", await d.page.locator("[data-send-code]").isDisabled());
+  await d.page.locator("[data-email]").fill("other@example.com");
+  check("改成新邮箱：按钮立刻可点，旧邮箱的“刚刚已发过”提示清掉", !(await d.page.locator("[data-send-code]").isDisabled()) && (await T(d.page, "[data-send-code]")) === "发送验证码" && (await T(d.page, "[data-login-msg]")) === "" && (await d.page.locator("[data-enter-code]").count()) === 0);
+  await d.page.locator("[data-email]").fill("T@Example.com ");
+  check("改回旧邮箱（大小写 / 空格不同也算同一个）：按钮又被锁住", await d.page.locator("[data-send-code]").isDisabled());
+  check("整个过程服务器只收到 1 次 otp 请求", d.hits.otp === 1, String(d.hits.otp));
+});
+await scenario("超时后返回改邮箱：新邮箱不继承旧邮箱的 60 秒等待，验证码页重新计时", { otp: (r) => (r.request().postData() || "").includes("t@example.com") ? new Promise(() => {}) : json(r, 200, {}) }, async (d) => {
+  await sendTap(d);
+  await d.page.locator("[data-code]").waitFor({ timeout: 25000 });
+  check("超时进入验证码页：重发被锁", await d.page.locator("[data-resend]").isDisabled());
+  await d.page.getByRole("button", { name: "换个邮箱" }).tap();
+  await d.page.locator("[data-email]").waitFor();
+  check("回到填邮箱页：旧邮箱的冷却仍然拦着同一个邮箱（不能立刻重发）", await d.page.locator("[data-send-code]").isDisabled());
+  await d.page.locator("[data-email]").fill("new@example.com");
+  check("改成新邮箱：可以发送", !(await d.page.locator("[data-send-code]").isDisabled()));
+  await sendTap(d);
+  await d.page.locator("[data-code]").waitFor();
+  const rs = await T(d.page, "[data-resend]");
+  check("新邮箱的验证码页：重发倒计时重新从约 60 秒开始，验证码输入框是空的，没有旧邮箱的错误提示", secondsIn(rs) > 50 && secondsIn(rs) <= 60 && (await d.page.locator("[data-code]").inputValue()) === "" && (await T(d.page, "[data-login-msg]")) === "" && /new@example.com/.test(await T(d.page, ".login-sent")), rs);
+  check("两个邮箱各发 1 次，共 2 次请求", d.hits.otp === 2, String(d.hits.otp));
+});
+await scenario("冲突期间不会写云端：禁用的「立即同步」点不动，不产生任何写请求", { nav: "none" }, async (d) => {
+  await patchedAccount(d, { status: "conflict", xp: 80 });
+  await d.page.locator("[data-sync-now]").evaluate((b) => b.click());
+  await d.page.waitForTimeout(800);
+  check("冲突：没有 create / save 请求，本机 XP 原样", d.hits.create === 0 && d.hits.save === 0 && (await d.page.evaluate(() => window.__app.getState().xp)) === 80, JSON.stringify(d.hits));
+});
+
+// ---------- 已发布产物的核对（只在 DIST_DIR / FAKE_URL 给定时运行）----------
+if (EXPECT_SHA) {
+  await scenario("预览产物：页面显示的源码提交、云项目，且只访问测试项目", { nav: "none", otp: (r) => json(r, 500, { error_code: "unexpected_failure", msg: CAN }) }, async (d) => {
+    await d.page.getByRole("button", { name: "我的" }).tap();
+    await d.page.waitForSelector("[data-account]");
+    const txt = await body(d);
+    check(`“我的”页显示源码提交 ${EXPECT_SHA.slice(0, 7)}`, txt.includes(EXPECT_SHA), txt.slice(0, 200));
+    const ref = new URL(FAKE).host.split(".")[0];
+    check(`“我的”页显示云项目 ${ref}（测试项目，不是正式项目）`, txt.includes(ref) && !txt.includes("aqlcunkmggzzvyavlkjg") && !txt.includes("⚠ 正式项目"));
+    await d.page.locator("[data-open-login]").tap();
+    await d.page.locator("[data-email]").fill("t@example.com");
+    await sendTap(d);
+    await waitMsg(d, /邮件服务暂时出问题/);
+    const allowed = new Set(["localhost:" + PORT, new URL(FAKE).host]);
+    const other = [...d.hosts].filter((x) => !allowed.has(x));
+    check("整个过程只访问本机页面和测试项目地址（请求都被浏览器内拦截，没有发往任何服务器）", other.length === 0, other.join(","));
+    check("没有出现正式项目地址", ![...d.hosts].some((x) => x.includes("aqlcunkmggzzvyavlkjg")));
+  });
+}
 
 await browser.close(); srv.closeAllConnections(); srv.close();
 const bad = results.filter((v) => !v).length;

@@ -22,7 +22,7 @@ export const SEND_COPY = {
   // 规范之外：云端没配置（登录入口本来就不会出现，防御用）
   CFG: { text: () => "云端暂未开通，现在只能在这台设备上学习。", cooldown: 0, diag: false },
   S1a: { text: () => "没连上网络，验证码没发出去。联网后再点「发送验证码」。", cooldown: 0, diag: false },
-  S1b: { text: () => "网络不稳，没等到回应。验证码可能已经发出，先看看邮箱（含垃圾邮件）。", cooldown: 0, diag: false },
+  S1b: { text: (c) => (c.timedOut ? "请求超时，邮件可能已发出。请先检查邮箱（含垃圾邮件），收到后在下面输入验证码。" : "网络不稳，没等到回应。验证码可能已经发出，先看看邮箱（含垃圾邮件）。"), cooldown: 0, diag: false },
   S2: { text: (c) => `刚刚已经发过验证码，请等 ${fmtWait(c.n)}再发。先看看邮箱（含垃圾邮件），验证码还能用。`, cooldown: "server", fallback: 60000, diag: false, secondary: "enter-code" },
   S3: { text: () => "登录邮件发得太多，暂时发不出验证码。请过一会儿再试，最久可能要等一小时。", cooldown: 300000, diag: false },
   S4: { text: (c) => "邮件服务暂时出问题，验证码没发出去。不是你的操作有误，过几分钟再试。" + (c.fails >= 3 ? "先继续学习，晚点再登录也行。" : ""), cooldown: 0, diag: true },
@@ -95,6 +95,7 @@ function diagLine(r) {
   const bits = [head, code].filter(Boolean);
   return bits.length ? "诊断：" + bits.join(" · ") : "";
 }
+const xpLineSync = (xp) => (Number.isFinite(xp) && xp > 0 ? `你的 ${Math.floor(xp)} XP 仍在这台设备上，云端同步未完成。` : "");
 const xpLine = (xp) => (Number.isFinite(xp) && xp > 0 ? `你的 ${Math.floor(xp)} XP 还在这台设备上，没有受影响。` : "");
 const clampMs = (ms) => Math.min(3600000, Math.max(10000, ms));
 
@@ -103,8 +104,8 @@ function build(table, id, r, { xp = 0, fails = 1 } = {}) {
   const n = serverWaitSec(r) || (id === "S2" || id === "V2" ? 60 : 0);
   const cd = id === "S4" ? (fails >= 3 ? 300000 : 30000) : e.cooldown === "server" ? clampMs((serverWaitSec(r) ? serverWaitSec(r) + 1 : e.fallback / 1000) * 1000) : e.cooldown || 0;
   return {
-    id, design: id, text: e.text({ n, fails }), diag: e.diag ? diagLine(r) : "", xp: xpLine(xp),
-    cooldownMs: cd, uncertainSent: id === "S1b" && r?.timedOut === true, secondary: e.secondary || "",
+    id, design: id, text: e.text({ n, fails, timedOut: r?.timedOut === true }), diag: e.diag ? diagLine(r) : "", xp: (id === "C1" || id === "C1d" ? xpLineSync : xpLine)(xp),
+    cooldownMs: cd, scope: id === "S2" || id === "V2" ? "email" : "", uncertainSent: id === "S1b" && r?.timedOut === true, secondary: e.secondary || "",
     // 倒计时按钮上的字样（规范 §2.3 第 6 条）
     cooldownLabel: id === "S2" ? "可再发" : id === "S3" ? "约 5 分钟后可再试" : id === "S4" ? (fails >= 3 ? "约 5 分钟后可再试" : "30 秒后可再试") : "",
   };
