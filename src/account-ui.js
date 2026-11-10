@@ -138,6 +138,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           h("div", { class: "login-actions" }, go, extra),
           ...(sync.hasLeftoverAuth && sync.hasLeftoverAuth() ? [leftoverButton()] : []),
           button("先不登录", done, "btn3d ghost wide"),
+          privacyNote(),
         );
         setTimeout(() => input.focus(), 50);
       }
@@ -257,6 +258,12 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     });
   }
 
+  // 隐私说明：静态页 privacy.html（不依赖脚本、断网也在离线缓存里）。新标签页打开，不打断登录流程。
+  function privacyNote() {
+    return h("p", { class: "privacy-note", "data-privacy-note": "" }, "登录即表示你已阅读",
+      h("a", { href: "./privacy.html", target: "_blank", rel: "noopener", "data-privacy-link": "" , text: "隐私说明" }), "。");
+  }
+
   // ---------- “我的”页里的账号卡片 ----------
   function accountCard() {
     const acc = sync.account();
@@ -267,7 +274,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     }
     if (!acc) {
       card.append(h("h3", { text: "账号" }), h("p", { class: "muted", text: "登录后，进度会保存到云端，换手机或 iPad 也能接着学。" }),
-        button("邮箱登录 / 注册", () => openLogin(), "btn3d primary wide", { "data-open-login": "" }));
+        button("邮箱登录 / 注册", () => openLogin(), "btn3d primary wide", { "data-open-login": "" }), privacyNote());
       return card;
     }
     const st = h("p", { class: "acct-status", role: "status", "data-sync-status": "" }); statusEls.add(st);

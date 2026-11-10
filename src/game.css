@@ -404,3 +404,8 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
   .node-face { width: 60px; height: 60px; }
   .node-face svg { width: 100%; height: 100%; }
 }
+
+/* 隐私说明链接：登录框底部、账号卡片、“我的”页底部。文字链接也保证 44 高的点按区域 */
+.privacy-note { margin: 8px 0 0; font-size: 13px; color: var(--g-muted); text-align: center; }
+.privacy-note a, .me-foot a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; color: inherit; text-decoration: underline; }
+.me-foot { margin: 16px 0 0; font-size: 14px; color: var(--g-muted); text-align: center; }

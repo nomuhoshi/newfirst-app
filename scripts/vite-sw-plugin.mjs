@@ -2,7 +2,7 @@
 // 不包含：Pyodide（public/pyodide）、测试音频（public/sfx）、技术验证页 lab.html 独有的文件。
 import { readFileSync } from "node:fs";
 
-const PUBLIC_SHELL = ["manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png", "icon-maskable-192.png", "icon-maskable-512.png"];
+const PUBLIC_SHELL = ["manifest.webmanifest", "privacy.html", "icon-180.png", "icon-192.png", "icon-512.png", "icon-maskable-192.png", "icon-maskable-512.png"];
 
 export default function swPlugin({ version, prefix = "suipian-" }) {
   return {

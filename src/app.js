@@ -844,6 +844,7 @@ function renderMe() {
       h("h3", { text: "添加到主屏幕" }),
       h("p", { text: "iPhone：用 Safari 打开 → 分享按钮 → 「添加到主屏幕」。从主屏幕打开是全屏的，记录也和 Safari 分开保存。" }),
       sync?.account() ? null : clearBtn,
+      h("p", { class: "me-foot" }, h("a", { href: "./privacy.html", target: "_blank", rel: "noopener", "data-privacy-link": "", text: "隐私说明" })),
     ),
     tabBar("me"),
   );
