@@ -12,6 +12,7 @@ import unit2 from "../content/unit2.json";
 import unit3 from "../content/unit3.json";
 import unit4 from "../content/unit4.json";
 import unit5 from "../content/unit5.json";
+import unit7 from "../content/unit7.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
 import { makeRunnerExecutor } from "./judge.js";
@@ -43,7 +44,7 @@ import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
-const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
+const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U7: unit7 };
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;

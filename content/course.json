@@ -37,10 +37,11 @@
       "file": "unit5.json"
     },
     {
-      "id": "U6",
-      "title": "字典与集合",
-      "subtitle": "dict、set",
-      "available": false
+      "id": "U7",
+      "title": "字典",
+      "subtitle": "dict：键和值、查、改、增删、遍历",
+      "file": "unit7.json",
+      "available": true
     }
   ]
 }
