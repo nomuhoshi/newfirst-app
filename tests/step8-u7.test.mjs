@@ -27,7 +27,7 @@ check("U7：每道选输出题恰好一个正确选项，每个选项都有解�
 check("U7：填空题每个错误词块都有解释", L.every((l) => l.exercises.filter((e) => e.type === "fill").every((e) => e.tokens.filter((t) => !e.answer.includes(t)).every((t) => e.why[t]))));
 const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
 check("U7：关卡 id 不和已有单元重复", L.every((l) => !otherIds.includes(l.id)));
-check("U7：还没挂进 course.json（U6 上线前不开放，不改现有地图）", !course.units.some((u) => u.id === "U7" || u.file === "unit7.json"));
+check("U7：还没开放（course.json 里没有指向 unit7.json 的单元；U7 最多是“即将推出”占位），不改现有地图", !course.units.some((u) => u.file === "unit7.json" || (u.id === "U7" && u.available)));
 check("U7L6：项目代码题只记在 pending（待代码题运行器），不进题目", L[5].pending?.[0]?.task?.id === "U7L6-M1" && L.slice(0, 5).every((l) => !l.pending));
 const before = readFileSync(join(ROOT, "content/unit7.json"), "utf8");
 execFileSync("python3", [join(ROOT, "scripts/make-unit7.py")], { stdio: "pipe" }); // 生成脚本里的断言：题面写的每个输出、行号、错误类型都和真实运行一致
