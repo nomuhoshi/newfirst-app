@@ -12,7 +12,11 @@
 
 本环境的代理禁止删除远端分支（GitHub 接口和 `git push --delete` 都被拒），所以**一条也没删**。下面是核对过、可以删的 27 条，由老大在 GitHub 网页上删，或换一个有删除权限的环境。
 
-更正：之前回报写“31 条（23 祖先 + 8 等价）”不对。23 条祖先里有 2 条（`dsh/login-sync-hardening-2`、`opus/11-token-refresh-tabs`）是开放 PR 的 base 分支，已移出；实际可删 **27 条 = 19 条祖先 + 8 条等价**。
+更正：之前回报写“31 条（23 祖先 + 8 等价）”不对。祖先类原有 23 条，实际可删 **19 条**，排除了 4 条：
+- `preview/acc2`、`preview/v1rc`：触发预览构建的分支，**要保留**（acc2 是当前验收，v1rc 是发布候选的预览）；
+- `dsh/login-sync-hardening-2`、`opus/11-token-refresh-tabs`：虽然是候选的祖先，但它们是开放 PR 的 base 分支，删了会让那些 PR 失去 base。
+
+算式 23 − 2 − 2 = 19；加 8 条改动等价，合计 **27 条**可删。
 
 判定方法（对 `release/v1-candidate @ 598ca1a`，应用代码同 `933e896`）：
 - **祖先**：`git merge-base --is-ancestor <分支SHA> 598ca1a` 为真，分支所有提交都在候选里。
