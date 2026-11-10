@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import { execSync } from "node:child_process";
 import swPlugin from "./scripts/vite-sw-plugin.mjs";
+import cspPlugin from "./scripts/vite-csp-plugin.mjs";
 import { checkPreviewCloud, resolveSourceSha } from "./scripts/preview-cloud-check.mjs";
 // base: "./" 让网站放在任何子路径下（例如 /newfirst-app/）都能找到资源。
 // 两个页面：index.html 是正式的学习应用；lab.html 是第 1 步的技术验证页（保留做回归测试）。
@@ -26,6 +27,6 @@ export default defineConfig({
     rollupOptions: { input: { main: "index.html", lab: "lab.html" } },
   },
   worker: { format: "es" },
-  plugins: [swPlugin({ version: BUILD, prefix: PREVIEW_ID ? `${PREVIEW_ID}-suipian-` : "suipian-" })],
+  plugins: [cspPlugin(), swPlugin({ version: BUILD, prefix: PREVIEW_ID ? `${PREVIEW_ID}-suipian-` : "suipian-" })],
   define: { __SOURCE_SHA__: JSON.stringify(SOURCE_SHA), __BUILD__: JSON.stringify(BUILD), __PREVIEW_ID__: JSON.stringify(PREVIEW_ID), __TEST_CLOUD__: JSON.stringify(TEST_CLOUD) },
 });
