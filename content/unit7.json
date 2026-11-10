@@ -532,7 +532,7 @@
       "exercises": [
         {
           "type": "predict",
-          "prompt": "起始程序只会“成交”。点 8 杯果茶（只有 5 杯），屏幕上会显示什么？",
+          "prompt": "起始程序没有检查库存是否足够，直接扣减库存。点 8 杯果茶（只有 5 杯），屏幕上会显示什么？",
           "code": "stock = {\"奶茶\": 12,\n         \"果茶\": 5}\nname = \"果茶\"\ncups = 8\nn = stock[name] - cups\nstock[name] = n\nprint(\"成交\")\nprint(\"剩\", n, \"杯\")\nprint(stock)",
           "options": [
             {
@@ -590,76 +590,32 @@
           "hint": "只有杯数比库存多才算不足。"
         },
         {
-          "type": "order",
-          "prompt": "排好顺序：卖 3 杯奶茶，先算出剩下的杯数、存回库存，再显示库存表。屏幕显示：{'奶茶': 9}",
-          "lines": [
-            "stock = {\"奶茶\": 12}",
-            "name = \"奶茶\"",
-            "cups = 3",
-            "n = stock[name] - cups",
-            "stock[name] = n",
-            "print(stock)"
+          "type": "predict",
+          "prompt": "三种情况都写好了。点 8 杯果茶（只有 5 杯），屏幕上会显示什么？",
+          "code": "stock = {\"奶茶\": 12,\n         \"果茶\": 5}\nname = \"果茶\"\ncups = 8\nif name not in stock:\n    print(\"没有这个饮品\")\nelif cups > stock[name]:\n    print(\"库存不足\")\nelse:\n    n = stock[name] - cups\n    stock[name] = n\n    print(\"成交\")\n    print(\"剩\", n, \"杯\")\nprint(stock)",
+          "options": [
+            {
+              "text": "库存不足\n{'奶茶': 12, '果茶': 5}",
+              "correct": true,
+              "why": "果茶存在；8 > 5，走“库存不足”分支。这个分支只显示提示，不改 stock，最后显示的表里果茶还是 5。"
+            },
+            {
+              "text": "成交\n剩 -3 杯\n{'奶茶': 12, '果茶': -3}",
+              "correct": false,
+              "why": "elif cups > stock[name] 是 8 > 5，成立，走的是“库存不足”，不会进 else 去扣库存。"
+            },
+            {
+              "text": "库存不足\n{'奶茶': 12, '果茶': -3}",
+              "correct": false,
+              "why": "“库存不足”分支里只有 print，没有给 stock 写值，果茶不会变成 -3。"
+            },
+            {
+              "text": "库存不足",
+              "correct": false,
+              "why": "最后一行 print(stock) 不在 if 里，每种情况都会运行，还会显示库存表。"
+            }
           ],
-          "shuffled": [
-            5,
-            2,
-            0,
-            4,
-            1,
-            3
-          ],
-          "answers": [
-            [
-              0,
-              1,
-              2,
-              3,
-              4,
-              5
-            ],
-            [
-              0,
-              2,
-              1,
-              3,
-              4,
-              5
-            ],
-            [
-              1,
-              0,
-              2,
-              3,
-              4,
-              5
-            ],
-            [
-              1,
-              2,
-              0,
-              3,
-              4,
-              5
-            ],
-            [
-              2,
-              0,
-              1,
-              3,
-              4,
-              5
-            ],
-            [
-              2,
-              1,
-              0,
-              3,
-              4,
-              5
-            ]
-          ],
-          "expected": "{'奶茶': 9}",
-          "hint": "先准备好 stock、name、cups；算出 n 再存回；最后显示。"
+          "tip": "库存不足时只显示提示，库存不变。"
         }
       ],
       "pending": [
@@ -667,7 +623,7 @@
           "type": "modify",
           "replaces": 4,
           "status": "待 Claude 的代码题运行器，暂不开放",
-          "plan": "改一改（项目）：库存小程序；不存在、库存不足、成交三种情况，最后 print(stock)",
+          "plan": "改一改（项目）：库存小程序；不存在、库存不足、成交三种情况，最后 print(stock)。替换第 4 题：M1 的公开测试“8 杯果茶，库存不足”要求库存表不变，覆盖第 4 题的考点",
           "task": {
             "id": "U7L6-M1",
             "version": 1,

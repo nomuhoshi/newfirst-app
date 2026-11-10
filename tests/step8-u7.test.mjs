@@ -40,6 +40,7 @@ check("U7：开场讲解示例每行不超过 22 格（全角算 2）", wideIntr
 const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
 check("U7：关卡 id 不和已有单元重复", L.every((l) => !otherIds.includes(l.id)));
 check("U7：还没开放（course.json 里没有指向 unit7.json 的单元；U7 最多是“即将推出”占位），不改现有地图", !course.units.some((u) => u.file === "unit7.json" || (u.id === "U7" && u.available)));
+check("U7L6-Q4：选输出题，测库存不足分支（显示“库存不足”，库存表不变）", L[5].exercises[3].type === "predict" && L[5].exercises[3].options.find((o) => o.correct)?.text === "库存不足\n{'奶茶': 12, '果茶': 5}");
 check("U7L6：项目代码题只记在 pending（待代码题运行器），不进题目", L[5].pending?.[0]?.task?.id === "U7L6-M1" && L.slice(0, 5).every((l) => !l.pending));
 const before = readFileSync(join(ROOT, "content/unit7.json"), "utf8");
 execFileSync("python3", [join(ROOT, "scripts/make-unit7.py")], { stdio: "pipe" }); // 生成脚本里的断言：题面写的每个输出、行号、错误类型都和真实运行一致

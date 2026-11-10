@@ -133,13 +133,16 @@ def head(name, cups): return S1 + f'\nname = "{name}"\ncups = {cups}\n'
 Q6_1 = head("果茶", 8) + START6.rstrip("\n")
 Q6_2 = head("咖啡", 2) + 'if name {0} stock:\n    print("没有这个饮品")\nelse:\n' + SELL + 'print(stock)'
 Q6_3 = head("果茶", 5) + 'if name not in stock:\n    print("没有这个饮品")\nelif cups {0} stock[name]:\n    print("库存不足")\nelse:\n' + SELL + 'print(stock)'
-O6 = ['stock = {"奶茶": 12}', 'name = "奶茶"', 'cups = 3', 'n = stock[name] - cups', 'stock[name] = n', 'print(stock)']
+Q6_4 = head("果茶", 8) + REF6.rstrip("\n")
 assert out_of(Q6_1) == "成交\n剩 -3 杯\n{'奶茶': 12, '果茶': -3}"
 assert out_of(Q6_2.replace("{0}", "not in")) == "没有这个饮品\n{'奶茶': 12, '果茶': 5}" and err_of(Q6_2.replace("{0}", "in")) == "KeyError"
 assert out_of(Q6_3.replace("{0}", ">")) == "成交\n剩 0 杯\n{'奶茶': 12, '果茶': 0}"
 assert out_of(Q6_3.replace("{0}", ">=")) == "库存不足\n{'奶茶': 12, '果茶': 5}" and out_of(Q6_3.replace("{0}", "==")) == "库存不足\n{'奶茶': 12, '果茶': 5}"
-assert out_of("\n".join(O6)) == "{'奶茶': 9}"
-assert out_of('stock = {"奶茶": 12}\nname = "奶茶"\ncups = 3\nn = stock[name] - cups\nprint(stock)\nstock[name] = n') == "{'奶茶': 12}"  # 先显示后存回：显示的还是旧库存
+Q6_4_OUT = "库存不足\n{'奶茶': 12, '果茶': 5}"
+assert out_of(Q6_4) == Q6_4_OUT
+# 干扰项：都和真实输出不同；第一个是没有检查时（Q1 的起始程序）真会得到的输出
+Q6_4_BAD = ["成交\n剩 -3 杯\n{'奶茶': 12, '果茶': -3}", "库存不足\n{'奶茶': 12, '果茶': -3}", "库存不足"]
+assert out_of(head("果茶", 8) + START6) == Q6_4_BAD[0] and all(b != Q6_4_OUT for b in Q6_4_BAD)
 
 lessons = [
  {"id": "U7L1", "title": "按名字查库存", "concept": "字典、键和值、stock[键]",
@@ -273,7 +276,7 @@ lessons = [
   "story": "顾客点了 name 饮品 cups 杯。没有这个饮品：显示“没有这个饮品”；杯数比库存多：显示“库存不足”；否则减库存，显示“成交”和“剩 N 杯”（正好卖完也算成交）。最后都 print(stock)。",
   "introCode": Q6_1,
   "exercises": [
-    pred("起始程序只会“成交”。点 8 杯果茶（只有 5 杯），屏幕上会显示什么？", Q6_1, [
+    pred("起始程序没有检查库存是否足够，直接扣减库存。点 8 杯果茶（只有 5 杯），屏幕上会显示什么？", Q6_1, [
         ("成交\n剩 -3 杯\n{'奶茶': 12, '果茶': -3}", T, "程序没检查够不够，直接减成了 -3。不报错，但结果是错的。"),
         ("库存不足\n{'奶茶': 12, '果茶': 5}", F, "程序里还没有检查库存的 if。"),
         ("报错", F, "果茶存在，5 - 8 能算，不会报错。")],
@@ -287,8 +290,12 @@ lessons = [
         {">=": "5 >= 5 成立，正好卖完被当成库存不足。",
          "==": "5 == 5 成立，正好卖完被当成库存不足。"},
         "只有杯数比库存多才算不足。"),
-    order("排好顺序：卖 3 杯奶茶，先算出剩下的杯数、存回库存，再显示库存表。屏幕显示：{'奶茶': 9}", O6, [5, 2, 0, 4, 1, 3], valid_orders(O6, "{'奶茶': 9}"),
-        "{'奶茶': 9}", "先准备好 stock、name、cups；算出 n 再存回；最后显示。"),
+    pred("三种情况都写好了。点 8 杯果茶（只有 5 杯），屏幕上会显示什么？", Q6_4, [
+        (Q6_4_OUT, T, "果茶存在；8 > 5，走“库存不足”分支。这个分支只显示提示，不改 stock，最后显示的表里果茶还是 5。"),
+        (Q6_4_BAD[0], F, "elif cups > stock[name] 是 8 > 5，成立，走的是“库存不足”，不会进 else 去扣库存。"),
+        (Q6_4_BAD[1], F, "“库存不足”分支里只有 print，没有给 stock 写值，果茶不会变成 -3。"),
+        (Q6_4_BAD[2], F, "最后一行 print(stock) 不在 if 里，每种情况都会运行，还会显示库存表。")],
+        tip="库存不足时只显示提示，库存不变。"),
   ]},
 ]
 
@@ -329,7 +336,7 @@ WORKED6 = {"code": 'books = {"童话": 3,\n         "科幻": 0}\ntitle = "科�
 assert out_of(WORKED6["code"]) == WORKED6["output"]
 VSTART = "# stock、name、cups 已备好\n"
 lessons[5]["pending"] = [{"type": "modify", "replaces": 4, "status": "待 Claude 的代码题运行器，暂不开放",
-  "plan": "改一改（项目）：库存小程序；不存在、库存不足、成交三种情况，最后 print(stock)",
+  "plan": "改一改（项目）：库存小程序；不存在、库存不足、成交三种情况，最后 print(stock)。替换第 4 题：M1 的公开测试“8 杯果茶，库存不足”要求库存表不变，覆盖第 4 题的考点",
   "task": {"id": "U7L6-M1", "version": 1, "type": "modify",
     "prompt": "已经准备好 stock（库存表）、name（饮品）、cups（杯数，正整数）。规则：① name 不在 stock 里：输出“没有这个饮品”。② cups 比库存多：输出“库存不足”。③ 其余：库存减去 cups，输出“成交”，再输出“剩 N 杯”（正好卖完也算成交）。①② 库存不变。最后都 print(stock)。起始程序只写了“成交”，请改好。",
     "given": ["stock", "name", "cups"], "checkMode": "output",
