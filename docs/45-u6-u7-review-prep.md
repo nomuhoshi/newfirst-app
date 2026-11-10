@@ -42,3 +42,27 @@ U7 的关数已经是 6 关（路线图旧文字里写 5 关加项目，以这�
 
 - 没有改 #51、#48 的分支，没有开新 PR，没有跑浏览器测试（需要完整 `npm install`，本机装不了，浏览器测试以 CI 为准）。
 - 题目文字本身的人工通读：这一步需要有人逐关读题，我只做了自动验证和结构统计。
+
+
+## 6. 更新（2026-11-11 晚）：通读结果、pick 判断、新分支和 CI
+
+**通读结果（逐关读题面、答案、每个选项的理由，并用真实 Python 核对）**
+- **U7（#48）**：6 关 24 题没有发现要改的：每题单一正确答案；每个干扰项对应一个真实误区（`12 in stock` 只看键、`.get()` 只查不改、键名打错会悄悄新增、`>=` / `>` 边界）；`why` 里的行号引用与代码一致；多行字典写法在 390 宽下不横向溢出（已有 28 格行宽检查）。所以没有往 #48 或新分支上加改动。
+- **U6（#51）**：6 关 24 题同样没发现要改的题面。读时留意到两点，都不是缺陷：
+  1. U6L3 里 `pick` 的 `trace` 用的是真实 Python 报错原文（行号、信息都由 `verify/pick.py` 真实运行核对）。
+  2. U6L4-Q2 / Q4 的干扰项会让学习者自己试出“不报错但结果不对”（显示 4 而不是 4.5、显示 13.0 而不是 13），这是这一关的核心，应当保留。
+
+**`pick` 能不能用现有题型表达：不能，保留，接入很小**
+- `pick` 共 10 题：读报错选类型（L3-Q1、L4-Q1）、哪一行出错（L3-Q2）、出错前显示什么（L3-Q4）、报错后选修法（L4-Q2、L4-Q4、L6-Q1~Q3）、print 放哪一行（L5-Q4）。
+- 选项都不是程序的输出，所以不能转成 `predict`（`predict` 的正确项必须等于真实输出，并且会运行原程序）；修法类只有单个表达式的，可以转成 `fill`，但转了就丢掉“看报错”这个 U6 的主题，所以不转。
+- 实际代码很小：`pickArea`（复用 `predictArea`，不显示“运行结果”面板）+ `traceBlock`（红框显示真实报错）+ `practice.js` 里 1 行打乱选项 + `game.css` 3 行。接入时一并带上 `verify/pick.py` 和 `tests/pick-type.test.mjs`。
+
+**新分支（都从 `release/v1-candidate` 开，只摘各自的改动，不带旧登录基线；都是 Draft，不合并，不进第一版）**
+| 分支 / PR | 内容 | SHA | 完整 CI |
+|---|---|---|---|
+| `content/u6-on-candidate` / [#52](https://github.com/nomuhoshi/newfirst-app/pull/52) | U6 + `pick` 题型最小接入 | `f4fcb2b` | run 42887127960：build、mobile chromium、mobile webkit 全部成功，deploy 跳过 |
+| `content/u7-on-candidate` / [#53](https://github.com/nomuhoshi/newfirst-app/pull/53) | U7 纯内容 | `9adca7d` | run 42885587701：build、mobile chromium、mobile webkit 全部成功，deploy 跳过 |
+
+- #52 第一次 CI（`00c0862`，run 42885500486）build 失败：`step8-u6.test.mjs`、`u6l6-flow.test.mjs` 还在用旧的 `new URL(…).pathname` 写法，被候选里的 `path-resolution` 守卫拦下。已改成 `fileURLToPath`（`f4fcb2b`），守卫本机 2/2 通过，重跑全绿。
+- 两条分支各自从候选开，叠在一起时 `course.json`、`app.js` 的 `UNITS` 一行和 `step2` 的地图节点数会冲突；先后接入时按顺序解决。#51、#48 原分支没动。
+- 浏览器逐关试玩（真实手机上读题、答题）还没做，是人工验收的事。
