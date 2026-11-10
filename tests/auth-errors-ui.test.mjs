@@ -5,11 +5,12 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync, mkdirSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import { fileURLToPath } from "node:url";
 
 // 默认测试普通构建（云配置由测试注入到 localStorage，请求发往假地址）。
 // 验收已发布的预览产物时：DIST_DIR=<preview-dist 目录> FAKE_URL=https://<测试项目>.supabase.co PREVIEW_PREFIX=acc2: EXPECT_SHA=<提交号>；
 // 此时请求仍被浏览器内拦截，不会真的发往任何服务器；多一条“版本 / 云项目 / 只访问测试项目”的核对。
-const DIST = resolve(process.env.DIST_DIR || new URL("../dist", import.meta.url).pathname);
+const DIST = resolve(process.env.DIST_DIR || fileURLToPath(new URL("../dist", import.meta.url)));
 const PFX = process.env.PREVIEW_PREFIX || "";
 const EXPECT_SHA = process.env.EXPECT_SHA || "";
 const PORT = 4381, BASE = `http://localhost:${PORT}/`;

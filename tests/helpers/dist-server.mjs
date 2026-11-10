@@ -7,10 +7,11 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm", ".zip": "application/zip", ".txt": "text/plain; charset=utf-8" };
 
-export async function startDistServer({ dist = new URL("../../dist", import.meta.url).pathname, port = 0 } = {}) {
+export async function startDistServer({ dist = fileURLToPath(new URL("../../dist", import.meta.url)), port = 0 } = {}) {
   const DIST = resolve(dist);
   const srv = createServer((req, resp) => {
     const url = new URL(req.url, "http://localhost");

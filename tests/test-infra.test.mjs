@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import net from "node:net";
 import { startDistServer } from "./helpers/dist-server.mjs";
+import { fileURLToPath } from "node:url";
 
 const results = [];
 const check = (n, ok, d = "") => { results.push(!!ok); console.log(`${ok ? "✅" : "❌"} ${n}${!ok && d ? "  — " + String(d).slice(0, 300) : ""}`); };
@@ -27,10 +28,10 @@ const portOpen = (port) => new Promise((ok) => { const s = net.connect(port, "12
   check("A close() 之后端口真的释放（旧写法 server.kill() 做不到）", !(await portOpen(a.port)) && !(await portOpen(b.port)));
 }
 { // B
-  const bad = readdirSync(new URL(".", import.meta.url).pathname).filter((f) => f.endsWith(".mjs") && f !== "test-infra.test.mjs").filter((f) => /["']vite["']\s*,\s*["']preview["']/.test(readFileSync(new URL(f, import.meta.url), "utf8")));
+  const bad = readdirSync(fileURLToPath(new URL(".", import.meta.url))).filter((f) => f.endsWith(".mjs") && f !== "test-infra.test.mjs").filter((f) => /["']vite["']\s*,\s*["']preview["']/.test(readFileSync(new URL(f, import.meta.url), "utf8")));
   check("B 没有测试再用 vite preview 起服务器", bad.length === 0, bad.join(", "));
 }
-const run = (chain, env = {}) => { const t0 = Date.now(); const r = spawnSync("node", ["scripts/run-tests.mjs"], { cwd: new URL("..", import.meta.url).pathname, env: { ...process.env, TEST_CHAIN_CMD: chain, ...env }, encoding: "utf8", timeout: 60000 }); return { code: r.status, out: (r.stdout || "") + (r.stderr || ""), secs: (Date.now() - t0) / 1000 }; };
+const run = (chain, env = {}) => { const t0 = Date.now(); const r = spawnSync("node", ["scripts/run-tests.mjs"], { cwd: fileURLToPath(new URL("..", import.meta.url)), env: { ...process.env, TEST_CHAIN_CMD: chain, ...env }, encoding: "utf8", timeout: 60000 }); return { code: r.status, out: (r.stdout || "") + (r.stderr || ""), secs: (Date.now() - t0) / 1000 }; };
 const alive = (marker) => spawnSync("pgrep", ["-f", marker], { encoding: "utf8" }).stdout.trim() !== "";
 { // C
   let r = run(`node -e "console.log('ONE')" && node -e "console.log('TWO')"`);

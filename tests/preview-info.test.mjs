@@ -10,8 +10,9 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } 
 import { tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { chromium, webkit } from "playwright";
+import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const BROWSER = process.env.MOBILE_BROWSER || "chromium";
 const REF = "abcdefghij0123456789", HOST = `${REF}.supabase.co`, FAKE = `https://${HOST}`;
 const PROD_REF = "aqlcunkmggzzvyavlkjg";

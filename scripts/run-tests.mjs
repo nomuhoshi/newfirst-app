@@ -8,8 +8,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
 const chainName = process.argv[2] || "test:chain";
 const chain = process.env.TEST_CHAIN_CMD || pkg.scripts[chainName];

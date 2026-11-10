@@ -9,8 +9,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs
 import { tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { chromium, webkit } from "playwright";
+import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const BROWSER = process.env.MOBILE_BROWSER || "chromium";
 const PREFIX = "login-sync:";
 const PROD_HOST = "aqlcunkmggzzvyavlkjg.supabase.co";
