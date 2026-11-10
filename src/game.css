@@ -258,7 +258,7 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 .keybtn.sel { border-color: var(--g-primary); border-width: 2.5px; padding: 9.5px 11.5px; background: color-mix(in srgb, var(--g-primary) 10%, var(--g-card)); }
 .keylab-status { margin: 4px 0 8px; }
 .soundrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.soundrow .chip { min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); font-size: 14px; font-weight: 700; }
+.soundrow .chip { min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); font-size: 14px; font-weight: 700; }
 .hapticlab .choice { width: 100%; margin-top: 10px; text-align: center; }
 .hap-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 8px 12px; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; font-weight: 700; }
 .hap-check { position: relative; display: flex; align-items: center; justify-content: center; text-align: center; margin-top: 10px; }
