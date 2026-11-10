@@ -27,7 +27,7 @@ const L3 = JSON.parse(readFileSync(new URL("../content/unit3.json", import.meta.
 const allEx = [...L, ...L2].flatMap((l) => l.exercises.map((e) => ({ ...e, lesson: l.id })));
 check("内容：第 1 单元 6 关，最后一关是单元复习", L.length === 6 && L.at(-1).review === true);
 check("内容：每关 3–5 道题，都有故事开场和示例代码", L.every((l) => l.exercises.length >= 3 && l.exercises.length <= 5 && l.story && l.introCode));
-check("内容：关卡 id 不重复，课程路线第 1–5 单元可用，第 6 单元仍是“即将推出”", new Set([...L, ...L2, ...L3].map((l) => l.id)).size === L.length + L2.length + L3.length && course.units.filter((u) => u.available).map((u) => u.id).join() === "U1,U2,U3,U4,U5" && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U6");
+check("内容：关卡 id 不重复，课程路线第 1–6 单元可用，第 7 单元仍是“即将推出”", new Set([...L, ...L2, ...L3].map((l) => l.id)).size === L.length + L2.length + L3.length && course.units.filter((u) => u.available).map((u) => u.id).join() === "U1,U2,U3,U4,U5,U6" && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U7");
 check("第 3 单元：U3L1–U3L8 每关 4 题，课程文件指向 unit3.json", L3.map((l) => l.id).join() === "U3L1,U3L2,U3L3,U3L4,U3L5,U3L6,U3L7,U3L8" && L3.every((l) => l.exercises.length === 4 && l.story && l.introCode && l.concept) && course.units[2].file === "unit3.json");
 check("第 3 单元：改一改/写一写只记在 pending（待代码题运行器），不进题目", L3.filter((l) => l.pending).map((l) => l.id).join() === "U3L5,U3L6,U3L7,U3L8" && L3.every((l) => (l.pending || []).every((p) => ["modify", "write"].includes(p.type))));
 check("第 3 单元：只用已有题型（predict / fill / order）", L3.every((l) => l.exercises.every((e) => ["predict", "fill", "order"].includes(e.type))));
@@ -160,7 +160,7 @@ try {
   check("开场第 3 屏：说明卡住可以点小码", /卡住了就点我/.test(await text()));
   await tapBtn("开始学习");
   check("关卡地图：显示单元、XP、红心、连续天数", /奶茶店点单屏/.test(await text()) && (await page.locator(".statsbar").innerText()).includes("5"));
-  check("关卡地图：第 1 关是当前关，其余锁住（地图上共 34 关：第 1 单元 6 关 + 第 2 单元 5 关 + 第 3 单元 8 关 + 第 4 单元 8 关 + 第 5 单元 7 关）", (await page.locator(".node.current").count()) === 1 && (await page.locator('[data-lesson="U1L1"]').getAttribute("class")).includes("current") && (await page.locator(".node.locked").count()) === 33);
+  check("关卡地图：第 1 关是当前关，其余锁住（地图上共 40 关：第 1 单元 6 关 + 第 2 单元 5 关 + 第 3 单元 8 关 + 第 4 单元 8 关 + 第 5 单元 7 关 + 第 6 单元 6 关）", (await page.locator(".node.current").count()) === 1 && (await page.locator('[data-lesson="U1L1"]').getAttribute("class")).includes("current") && (await page.locator(".node.locked").count()) === 39);
   check("关卡地图：后面的单元显示即将推出", /即将推出/.test(await text()));
   await page.locator('[data-lesson="U1L3"]').tap();
   await page.waitForSelector(".overlay");
@@ -447,10 +447,10 @@ try {
   await page.evaluate(() => window.__app.renderPath());
   const want = { U1L1: "check", U1L2: "play" };
   const icons = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".node")].map((n) => [n.dataset.lesson, n.querySelector(".hexnode").dataset.icon + "|" + n.className])));
-  check("节点：34 个六边形节点（五个单元），每个都是 6 个顶点", (await page.locator(".node .hex-body").count()) === 34 && (await page.evaluate(() => [...document.querySelectorAll(".hex-body")].every((p) => p.getAttribute("points").trim().split(/\s+/).length === 6))));
+  check("节点：40 个六边形节点（六个单元），每个都是 6 个顶点", (await page.locator(".node .hex-body").count()) === 40 && (await page.evaluate(() => [...document.querySelectorAll(".hex-body")].every((p) => p.getAttribute("points").trim().split(/\s+/).length === 6))));
   check("节点：已完成对勾、当前播放、未解锁锁、复习关回转箭头", icons.U1L1.startsWith("check|") && icons.U1L2.startsWith("play|") && icons.U1L3.startsWith("lock|") && icons.U1L6.startsWith("review|"), JSON.stringify(icons));
   check("节点：没有折角、厚底座、立体圆盘", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const c = getComputedStyle(n); return getComputedStyle(n, "::after").content === "none" && c.boxShadow === "none" && c.backgroundColor === "rgba(0, 0, 0, 0)" && c.borderRadius === "0px"; })));
-  check("节点：点击区域不小于 44px，仍带文字标签和关卡编号", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const r = n.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; }) && document.querySelectorAll(".node-label").length === 34 && document.querySelectorAll("[data-lesson]").length === 34));
+  check("节点：点击区域不小于 44px，仍带文字标签和关卡编号", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const r = n.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; }) && document.querySelectorAll(".node-label").length === 40 && document.querySelectorAll("[data-lesson]").length === 40));
   check("节点：未解锁的复习关带小锁角标", (await page.locator('[data-lesson="U1L6"] .hex-badge').count()) === 1);
   // 复习关成为当前关时显示回转箭头
   await page.evaluate(() => { const s = window.__app.getState(); for (const k of ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5"]) s.done[k] = true; window.__app.renderPath(); });

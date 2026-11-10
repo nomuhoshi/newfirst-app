@@ -38,8 +38,15 @@
     },
     {
       "id": "U6",
-      "title": "字典与集合",
-      "subtitle": "dict、set",
+      "title": "类型与报错",
+      "subtitle": "type、int()/str()、读报错",
+      "available": true,
+      "file": "unit6.json"
+    },
+    {
+      "id": "U7",
+      "title": "字典",
+      "subtitle": "dict：按名字存取",
       "available": false
     }
   ]
