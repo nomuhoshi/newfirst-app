@@ -324,7 +324,7 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 .practice-entry-wrap { position: sticky; top: 0; z-index: 5; background: var(--g-bg); padding: 6px 0; margin: -6px 0 12px; }
 @media (max-height: 500px) {
   .practice-entry-wrap { margin: 0 0 8px; }
-  .practice-entry { min-height: 40px; padding: 4px 12px; }
+  .practice-entry { min-height: 44px; padding: 4px 12px; }
   .practice-entry-text { flex-direction: row; gap: 8px; align-items: baseline; }
   .practice-empty { margin: 2px 0 0; }
 }

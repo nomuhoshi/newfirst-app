@@ -79,6 +79,14 @@ for (const [w, h, dark] of [[390, 844, false], [360, 740, false], [390, 844, tru
   await d.ctx.close();
 }
 
+// 矮屏（高 ≤ 500，竖屏 390×450）：地图「随机练习」入口高度 ≥ 44（设计复核发现原来是 40）
+for (const [w, h] of [[390, 450], [390, 844]]) {
+  const d = await open(w, h, false, afterL1);
+  const pe = await rect(d.page, "[data-practice-entry]");
+  check(`${w}×${h}：地图「随机练习」入口高度 ≥ ${H}`, pe.length === 1 && pe[0].h >= H, JSON.stringify(pe));
+  await d.ctx.close();
+}
+
 // “我的”页：开关热区、音效试听、清除学习记录
 {
   const d = await open(390, 844, false, afterL1);
