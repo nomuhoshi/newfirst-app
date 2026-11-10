@@ -72,7 +72,7 @@ await ctx.addInitScript((s) => { if (!sessionStorage.getItem("seeded")) { localS
 const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
-check("地图不变：U7 不出现在地图上", (await page.locator('[data-lesson^="U7"]').count()) === 0);
+check("地图：U7 的 6 关都在地图上（接在 U6 之后）", (await page.locator('[data-lesson^="U7"]').count()) === 6);
 
 async function answer(ex, right) {
   if (ex.type === "predict") {
