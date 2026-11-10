@@ -64,7 +64,12 @@ test('P1: 信息面板文案——SHA、云项目、同步状态、待办状态�
   assert.equal(rows['源码提交'], 'a'.repeat(40)); assert.match(rows['云项目'], new RegExp(REF)); assert.equal(rows['同步状态'], '已同步 ✓'); assert.equal(rows['最近确认同步'], '05:06:07');
   assert.equal(rows['有待上传'], '否'); assert.equal(rows['游客导入待办'], '无'); assert.match(rows['账号'], /u1234567/);
   const prod = Object.fromEntries(previewRows({ sha: 'x', previewId: 'acc', target: { mode: 'prod', host: 'h', ref: '' }, status: {}, account: null }));
-  assert.match(prod['云项目'], /正式项目/); assert.equal(prod['最近确认同步'], '本次打开后还没有');
+  assert.match(prod['云项目'], /正式项目/); assert.equal(prod['最近确认同步'], '—');
+  // 退出后即使还有旧的时间戳也不显示（上一个账号的“最近确认同步”不能挂在游客状态上）
+  const stale = Object.fromEntries(previewRows({ sha: 'x', previewId: 'acc', target: { mode: 'off' }, status: { status: null, lastSyncedAt: Date.UTC(2026, 10, 8, 5, 6, 7) }, account: null, tz: 'UTC' }));
+  assert.equal(stale['最近确认同步'], '—');
+  const loggedIn = Object.fromEntries(previewRows({ sha: 'x', previewId: 'acc', target: { mode: 'off' }, status: { status: 'synced' }, account: { userId: 'u1' }, tz: 'UTC' }));
+  assert.equal(loggedIn['最近确认同步'], '本次打开后还没有');
   const locked = Object.fromEntries(previewRows({ sha: 'x', target: { mode: 'off' }, status: { status: 'import-recovery-required', pending: true }, account: { userId: 'u1' }, recovery: 'corrupt' }));
   assert.match(locked['同步状态'], /锁定/); assert.match(locked['游客导入待办'], /损坏/); assert.match(locked['云项目'], /关闭/);
   assert.equal(formatClock(NaN), '');

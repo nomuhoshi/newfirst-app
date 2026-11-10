@@ -994,7 +994,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       localRetryUser = null; localWritebackFails = 0; localRetryUnknown = false;
     }
     clearStale();
-    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
+    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”
     setStatus(null);
   }
 
@@ -1185,7 +1185,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (!cleaned) {
       // 云端已经删掉。本机清不干净时：停用旧令牌、留下副本、不宣称完全成功。
       disableStoredToken();
-      userId = null; email = ""; baseline = null; pending = false; waiting = null;
+      userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null;
       setStatus("pending-local-cleanup", "账号已在云端删除，但这台设备还没清理完。请不要继续用这个登录。");
       return {
         ok: false,
@@ -1196,7 +1196,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         message: "账号已在云端删除，但这台设备还没清理完。旧登录已停用，请不要继续用。",
       };
     }
-    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null;
+    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”
     writeAuth(); setStatus(null);
     return { ok: true };
   }

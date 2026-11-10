@@ -195,6 +195,16 @@ function streakDays(state) {
   return out;
 }
 
+// 游客某一关的第一次完成日期：优先用本机记下的 doneOn；旧记录没有时，只有“能证明”才推断——
+// 全部完成次数就 1 次且只完成 1 关，那这一次就是最后一次完成，日期必为 lastDay。其余情况日期未知，写 ""（不编造）。
+function guestDoneDate(state, id) {
+  const d = state?.doneOn?.[id];
+  if (validDay(d)) return d;
+  const ids = Object.keys(state?.done ?? {}).filter((k) => state.done[k] && isId(k));
+  if (ids.length === 1 && natural(state.lessonsCompleted) === 1 && validDay(state.lastDay)) return state.lastDay;
+  return "";
+}
+
 // v3 游客记录 → 账号文档。不修改输入。游客的 XP 和完成次数记在“导入它的这台设备”名下。
 export function guestToDoc(state, { deviceId, guestId, gen = 1, lineage = newId(), now = Date.now() } = {}) {
   if (!isId(deviceId) || !isId(guestId)) return { ok: false, code: "bad-ids", message: "缺少设备编号或游客编号" };
@@ -203,7 +213,7 @@ export function guestToDoc(state, { deviceId, guestId, gen = 1, lineage = newId(
   const doc = emptyDoc({ gen, lineage });
   doc.xp[deviceId] = natural(state.xp);
   doc.runs[deviceId] = natural(state.lessonsCompleted);
-  if (state.done && typeof state.done === "object") for (const [k, v] of Object.entries(state.done)) if (v && isId(k)) doc.done[k] = "";
+  if (state.done && typeof state.done === "object") for (const [k, v] of Object.entries(state.done)) if (v && isId(k)) doc.done[k] = guestDoneDate(state, k);
   doc.days = streakDays(state);
   const h = { hearts: Math.min(HEARTS_MAX, natural(state.hearts ?? HEARTS_MAX)), heartsAt: Number.isFinite(state.heartsAt) ? state.heartsAt : now };
   const msLeft = regenHearts(h, now);
@@ -249,7 +259,12 @@ export function syncStateIntoDoc(doc, state, { deviceId, today, now = Date.now()
   if (dxp > 0) { out.xp[deviceId] = (out.xp[deviceId] ?? 0) + dxp; changed.xp = true; }
   const druns = natural(state.lessonsCompleted) - br;
   if (druns > 0) { out.runs[deviceId] = (out.runs[deviceId] ?? 0) + druns; changed.runs = true; }
-  for (const [k, v] of Object.entries(state.done ?? {})) if (v && isId(k) && !(k in out.done)) { out.done[k] = validDay(today) ? today : ""; changed.done = true; }
+  for (const [k, v] of Object.entries(state.done ?? {})) {
+    if (!v || !isId(k)) continue;
+    const own = state.doneOn?.[k];
+    if (!(k in out.done)) { out.done[k] = validDay(own) ? own : validDay(today) ? today : ""; changed.done = true; }
+    else if (!out.done[k] && validDay(own)) { out.done[k] = own; changed.done = true; } // 补上原来日期未知的关卡
+  }
   // 两次同步之间连续学了多天：按 lastDay + streak 把这几天都补上（只有 lastDay 会丢掉中间的日子）
   const newDays = streakDays(state).filter((d) => !out.days.includes(d));
   if (validDay(state.lastDay) && !out.days.includes(state.lastDay) && !newDays.includes(state.lastDay)) newDays.push(state.lastDay);

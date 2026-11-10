@@ -105,7 +105,7 @@ try {
   // ---------- B / C. 浏览器 ----------
   try { browser = await (BROWSER === "webkit" ? webkit : chromium).launch(); } catch (e) { console.log("环境失败：浏览器启动失败 " + String(e.message).split("\n")[0]); process.exit(2); }
 
-  async function open(dir, { fake = true } = {}) {
+  async function open(dir, { fake = true, onboarded = true } = {}) {
     const { srv, origin } = await serveDir(dir);
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
     const reqHosts = [];
@@ -114,7 +114,7 @@ try {
     const page = await ctx.newPage(); const errors = []; page.on("pageerror", (e) => errors.push(String(e.message || e)));
     await page.goto(origin, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => window.__app && window.__app.getState && window.__app.sync);
-    await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
+    if (onboarded) await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
     return { srv, ctx, page, errors, reqHosts };
   }
   const toMe = async (page) => { await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-account]"); };
@@ -147,6 +147,83 @@ try {
     check("B 本地存储键全部带测试入口前缀 acc:", keys.length > 0 && keys.every((k) => k.startsWith("acc:")), JSON.stringify(keys.filter((k) => !k.startsWith("acc:"))));
     check("B 没有页面脚本错误", t.errors.length === 0, JSON.stringify(t.errors));
     await t.ctx.close(); t.srv.close();
+  }
+  // ---------- D. 三个小问题的回归 ----------
+  //  ① 游客做完的关卡合并进账号后，云端记录里有完成日期（不是空）；
+  //  ② 在开场介绍最后一屏点“已有账号？登录”，登录再退出后，不再重放“你好，我是小码！”（刷新后也一样）；
+  //  ③ 退出登录后，测试入口信息的“最近确认同步”不再显示上一个账号的时间。
+  {
+    const today = () => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+    const answerAll = async (page) => {
+      let n = 0;
+      while (await page.locator("[data-check]").count()) {
+        const ex = await page.evaluate(() => window.__app.currentEx);
+        if (ex.type === "predict") await page.locator(".choice").nth(ex.options.findIndex((o) => o.correct)).evaluate((b) => b.click());
+        else if (ex.type === "fill") for (let k = 0; k < ex.answer.length; k++) {
+          await page.locator(`[data-slot="${k}"]`).evaluate((b) => b.click());
+          await page.evaluate((t) => [...document.querySelectorAll("[data-token]")].find((b) => b.dataset.token === t).click(), ex.answer[k]);
+        } else for (const k of ex.answers[0]) await page.locator(`.order-bank [data-line="${k}"]`).first().evaluate((b) => b.click());
+        await page.locator("[data-check]").evaluate((b) => b.click());
+        await page.locator("[data-continue]:not([disabled])").waitFor();
+        await page.locator("[data-continue]").evaluate((b) => b.click());
+        await page.waitForSelector("[data-check], .finish");
+        if (++n > 12) break;
+      }
+      await page.waitForSelector(".finish");
+    };
+    const loginCode = async (page, email) => {
+      await page.locator("[data-email]").fill(email);
+      await page.locator("[data-send-code]").tap();
+      await page.locator("[data-code]").fill("123456");
+      await page.locator("[data-verify]").tap();
+    };
+
+    // ① 游客真的做完 U1L1 → 登录并选“安全合并” → 云端 done.U1L1 是今天的日期
+    {
+      const t = await open(out("good"));
+      await t.page.evaluate(() => window.__app.startLesson(window.__app.allLessons()[0]));
+      await t.page.waitForSelector("[data-check]");
+      await answerAll(t.page);
+      const guest = await t.page.evaluate(() => { const s = window.__app.getState(); return { done: !!s.done.U1L1, on: s.doneOn?.U1L1 }; });
+      check("D① 游客做完 U1L1，本机记下了完成日期（今天）", guest.done && guest.on === today(), JSON.stringify(guest));
+      await t.page.reload({ waitUntil: "domcontentloaded" }); await t.page.waitForFunction(() => window.__app && window.__app.getState);
+      check("D① 刷新后完成日期还在", (await t.page.evaluate(() => window.__app.getState().doneOn?.U1L1)) === today());
+      await toMe(t.page);
+      await t.page.locator("[data-open-login]").tap();
+      await loginCode(t.page, "dates@example.com");
+      await t.page.locator('[data-choice="transfer"]').waitFor({ timeout: 15000 });
+      await t.page.locator('[data-choice="transfer"]').tap();
+      await t.page.waitForFunction(() => /已同步/.test(document.querySelector("[data-preview-info]")?.textContent || ""), null, { timeout: 15000 });
+      const row = S.rows.get(S.users.get("dates@example.com"));
+      check("D① 合并进云端后，U1L1 有完成日期（不是空）", row?.doc.done?.U1L1 === today(), JSON.stringify(row?.doc.done));
+      check("D① 没有页面脚本错误", t.errors.length === 0, JSON.stringify(t.errors));
+      await t.ctx.close(); t.srv.close();
+    }
+
+    // ②③ 在开场介绍最后一屏登录 → 退出 → 不重放开场介绍；刷新后也不重放；“最近确认同步”清掉
+    {
+      const t = await open(out("good"), { onboarded: false });
+      await t.page.waitForSelector(".onboard");
+      check("D② 全新设备先看到开场介绍", /你好，我是小码/.test(await t.page.locator(".onboard").innerText()));
+      await t.page.getByRole("button", { name: "继续" }).tap(); await t.page.getByRole("button", { name: "继续" }).tap();
+      await t.page.locator("[data-onboard-login]").tap();
+      await loginCode(t.page, "onboard@example.com");
+      await t.page.waitForFunction(() => window.__app.sync.account()?.email === "onboard@example.com", null, { timeout: 15000 });
+      await toMe(t.page);
+      await t.page.waitForFunction(() => /最近确认同步：\d{2}:\d{2}:\d{2}/.test(document.querySelector("[data-preview-info]")?.textContent || ""), null, { timeout: 15000 });
+      await t.page.locator("[data-logout]").tap();
+      await t.page.locator("[data-open-login]").waitFor();
+      const after = await t.page.locator("[data-preview-info]").innerText();
+      check("D③ 退出后，“最近确认同步”不再显示上一个账号的时间", /最近确认同步：—/.test(after) && !/最近确认同步：\d{2}:/.test(after), after);
+      check("D② 退出后没有回到开场介绍", (await t.page.locator(".onboard").count()) === 0 && (await t.page.evaluate(() => window.__app.getState().onboarded)) === true);
+      await t.page.reload({ waitUntil: "domcontentloaded" }); await t.page.waitForFunction(() => window.__app && window.__app.getState);
+      await t.page.waitForSelector(".statsbar, .onboard");
+      check("D② 退出后刷新，直接进地图，不重放“你好，我是小码！”", (await t.page.locator(".onboard").count()) === 0 && (await t.page.locator(".statsbar").count()) === 1);
+      await toMe(t.page);
+      check("D③ 刷新后“最近确认同步”仍是“—”", /最近确认同步：—/.test(await t.page.locator("[data-preview-info]").innerText()));
+      check("D 没有页面脚本错误", t.errors.length === 0, JSON.stringify(t.errors));
+      await t.ctx.close(); t.srv.close();
+    }
   }
   {
     const t = await open(out("prod"), { fake: false });

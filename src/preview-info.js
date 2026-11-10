@@ -28,7 +28,7 @@ export function previewRows({ sha, previewId, target, status, account, recovery,
     ["云项目", cloud],
     ["账号", account ? `${account.email || "已登录"}（${String(account.userId || "").slice(0, 8)}…）` : "未登录"],
     ["同步状态", sync],
-    ["最近确认同步", Number.isFinite(st.lastSyncedAt) ? formatClock(st.lastSyncedAt, tz) : "本次打开后还没有"],
+    ["最近确认同步", !account ? "—" : Number.isFinite(st.lastSyncedAt) ? formatClock(st.lastSyncedAt, tz) : "本次打开后还没有"], // 没登录就没有“同步”可言，不显示上一个账号的时间
     ["有待上传", account ? (st.pending ? "是" : "否") : "—"],
     ["游客导入待办", { none: "无", healthy: "有（完好，会自动继续）", corrupt: "损坏（同步已锁定，见上方账号卡片）", "read-failed": "读不出来（同步已锁定，可重试）" }[recovery] || "—"],
     ["网络", online ? "在线" : "离线"],

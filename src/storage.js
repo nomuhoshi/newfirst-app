@@ -17,6 +17,7 @@ export function freshState() {
     streak: 0,            // 连续学习天数
     lastDay: null,        // 最后一次完成关卡的日期（本地日期 YYYY-MM-DD）
     done: {},             // 完成的关卡 { U1L1: true }
+    doneOn: {},           // 每关第一次完成的本地日期 { U1L1: "2026-11-04" }；只用来在合并进账号时带上完成日期，旧记录没有（日期未知）
     lessonsCompleted: 0,  // 完成关卡的总次数（含复习）
     installTipClosed: false,
     lastActive: 0,
@@ -80,7 +81,11 @@ export function loadState() {
   const prefs = { ...base.prefs, ...(data.prefs && typeof data.prefs === "object" ? data.prefs : {}) };
   if (!/^[A-J]$/.test(prefs.soundStyle)) prefs.soundStyle = "J";
   delete prefs.keySound; // 试听阶段的旧字段，不再使用
-  return { state: { ...base, ...data, prefs }, notice: null };
+  const doneOn = {};
+  if (data.doneOn && typeof data.doneOn === "object" && !Array.isArray(data.doneOn)) {
+    for (const [k, v] of Object.entries(data.doneOn)) if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) doneOn[k] = v;
+  }
+  return { state: { ...base, ...data, prefs, doneOn }, notice: null };
 }
 
 export function saveState(state) {

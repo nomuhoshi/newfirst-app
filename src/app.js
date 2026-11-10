@@ -264,7 +264,9 @@ accountUi = createAccountUi({
   rerender: () => (currentView === "me" ? renderMe() : renderPath()),
   // 登录成功：换成账号里的进度；退出 / 删除：回到这台设备的游客记录
   onSwitchedIn: (r) => { state = r.state; feel.setPrefs(state.prefs); notice = null; currentView === "me" ? renderMe() : renderPath(); },
-  onSwitchedOut: () => { const l = loadState(); state = l.state; notice = l.notice; feel.setPrefs(state.prefs); currentView === "me" ? renderMe() : renderPath(); },
+  onSwitchedOut: () => { const l = loadState(); state = l.state; notice = l.notice;
+    // 登录过的设备一定已经看过开场介绍：退出后回到游客记录不再重放“你好，我是小码”（按设备保存，不同步）
+    if (!state.onboarded) { state.onboarded = true; persist(); } feel.setPrefs(state.prefs); currentView === "me" ? renderMe() : renderPath(); },
 });
 previewInfo = createPreviewInfo({
   h, isPreview: typeof __PREVIEW_ID__ !== "undefined" && !!__PREVIEW_ID__,
@@ -1138,6 +1140,7 @@ function renderFinish(run) {
   const bonus = run.review ? 0 : XP_FINISH;
   run.xp += bonus; state.xp += bonus;
   const newDay = bumpStreak(state);
+  if (firstTime && state.lastDay) state.doneOn = { ...(state.doneOn ?? {}), [l.id]: state.lastDay }; // 完成日期 = 刚记的学习日
   let heartMsg = null;
   if (run.review) {
     regenHearts(state);
