@@ -78,9 +78,15 @@ Q1 = D_WELCOME + '\nprint("开店了")'
 Q2 = D_WELCOME + '\nwelcome()\nprint("请点单")\nwelcome()'
 Q3_CODE = D_WELCOME + '\n{0}'
 def q3_prog(tok): return Q3_CODE.replace("{0}", tok)
+Q1B = D_WELCOME + '\nwelcome\nwelcome()'        # 第 3 行只写名字（不调用），第 4 行才调用
 Q4 = 'welcome()\ndef welcome():\n    print("欢迎光临")'
 
 assert real_out(L1_INTRO) == "欢迎光临\n欢迎光临"
+assert real_out(Q1B) == "欢迎光临"                                 # 只写名字：不运行、不报错；只有 welcome() 调用一次
+assert run(Q1B)[1] is None
+assert real_out(D_WELCOME + '\nwelcome()\nwelcome()') == "欢迎光临\n欢迎光临"
+assert real_out(D_WELCOME + '\nwelcome()\nwelcome()\nwelcome()') == "欢迎光临\n欢迎光临\n欢迎光临"
+assert Q1B.split("\n")[2] == "welcome" and Q1B.split("\n")[3] == "welcome()"   # 解释里的“第 3 行 / 第 4 行”
 assert real_out(Q1) == "开店了"                                   # 只定义、没调用：函数体一次都没运行
 assert real_out(Q2) == "欢迎光临\n请点单\n欢迎光临"
 assert real_out(D_WELCOME) == ""                                  # 光是 def：什么都不显示
@@ -110,7 +116,14 @@ Q6 = D_PAY + '\ntea = 8\npay(tea)\ntea = 5\npay(tea)'
 Q7_CODE = 'def pay({0}):\n    print("应付", price * 2)\npay(10)'
 def q7_prog(tok): return Q7_CODE.replace("{0}", tok)
 Q8 = D_PAY + '\npay()'
+Q8X = D_PAY + '\npay(10, 2)'      # 传多了：pay 只有 1 个参数，却给了 2 个值
 
+r8x = real_error(Q8X)
+assert (r8x["type"], r8x["line"], r8x["code_line"], r8x["msg"], r8x["stdout"]) == ("TypeError", 3, "pay(10, 2)", "pay() takes 1 positional argument but 2 were given", "")
+assert real_error(Q8)["msg"] == "pay() missing 1 required positional argument: 'price'"     # 对照：传少了
+assert real_out(D_PAY + "\npay(10)") == "应付 20"
+assert run(D_PAY + "\npay(10, 2")[1] == "SyntaxError"                                      # 括号没写完
+assert real_error(D_PAY + "\npay(a, b)")["type"] == "NameError"                              # 传的是没定义的名字
 assert real_out(L2_INTRO) == "来一杯 奶茶\n来一杯 果茶"
 assert real_out(Q5) == "来一杯 咖啡\n来一杯 果茶"
 assert real_out(D_SAY + '\nsay("咖啡")\nsay("咖啡")') == "来一杯 咖啡\n来一杯 咖啡"
@@ -137,15 +150,15 @@ assert real_out(D_PAY + '\npay(10)') == "应付 20"                             
 
 lessons = [
  {"id": "U8L1", "title": "定义和调用", "concept": "def、函数体、调用 welcome()",
-  "story": "奶茶店每次开门都要说“欢迎光临”。同一句话写很多遍太麻烦：用 def 给这段程序起个名字，以后喊一下名字就行。（你一直在用的 print(…) 就是别人写好的函数，写 print(…) 就是在调用它。）写法：def welcome(): 这一行是“起名字”，下面缩进的几行是函数体，也就是要做的事。注意：def 只是把做法记下来，这时函数体一行都不会运行，屏幕上什么都不会显示。要让它真正做事，要写 welcome()，名字后面带括号，这叫调用：调用一次，函数体就运行一次；调用两次，就运行两次。名字要先定义、后调用。",
+  "story": "奶茶店每次开门都要说“欢迎光临”。用 def 给这段程序起个名字：def welcome(): 下面缩进的几行是函数体。def 只是记下做法，不会运行。名字后面带括号 welcome() 才是调用：调用一次，函数体运行一次。要先定义，后调用。",
   "introCode": L1_INTRO,
   "exercises": [
-    pred(SHOW, Q1, [
-        ("开店了", T, "def 只是把做法记下来，函数体要等到调用才运行；这段程序里没有调用 welcome()。屏幕上只有第 3 行的 print 显示的“开店了”（它没有缩进，不在函数里）。"),
-        ("欢迎光临\n开店了", F, "def 那两行不会自己运行。函数体里的 print 要等到调用 welcome() 才会运行，这段程序从头到尾没有调用。"),
-        ("欢迎光临", F, "显示的是第 3 行普通的 print：“开店了”。函数体里的 print 没有运行，因为没有调用 welcome()。"),
-        ("什么都不显示", F, "第 3 行的 print 没有缩进，不在函数里，是一行普通的程序，会照常运行，显示“开店了”。")],
-        tip="def 只是起名字、记做法；看有没有 名字() 这样带括号的调用。"),
+    pred(SHOW, Q1B, [
+        ("欢迎光临", T, "第 3 行只写了 welcome，没有括号，只是提到这个名字，没有调用，函数体不会运行（也不会报错）。第 4 行 welcome() 带括号才是调用，函数体运行一次，所以只显示一次“欢迎光临”。"),
+        ("欢迎光临\n欢迎光临", F, "只写名字 welcome 不算调用。调用要带括号：这段程序只有第 4 行 welcome() 一次调用，欢迎光临只显示一次。"),
+        ("欢迎光临\n欢迎光临\n欢迎光临", F, "def 那两行只是记下做法，不会运行函数体；第 3 行只写名字也不是调用。只有第 4 行 welcome() 调用了一次。"),
+        ("什么都不显示", F, "第 4 行 welcome() 带着括号，是调用，函数体会运行，显示“欢迎光临”。只写名字的是第 3 行，那一行什么都不做。")],
+        tip="名字后面带括号才是调用：welcome 只是提到名字，welcome() 才让它运行。"),
     pred(SHOW, Q2, [
         ("欢迎光临\n请点单\n欢迎光临", T, "函数在被调用的那一行运行：第 3 行调用 → 欢迎光临；第 4 行 → 请点单；第 5 行再调用一次 → 再显示一次欢迎光临。调用几次，函数体就运行几次。"),
         ("欢迎光临\n请点单", F, "第 5 行又调用了一次 welcome()，函数体会再运行一遍，所以欢迎光临显示两次。"),
@@ -165,7 +178,7 @@ lessons = [
     ], code=Q4, trace=trace_of(Q4), tip="报错时程序就停在出错的那一行；看看那一行用到的名字，之前有没有被定义过。"),
   ]},
  {"id": "U8L2", "title": "给函数一个参数", "concept": "参数、传入值",
-  "story": "欢迎光临永远是同一句话。想让同一个函数按不同的饮品工作，就给它留一个空位：def say(drink): 括号里的 drink 叫参数，在函数体里它就像一个变量。调用时，括号里写的值会传进这个空位：say(\"奶茶\") 把 \"奶茶\" 传给 drink，函数体里用到 drink 的地方就是“奶茶”；say(\"果茶\") 再传一个，同一个函数就得到不一样的结果。每次调用都会重新传值。后面的 pay(price) 定义了一个必填参数 price：调用时漏传值，Python 会报 TypeError（类型错误）。",
+  "story": "想让同一个函数按不同的饮品工作，就给它留一个空位：def say(drink): 括号里的 drink 叫参数，在函数体里像变量一样用。调用 say(\"奶茶\") 时，括号里的值传进空位，drink 就是 \"奶茶\"；每次调用都重新传值。传的个数要和参数的个数一样多。",
   "introCode": L2_INTRO,
   "exercises": [
     pred(SHOW, Q5, [
@@ -174,12 +187,6 @@ lessons = [
         ("来一杯 咖啡\n来一杯 咖啡", F, "每次调用都会重新传值。第 4 行传的是果茶，drink 这次就是果茶。"),
         ("来一杯 果茶\n来一杯 咖啡", F, "程序按顺序运行：先第 3 行传咖啡，再第 4 行传果茶，所以先显示咖啡。")],
         tip="每次调用，括号里的值传给参数；函数体里的 drink 就是这一次传进来的值。"),
-    pred(SHOW, Q6, [
-        ("应付 16\n应付 10", T, "第 4 行调用 pay(tea)，这时 tea 是 8，传给 price，8 × 2 = 16。第 5 行把 tea 改成 5，第 6 行再调用，传进去的是 5，5 × 2 = 10。"),
-        ("应付 16\n应付 16", F, "每次调用，传进去的是调用那一刻 tea 里的值。第 5 行已经把 tea 改成 5，第 6 行传的是 5，所以是 10。"),
-        ("应付 8\n应付 5", F, "函数体里写的是 price * 2，要乘 2：8 × 2 = 16，5 × 2 = 10。"),
-        ("应付 10\n应付 10", F, "函数是在调用的那一行运行的，不是等到最后。第一次调用时 tea 还是 8，得 16，之后 tea 才改成 5。")],
-        tip="看调用的那一刻变量里是多少：传进去的是值，不是变量名。"),
     {**fill("屏幕要显示：应付 20", Q7_CODE,
         ["price", "cups", "10", "\"price\""], ["price"], "应付 20",
         {"cups": "参数起名叫 cups，但函数体里用的是 price。price 没有定义过，调用时会报 NameError（用到了没有定义的名字）。参数的名字要和函数体里用的一致。",
@@ -192,6 +199,12 @@ lessons = [
         opt("def 那一行少了冒号", F, "少冒号是 SyntaxError，程序一行都不会运行。这里 def 写得没问题，函数体都定义好了，是第 3 行调用时才出的错。", value="SyntaxError"),
         opt("函数体没有缩进", F, "那是 IndentationError。这里函数体的缩进是对的；最后一行写的是 TypeError，说的是调用时少了一个值。", value="IndentationError"),
     ], code=Q8, trace=trace_of(Q8), tip="missing 1 required argument：少了 1 个必须给的值（必填参数）。看看调用那一行括号里有没有东西。"),
+    pick("pay(price) 只收 1 个值，运行时却报了错。最后一行 TypeError: pay() takes 1 positional argument but 2 were given 是在说什么？", "type", [
+        opt("pay 只有 1 个参数，调用 pay(10, 2) 时却给了 2 个值", T, "pay(price) 只定义了 1 个参数，第 3 行 pay(10, 2) 括号里写了 2 个值，个数多了，所以 Python 说“只收 1 个位置参数，却给了 2 个”。传少了也是 TypeError，但信息写的是 missing；传多了写的是 takes … but … were given。", value="TypeError"),
+        opt("10 和 2 这两个名字没有定义", F, "10 和 2 是数字，不是名字，不需要定义。用到没有定义的名字才是 NameError；这里报的是 TypeError，说的是传进去的值个数不对。", value="NameError"),
+        opt("pay(10, 2) 的括号少写了一半", F, "括号没写完是 SyntaxError，程序一行都不会运行。这里括号写得完整，前两行 def 也正常，是第 3 行调用时才出的错。", value="SyntaxError"),
+        opt("函数体没有缩进", F, "那是 IndentationError。这里函数体的缩进是对的；最后一行写的是 TypeError，说的是调用时给的值太多。", value="IndentationError"),
+    ], code=Q8X, trace=trace_of(Q8X), tip="takes 1 … but 2 were given：函数只收 1 个，却给了 2 个。数一数括号里的值和 def 里的参数个数。"),
   ]},
 ]
 
@@ -261,7 +274,7 @@ assert Q16.split("\n")[2] == "total = two(8) + 3"                               
 
 lessons += [
  {"id": "U8L3", "title": "返回结果", "concept": "return、print 和 return 的区别、None",
-  "story": "到现在函数只会“显示”：函数里的 print 把东西显示在屏幕上，显示完就没了。想让函数把结果交回给调用它的地方，用 return：def two(price): return price * 2，调用 two(8) 的地方就变成交回来的 16，可以存进变量、拿去计算、再显示。return 自己不显示任何东西：想看到结果，要把它存下来再 print，或者直接 print(two(8))。return 一执行，这次函数调用就结束了，后面的语句不再运行：比如在 return price * 2 后面再写 print(\"算完了\")，这一行永远不会运行。函数执行结束时没有遇到 return，会自动返回 None（什么都没有）。",
+  "story": "函数里的 print 只显示，显示完就没了。想把结果交回给调用的地方，用 return：two(8) 就变成交回的 16，可以存进变量、拿去计算。return 自己不显示；它一执行，这次调用就结束。没遇到 return，交回 None。",
   "introCode": L3_INTRO,
   "exercises": [
     pred(SHOW, Q9, [
@@ -290,7 +303,7 @@ lessons += [
         "要把 price * 2 交回给调用它的 print(two(10))：用 return。")},
   ]},
  {"id": "U8L4", "title": "组合调用", "concept": "返回结果参与计算、嵌套调用",
-  "story": "return 交回来的值，和平时的数一样用：存进变量 total = two(8)，参与计算 two(8) + 3，再传给另一个函数 coupon(two(10))。碰到 f(g(x)) 这样套着的写法，先算里面的：two(10) 先得 20，20 再传给 coupon，得 15。本关要把算出的数字交给后续计算，所以用 return 返回数字。如果函数里只 print、没有遇到 return，调用它的结果是 None，拿去做加法会报 TypeError。",
+  "story": "return 交回的值和平常的数一样用：存进变量 total = two(8)，参与计算 two(8) + 3，传给另一个函数 coupon(two(10))。套着写先算里面的：two(10) 得 20，再传给 coupon。要继续算的数，用 return。",
   "introCode": L4_INTRO,
   "exercises": [
     pred(SHOW, Q13, [
@@ -382,9 +395,21 @@ assert real_out(Q24_FIX_A) == "16" and real_out(Q24_FIX_C) == "0"
 assert run(Q24_FIX_B) == ("", "NameError") and run(Q24_FIX_D) == ("", "NameError")
 assert real_error(Q24_FIX_B)["msg"] == "name 'price' is not defined"
 
+# ---- L5 新题：短 if + 两个 return，判断本次调用在哪一行返回 ----
+QIF = 'def pay(price, cups=1):\n    total = price * cups\n    if total >= 30:\n        return total - 5\n    return total\nprint(pay(8, 3))\nprint(pay(8, 4))\nprint(pay(8))'
+assert real_out(QIF) == "24\n27\n8"
+assert QIF.split("\n")[3] == "        return total - 5" and QIF.split("\n")[4] == "    return total"          # 解释里的“第 4 行 / 第 5 行”
+assert real_out(QIF.replace("if total >= 30:", "if False:")) == "24\n32\n8"                                  # 以为 if 里的 return 不会运行
+assert real_out(QIF.replace("    return total\n", "    return total - 5\n")) == "19\n27\n3"                    # 以为到处都减 5
+assert real_out(QIF.replace("pay(8))", "pay(8, 4))").replace("print(pay(8, 4))\nprint(pay(8, 4))", "print(pay(8, 4))\nprint(pay(8, 4))")) == "24\n27\n27"
+assert real_out('def pay(price, cups=1):\n    total = price * cups\n    if total >= 30:\n        return total - 5\n    return total\nprint(pay(8, 4))') == "27"   # pay(8, 4)：总价 32 满 30
+assert real_out('def pay(price, cups=1):\n    total = price * cups\n    if total >= 30:\n        return total - 5\n    return total\nprint(pay(8, 3))') == "24"   # 总价 24 不满 30，走到第 5 行
+assert real_out('def pay(price, cups=1):\n    total = price * cups\n    if total >= 30:\n        return total - 5\n    return total\nprint(pay(8))') == "8"        # 默认 cups=1，总价 8
+QIF_SHOW = "点单屏运行这段程序，屏幕上会显示什么？（想一想：每次调用在哪一行交回结果）"
+
 lessons += [
- {"id": "U8L5", "title": "两个参数和默认值", "concept": "多个参数、按顺序传值、默认值",
-  "story": "价格计算器要两个数：单价和杯数。参数可以有好几个，括号里用逗号隔开：def total(price, cups):。调用时按顺序传值：total(8, 3) 把 8 传给 price，把 3 传给 cups，传的个数要和参数一样多，顺序也要对。如果某个参数大多数时候用同一个值，可以给它一个默认值：def total(price, cups=1): 调用时不传 cups，就用 1；传了，就用传进去的值。有默认值的参数要写在没有默认值的参数后面。",
+ {"id": "U8L5", "title": "两个参数和默认值", "concept": "多个参数、按顺序传值、默认值、if 里的 return",
+  "story": "价格计算器要两个数：def total(price, cups): 逗号隔开，total(8, 3) 按顺序传值。写默认值 cups=1，不传就用 1，要放后面。函数里的 if：成立就在 if 里 return，否则往下走到后面的 return。",
   "introCode": L5_INTRO,
   "exercises": [
     pred(SHOW, Q17, [
@@ -393,12 +418,12 @@ lessons += [
         ("2 杯 奶茶\n2 杯 奶茶", F, "每次调用都会重新传值。第 4 行传的是 \"果茶\" 和 1，drink、cups 这次就是果茶和 1。"),
         ("报错", F, "不会报错：调用时传了 2 个值，def 里正好有 2 个参数，个数是对得上的。")],
         tip="按顺序对应：第一个值给第一个参数，第二个值给第二个参数。"),
-    {**fill("屏幕要显示：24（函数 total 的第一行，括号里该怎么写）", Q18_CODE,
-        ["price, cups", "price cups", "price + cups", "price"], ["price, cups"], "24",
-        {"price cups": "两个参数之间要用逗号隔开。漏了逗号，会报 SyntaxError（写法不符合语法）。",
-         "price + cups": "括号里写的是参数的名字，不能做运算，会报 SyntaxError（写法不符合语法）。",
-         "price": "只有一个参数 price，调用时却传了 8 和 3 两个值，个数对不上，会报 TypeError（值的个数不对）。函数体里用了 cups，就要在括号里也写上它。"},
-        "有两个参数：名字写在括号里，用逗号隔开。")},
+    pred(QIF_SHOW, QIF, [
+        ("24\n27\n8", T, "每次调用先算 total，再看满不满 30。pay(8, 3)：total 是 24，不满 30，if 不成立，走到第 5 行 return total，交回 24。pay(8, 4)：total 是 32，满 30，在第 4 行 return total - 5 交回 27，这次调用到此结束，第 5 行不会运行。pay(8)：用默认 cups=1，total 是 8，走到第 5 行，交回 8。"),
+        ("24\n32\n8", F, "pay(8, 4) 的 total 是 32，满 30，if 成立，会在第 4 行 return total - 5，交回 27；return 一执行，这次调用就结束，轮不到第 5 行的 return total。"),
+        ("19\n27\n3", F, "减 5 只写在 if 里面的第 4 行。total 不满 30（24 和 8）时，if 不成立，走到第 5 行 return total，不减 5：24 和 8。"),
+        ("24\n27\n27", F, "每次调用重新算。pay(8) 没传 cups，用默认的 1，total 是 8，不满 30，在第 5 行交回 8，不是上一次的 27。")],
+        tip="每次调用重新算 total：满 30 在第 4 行 return，不满就走到第 5 行 return。"),
     pred(SHOW, Q19, [
         ("8\n24\n5", T, "cups=1 是默认值。第 3 行 total(8) 没传 cups，用默认的 1：8 × 1 = 8；第 4 行 total(8, 3) 传了 3，就用 3：8 × 3 = 24；第 5 行 total(5) 又没传，5 × 1 = 5。"),
         ("8\n8\n5", F, "默认值只在没有传值时才用。第 4 行传了 3，cups 就是 3，不是默认的 1。"),
@@ -413,7 +438,7 @@ lessons += [
     ], code=Q20, trace=trace_of(Q20), expected="8", tip="不想每次都传的值，给它一个默认值；有默认值的参数写在后面。"),
   ]},
  {"id": "U8L6", "title": "函数里的变量", "concept": "作用域：这些例子中，函数里定义的名字不能在函数外直接使用",
-  "story": "这一关的例子里：在函数里定义的名字（包括参数），不能在函数外面直接使用，外面用会报 NameError。如果函数里和函数外面有同名的 price，函数里给 price 重新赋值（price = 100、price = price * 2），不会改变函数外面的 price。想把函数里算出来的结果拿到外面用，要用 return 交回来，再存进变量或 print。",
+  "story": "这一关的例子里：函数里定义的名字（包括参数），不能在函数外面直接使用，外面用会报 NameError。函数里给同名的 price 重新赋值，不会改变函数外面的 price。想把函数里算出的结果拿到外面，用 return 交回来，再接住它。",
   "introCode": L6_INTRO,
   "exercises": [
     pick("程序报了 NameError: name 'drink' is not defined（drink 这个名字没有定义）。drink 明明在函数里赋过值，出错的是哪一行？", "line", [
