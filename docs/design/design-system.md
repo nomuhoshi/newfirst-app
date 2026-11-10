@@ -15,6 +15,10 @@
 | 答错反馈 | [feedback-wrong_iphone-light](mockups/png/feedback-wrong_iphone-light.png) | [feedback-wrong_iphone-dark](mockups/png/feedback-wrong_iphone-dark.png) |
 | 代码编辑（键盘打开） | [code_iphone-light](mockups/png/code_iphone-light.png) | [code_iphone-dark](mockups/png/code_iphone-dark.png) |
 | 通关 | [complete_iphone-light](mockups/png/complete_iphone-light.png) | [complete_iphone-dark](mockups/png/complete_iphone-dark.png) |
+| 登录 / 注册（邮箱） | [login_iphone-light](mockups/png/login_iphone-light.png) | [login_iphone-dark](mockups/png/login_iphone-dark.png) |
+| 登录 / 注册（验证码） | [login-code_iphone-light](mockups/png/login-code_iphone-light.png) | [login-code_iphone-dark](mockups/png/login-code_iphone-dark.png) |
+| 关卡介绍（U1L2「记住顾客」，844 高） | [intro_iphone-light](mockups/png/intro_iphone-light.png) | [intro_iphone-dark](mockups/png/intro_iphone-dark.png) |
+| 关卡介绍（可视区 390×450，模拟键盘弹出） | [intro-short_iphone-light](mockups/png/intro-short_iphone-light.png) | [intro-short_iphone-dark](mockups/png/intro-short_iphone-dark.png) |
 
 ## 1. 颜色
 
@@ -144,6 +148,28 @@ token 名和效果稿里的 `mockups/tokens.css` 一致，实现时直接照搬�
 ### 4.9 我的 / 设置（无效果稿，规则）
 统计卡复用 4.8 的卡片；按键音效 A–J 折叠为一行 → 二级列表单选（#43、#47）；“测试 A/B/C”调试按钮只在 `?debug=1` 下出现；不支持触感时隐藏“振动”行（#46）；“清除学习记录”红色描边 + 确认对话框（#48）。
 
+### 4.10 登录 / 注册（邮箱验证码）
+效果稿：[login_iphone-light](mockups/png/login_iphone-light.png)、[login-code_iphone-light](mockups/png/login-code_iphone-light.png)（深色同名）。沿用 acc2（4021ae3）的入口和两步流程，只改视觉，不改登录规则。
+
+- 从地图「登录 / 注册」一行打开。底部面板（`--surface`，24 顶角，顶部 1.5px `--line` + 36×4 拖动条）盖在地图上，遮罩用 `--scrim`（#22）。
+- **邮箱步**：标题「登录 / 注册」22/800 → 说明 15（「用邮箱登录，换手机或 iPad 也能接着学。没有账号会自动创建；不用设密码。」）→ 邮箱输入 52 高、16 圆角、1.5px `--line-strong`，占位/示意为 `name@example.com`（效果稿不发送真实邮件）→ 主按钮「发送验证码」52 → 文字按钮「先不登录」44。
+- **验证码步**：标题「输入验证码」→ 一行说明「验证码已发到 {邮箱}…」→ 等宽 22/800、字距松开的验证码输入 52 高 → 主按钮「登录」52 → 「重新发送（n 秒）」44（冷却中为 muted，不可点）→ 「换个邮箱」44。
+- 键盘弹出时：面板高度跟随 `visualViewport.height`，主按钮始终在可视区内；说明在矮屏下可收成一行。所有可点区域 ≥ 44 高。
+- 错误文案放在输入框正下方，用 `--err-text`，不改 XP / 同步规则本身。
+
+### 4.11 关卡介绍页
+效果稿：[intro_iphone-light](mockups/png/intro_iphone-light.png)、[intro-short_iphone-light](mockups/png/intro-short_iphone-light.png)（深色同名）。以 U1L2「记住顾客」为例。
+
+- 结构：课内顶栏（同 4.3）→ **可滚动内容区**（概念 13/800 铜色「第 1 单元 · 第 2 关 · 变量」→ 标题 28/800 → 示例代码块 → 故事 17/400）→ **固定底栏**（主按钮「继续」52）。底栏在文档流里（`flex:none`），不使用绝对定位覆盖内容。
+- **矮屏 / 键盘弹出（可视区约 390×450）**：标题「记住顾客」必须完整出现在内容可视区内，不被底栏挡住；内容区继续可滚动（故事或示例过长时往下看）；底栏始终贴在可视区底部，与内容矩形不相交。示例块在 `max-height: 520px` 下改为更紧凑的内边距和 15 号代码。
+- 不改本关 XP、红心消耗或解锁条件。
+
+### 4.12 填空题与地图小按钮（尺寸）
+acc2 预览里多处可点区域高度不足 44。实现时一律升到规范高度，不另做视觉变体：
+
+- 地图上的「从这里开始」、通关后关卡上的「开始」：可点热区高度 ≥ 44（本规范地图改为主卡「继续学习」52，不再使用 29px 高的小胶囊）。
+- 填空题空格：最小高度 44（建议 48），水平内边距 8；「↺ 重新开始」用文字按钮规格，高度 44。
+
 ## 5. iPad 布局（G1）
 | 宽度 | 布局 |
 |---|---|
@@ -176,7 +202,8 @@ token 名和效果稿里的 `mockups/tokens.css` 一致，实现时直接照搬�
 | 节点形状 | acc2：六边形 | 圆形焊盘 | 圆形贴合主干、热区稳定 46px、光晕好做；六边形保留为品牌插画里的芯片元素 |
 | 顶栏 | acc2：三数字无标签；#31：三胶囊 | 采用 #31 胶囊 + 单位文字 + 真空管体力 | #2；#29 体力图标 |
 | 随机练习 | acc2：整宽灰色禁用块 | 一行列表项 | #1 |
-| 登录入口 | acc2：虚线整宽卡 | 保留入口，改成一行列表项 | 不抢“继续学什么”的位置 |
+| 登录入口 | acc2：虚线整宽卡 + 底部登录面板 | 入口改成一行列表项；面板改 v3 卡片/按钮，流程仍是邮箱 + 验证码 | 不抢“继续学什么”的位置；见 4.10 |
+| 关卡介绍 | acc2：大号倾斜手机框在标题上方；450 高时标题被底栏挡住 | 标题在内容区顶部；主栏可滚动、底栏固定不遮挡 | acc2 14:08 缺陷 3；见 4.11 |
 | 单元卡 | acc2：深蓝实心卡（深色下变浅蓝） | 无底色站牌 | #3、#10、G2 |
 | 题目选项 | acc2：3 列横排 | 竖排整宽 | #13 |
 | 圆角 | #31：14 / 16 / 18 / 20 混用 | 8 / 16 / 全圆 | G4 |
