@@ -152,7 +152,7 @@ await scenario("S3 邮件配额（429 没有秒数）", { otp: (r) => json(r, 42
 });
 await scenario("S5 邮箱无资格（400 email_address_not_authorized）", { otp: (r) => json(r, 400, { code: 400, error_code: "email_address_not_authorized", msg: CAN }) }, async (d) => {
   await sendTap(d);
-  await waitMsg(d, /暂时收不到登录验证码/);
+  await waitMsg(d, /暂时收不到登录验证码|不在测试名单里/); // 测试入口（有 PREVIEW_ID 的构建）用 S5t 变体
   check("S5：独立文案、诊断行、XP 句子", (await T(d.page, "[data-login-diag]")) === "诊断：400 · email_address_not_authorized" && (await T(d.page, "[data-login-xp]")) === XP50);
   check("S5：不冷却，按钮可再点（换邮箱后马上能试）", !(await d.page.locator("[data-send-code]").isDisabled()) && (await T(d.page, "[data-send-code]")) === "发送验证码");
   check("S5：页面上没有服务器原文", await noRaw(d.page));
@@ -275,7 +275,7 @@ await scenario("选择后上传失败：登录已完成，提示是中文，没�
   await d.page.locator('[data-choice="transfer"]').tap();
   await d.page.waitForFunction(() => !document.querySelector("[data-login]"), null, { timeout: 15000 });
   const t = await T(d.page, ".toast");
-  check("上传失败：弹窗关闭，提示“登录成功…没同步上…你的进度在这台设备上”，无英文原文", /登录成功/.test(t) && /没同步上/.test(t) && !t.includes(CAN), t);
+  check("上传失败：弹窗关闭，提示“登录成功。本机进度仍在，云端同步未完成…”，无英文原文", /登录成功/.test(t) && /本机进度仍在，云端同步未完成/.test(t) && !t.includes(CAN), t);
   check("上传失败：没有 JS 报错且仍是已登录状态", await d.page.evaluate(() => !!window.__app.sync.account()));
 });
 await scenario("选择弹窗：「稍后再说」不处理，也不会自动覆盖云端", { verify: okVerify }, async (d) => {
