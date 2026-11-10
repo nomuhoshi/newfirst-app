@@ -25,6 +25,18 @@ check("U7：讲解写短（每关讲解不超过 140 字）", L.every((l) => [..
 check("U7：同一关里没有重复的题（程序 + 题面都不同）", L.every((l) => new Set(l.exercises.map((e) => e.prompt + "\n" + (e.code || e.lines.join("\n")))).size === 4));
 check("U7：每道选输出题恰好一个正确选项，每个选项都有解释", L.every((l) => l.exercises.filter((e) => e.type === "predict").every((e) => e.options.filter((o) => o.correct).length === 1 && e.options.every((o) => o.why))));
 check("U7：填空题每个错误词块都有解释", L.every((l) => l.exercises.filter((e) => e.type === "fill").every((e) => e.tokens.filter((t) => !e.answer.includes(t)).every((t) => e.why[t]))));
+// 行宽（设计规则，PR #47）：题目里显示的每行代码和选项每行，按半角算不超过 28 格，中文等全角算 2 格；
+// 填空题按每个词块填进去之后算；开场讲解示例在更窄的“手机”代码块里，上限 22 格。
+const cellW = (s) => [...s].reduce((n, ch) => n + (/[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/.test(ch) ? 2 : 1), 0);
+const shown = L.flatMap((l) => l.exercises.flatMap((e, i) => {
+  const w = `${l.id}-Q${i + 1}`;
+  const codes = e.type === "order" ? [e.lines.join("\n")] : e.type === "fill" ? e.tokens.map((t) => e.code.replace("{0}", t)) : [e.code];
+  return [...codes.map((c) => [w, c]), ...(e.options || []).map((o) => [w + " 选项", o.text])];
+}).concat((l.pending || []).flatMap((pt) => [["起始", pt.task.code], ["答案", pt.task.reference], ["示范", pt.task.worked.code], ["变化题答案", pt.task.variation.solution]].map(([n, c]) => [`${pt.task.id} ${n}`, c]))));
+const wide = shown.flatMap(([w, c]) => c.split("\n").filter((x) => cellW(x) > 28).map((x) => `${w}: ${x}（${cellW(x)}）`));
+check("U7：题目代码和选项每行不超过 28 格（全角算 2）", wide.length === 0, wide.join(" | "));
+const wideIntro = L.flatMap((l) => l.introCode.split("\n").filter((x) => cellW(x) > 22).map((x) => `${l.id}: ${x}（${cellW(x)}）`));
+check("U7：开场讲解示例每行不超过 22 格（全角算 2）", wideIntro.length === 0, wideIntro.join(" | "));
 const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
 check("U7：关卡 id 不和已有单元重复", L.every((l) => !otherIds.includes(l.id)));
 check("U7：还没开放（course.json 里没有指向 unit7.json 的单元；U7 最多是“即将推出”占位），不改现有地图", !course.units.some((u) => u.file === "unit7.json" || (u.id === "U7" && u.available)));
