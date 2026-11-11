@@ -58,7 +58,8 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
       // 题目代码块：每行 white-space: pre、整块可横滚（不自动折行）；选项里的代码：渲染行数 = 源码行数（没有被折成两行）
       const cbs = [...document.querySelectorAll(".codeblock")];
       const cbOk = cbs.every((b) => /(auto|scroll)/.test(getComputedStyle(b).overflowX) && [...b.querySelectorAll(".cl")].every((l) => getComputedStyle(l).whiteSpace === "pre"));
-      const wrapped = [...document.querySelectorAll(".choice pre")].filter((p) => { const lh = parseFloat(getComputedStyle(p).lineHeight) || 24; return Math.round(p.getBoundingClientRect().height / lh) > p.textContent.split("\n").length; }).map((p) => p.textContent.slice(0, 40));
+      const lineCount = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size; };
+      const wrapped = [...document.querySelectorAll(".choice pre")].filter((p) => lineCount(p) > p.textContent.split("\n").length).map((p) => p.textContent.slice(0, 40));
       const codeOk = cbOk && wrapped.length === 0;
       return { text: fb.innerText.replace(/\s+/g, " ").trim().slice(0, 80), contInView: cr.top >= 0 && cr.bottom <= vh + 1 && cr.height >= 44, contOnTop: !!top && (top === c || c.contains(top)), readable, scrollable: sc, codeOk, cbOk, wrapped, docWide: document.documentElement.scrollWidth > innerWidth + 1 };
     });
