@@ -44,7 +44,7 @@
 | 修复后自动化 | **自动化通过**：PR CI run 43003264198；main CI run 43007952241（build、WebKit、Chromium、deploy 全绿）；本地 Chromium 对预览 d6 产物 102/102 | `fix/feedbar-scroll` `f7c5f22` | `tests/feedback-scroll.test.mjs` | 程序员 |
 | 预览 d6 人工复核 | **人工通过（桌面 Chrome 响应式，含 375×375 短屏；不是 iPhone）** | https://nomuhoshi.github.io/newfirst-app-preview/d6/（`preview/d6` 0a16177），19:47–19:52 | §2.1 | 传话员 |
 | 合并部署 | **已部署**（产品官 19:52 放行） | main `f7c5f22f…`（见 §4）；Pages deployment 7708405781（11:05 UTC = 20:05 东京）；回退点 `fcac0a5` | §4 | 程序员 |
-| 正式站 D6 复核 | **待传话员**（部署后） | 正式站 `f7c5f22` | §3 | 传话员 |
+| 正式站 D6 复核 | **人工通过（桌面 Chrome 响应式 375×375；不是 iPhone）** | 正式站 `f7c5f22`，20:18–20:23 | §4.1；截图提交 `8e88bea` | 传话员 |
 | 390×300 | **短视口模拟**（自动化），不记作真机键盘通过；当前点选答题页没有输入框，本批不追加键盘验收 | — | — | — |
 
 ## 3. 传话员复核单
@@ -77,3 +77,14 @@
 | 20:05 | D6 部署 | run 43007952241（build、WebKit、Chromium、deploy 全绿）；deployment 7708405781；应用版本 **2026-11-11 10:58 UTC**，缓存版本 **2026-11-11T10:58:28.563Z** |
 
 **正式站 D6 复核单（传话员）**：「我的」版本应为 10:58 UTC（首次打开若仍是 10:16，刷新一两次）；DevTools 响应式 375×375 下任一排序题故意排错 → 反馈区可滚到底、最后一行可见、「继续」可点、背后题目不动；刷新后已保存进度不变。截图另存 `docs/evidence/2026-11-11-d6-prod/`。
+
+### 4.1 正式站 D6 复核（东京 20:18–20:23，桌面 Chrome DevTools 响应式 375×375；不是 iPhone 真机）
+
+| # | 结果 | 内容 | 截图 |
+|---|---|---|---|
+| 1 | PASS | 首次打开提示「已更新到新版本，刷新页面后使用最新内容。」，刷新一次后：应用版本 2026-11-11 10:58 UTC；缓存版本 2026-11-11T10:58:28.563Z | [01_version.png](evidence/2026-11-11-d6-prod/01_version.png) |
+| 2 | PASS | 随机练习排序题故意排错：短反馈在 375×375 完整容纳；最后一行「这道题会在本轮最后再练一次。」可见；「继续」点击后进入重练；背后标题位置前后不变（x=18, y=−68.6, 324×57） | [02_wrong_feedback.png](evidence/2026-11-11-d6-prod/02_wrong_feedback.png)、[03_feedback_bottom.png](evidence/2026-11-11-d6-prod/03_feedback_bottom.png)、[04_continue_clicked.webp](evidence/2026-11-11-d6-prod/04_continue_clicked.webp) |
+| 2b | PASS | **溢出实测**：U1L1 复习的排序题故意排错，反馈含 3 行正确答案，375×375 下出现独立滚动条；滚动后最后一行 `print("请点单")` 从被挡变为完整可见；背后标题前后不变（x=18, y=−72, 324×57）；滚到底后「继续」仍固定可见，点击成功 | [06_review_scroll_before.png](evidence/2026-11-11-d6-prod/06_review_scroll_before.png)、[07_review_scroll_bottom.png](evidence/2026-11-11-d6-prod/07_review_scroll_bottom.png)、[08_review_continue_clicked.webp](evidence/2026-11-11-d6-prod/08_review_continue_clicked.webp) |
+| 3 | PASS | 刷新前后「我的」：连续 1 天、XP 50、已完成 1/34、红心 5/5；随机练习不加 XP、不扣红心；未完成的复习不计奖励 | [05_progress_after_refresh.png](evidence/2026-11-11-d6-prod/05_progress_after_refresh.png) |
+
+**结论**：D6 本轮修复闭环（产品官 20:23）。iPhone Safari / PWA 未验。
