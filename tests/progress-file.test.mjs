@@ -78,7 +78,7 @@ try {
   check("导出后提示保管文件", /已导出/.test(await page.locator("[data-backup-msg]").innerText()));
 
   // 清掉进度（模拟清了浏览器数据）后导入
-  await page.evaluate(() => { const st = window.__app.getState(); st.xp = 0; st.done = {}; st.streak = 0; st.lastDay = null; st.lessonsCompleted = 0; window.__app.persist(); window.__app.renderMe ? window.__app.renderMe() : null; });
+  await page.evaluate(() => { window.__app.clearProgress(); /* v4 的 XP 与关卡只增不减，改用真实清除来模拟“清了浏览器数据” */ });
   await page.reload(); await page.waitForSelector(".statsbar");
   await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-backup]");
   await page.locator("[data-import-file]").setInputFiles(saved);
