@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | 1 | Authentication → URL Configuration | Site URL | `https://nomuhoshi.github.io/newfirst-app/` | 正式站地址；应用用验证码登录，Site URL 只出现在模板变量里 |
 | 2 | 同上 | Redirect URLs | 只保留 `https://nomuhoshi.github.io/newfirst-app/`（或留空）；**不要**通配 `*`、不要 localhost、不要预览站 | 应用不传 `redirect_to` |
-| 3 | Authentication → Sign In / Providers | Allow new users to sign up | **开** | 应用发验证码时 `create_user: true`，新用户靠它注册 |
+| 3 | Authentication → Sign In / Providers | Allow new users to sign up | **验收期间：关**；正式开放账号时：开 | 验收期间只用 §5 手动添加的测试邮箱；开放时应用发验证码用 `create_user: true` 给新用户注册 |
 | 4 | 同上 → Email | Enable Email provider | 开 | |
 | 5 | 同上 → Email | Confirm email | 开 | |
 | 6 | 同上 → Email | Email OTP Length | `6` | 应用输入框是 6 位 |
@@ -59,3 +59,13 @@
 | 执行 SQL、迁移，读安全顾问、项目元数据、区域、套餐 | 读写 Auth 的 URL 配置、Providers、OTP 设置、邮件模板、SMTP、Rate Limits |
 
 所以 C2 只能在后台由人操作；程序员负责给目标值、模板和核对。
+
+
+## 5. 受控验收（2026-11-11 产品官 5 号：不必先对所有用户开放）
+
+正式站账号开关 `ACCOUNTS_LIVE` 保持关闭。验收这样做（PR #57 上线后可用）：
+
+1. 后台：§1 第 3 项“允许新用户注册”保持**关**。Authentication → Users → Add user（或 Invite），手动加 2 个专用测试邮箱（建议 Gmail 一个、QQ 或 163 一个）；不动老大现有账号。
+2. 测试设备：打开 `https://nomuhoshi.github.io/newfirst-app/?accounts-pilot=1`，这台设备才会出现“邮箱登录 / 注册”。别的设备看不到；就算别人也加了参数，注册是关的，进不来。
+3. 验：验证码送达（Gmail、QQ、163 各记耗时、垃圾箱、发件域名、DKIM / SPF）→ 登录 → 刷新保持 → 两个隔离浏览器配置登录同一测试邮箱做双会话同步（`v1rc-test/README.md` 清单 A）→ 游客进度首次登录“安全合并” → 用专用测试账号删号。
+4. 验完：测试设备打开 `?accounts-pilot=0` 关掉；通过后再把 `ACCOUNTS_LIVE` 改为 true 单独发布，同时把“允许新用户注册”改为开。
