@@ -104,11 +104,30 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
   check(`${tag} 支线：U3 全 8 关完成后 D1L1 解锁；主线当前关仍是 U4L1，且只有一个主线当前关`, /side-current/.test(await cls("D1L1")) && /current/.test(await cls("U4L1")) && (await page.locator(".node.current").count()) === 1, `${await cls("D1L1")} ${await cls("U4L1")}`);
   check(`${tag} 支线：地图自动滚到主线当前关 U4L1`, await page.evaluate(() => { const v = document.querySelector(".pathview").getBoundingClientRect(), n = document.querySelector('[data-lesson="U4L1"]').getBoundingClientRect(); return n.top >= v.top && n.bottom <= v.bottom; }));
   const statBefore = await doneStat();
+  const snap = () => page.evaluate(() => { const s = window.__app.getState(); return { xp: s.xp, hearts: s.hearts, streak: s.streak, lastDay: s.lastDay, lc: s.lessonsCompleted ?? 0 }; });
+  const s0 = await snap();
   const rd = await playViaMap("D1L1");
+  const s1 = await snap();
+  // 计分核对（产品官 18:07）：支线沿用主线既有规则，不另设计分。首次：答对每题 +10、通关 +10（4 题共 50）；答错扣红心（本测试每题前补满，不在这里数）；记一个学习日
+  check(`${tag} D1L1 首次通关计分：XP +50（4×10 + 通关 10），完成次数 +1，连续天数按学习日记为 1`, s1.xp - s0.xp === 50 && s1.lc - s0.lc === 1 && s1.streak === 1 && !!s1.lastDay, JSON.stringify({ s0, s1 }));
   check(`${tag} D1L1：通关并记为已完成`, rd.ok);
   probeChecks("D1L1", rd.probes);
   check(`${tag} D1L1 通关后：主线不变（U4L1 仍是当前关），“已完成关卡”统计不计支线`, /current/.test(await cls("U4L1")) && (await doneStat()) === statBefore, `${statBefore} → ${await doneStat()}`);
   await page.reload(); await page.waitForSelector(".pathview"); await page.waitForFunction(() => window.__app?.getState);
+  // 重玩 = 复习：每题 +5、无通关奖励、不扣红心、完成后 +1 红心（未满时）、同一天连续天数不变
+  await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 3; window.__app.persist(); });
+  const s2 = await snap();
+  await page.locator('[data-lesson="D1L1"]').scrollIntoViewIfNeeded(); await page.locator('[data-lesson="D1L1"]').click();
+  const sheetTxt = await page.locator(".overlay").innerText();
+  await page.locator(".overlay .btn3d.primary").click(); await page.locator(".lessonfoot .btn3d.primary").click(); await page.waitForSelector("[data-check]");
+  for (let n = 0; n < 8 && (await page.locator("[data-check]").count()); n++) {
+    const ex = await page.evaluate(() => JSON.parse(JSON.stringify(window.__app.currentEx)));
+    await page.locator(".choice").nth(ex.options.findIndex((o) => o.correct)).click();
+    await page.locator("[data-check]").click(); await page.waitForSelector("[data-continue]"); await page.locator("[data-continue]").click(); await page.waitForTimeout(120);
+  }
+  await page.waitForSelector(".finish"); const s3 = await snap();
+  check(`${tag} D1L1 重玩（复习）计分：入口写“复习”，XP +20（4×5、无通关奖励），红心 3→4，完成次数 +1，连续天数不变`, /复习/.test(sheetTxt) && s3.xp - s2.xp === 20 && s3.hearts === 4 && s3.lc - s2.lc === 1 && s3.streak === s2.streak, JSON.stringify({ s2, s3 }));
+  await page.locator(".finish [data-continue]").click(); await page.waitForSelector(".pathview");
   check(`${tag} 刷新后：D1L1 仍已完成，支线显示“已完成”`, /side-done/.test(await cls("D1L1")) && /支线 · 已完成/.test(await mapText()) && (await done()).D1L1 === true, await cls("D1L1"));
 
   // ── U8 六关 ──
