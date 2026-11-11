@@ -49,6 +49,12 @@
       "subtitle": "dict：键和值、查、改、增删、遍历",
       "available": true,
       "file": "unit7.json"
+    },
+    {
+      "id": "U8",
+      "title": "函数",
+      "subtitle": "def、参数、return",
+      "available": false
     }
   ]
 }
