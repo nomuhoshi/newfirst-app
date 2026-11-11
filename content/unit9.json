@@ -205,7 +205,7 @@
         },
         {
           "type": "predict",
-          "prompt": "这是 AI 写的 bill，只比上一题多缩进了一格。屏幕上会显示什么？",
+          "prompt": "这是 AI 写的 bill，和上一题只差一处：return total 多缩进了一层，进了循环。屏幕上会显示什么？",
           "code": "def bill(order, menu):\n    total = 0\n    for name in order:\n        total += menu[name]\n        return total\nmenu = {\"奶茶\": 15,\n        \"果茶\": 12}\norder = [\"奶茶\", \"果茶\",\n         \"奶茶\"]\nprint(bill(order, menu))",
           "options": [
             {
