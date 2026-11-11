@@ -174,8 +174,9 @@ const xpOf = (cloud, email) => sumXp(rowOf(cloud, email).doc);
 // A. 测试入口配置：正式项目网址及伪装写法一律拒绝
 // ======================================================================
 let cfgCase = 0;
-async function loadCloud({ id, test, loc, ls } = {}) {
-  for (const k of ["__PREVIEW_ID__", "__TEST_CLOUD__", "location", "localStorage"]) delete globalThis[k];
+async function loadCloud({ id, test, loc, ls, live } = {}) {
+  for (const k of ["__PREVIEW_ID__", "__TEST_CLOUD__", "__ACCOUNTS_LIVE__", "location", "localStorage"]) delete globalThis[k];
+  if (live !== undefined) globalThis.__ACCOUNTS_LIVE__ = live;
   if (id !== undefined) globalThis.__PREVIEW_ID__ = id;
   if (test !== undefined) globalThis.__TEST_CLOUD__ = test;
   if (loc) globalThis.location = { hostname: loc };
@@ -202,8 +203,10 @@ for (const [label, url] of DISGUISED) {
 {
   const c = await loadCloud({ id: "rc1", test: { url: "https://abcdefgh.supabase.co", anonKey: "k" } });
   check("对照：合法的独立测试项目照常放行", c.url === "https://abcdefgh.supabase.co" && c.anonKey === "k");
-  const p = await loadCloud({ id: "", test: { url: "https://abcdefgh.supabase.co", anonKey: "k" } });
-  check("对照：正式构建忽略测试配置，仍是正式项目", p.url.includes(PROD));
+  const p = await loadCloud({ id: "", test: { url: "https://abcdefgh.supabase.co", anonKey: "k" }, live: true });
+  check("对照：正式构建（账号开关打开）忽略测试配置，仍是正式项目", p.url.includes(PROD));
+  const pOff = await loadCloud({ id: "", test: { url: "https://abcdefgh.supabase.co", anonKey: "k" } });
+  check("对照：正式构建（账号开关默认关闭）也不读测试配置：云端关闭", pOff.url === "" && pOff.anonKey === "");
 }
 for (const host of ["localhost", "127.0.0.1"]) {
   for (const [label, url] of DISGUISED) {
@@ -218,12 +221,14 @@ for (const host of ["localhost", "127.0.0.1"]) {
   check(`对照：${host} 浏览器设置损坏：不抛错，按没有测试项目处理`, broken.url === "" && broken.anonKey === "");
 }
 {
-  const c = await loadCloud({ id: "", loc: "localhost", ls: JSON.stringify({ url: "https://aqlcunkmggzzvyavlkjg.supabase.co", anonKey: "x" }) });
+  const c = await loadCloud({ id: "", loc: "localhost", ls: JSON.stringify({ url: "https://aqlcunkmggzzvyavlkjg.supabase.co", anonKey: "x" }), live: true });
   check("对照：正式构建 + localhost 覆盖写正式网址：不受影响（本来就是正式项目）", c.url.includes(PROD));
-  const online = await loadCloud({ id: "", loc: "localhost.evil.example", ls: JSON.stringify({ url: "https://evil.example", anonKey: "x" }) });
+  const online = await loadCloud({ id: "", loc: "localhost.evil.example", ls: JSON.stringify({ url: "https://evil.example", anonKey: "x" }), live: true });
   check("对照：主机名只是以 localhost 开头不算本机，覆盖无效", online.url.includes(PROD));
+  const onlineOff = await loadCloud({ id: "", loc: "localhost.evil.example", ls: JSON.stringify({ url: "https://evil.example", anonKey: "x" }) });
+  check("对照：账号开关关闭时，伪装的覆盖同样无效（云端关闭，不会连到 evil.example）", onlineOff.url === "");
 }
-for (const k of ["__PREVIEW_ID__", "__TEST_CLOUD__", "location", "localStorage"]) delete globalThis[k];
+for (const k of ["__PREVIEW_ID__", "__TEST_CLOUD__", "__ACCOUNTS_LIVE__", "location", "localStorage"]) delete globalThis[k];
 
 // ======================================================================
 // B. 旧存档升级：关卡 / XP / 日期 / 设置 / 账号归属不变
