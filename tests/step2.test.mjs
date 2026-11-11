@@ -377,7 +377,7 @@ try {
   const p5 = await ctx.newPage();
   await p5.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
-    localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 130, hearts: 3, heartsAt: Date.now(), streak: 4, lastDay: "2026-11-01", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: true, lastActive: 1 }));
+    Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 130, hearts: 3, heartsAt: Date.now(), streak: 4, lastDay: "2026-11-01", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: true, lastActive: 1 }));
   });
   await p5.goto(BASE); await p5.waitForSelector(".statsbar");
   const s5 = await p5.evaluate(() => window.__app.getState());
@@ -798,7 +798,7 @@ try {
   const p4 = await ctx.newPage();
   await p4.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
-    localStorage.setItem("suipian.progress", JSON.stringify({ version: 2, lesson: "L01", page: 6, started: true, lessonDone: { L01: true }, exDone: { X1: true, X2: true }, drafts: { P1a: { code: "x" } }, installTipClosed: true }));
+    Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", JSON.stringify({ version: 2, lesson: "L01", page: 6, started: true, lessonDone: { L01: true }, exDone: { X1: true, X2: true }, drafts: { P1a: { code: "x" } }, installTipClosed: true }));
   });
   await p4.goto(BASE);
   await p4.getByRole("button", { name: "继续", exact: true }).tap(); await p4.getByRole("button", { name: "继续", exact: true }).tap(); await p4.getByRole("button", { name: "开始学习" }).tap();
@@ -818,7 +818,7 @@ try {
   await p2.close();
   const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const p3 = await ctx3.newPage();
-  await p3.addInitScript(() => { try { localStorage.setItem("suipian.progress", "{坏掉的数据"); } catch {} });
+  await p3.addInitScript(() => { try { Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", "{坏掉的数据"); } catch {} });
   await p3.goto(BASE);
   check("记录损坏：从头开始，不白屏", /你好，我是小码/.test(await p3.locator("#app").innerText()));
   await p3.close();

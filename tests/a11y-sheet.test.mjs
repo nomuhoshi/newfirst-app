@@ -13,7 +13,7 @@ const srv = createServer((q, s) => { const u = new URL(q.url, BASE); let p = joi
 await new Promise((r) => srv.listen(PORT, r));
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 820, height: 1180 }, serviceWorkers: "block" });
-await ctx.addInitScript(() => localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 0, hearts: 5, heartsAt: Date.now(), streak: 0, lastDay: null, done: {}, lessonsCompleted: 0, installTipClosed: true, lastActive: Date.now(), prefs: { sound: false, haptics: false, soundStyle: "J" } })));
+await ctx.addInitScript(() => { Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 0, hearts: 5, heartsAt: Date.now(), streak: 0, lastDay: null, done: {}, lessonsCompleted: 0, installTipClosed: true, lastActive: Date.now(), prefs: { sound: false, haptics: false, soundStyle: "J" } })); });
 const page = await ctx.newPage(); const errors = []; page.on("pageerror", (e) => errors.push(String(e.message)));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 await page.locator('[data-lesson="U1L1"]').focus(); await page.keyboard.press("Enter"); await page.waitForSelector(".overlay");

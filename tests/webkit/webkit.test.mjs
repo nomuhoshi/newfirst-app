@@ -60,7 +60,7 @@ async function open({ device, viewport, st, standalone = false, init = null, clo
   const ctx = await browser.newContext({ ...devices[device], ...(viewport ? { viewport } : {}), serviceWorkers: "block" });
   OPEN.push(ctx); ctx.setDefaultTimeout(8000);
   if (standalone) await ctx.addInitScript(STANDALONE);
-  await ctx.addInitScript(([v]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("suipian.progress", v); sessionStorage.setItem("seeded", "1"); } }, [JSON.stringify(st)]);
+  await ctx.addInitScript(([v]) => { if (!sessionStorage.getItem("seeded")) { Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", v); sessionStorage.setItem("seeded", "1"); } }, [JSON.stringify(st)]);
   if (init) await ctx.addInitScript(init);
   const page = await ctx.newPage(); const errors = []; page.on("pageerror", (e) => errors.push(String(e.message || e)));
   if (clock) await page.clock.install({ time: NOW });

@@ -65,7 +65,7 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block", acceptDownloads: true });
   const page = await ctx.newPage();
   const errors = []; page.on("pageerror", (e) => errors.push(String(e.message)));
-  await page.addInitScript((raw) => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("suipian.progress", raw); localStorage.setItem("suipian.progress.unreadable.1700000000000", "{旧的坏记录"); } }, FIX);
+  await page.addInitScript((raw) => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", raw); localStorage.setItem("suipian.progress.unreadable.1700000000000", "{旧的坏记录"); } }, FIX);
   await page.goto(URLBASE); await page.waitForSelector(".statsbar", { timeout: 15000 });
   await page.getByRole("button", { name: "我的" }).tap();
   await page.waitForSelector("[data-backup]");
