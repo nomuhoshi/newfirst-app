@@ -62,3 +62,6 @@
 | [#59](https://github.com/nomuhoshi/newfirst-app/pull/59) U8 + 样板关 | `0e89d6f` | 含在 u9c | — |
 | [#61](https://github.com/nomuhoshi/newfirst-app/pull/61) U9 | `4ee4a32` | u9c | `preview/u9c` `b2f4cc5`（= `4ee4a32` + 预览工作流） |
 | [#57](https://github.com/nomuhoshi/newfirst-app/pull/57) 账号验收入口 | `2b08b25` | — | C2 之后 |
+
+
+> **01:4x 更新**：老大授权持续修复、合并、部署。#63（反馈遮挡）CI 重跑中；#64（进度安全，含首次奖励去重、并发测试、清除代数）CI 中。真机待验项：反馈遮挡（三题型 × 答对/答错）、关闭重开进度、两个标签交替学习。不要逐个打开旧标签页。详见 docs/56 §6。
