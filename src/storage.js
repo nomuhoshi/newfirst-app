@@ -73,7 +73,7 @@ export function listUnreadable() {
 //   xp = 基线 xp + Σ 各页面 xp + Σ 各关 firstXp；lessonsCompleted = 基线次数 + Σ 各页面 runs（同一关两个页面各完成一次 = 两次，语义见 docs/56）；
 //   streak / lastDay 跟最后学习日期最新的一方；红心 / 偏好 / 开场标记取 meta.t 最新的一方。
 // 页面 id：每次页面加载都生成新的随机 id（不用 sessionStorage：复制标签页 / 部分新窗口会继承它，两个同时活着的页面就会写同一个键）。刷新后是新 id、新键，旧键的账本原样保留，合并时各取各的，不会重复计分。
-// 不做自动压缩 / 删除（压缩与另一页的并发更新有竞争窗口，会丢进度）；键会随“有保存动作的页面加载次数”增长，空间不足时保存明确失败（返回 false，页面提示）。
+// 压缩见 compactLedgers（只折叠 3 天没动过的条目，幂等，不丢进度）；压缩跟不上或空间不足时保存明确失败（返回 false，页面提示）。
 // 旧键 suipian.progress：一次性迁移（只读，不改不删），此后 v4 **不再从旧键读取进度**（不自动回灌）；v4 保存后另写一份旧格式镜像，仅为兼容尽力而为，不是进度来源，写失败不影响保存结果。
 //   旧代码页面之后写进旧键的内容不会被迁入；清除之后这一代同样不读旧键。
 // =====================================================================================
@@ -261,7 +261,45 @@ export function loadState() {
   const r = stateFromView(S, epoch, b.base);
   if (!r) return { state: freshState(), notice: "读取本机学习记录时出错，这次先不保存，请刷新重试（记录没有被改动）。", readFailed: true };
   stashLegacyIfUnreadable(S);
+  if (!b.unsaved && _auto.on) compactLedgers(); // 键很多时顺手压缩；失败不影响加载
   return { state: r.state, notice: b.notice };
+}
+
+// ---- 安全压缩（Fable 审计 B）----
+// 每次页面加载新建一个账本键，用久了键越来越多、每次打开要读全部。压缩 = 把“很久没动过的页面”的账本条目复制进一个新的汇总键，再删掉原键。
+// 为什么安全：条目按“页面 id”合并（同 id 取最大、关卡取并集），同一个条目出现在汇总键和原键里两份，合并结果和只有一份完全一样（幂等），
+//   所以“先写汇总键并读回确认、再删原键”的任何中间状态，任何页面读到的视图都一样；多个页面同时压缩时各写各的汇总键（不共用可变记录），
+//   删除前再读一次原键，内容变了（页面又写过）就不删。只处理 3 天以上没动过的条目、不碰自己的键、不碰别的代数；任何读取异常或读不懂的账本一律放弃本次压缩。
+export const _auto = { on: true }; // 仅测试用：关掉加载时的自动压缩
+export const COMPACT_MIN_KEYS = 24, COMPACT_MIN_AGE_MS = 3 * 24 * 3600 * 1000;
+export function compactLedgers({ now = Date.now(), minKeys = COMPACT_MIN_KEYS, minAgeMs = COMPACT_MIN_AGE_MS } = {}) {
+  const S = LS();
+  try {
+    const epoch = getEpoch(S); if (epoch === null) return { skipped: "读取失败" };
+    const keys = keysWith(S, K_TAB); if (!keys) return { skipped: "枚举失败" };
+    if (keys.length < minKeys) return { skipped: "键不多" };
+    const own = K_TAB + PAGE_ID, picked = [];
+    for (const k of keys) {
+      if (k === own) continue;
+      const r = rd(S, k); if (!r.ok) return { skipped: "读取失败" };
+      if (!r.v) continue;
+      const rec = parse(r.v);
+      if (!rec || rec.v !== 4 || typeof rec.epoch !== "string" || !rec.entries || typeof rec.entries !== "object") return { skipped: "有读不懂的账本" };
+      if (rec.epoch !== epoch) continue;
+      let t = 0; for (const e of Object.values(rec.entries)) t = Math.max(t, num(e && e.meta && e.meta.t));
+      if (!t || now - t < minAgeMs) continue; // 没有时间戳或最近动过：不碰
+      picked.push({ k, raw: r.v, rec });
+    }
+    if (picked.length < 2) return { skipped: "可压缩的不够" };
+    const pool = {};
+    for (const p of picked) for (const [id, e] of Object.entries(p.rec.entries)) joinEntry(pool[id] || (pool[id] = emptyEntry()), e);
+    const poolKey = K_TAB + "c" + rnd() + rnd(), raw = JSON.stringify({ v: 4, epoch, entries: pool });
+    if (!wr(S, poolKey, raw)) return { skipped: "写入失败" };
+    const back = rd(S, poolKey); if (!back.ok || back.v !== raw) { rm(S, poolKey); return { skipped: "读回不一致" }; }
+    let removed = 0;
+    for (const p of picked) { const again = rd(S, p.k); if (again.ok && again.v === p.raw && rm(S, p.k)) removed++; } // 内容变了（页面又写过）就不删
+    return { folded: picked.length, removed, poolKey };
+  } catch { return { skipped: "出错" }; }
 }
 
 // 别处清除过（代数变了）：丢弃内存里的旧记录，采用新一代的状态。视图读不完整时返回 false，内存记录不动。
