@@ -87,4 +87,16 @@
 | 2b | PASS | **溢出实测**：U1L1 复习的排序题故意排错，反馈含 3 行正确答案，375×375 下出现独立滚动条；滚动后最后一行 `print("请点单")` 从被挡变为完整可见；背后标题前后不变（x=18, y=−72, 324×57）；滚到底后「继续」仍固定可见，点击成功 | [06_review_scroll_before.png](evidence/2026-11-11-d6-prod/06_review_scroll_before.png)、[07_review_scroll_bottom.png](evidence/2026-11-11-d6-prod/07_review_scroll_bottom.png)、[08_review_continue_clicked.webp](evidence/2026-11-11-d6-prod/08_review_continue_clicked.webp) |
 | 3 | PASS | 刷新前后「我的」：连续 1 天、XP 50、已完成 1/34、红心 5/5；随机练习不加 XP、不扣红心；未完成的复习不计奖励 | [05_progress_after_refresh.png](evidence/2026-11-11-d6-prod/05_progress_after_refresh.png) |
 
-**结论**：D6 本轮修复闭环（产品官 20:23）。iPhone Safari / PWA 未验。
+**结论（已撤回）**：~~D6 本轮修复闭环（产品官 20:23）~~。产品官 2026-11-12 00:44 撤回：桌面响应式通过不足以认定 iPhone 修复完成；iPhone Safari 实测失败，见 §5。以上桌面记录保留。
+
+## 5. iPhone 实测（老大，2026-11-12 00:40 前后）—— D6 **失败**，修复未闭环
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| Safari：U1L1 填空题「屏幕要显示：今日推荐：珍珠奶茶」**答对**后 | **失败**：「继续」按钮盖住「✓ 答对了！ +10 XP」标题；反馈区下方到底部工具栏之间有大块空白 | [01_safari_correct_feedback_overlap.png](evidence/2026-11-12-iphone/01_safari_correct_feedback_overlap.png)（原图，iPhone Safari，顶部地址栏 + 底部浮动工具栏，非无痕情况待记录） |
+| Safari：关闭标签页后重开 | **失败**：进度丢失（独立失败项） | 老大口述（截图待补） |
+| PWA（主屏幕）版本 | 通过 | 老大口述 |
+| PWA 首次从图标打开 | 进度为空：**暂记为“跨入口进度未衔接”，原因待查**（Safari 与 PWA 可能是不同存储空间，不能据此判定原存档被删） | 老大口述 |
+
+**要点**：失败截图是**答对**状态。之前的自动化和桌面复核只测了答错路径，验收必须覆盖答对 / 答错两条路径和填空 / 排序 / 选择三种题。
+**诊断**：已交 Fable 专项诊断（真实 Safari 可视高度、地址栏伸缩、安全区、`ios-browser` 80px 留白与「继续」sticky 的相互作用；进度写入时机、保存异常、启动初始化、版本升级、存储键 / 来源）。先给根因和最小修复方案，不再凭桌面尺寸加 CSS；不盲目回退，确认是本次发布引入的回归才回退对应前端变更。
