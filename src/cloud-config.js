@@ -32,6 +32,8 @@ export const PROD_CLOUD = DEFAULT;
 // 用来在正式项目上验真实收信、登录、双会话同步，而不必先对所有用户开放。?accounts-pilot=0 关掉。
 // 配套要求（见 supabase/prod-init/C2-auth-smtp.md）：验收期间正式项目“允许新用户注册”保持关闭，只用后台手动添加的测试邮箱，
 // 所以即使别人也加了这个参数，也注册不了新账号。正式开放时把 ACCOUNTS_LIVE 改为 true，再打开注册。
+// 边界（产品官 5 号 17:06）：这个参数是公开的功能入口，**不是访问控制**；关闭注册只挡新账号，已有账号的人加了参数仍能登录和同步。
+// 后端的数据隔离靠 RLS 和三个只认 auth.uid() 的函数，不靠这个参数。
 const PILOT_KEY = "suipian.accountsPilot";
 function pilotOptIn() {
   try {

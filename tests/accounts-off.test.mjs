@@ -97,5 +97,23 @@ const raw = (page) => page.evaluate((keys) => Object.fromEntries(keys.map((k) =>
   check("C5 没有脚本错误", errors.length === 0, errors.join("; "));
   await ctx.close();
 }
+// D 用 ?accounts-pilot=0 关回去：已有的登录凭证、账号副本、游客进度都不删除、不改写，也不发请求
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers: "block" });
+  const supa = []; ctx.on("request", (r) => { if (/supabase\.(co|in)/i.test(r.url())) supa.push(r.url()); });
+  const guest = JSON.stringify({ version: 3, onboarded: true, xp: 70, hearts: 4, heartsAt: Date.now(), streak: 2, lastDay: "2026-11-10", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: true, lastActive: 0 });
+  const seed = { ...KEEP, "suipian.accountsPilot": "1", "suipian.progress": guest };
+  await ctx.addInitScript((kv) => { if (!sessionStorage.getItem("seeded")) { for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); sessionStorage.setItem("seeded", "1"); } }, seed);
+  const page = await ctx.newPage();
+  await page.goto(BASE + "?accounts-pilot=0"); await page.waitForFunction(() => window.__app?.getState); await page.waitForTimeout(400);
+  const now = await page.evaluate((keys) => Object.fromEntries(keys.map((k) => [k, localStorage.getItem(k)])), [...Object.keys(KEEP), "suipian.progress", "suipian.accountsPilot"]);
+  check("D1 ?accounts-pilot=0：本机的验收标记被清掉", now["suipian.accountsPilot"] === null);
+  check("D2 登录凭证、账号副本、设备号逐字不变（不删除）", Object.keys(KEEP).every((k) => now[k] === KEEP[k]));
+  check("D3 游客进度逐字不变", now["suipian.progress"] === guest);
+  await page.getByRole("button", { name: "我的" }).click(); await page.waitForTimeout(300);
+  check("D4 回到“云端暂未开通”，没有登录入口", /云端暂未开通/.test(await page.locator("#app").innerText()) && (await page.locator("[data-open-login]").count()) === 0);
+  check("D5 没有请求发到 Supabase", supa.length === 0, supa.join(" "));
+  await ctx.close();
+}
 await browser.close(); srv.close();
 const failed = results.filter((r) => !r).length; console.log(`\n共 ${results.length} 项，失败 ${failed} 项`); process.exit(failed ? 1 : 0);
