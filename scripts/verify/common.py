@@ -47,6 +47,11 @@ def real_error(code):
     except BaseException as e:
         frames = [f for f in _tb.extract_tb(e.__traceback__) if f.filename == "main.py"]
         src = code.split("\n")
+        if not frames and isinstance(e, SyntaxError) and e.filename == "main.py" and e.lineno:
+            # 编译时就出错（一行都没运行）：真实 Python 的显示没有 Traceback 标题，只有位置、那一行和错误
+            ln = e.lineno; cl = src[ln - 1].strip()
+            return {"type": type(e).__name__, "line": ln, "msg": e.msg, "stdout": "", "code_line": cl,
+                    "trace": "\n".join([f'  File "main.py", line {ln}', "    " + cl, f"{type(e).__name__}: {e.msg}"])}
         lines = ["Traceback (most recent call last):"]
         for f in frames:
             lines.append(f'  File "main.py", line {f.lineno}, in {f.name}')

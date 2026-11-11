@@ -427,7 +427,7 @@
       "exercises": [
         {
           "type": "pick",
-          "prompt": "点了一杯咖啡，运行报了 KeyError: '咖啡'。出错的是哪一行？",
+          "prompt": "订单里有一杯咖啡，运行报了 KeyError: '咖啡'。出错的是哪一行？",
           "key": "line",
           "code": "def bill(order, menu):\n    total = 0\n    for name in order:\n        total += menu[name]\n    return total\nmenu = {\"奶茶\": 15,\n        \"果茶\": 12}\norder = [\"奶茶\", \"咖啡\"]\nprint(bill(order, menu))",
           "trace": "Traceback (most recent call last):\n  File \"main.py\", line 9, in <module>\n    print(bill(order, menu))\n  File \"main.py\", line 4, in bill\n    total += menu[name]\nKeyError: '咖啡'",
@@ -465,7 +465,7 @@
         },
         {
           "type": "fill",
-          "prompt": "屏幕要显示：没有 咖啡，然后是合计 27",
+          "prompt": "屏幕要显示两行：没有 咖啡、27",
           "code": "menu = {\"奶茶\": 15,\n        \"果茶\": 12}\norder = [\"奶茶\", \"咖啡\",\n         \"果茶\"]\ntotal = 0\nfor name in order:\n    if name {0} menu:\n        total += menu[name]\n    else:\n        print(\"没有\", name)\nprint(total)",
           "tokens": [
             "in",
