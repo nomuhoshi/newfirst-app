@@ -61,7 +61,7 @@ try {
   const page = await ctx.newPage();
   const errors = []; page.on("pageerror", (e) => errors.push(e.message));
   const text = () => page.locator("#app").innerText();
-  const seed = (done, extra = {}) => page.evaluate(([d, x]) => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, done: Object.fromEntries(d.map((k) => [k, true])), prefs: { ...s.prefs, sound: false } }, x); localStorage.setItem("suipian.progress", JSON.stringify(s)); }, [done, extra]);
+  const seed = (done, extra = {}) => page.evaluate(([d, x]) => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, done: Object.fromEntries(d.map((k) => [k, true])), prefs: { ...s.prefs, sound: false } }, x); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); }, [done, extra]);
   const cacheKeys = () => page.evaluate(async () => (await caches.keys()).sort());
   const waitKeys = async (pred, ms = 15000) => { const t = Date.now(); let k = []; while (Date.now() - t < ms) { k = await cacheKeys(); if (pred(k)) return k; await page.waitForTimeout(300); } return k; };
   const U1 = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"];
@@ -190,7 +190,7 @@ try {
     const pe = await ctx.newPage();
     const eerrs = []; pe.on("pageerror", (e) => eerrs.push(e.message));
     await pe.goto(BASE); await pe.waitForSelector(".statsbar, .onboard");
-    await pe.evaluate(() => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, xp: 0, streak: 0, lastDay: null, lessonsCompleted: 0, done: {}, prefs: { ...s.prefs, sound: false } }); window.__app.setState(s); window.__app.persist(); window.__app.renderPath(); });
+    await pe.evaluate(() => { window.__app.clearProgress(); const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, xp: 0, streak: 0, lastDay: null, lessonsCompleted: 0, done: {}, prefs: { ...s.prefs, sound: false } }); window.__app.setState(s); window.__app.persist(); window.__app.renderPath(); });
     const startL1 = async () => { await pe.locator('[data-lesson="U1L1"]').tap(); await pe.locator(".overlay .btn3d.primary").tap(); await pe.waitForSelector(".intro-title"); await pe.getByRole("button", { name: "继续", exact: true }).tap(); await pe.waitForSelector("[data-check]"); };
     const ans = async (correct) => { const e = await pe.evaluate(() => window.__app.currentEx); if (e.type === "predict") await pe.locator(".choice").nth(e.options.findIndex((o) => !!o.correct === correct)).tap(); else if (e.type === "fill") { const toks = correct ? e.answer : [e.tokens.find((t) => !e.answer.includes(t))]; for (const t of toks) await pe.locator(`[data-token=${JSON.stringify(t)}]`).tap(); } await pe.locator("[data-check]").tap(); await pe.waitForSelector(".feedbar"); await pe.locator("[data-continue]").tap(); await pe.waitForSelector("[data-check]"); };
     await startL1();
@@ -217,7 +217,7 @@ try {
     check("退出关卡：重新通关一次只算一次完成：XP = 之前的 10 + 4×10 + 通关 10 = 60，完成次数 1，连续天数 1，红心仍是 4", fin.xp === 60 && fin.done && fin.lc === 1 && fin.streak === 1 && fin.hearts === 4, JSON.stringify(fin));
     await pe.locator("[data-continue]").tap(); await pe.waitForSelector(".pathview");
     // 点“检查”后马上退出：延迟的反馈回调不会在别的页面上出错，也不会重复计分
-    await pe.evaluate(() => { const s = window.__app.getState(); s.done = {}; s.xp = 0; window.__app.persist(); window.__app.renderPath(); });
+    await pe.evaluate(() => { window.__app.clearProgress(); window.__app.renderPath(); });
     await startL1();
     const ex0 = await pe.evaluate(() => window.__app.currentEx);
     await pe.locator(".choice").nth(ex0.options.findIndex((o) => o.correct)).tap();
