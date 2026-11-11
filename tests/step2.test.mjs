@@ -377,7 +377,7 @@ try {
   const p5 = await ctx.newPage();
   await p5.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
-    localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 130, hearts: 3, heartsAt: Date.now(), streak: 4, lastDay: "2026-11-01", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: true, lastActive: 1 }));
+    Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 130, hearts: 3, heartsAt: Date.now(), streak: 4, lastDay: "2026-11-01", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: true, lastActive: 1 }));
   });
   await p5.goto(BASE); await p5.waitForSelector(".statsbar");
   const s5 = await p5.evaluate(() => window.__app.getState());
@@ -673,7 +673,7 @@ try {
     await pk2.addInitScript(fakeAudio);
     await pk2.goto(BASE); await pk2.waitForSelector(".statsbar, .onboard");
     // 旧 v3 记录（没有 soundStyle，带着试听阶段的 keySound）：默认 J，学习进度保留
-    await pk2.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.xp = 77; delete s.prefs.soundStyle; s.prefs.keySound = "B"; s.prefs.sound = true; localStorage.setItem("suipian.progress", JSON.stringify(s)); });
+    await pk2.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.xp = 77; delete s.prefs.soundStyle; s.prefs.keySound = "B"; s.prefs.sound = true; Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); });
     await pk2.reload(); await pk2.waitForSelector(".statsbar");
     check("按键音效：旧记录没有这一项时默认 J，进度保留，旧试听字段被丢弃", await pk2.evaluate(() => { const s = window.__app.getState(); return s.prefs.soundStyle === "J" && s.xp === 77 && !("keySound" in s.prefs); }));
     await pk2.getByRole("button", { name: "我的" }).tap();
@@ -705,7 +705,7 @@ try {
     await pk2.getByRole("button", { name: "我的" }).tap();
     check("按键音效：刷新后选择仍在（A 是最后一次点的）", (await pk2.evaluate(() => window.__app.getState().prefs.soundStyle)) === "A" && (await pk2.locator('[data-keysound="A"]').getAttribute("aria-pressed")) === "true" && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "A");
     // 坏数据：不认识的风格回到 J
-    await pk2.evaluate(() => { const s = JSON.parse(localStorage.getItem("suipian.progress")); s.prefs.soundStyle = "Z"; localStorage.setItem("suipian.progress", JSON.stringify(s)); });
+    await pk2.evaluate(() => { const s = JSON.parse(localStorage.getItem("suipian.progress")); s.prefs.soundStyle = "Z"; Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); });
     await pk2.reload(); await pk2.waitForSelector(".statsbar");
     check("按键音效：存档里的风格不认识时回到 J", (await pk2.evaluate(() => window.__app.getState().prefs.soundStyle)) === "J" && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "J");
     // 在关卡里：选 D 后做一题，点选/检查都用 D（日志里是 select/correct 等事件名），流程不变
@@ -725,7 +725,7 @@ try {
     const pu = await ctx.newPage();
     const uerrs = []; pu.on("pageerror", (e) => uerrs.push(e.message));
     await pu.goto(BASE); await pu.waitForSelector(".statsbar, .onboard");
-    const seed = (done, extra = {}) => pu.evaluate(([d, x]) => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, done: Object.fromEntries(d.map((k) => [k, true])), prefs: { ...s.prefs, sound: false } }, x); localStorage.setItem("suipian.progress", JSON.stringify(s)); }, [done, extra]);
+    const seed = (done, extra = {}) => pu.evaluate(([d, x]) => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, done: Object.fromEntries(d.map((k) => [k, true])), prefs: { ...s.prefs, sound: false } }, x); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); }, [done, extra]);
     const U1 = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"];
     const cls = (id) => pu.locator(`[data-lesson="${id}"]`).getAttribute("class");
     // 1) 第 1 单元只完成 5 关：第 2 单元全部锁着
@@ -798,7 +798,7 @@ try {
   const p4 = await ctx.newPage();
   await p4.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
-    localStorage.setItem("suipian.progress", JSON.stringify({ version: 2, lesson: "L01", page: 6, started: true, lessonDone: { L01: true }, exDone: { X1: true, X2: true }, drafts: { P1a: { code: "x" } }, installTipClosed: true }));
+    Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", JSON.stringify({ version: 2, lesson: "L01", page: 6, started: true, lessonDone: { L01: true }, exDone: { X1: true, X2: true }, drafts: { P1a: { code: "x" } }, installTipClosed: true }));
   });
   await p4.goto(BASE);
   await p4.getByRole("button", { name: "继续", exact: true }).tap(); await p4.getByRole("button", { name: "继续", exact: true }).tap(); await p4.getByRole("button", { name: "开始学习" }).tap();
@@ -818,7 +818,7 @@ try {
   await p2.close();
   const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const p3 = await ctx3.newPage();
-  await p3.addInitScript(() => { try { localStorage.setItem("suipian.progress", "{坏掉的数据"); } catch {} });
+  await p3.addInitScript(() => { try { Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", "{坏掉的数据"); } catch {} });
   await p3.goto(BASE);
   check("记录损坏：从头开始，不白屏", /你好，我是小码/.test(await p3.locator("#app").innerText()));
   await p3.close();

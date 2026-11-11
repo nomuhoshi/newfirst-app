@@ -23,7 +23,7 @@ const ctx = await browser.newContext({ viewport: { width: 390, height: 760 }, is
 ctx.setDefaultTimeout(20000);
 const NOW = Date.now();
 const st = (done) => ({ version: 3, onboarded: true, xp: 0, hearts: 5, heartsAt: NOW, streak: 0, lastDay: null, done: Object.fromEntries(done.map((k) => [k, true])), lessonsCompleted: done.length, installTipClosed: true, lastActive: NOW, prefs: { sound: false, haptics: false, soundStyle: "J" } });
-await ctx.addInitScript((s) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("suipian.progress", s); sessionStorage.setItem("seeded", "1"); } }, JSON.stringify(st(prev)));
+await ctx.addInitScript((s) => { if (!sessionStorage.getItem("seeded")) { Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", s); sessionStorage.setItem("seeded", "1"); } }, JSON.stringify(st(prev)));
 const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");

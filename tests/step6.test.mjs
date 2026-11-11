@@ -100,7 +100,7 @@ const IPHONE_SAFARI_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)
 async function openPage(seedState, vp = { width: 390, height: 844 }) {
   const { safari, ...viewport } = vp; // safari: 用 iPhone Safari 的 UA，应用会加 ios-browser 类（底栏更高）
   const ctx = await browser.newContext({ viewport, hasTouch: true, isMobile: true, serviceWorkers: "block", ...(safari ? { userAgent: IPHONE_SAFARI_UA } : {}) });
-  if (seedState) await ctx.addInitScript(([k, v]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem(k, v); sessionStorage.setItem("seeded", "1"); } }, [KEY, JSON.stringify(seedState)]);
+  if (seedState) await ctx.addInitScript(([k, v]) => { if (!sessionStorage.getItem("seeded")) { Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem(k, v); sessionStorage.setItem("seeded", "1"); } }, [KEY, JSON.stringify(seedState)]);
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e.message || e)));

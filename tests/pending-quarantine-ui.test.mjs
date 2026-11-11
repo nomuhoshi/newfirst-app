@@ -107,7 +107,7 @@ async function corruptedDevice(name, email) {
   const uid = await uidOf(d);
   await d.page.evaluate(([uid, bad, ns]) => {
     const g = { ...window.__app.getState(), onboarded: true, xp: 80, lessonsCompleted: 2, done: { U1L1: true, U1L2: true }, streak: 1, lastDay: "2026-11-05" };
-    localStorage.setItem("suipian.progress", JSON.stringify(g));
+    Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(g));
     localStorage.setItem(ns + "suipian.acct.import." + uid, bad);
   }, [uid, BAD, NS]);
   const reqs = []; d.page.on("request", (r) => { if (r.url().startsWith(FAKE)) reqs.push(r.method() + " " + new URL(r.url()).pathname); });
