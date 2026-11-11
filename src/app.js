@@ -31,7 +31,7 @@ import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
-  loadState, saveState, mergeStored, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
+  loadState, saveState, mergeStored, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
 } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
@@ -450,6 +450,7 @@ function renderOnboarding(i = 0) {
   appEl.replaceChildren(h("main", { class: "onboard" },
     h("div", { class: "onboard-mid" }, mascot(120, s.mood), h("h1", { text: s.text }), s.sub ? h("p", { text: s.sub }) : null),
     h("div", { class: "onboard-dots" }, steps.map((_, k) => h("span", { class: k === i ? "on" : "" }))),
+    i === 0 && standalone && !Object.keys(state.done).length ? h("p", { class: "onboard-migrate", "data-migrate-hint": "", text: "这里暂时没有学习记录。如果你之前在 Safari 学习，可以从 Safari 的「我的」导出进度文件，再到这里导入。" }) : null,
     i === steps.length - 1 && cloudApi.configured ? button("已有账号？登录", () => accountUi.openLogin({ reason: "登录后会取回你在云端保存的进度。" }), "btn3d ghost wide", { "data-onboard-login": "" }) : null,
     button(i < steps.length - 1 ? "继续" : "开始学习", () => {
       if (i < steps.length - 1) renderOnboarding(i + 1);
@@ -593,6 +594,8 @@ function selfTest() {
       `离线支持：${swInfo.status}`,
       `网络：${navigator.onLine === false ? "离线" : "在线"}`,
       `运行方式：${standalone ? "主屏幕 App" : "浏览器"}`,
+      `入口网址：${location.origin}${location.pathname}`, // 不含查询参数和片段，避免暴露认证信息
+      `学习记录：已完成 ${Object.keys(state.done).length} 关，XP ${state.xp}；最后一次成功保存：${getLastSavedAt() ? new Date(getLastSavedAt()).toLocaleString() : "本次打开后尚未保存"}`,
       `音效开关：${d.soundPref ? "开" : "关"}`,
       `AudioContext：${d.audioState}${d.sampleRate ? `（${d.sampleRate} Hz）` : ""}`,
       `音频会话：${d.audioSession}`,
