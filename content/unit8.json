@@ -1191,12 +1191,12 @@
         {
           "type": "predict",
           "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
-          "code": "def total(price, cups=1):\n    return price * cups\nprint(total(8, cups=3))\nprint(total(cups=3, price=8))",
+          "code": "def total(price, cups=1):\n    return price * cups\nprint(total(8, cups=3))\nt = total(cups=3, price=8)\nprint(t)",
           "options": [
             {
               "text": "24\n24",
               "correct": true,
-              "why": "第一次 8 按位置给 price，cups=3 按名字给 cups：8 × 3 = 24。第二次两个都按名字给，顺序无关，还是 price 8、cups 3，24。"
+              "why": "第一次 8 按位置给 price，cups=3 按名字给 cups：8 × 3 = 24。第二次 t = total(cups=3, price=8) 两个都按名字给，顺序无关，还是 price 8、cups 3，t 是 24。"
             },
             {
               "text": "24\n报错",
@@ -1266,7 +1266,7 @@
             "drink",
             "cups",
             "name",
-            "\"drink\""
+            "Drink"
           ],
           "answer": [
             "drink"
@@ -1275,7 +1275,7 @@
           "why": {
             "cups": "cups 已经按名字给过 2 了，同一个名字写两次，写法本身就不允许，报 SyntaxError。",
             "name": "order 里没有叫 name 的参数，报 TypeError：got an unexpected keyword argument 'name'。名字要和 def 里的参数一致。",
-            "\"drink\"": "按名字传时，等号左边是参数的名字，不加引号；加了引号会报 SyntaxError。"
+            "Drink": "大小写不同就是另一个名字：order 里没有 Drink 这个参数，报 TypeError：got an unexpected keyword argument 'Drink'。"
           },
           "hint": "等号左边写 def 里参数的名字：要把果茶给哪个参数？"
         }

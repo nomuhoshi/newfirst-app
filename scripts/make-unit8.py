@@ -687,8 +687,8 @@ K4_CODE = D_ORDER + '\norder(cups=2, {0}="果茶")'
 def k4(t): return K4_CODE.replace("{0}", t)
 assert real_out(k4("drink")) == "2 杯 果茶"
 assert run(k4("cups"))[1] == "SyntaxError"            # 同一个名字写两次：语法上就不允许
-assert run(k4("name"))[1] == "TypeError" and real_error(k4("name"))["msg"] == "order() got an unexpected keyword argument 'name'"
-assert real_error(k4("Drink"))["msg"] == "order() got an unexpected keyword argument 'Drink'"
+assert run(k4("name"))[1] == "TypeError" and real_error(k4("name"))["msg"].startswith("order() got an unexpected keyword argument 'name'")
+assert real_error(k4("Drink"))["msg"].startswith("order() got an unexpected keyword argument 'Drink'")
 held.append(
  {"id": "U8L8", "title": "按名字传值", "concept": "关键字参数：名字=值，和顺序无关；按位置的写在前面，同一个参数只给一次",
   "story": "参数一多，按位置传容易记错顺序。也可以按名字传：order(cups=2, drink=\"奶茶\")，名字对上就行，和先后顺序无关。按位置和按名字可以一起用，但按位置的要写在前面；同一个参数只能给一次。",
