@@ -374,7 +374,7 @@ try {
   await page.evaluate(() => { const s = window.__app.getState(); s.prefs.sound = true; window.__app.setState(s); window.__app.persist(); });
 
   // 旧 v3 记录（没有 prefs）：保留全部进度，只补默认偏好
-  const p5 = await ctx.newPage();
+  const p5 = await (await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })).newPage(); /* 新的浏览器环境：旧存档首次迁移不受其他页面残留的 v4 记录影响 */
   await p5.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
     Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 130, hearts: 3, heartsAt: Date.now(), streak: 4, lastDay: "2026-11-01", done: { U1L1: true, U1L2: true }, lessonsCompleted: 2, installTipClosed: true, lastActive: 1 }));
@@ -722,7 +722,7 @@ try {
 
   // ---------- 第 2 单元：解锁、通关、保存 ----------
   {
-    const pu = await ctx.newPage();
+    const pu = await (await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })).newPage(); /* 新的浏览器环境，避免同环境其他页面的 v4 记录干扰预置存档 */
     const uerrs = []; pu.on("pageerror", (e) => uerrs.push(e.message));
     await pu.goto(BASE); await pu.waitForSelector(".statsbar, .onboard");
     const seed = (done, extra = {}) => pu.evaluate(([d, x]) => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, done: Object.fromEntries(d.map((k) => [k, true])), prefs: { ...s.prefs, sound: false } }, x); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); }, [done, extra]);
