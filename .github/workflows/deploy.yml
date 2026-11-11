@@ -53,7 +53,14 @@ jobs:
       - run: npm ci
       - name: 安装浏览器和系统依赖
         id: install
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        # runner 偶发 apt 解析不到 ubuntu 镜像（2026-11-12 实际发生：Temporary failure resolving）。只重试安装本身，最多 4 次，间隔递增；
+        # 4 次都失败仍然失败（报“环境失败”），不跳过浏览器、不算通过。
+        run: |
+          for i in 1 2 3 4; do
+            npx playwright install --with-deps ${{ matrix.browser }} && exit 0
+            echo "::warning::安装第 $i 次失败，$((i*30)) 秒后重试"; sudo apt-get clean || true; sleep $((i*30))
+          done
+          exit 1
       - run: npm run build
       - name: 手机模拟测试（${{ matrix.browser }}）
         id: mobile
