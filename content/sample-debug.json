@@ -1,0 +1,137 @@
+{
+  "id": "D1",
+  "title": "读代码与调试（样板）",
+  "subtitle": "追踪、测边界、选修复、再试一次",
+  "lessons": [
+    {
+      "id": "D1L1",
+      "title": "读代码：满 100 减 20",
+      "concept": "追踪变量、找能暴露错误的输入、判断修复、修完再试",
+      "story": "奶茶店的帮手 AI 写了一段满减程序。规则是：满 100 元减 20 元，正好 100 元也享受优惠。程序没有报错，可没报错不等于算对。这一关你来检查它：先看懂它算出什么，再找一个能让它露馅的金额，然后判断怎么改，最后用那个金额再试一次。",
+      "introCode": "total = 120\nif total > 100:\n    total = total - 20\nprint(total)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "AI 写的程序，total 是 120。屏幕上会显示什么？",
+          "code": "total = 120\nif total > 100:\n    total = total - 20\nprint(total)",
+          "options": [
+            {
+              "text": "100",
+              "correct": true,
+              "why": "120 > 100 成立，进入 if，total 变成 120 - 20 = 100，最后显示 100。对 120 来说，结果和规则一样——只试一个金额，看不出它有没有问题。"
+            },
+            {
+              "text": "120",
+              "correct": false,
+              "why": "120 > 100 成立，缩进的那一行会运行，total 已经被改成 100，print 显示的是改过之后的值。"
+            },
+            {
+              "text": "20",
+              "correct": false,
+              "why": "20 是减掉的数，没有单独显示；print(total) 显示的是变量 total 现在的值，100。"
+            }
+          ],
+          "tip": "一行一行追：每一行运行完，total 现在是多少？"
+        },
+        {
+          "type": "pick",
+          "key": "fix",
+          "checks": [],
+          "expected": "不一致",
+          "prompt": "规则：满 100 元减 20 元，正好 100 元也享受优惠。把第 1 行的 120 换成下面哪个金额再运行，能看出程序和规则不一致？",
+          "code": "total = 120\nif total > 100:\n    total = total - 20\nprint(total)",
+          "options": [
+            {
+              "text": "total = 100",
+              "correct": true,
+              "why": "规则说正好 100 元也减，应该显示 80；程序的条件是 total > 100，100 > 100 不成立，不减，显示 100。“正好等于 100”这一种被 > 漏掉了。",
+              "fixed": "total = 100\nif total > 100:\n    total = total - 20\nwant = 80\nprint(\"不一致\" if total != want else \"一致\")"
+            },
+            {
+              "text": "total = 99",
+              "correct": false,
+              "why": "99 不到 100：规则不减，程序也不减，都显示 99，一致。它离 100 很近，但还在不减的那一边。",
+              "fixed": "total = 99\nif total > 100:\n    total = total - 20\nwant = 99\nprint(\"不一致\" if total != want else \"一致\")"
+            },
+            {
+              "text": "total = 120",
+              "correct": false,
+              "why": "120 超过 100：规则减 20，程序也减 20，都显示 100，一致。比 100 大的金额，> 和 >= 结果一样，测不出问题。",
+              "fixed": "total = 120\nif total > 100:\n    total = total - 20\nwant = 100\nprint(\"不一致\" if total != want else \"一致\")"
+            },
+            {
+              "text": "total = 80",
+              "correct": false,
+              "why": "80 不到 100：规则不减，程序也不减，都显示 80，一致。",
+              "fixed": "total = 80\nif total > 100:\n    total = total - 20\nwant = 80\nprint(\"不一致\" if total != want else \"一致\")"
+            }
+          ],
+          "tip": "好的测试金额，是让“程序显示的”和“规则要的”不一样的那个。试试正好卡在规则分界线上的金额。"
+        },
+        {
+          "type": "pick",
+          "key": "fix",
+          "checks": [],
+          "expected": "全部一致",
+          "prompt": "要让程序和规则一致，第 2 行 if total > 100: 应该怎么改？（规则：满 100 元减 20 元，正好 100 元也享受优惠。）",
+          "code": "total = 120\nif total > 100:\n    total = total - 20\nprint(total)",
+          "options": [
+            {
+              "text": "改成 if total >= 100:",
+              "correct": true,
+              "why": "> 只认“大于 100”，漏掉了正好 100；>= 是“大于或等于”，把 100 补上了。100、101、120 都减 20，80、90、99 都不减，和规则全部一致。",
+              "fixed": "ok = True\nfor start in [80, 90, 99, 100, 101, 120]:\n    total = start\n    if total >= 100:\n        total = total - 20\n    want = start - 20 if start >= 100 else start\n    if total != want:\n        ok = False\nprint(\"全部一致\" if ok else \"有不一致\")"
+            },
+            {
+              "text": "改成 if total == 100:",
+              "correct": false,
+              "why": "正好 100 修好了，可是 120 也该减 20，现在 120 不减，显示 120。只修了露馅的那一个金额，别的又错了。",
+              "fixed": "ok = True\nfor start in [80, 90, 99, 100, 101, 120]:\n    total = start\n    if total == 100:\n        total = total - 20\n    want = start - 20 if start >= 100 else start\n    if total != want:\n        ok = False\nprint(\"全部一致\" if ok else \"有不一致\")"
+            },
+            {
+              "text": "改成 if total > 80:",
+              "correct": false,
+              "why": "100 修好了，但 90、99 也被减了 20（显示 70、79）。不到 100 不该减，这是改过头了。",
+              "fixed": "ok = True\nfor start in [80, 90, 99, 100, 101, 120]:\n    total = start\n    if total > 80:\n        total = total - 20\n    want = start - 20 if start >= 100 else start\n    if total != want:\n        ok = False\nprint(\"全部一致\" if ok else \"有不一致\")"
+            },
+            {
+              "text": "改成 if total >= 101:",
+              "correct": false,
+              "why": "金额是整数时，>= 101 和 > 100 是一回事：100 还是不减，显示 100。看起来改了，其实没修。",
+              "fixed": "ok = True\nfor start in [80, 90, 99, 100, 101, 120]:\n    total = start\n    if total >= 101:\n        total = total - 20\n    want = start - 20 if start >= 100 else start\n    if total != want:\n        ok = False\nprint(\"全部一致\" if ok else \"有不一致\")"
+            }
+          ],
+          "tip": "改完要对各种金额都对：不到 100、正好 100、超过 100 都想一遍，不是只对一个。"
+        },
+        {
+          "type": "predict",
+          "prompt": "改成 if total >= 100: 之后，用刚才露馅的金额 100 再运行一次。屏幕上会显示什么？",
+          "code": "total = 100\nif total >= 100:\n    total = total - 20\nprint(total)",
+          "options": [
+            {
+              "text": "80",
+              "correct": true,
+              "why": "100 >= 100 成立，进入 if，100 - 20 = 80，和规则一致。修完要用刚才露馅的那个金额再试一次，确认真的修好了。"
+            },
+            {
+              "text": "100",
+              "correct": false,
+              "why": ">= 是“大于或等于”，100 等于 100，条件成立，会减 20。显示 100 是修之前 > 100 的结果。"
+            },
+            {
+              "text": "60",
+              "correct": false,
+              "why": "if 里只有一行 total = total - 20，只减一次：100 - 20 = 80。"
+            },
+            {
+              "text": "120",
+              "correct": false,
+              "why": "第 1 行现在是 total = 100，不是 120；满 100 是减 20，不是加 20。"
+            }
+          ],
+          "tip": "修完别急着走：拿刚才露馅的金额再跑一遍。"
+        }
+      ]
+    }
+  ]
+}

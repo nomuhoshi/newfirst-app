@@ -1,0 +1,1157 @@
+{
+  "id": "U8",
+  "title": "函数",
+  "subtitle": "def、参数、return",
+  "lessons": [
+    {
+      "id": "U8L1",
+      "title": "定义和调用",
+      "concept": "def、函数体、调用 welcome()",
+      "story": "奶茶店每次开门都要说“欢迎光临”。用 def 给这段程序起个名字：def welcome(): 下面缩进的几行是函数体。def 只是记下做法，这时函数体不会运行。名字后面带括号 welcome() 才是调用：调用一次，函数体运行一次。要先定义，后调用。",
+      "introCode": "def welcome():\n    print(\"欢迎光临\")\nwelcome()\nwelcome()",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def welcome():\n    print(\"欢迎光临\")\nwelcome\nwelcome()",
+          "options": [
+            {
+              "text": "欢迎光临",
+              "correct": true,
+              "why": "第 3 行只写了 welcome，没有括号，只是提到这个名字，没有调用，函数体不会运行（也不会报错）。第 4 行 welcome() 带括号才是调用，函数体运行一次，所以只显示一次“欢迎光临”。"
+            },
+            {
+              "text": "欢迎光临\n欢迎光临",
+              "correct": false,
+              "why": "只写名字 welcome 不算调用。调用要带括号：这段程序只有第 4 行 welcome() 一次调用，欢迎光临只显示一次。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "只写名字不会报错：welcome 在第 1 行已经定义过，提到它没有问题，只是不会运行函数体。用到没有定义的名字才会报 NameError。"
+            },
+            {
+              "text": "什么都不显示",
+              "correct": false,
+              "why": "第 4 行 welcome() 带着括号，是调用，函数体会运行，显示“欢迎光临”。只写名字的是第 3 行，那一行什么都不做。"
+            }
+          ],
+          "tip": "名字后面带括号才是调用：welcome 只是提到名字，welcome() 才让它运行。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def welcome():\n    print(\"欢迎光临\")\nwelcome()\nprint(\"请点单\")\nwelcome()",
+          "options": [
+            {
+              "text": "欢迎光临\n请点单\n欢迎光临",
+              "correct": true,
+              "why": "函数在被调用的那一行运行：第 3 行调用 → 欢迎光临；第 4 行 → 请点单；第 5 行再调用一次 → 再显示一次欢迎光临。调用几次，函数体就运行几次。"
+            },
+            {
+              "text": "欢迎光临\n请点单",
+              "correct": false,
+              "why": "第 5 行又调用了一次 welcome()，函数体会再运行一遍，所以欢迎光临显示两次。"
+            },
+            {
+              "text": "欢迎光临\n欢迎光临\n请点单",
+              "correct": false,
+              "why": "程序按顺序一行一行运行：第 3 行调用（欢迎光临），第 4 行 print（请点单），第 5 行再调用（欢迎光临）。两次调用之间夹着“请点单”。"
+            },
+            {
+              "text": "欢迎光临\n欢迎光临\n欢迎光临\n请点单",
+              "correct": false,
+              "why": "def 那一行不会运行函数体，不算调用。这段程序只有第 3、5 行两次调用，欢迎光临只显示两次。"
+            }
+          ],
+          "tip": "一行一行往下走：碰到 welcome() 就把函数体运行一遍。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：欢迎光临",
+          "code": "def welcome():\n    print(\"欢迎光临\")\n{0}",
+          "tokens": [
+            "welcome()",
+            "welcome",
+            "def welcome():",
+            "Welcome()"
+          ],
+          "answer": [
+            "welcome()"
+          ],
+          "expected": "欢迎光临",
+          "why": {
+            "welcome": "只写名字、不带括号，只是提到了这个函数，没有调用它，函数体不会运行，屏幕上什么都不显示（也不会报错）。调用要带括号。",
+            "def welcome():": "def 是“定义”，不是“调用”。而且 def 后面必须有缩进的函数体，这里没有，会报 IndentationError（缩进错误：def 后面缺少缩进的内容）。",
+            "Welcome()": "大小写不同，Python 当成另一个名字。Welcome 没有定义过，会报 NameError（用到了没有定义的名字）。"
+          },
+          "hint": "函数已经定义好了，现在要让它运行：名字加括号。"
+        },
+        {
+          "type": "pick",
+          "prompt": "调用写在了定义的前面，运行报了错。最后一行说 NameError: name 'welcome' is not defined（welcome 这个名字还没有定义）。出错的是哪一行？",
+          "key": "line",
+          "code": "welcome()\ndef welcome():\n    print(\"欢迎光临\")",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 1, in <module>\n    welcome()\nNameError: name 'welcome' is not defined",
+          "checks": [
+            {
+              "program": "welcome()\ndef welcome():\n    print(\"欢迎光临\")",
+              "type": "NameError",
+              "line": 1,
+              "msg": "name 'welcome' is not defined"
+            }
+          ],
+          "options": [
+            {
+              "text": "welcome()",
+              "correct": true,
+              "why": "程序从上往下运行。到第 1 行调用 welcome() 时，下面的 def 还没有运行过，Python 还不知道 welcome 是什么，就在这一行报错了。先定义，后调用。"
+            },
+            {
+              "text": "def welcome():",
+              "correct": false,
+              "why": "def 这一行本身没有问题。它只是在调用的后面，程序还没有走到那里，就已经在第 1 行出错停下来了。"
+            },
+            {
+              "text": "print(\"欢迎光临\")",
+              "correct": false,
+              "why": "函数体一次都没有运行。程序在第 1 行就停了，根本没有走到这一行。"
+            }
+          ],
+          "tip": "报错时程序就停在出错的那一行；看看那一行用到的名字，之前有没有被定义过。"
+        }
+      ]
+    },
+    {
+      "id": "U8L2",
+      "title": "给函数一个参数",
+      "concept": "参数、传入值",
+      "story": "想让同一个函数按不同的饮品工作，就给它留一个空位：def say(drink): 括号里的 drink 叫参数，在函数体里像变量一样用。调用 say(\"奶茶\") 时，括号里的值传进空位，drink 就是 \"奶茶\"；每次调用都重新传值。本关的函数都只有一个参数，调用时就传一个值。",
+      "introCode": "def say(drink):\n    print(\"来一杯\", drink)\nsay(\"奶茶\")\nsay(\"果茶\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def say(drink):\n    print(\"来一杯\", drink)\nsay(\"咖啡\")\nsay(\"果茶\")",
+          "options": [
+            {
+              "text": "来一杯 咖啡\n来一杯 果茶",
+              "correct": true,
+              "why": "调用时，Python 先算出括号里的值，再把这个值传给参数。第 3 行调用 say(\"咖啡\")，咖啡传给 drink，显示“来一杯 咖啡”；第 4 行再调用 say(\"果茶\")，这次 drink 是果茶，显示“来一杯 果茶”。"
+            },
+            {
+              "text": "来一杯 drink\n来一杯 drink",
+              "correct": false,
+              "why": "print 里的 drink 没有引号，是参数这个变量，显示的是传进来的值（咖啡、果茶），不是单词 drink。"
+            },
+            {
+              "text": "来一杯 咖啡\n来一杯 咖啡",
+              "correct": false,
+              "why": "每次调用都会重新传值。第 4 行传的是果茶，drink 这次就是果茶。"
+            },
+            {
+              "text": "来一杯 果茶\n来一杯 咖啡",
+              "correct": false,
+              "why": "程序按顺序运行：先第 3 行传咖啡，再第 4 行传果茶，所以先显示咖啡。"
+            }
+          ],
+          "tip": "每次调用，括号里的值传给参数；函数体里的 drink 就是这一次传进来的值。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：应付 20",
+          "code": "def pay({0}):\n    print(\"应付\", price * 2)\npay(10)",
+          "tokens": [
+            "price",
+            "cups",
+            "10",
+            "\"price\""
+          ],
+          "answer": [
+            "price"
+          ],
+          "expected": "应付 20",
+          "why": {
+            "cups": "参数起名叫 cups，但函数体里用的是 price。price 没有定义过，调用时会报 NameError（用到了没有定义的名字）。参数的名字要和函数体里用的一致。",
+            "10": "def 的括号里要写一个名字（空位的名字），不能直接写具体的值 10，会报 SyntaxError（写法不符合语法）。值要在调用的时候传，pay(10)。",
+            "\"price\"": "括号里写的是名字，不是文字，不能加引号，会报 SyntaxError（写法不符合语法）。"
+          },
+          "hint": "def 括号里要写一个名字，函数体里用到的就是这个名字。"
+        },
+        {
+          "type": "pick",
+          "prompt": "忘了给 pay 传值，运行报了错。最后一行 TypeError: pay() missing 1 required positional argument: 'price' 是在说什么？",
+          "key": "type",
+          "code": "def pay(price):\n    print(\"应付\", price * 2)\npay()",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    pay()\nTypeError: pay() missing 1 required positional argument: 'price'",
+          "checks": [
+            {
+              "program": "def pay(price):\n    print(\"应付\", price * 2)\npay()",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "pay() missing 1 required positional argument: 'price'"
+            }
+          ],
+          "options": [
+            {
+              "text": "调用 pay() 时括号里没给值，必填参数 price 没有收到",
+              "correct": true,
+              "why": "本关的 pay(price) 定义了一个必填参数 price，调用时必须传一个值进去。第 3 行 pay() 括号里是空的，漏传了，所以 Python 说“少了 1 个必须给的参数 'price'”。",
+              "value": "TypeError"
+            },
+            {
+              "text": "pay 这个名字还没有定义",
+              "correct": false,
+              "why": "那是 NameError。pay 在第 1 行已经 def 过了；这里报的是 TypeError，说的是调用时少了一个值。",
+              "value": "NameError"
+            },
+            {
+              "text": "def 那一行少了冒号",
+              "correct": false,
+              "why": "少冒号是 SyntaxError，程序一行都不会运行。这里 def 写得没问题，函数体都定义好了，是第 3 行调用时才出的错。",
+              "value": "SyntaxError"
+            },
+            {
+              "text": "函数体没有缩进",
+              "correct": false,
+              "why": "那是 IndentationError。这里函数体的缩进是对的；最后一行写的是 TypeError，说的是调用时少了一个值。",
+              "value": "IndentationError"
+            }
+          ],
+          "tip": "missing 1 required argument：少了 1 个必须给的值（必填参数）。看看调用那一行括号里有没有东西。"
+        },
+        {
+          "type": "pick",
+          "prompt": "单价 10 元，屏幕要显示 应付 20。现在运行报了错，最后一行是 TypeError: pay() takes 1 positional argument but 2 were given。怎么改，屏幕才会显示 应付 20？",
+          "key": "fix",
+          "code": "def pay(price):\n    print(\"应付\", price * 2)\npay(10, 2)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    pay(10, 2)\nTypeError: pay() takes 1 positional argument but 2 were given",
+          "checks": [
+            {
+              "program": "def pay(price):\n    print(\"应付\", price * 2)\npay(10, 2)",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "pay() takes 1 positional argument but 2 were given"
+            }
+          ],
+          "expected": "应付 20",
+          "options": [
+            {
+              "text": "把第 3 行改成 pay(10)",
+              "correct": true,
+              "why": "报错说 pay 只收 1 个值，却给了 2 个：值传多了。pay(price) 只有一个参数，传单价 10 就够了，10 × 2 = 20。",
+              "fixed": "def pay(price):\n    print(\"应付\", price * 2)\npay(10)"
+            },
+            {
+              "text": "把第 3 行改成 pay()",
+              "correct": false,
+              "why": "方向反了：报错说的是给多了，这样改成了一个都不给，会报另一种 TypeError：missing 1 required positional argument（少了 1 个必须给的值）。",
+              "fixed": "def pay(price):\n    print(\"应付\", price * 2)\npay()"
+            },
+            {
+              "text": "把第 3 行改成 pay(2)",
+              "correct": false,
+              "why": "不报错了，但传进去的单价是 2，2 × 2 = 4，显示 应付 4。要留下的是单价 10。",
+              "fixed": "def pay(price):\n    print(\"应付\", price * 2)\npay(2)"
+            },
+            {
+              "text": "把第 1 行改成 def pay():",
+              "correct": false,
+              "why": "参数一个都没有了，调用时却还给了 2 个值，仍然是 TypeError（takes 0 positional arguments but 2 were given）；而且函数体还在用 price。",
+              "fixed": "def pay():\n    print(\"应付\", price * 2)\npay(10, 2)"
+            }
+          ],
+          "tip": "takes 1 … but 2 were given：只收 1 个，却给了 2 个。数一数括号里的值和 def 里的参数。"
+        }
+      ]
+    },
+    {
+      "id": "U8L3",
+      "title": "返回结果",
+      "concept": "return、print 和 return 的区别、None",
+      "story": "函数里的 print 只显示，显示完就没了。想把结果交回给调用的地方，用 return：two(8) 就变成交回的 16，可以存进变量、拿去计算。return 自己不显示；它一执行，这次调用就结束。没遇到 return，交回 None。",
+      "introCode": "def two(price):\n    return price * 2\ntotal = two(8)\nprint(total)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def show_two(price):\n    print(price * 2)\ndef two(price):\n    return price * 2\nshow_two(8)\ntwo(8)",
+          "options": [
+            {
+              "text": "16",
+              "correct": true,
+              "why": "show_two(8) 里的 print 把 16 显示在屏幕上；two(8) 用的是 return，只是把 16 交回来，这里没有变量接它，也没有 print，16 就丢掉了，不会显示，也不会报错。"
+            },
+            {
+              "text": "16\n16",
+              "correct": false,
+              "why": "return 不会显示。two(8) 交回的 16 没有被存起来，也没有被 print，屏幕上不会出现。"
+            },
+            {
+              "text": "什么都不显示",
+              "correct": false,
+              "why": "show_two(8) 里的 print 会运行，在屏幕上显示 16。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "单独写一行 two(8) 不会报错：它交回 16，没人接，就丢掉了。"
+            }
+          ],
+          "tip": "print 把东西显示出来；return 把值交回给调用的地方，不显示。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def two(price):\n    return price * 2\n    print(\"算完了\")\ntotal = two(8)\nprint(total)\nprint(total + 1)",
+          "options": [
+            {
+              "text": "16\n17",
+              "correct": true,
+              "why": "第 4 行 total = two(8)：函数执行到第 2 行的 return 就结束了，第 3 行 print(\"算完了\") 不会运行；two(8) 交回 16，存进 total。第 5 行显示 16，第 6 行 total + 1 是 17。"
+            },
+            {
+              "text": "算完了\n16\n17",
+              "correct": false,
+              "why": "第 3 行在 return 后面：函数执行到 return 这次调用就结束了，后面的 print(\"算完了\") 不会运行，不会显示“算完了”。"
+            },
+            {
+              "text": "16\n16",
+              "correct": false,
+              "why": "第 6 行是 print(total + 1)，要把 1 加上：16 + 1 = 17。"
+            },
+            {
+              "text": "8\n9",
+              "correct": false,
+              "why": "total 里存的是 two(8) 交回来的结果 16，不是传进去的 8。"
+            }
+          ],
+          "tip": "return 一执行，这次函数调用就结束，后面的语句不再运行。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def say(drink):\n    print(\"来一杯\", drink)\nx = say(\"奶茶\")\nprint(x)",
+          "options": [
+            {
+              "text": "来一杯 奶茶\nNone",
+              "correct": true,
+              "why": "第 3 行调用 say(\"奶茶\")：函数里的 print 显示“来一杯 奶茶”。say 执行结束时没有遇到 return，会自动返回 None，x 得到的就是 None，第 4 行 print(x) 就显示 None。"
+            },
+            {
+              "text": "来一杯 奶茶\n来一杯 奶茶",
+              "correct": false,
+              "why": "函数里 print 显示出来的文字不会被交回来存进 x。x 得到的是 None（什么都没有），不是那句话。"
+            },
+            {
+              "text": "来一杯 奶茶",
+              "correct": false,
+              "why": "第 4 行 print(x) 也会运行，会再显示一行：x 里是 None。"
+            },
+            {
+              "text": "来一杯 奶茶\n奶茶",
+              "correct": false,
+              "why": "say 执行结束时没有遇到 return，自动返回 None，不会把 drink 交回来。x 得到的是 None，不是奶茶。"
+            }
+          ],
+          "tip": "函数执行结束时没有遇到 return，会自动返回 None。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：20（函数 two 的第二行该怎么写）",
+          "code": "def two(price):\n    {0}\nprint(two(10))",
+          "tokens": [
+            "return price * 2",
+            "print(price * 2)",
+            "price * 2",
+            "show(price * 2)"
+          ],
+          "answer": [
+            "return price * 2"
+          ],
+          "expected": "20",
+          "why": {
+            "print(price * 2)": "函数里的 print 先把 20 显示出来，但函数执行结束时没有遇到 return，自动返回 None，外面的 print(two(10)) 就把 None 又显示了一遍：先 20，再 None，不是只显示 20。",
+            "price * 2": "只算了一下就丢掉了，函数执行结束时没有遇到 return，自动返回 None，外面的 print(two(10)) 显示的是 None。",
+            "show(price * 2)": "show 这个名字没有定义过，Python 找不到它，会报 NameError（用到了没有定义的名字）。要把结果交回去，用 return。"
+          },
+          "hint": "要把 price * 2 交回给调用它的 print(two(10))：用 return。"
+        }
+      ]
+    },
+    {
+      "id": "U8L4",
+      "title": "组合调用",
+      "concept": "返回结果参与计算、嵌套调用",
+      "story": "return 交回的值和平常的数一样用：存进变量 total = two(8)，参与计算 two(8) + 3，传给另一个函数 coupon(two(10))。套着写先算里面的：two(10) 得 20，再传给 coupon。要继续算的数，用 return。",
+      "introCode": "def two(price):\n    return price * 2\ndef coupon(price):\n    return price - 5\ntotal = coupon(two(10))\nprint(total)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def two(price):\n    return price * 2\nprint(two(8) + 3)\nprint(two(8) + two(5))",
+          "options": [
+            {
+              "text": "19\n26",
+              "correct": true,
+              "why": "two(8) 交回 16，两个 print 里的 two(…) 都换成它交回来的值：16 + 3 = 19；two(8) 是 16，two(5) 是 10，16 + 10 = 26。"
+            },
+            {
+              "text": "11\n13",
+              "correct": false,
+              "why": "two(8) 不是 8：函数交回的是 8 × 2 = 16。11、13 是没有经过函数、直接用 8 算出来的。"
+            },
+            {
+              "text": "16\n26",
+              "correct": false,
+              "why": "第 3 行是 print(two(8) + 3)，要把 3 也加上：16 + 3 = 19。"
+            },
+            {
+              "text": "19\n13",
+              "correct": false,
+              "why": "two(5) 也要经过函数：5 × 2 = 10，所以是 16 + 10 = 26，不是 8 + 5。"
+            }
+          ],
+          "tip": "先把每个 two(…) 换成它交回的值，再算加法。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def two(price):\n    return price * 2\ndef coupon(price):\n    return price - 5\nprint(coupon(two(10)))",
+          "options": [
+            {
+              "text": "15",
+              "correct": true,
+              "why": "套着的调用先算里面：two(10) 交回 20，20 再传给 coupon，20 - 5 = 15。"
+            },
+            {
+              "text": "10",
+              "correct": false,
+              "why": "顺序反了：这是先 coupon(10)（得 5）再 two(5)（得 10）的结果。题里是 coupon(two(10))，括号里面的 two(10) 先算，得 20，再减 5。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "5 是 coupon(10) 的结果。题里传给 coupon 的是 two(10) 交回的 20，不是 10。"
+            },
+            {
+              "text": "20",
+              "correct": false,
+              "why": "20 是 two(10) 的结果，还要把它传给 coupon，再减 5。"
+            }
+          ],
+          "tip": "f(g(x))：先算里面的 g(x)，再把结果交给 f。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：24",
+          "code": "def two(price):\n    return price * 2\na = two(8)\nb = two({0})\nprint(a + b)",
+          "tokens": [
+            "4",
+            "8",
+            "a",
+            "b"
+          ],
+          "answer": [
+            "4"
+          ],
+          "expected": "24",
+          "why": {
+            "8": "b = two(8) 是 16，a 也是 16，a + b 是 32，不是 24。",
+            "a": "a 里是 16，two(a) 是 two(16) = 32，a + b 是 16 + 32 = 48，不是 24。",
+            "b": "第 4 行等号右边先算，这时 b 还没有值，用到 b 会报 NameError（用到了没有定义的名字）。"
+          },
+          "hint": "a 已经是 16，要让 a + b = 24，b 就得是 8，也就是 two(?) 要交回 8。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想算“两杯的价钱再加 3 元”，屏幕要显示 19。运行后先显示了 16，又报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加；None 就是“什么都没有”）。怎么改，屏幕才会显示 19？",
+          "key": "fix",
+          "code": "def two(price):\n    print(price * 2)\ntotal = two(8) + 3\nprint(total)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    total = two(8) + 3\nTypeError: unsupported operand type(s) for +: 'NoneType' and 'int'",
+          "checks": [
+            {
+              "program": "def two(price):\n    print(price * 2)\ntotal = two(8) + 3\nprint(total)",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "unsupported operand type(s) for +: 'NoneType' and 'int'"
+            }
+          ],
+          "expected": "19",
+          "options": [
+            {
+              "text": "把 two 里的 print(price * 2) 改成 return price * 2",
+              "correct": true,
+              "why": "two 执行结束时没有遇到 return，自动返回 None，None + 3 报错。改成 return 后，two(8) 交回 16，16 + 3 = 19，最后 print(total) 显示 19。",
+              "fixed": "def two(price):\n    return price * 2\ntotal = two(8) + 3\nprint(total)"
+            },
+            {
+              "text": "把第 3 行的 + 3 去掉",
+              "correct": false,
+              "why": "两杯的价钱要再加 3，不能去掉。去掉后不报错了，但 two 里的 print 先显示 16，total 得到的还是 None，最后显示 16 和 None，不是 19。",
+              "fixed": "def two(price):\n    print(price * 2)\ntotal = two(8)\nprint(total)"
+            },
+            {
+              "text": "删掉最后一行 print(total)",
+              "correct": false,
+              "why": "报错发生在第 3 行 total = two(8) + 3，和最后一行无关，删掉它还是同样的 TypeError。",
+              "fixed": "def two(price):\n    print(price * 2)\ntotal = two(8) + 3"
+            },
+            {
+              "text": "把 3 改成文字 \"3\"",
+              "correct": false,
+              "why": "two(8) 得到的还是 None，None 和文字 \"3\" 也不能用 + 相加，仍然是 TypeError。",
+              "fixed": "def two(price):\n    print(price * 2)\ntotal = two(8) + \"3\"\nprint(total)"
+            }
+          ],
+          "tip": "本关要把算出的数字交给后续计算，所以用 return 返回数字；函数里的 print 只是显示。"
+        }
+      ]
+    },
+    {
+      "id": "U8L5",
+      "title": "两个参数和默认值",
+      "concept": "多个参数、按顺序传值、默认值、if 里的 return",
+      "story": "价格计算器要两个数：def total(price, cups): 逗号隔开，total(8, 3) 按顺序传值。写默认值 cups=1，不传就用 1；有默认值的参数放后面。函数里的 if：成立就在 if 里 return，否则往下走到后面的 return。",
+      "introCode": "def total(price, cups=1):\n    return price * cups\nprint(total(8, 3))\nprint(total(8))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def order(drink, cups):\n    print(cups, \"杯\", drink)\norder(\"奶茶\", 2)\norder(\"果茶\", 1)",
+          "options": [
+            {
+              "text": "2 杯 奶茶\n1 杯 果茶",
+              "correct": true,
+              "why": "两个值按顺序传：第 3 行 order(\"奶茶\", 2)，奶茶传给第一个参数 drink，2 传给第二个参数 cups。函数里 print(cups, \"杯\", drink) 先写 cups，所以先显示 2，再是“杯”，最后是奶茶。第 4 行同理。"
+            },
+            {
+              "text": "奶茶 杯 2\n果茶 杯 1",
+              "correct": false,
+              "why": "显示的顺序由函数里 print 的写法决定：print(cups, \"杯\", drink) 先显示 cups。传值的顺序和显示的顺序不一定一样。"
+            },
+            {
+              "text": "2 杯 奶茶\n2 杯 奶茶",
+              "correct": false,
+              "why": "每次调用都会重新传值。第 4 行传的是 \"果茶\" 和 1，drink、cups 这次就是果茶和 1。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "不会报错：调用时传了 2 个值，def 里正好有 2 个参数，个数是对得上的。"
+            }
+          ],
+          "tip": "按顺序对应：第一个值给第一个参数，第二个值给第二个参数。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？（想一想：每次调用在哪一行交回结果）",
+          "code": "def pay(price, cups=1):\n    total = price * cups\n    if total >= 30:\n        return total - 5\n    return total\nprint(pay(8, 3))\nprint(pay(8, 4))\nprint(pay(8))",
+          "options": [
+            {
+              "text": "24\n27\n8",
+              "correct": true,
+              "why": "每次调用先算 total，再看满不满 30。pay(8, 3)：total 是 24，不满 30，if 不成立，走到第 5 行 return total，交回 24。pay(8, 4)：total 是 32，满 30，在第 4 行 return total - 5 交回 27，这次调用到此结束，第 5 行不会运行。pay(8)：用默认 cups=1，total 是 8，走到第 5 行，交回 8。"
+            },
+            {
+              "text": "24\n32\n8",
+              "correct": false,
+              "why": "pay(8, 4) 的 total 是 32，满 30，if 成立，会在第 4 行 return total - 5，交回 27；return 一执行，这次调用就结束，轮不到第 5 行的 return total。"
+            },
+            {
+              "text": "19\n27\n3",
+              "correct": false,
+              "why": "减 5 只写在 if 里面的第 4 行。total 不满 30（24 和 8）时，if 不成立，走到第 5 行 return total，不减 5：24 和 8。"
+            },
+            {
+              "text": "24\n27\n报错",
+              "correct": false,
+              "why": "pay(8) 没传 cups 不会报错：cups 有默认值 1，total 是 8，不满 30，走到第 5 行，交回 8。"
+            }
+          ],
+          "tip": "每次调用重新算 total：满 30 在第 4 行 return，不满就走到第 5 行 return。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def total(price, cups=1):\n    return price * cups\nprint(total(8))\nprint(total(8, 3))\nprint(total(5))",
+          "options": [
+            {
+              "text": "8\n24\n5",
+              "correct": true,
+              "why": "cups=1 是默认值。第 3 行 total(8) 没传 cups，用默认的 1：8 × 1 = 8；第 4 行 total(8, 3) 传了 3，就用 3：8 × 3 = 24；第 5 行 total(5) 又没传，5 × 1 = 5。"
+            },
+            {
+              "text": "8\n8\n5",
+              "correct": false,
+              "why": "默认值只在没有传值时才用。第 4 行传了 3，cups 就是 3，不是默认的 1。"
+            },
+            {
+              "text": "0\n24\n0",
+              "correct": false,
+              "why": "没传 cups 时用的是它的默认值 1，不是 0，所以 8 × 1 = 8，5 × 1 = 5。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "cups 有默认值，调用时可以不传，不会报错。只有没有默认值的参数，漏传才会报 TypeError。"
+            }
+          ],
+          "tip": "传了值就用传的值；没传，才用默认值。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想让 total(8) 也能用（只买 1 杯，不用写杯数），屏幕要显示 8。现在运行报了错：TypeError: total() missing 1 required positional argument: 'cups'（调用时少了 1 个必须给的参数 cups）。怎么改，屏幕才会显示 8？",
+          "key": "fix",
+          "code": "def total(price, cups):\n    return price * cups\nprint(total(8))",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    print(total(8))\nTypeError: total() missing 1 required positional argument: 'cups'",
+          "checks": [
+            {
+              "program": "def total(price, cups):\n    return price * cups\nprint(total(8))",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "total() missing 1 required positional argument: 'cups'"
+            }
+          ],
+          "expected": "8",
+          "options": [
+            {
+              "text": "把第 1 行改成 def total(price, cups=1):",
+              "correct": true,
+              "why": "给 cups 一个默认值 1：total(8) 没传 cups，就用 1，8 × 1 = 8。",
+              "fixed": "def total(price, cups=1):\n    return price * cups\nprint(total(8))"
+            },
+            {
+              "text": "把第 1 行改成 def total(price, cups=0):",
+              "correct": false,
+              "why": "不报错了，但没传 cups 时它是 0，8 × 0 = 0，显示的是 0，不是 8。",
+              "fixed": "def total(price, cups=0):\n    return price * cups\nprint(total(8))"
+            },
+            {
+              "text": "把第 1 行改成 def total(price=1, cups):",
+              "correct": false,
+              "why": "有默认值的参数要写在没有默认值的参数后面。这样写，Python 一行都不会运行，直接报 SyntaxError（写法不符合语法）。",
+              "fixed": "def total(price=1, cups):\n    return price * cups\nprint(total(8))"
+            },
+            {
+              "text": "把第 1 行改成 def total(price):",
+              "correct": false,
+              "why": "cups 不再是参数了，但函数体里还在用它，调用时会报 NameError（用到了没有定义的名字）。",
+              "fixed": "def total(price):\n    return price * cups\nprint(total(8))"
+            }
+          ],
+          "tip": "不想每次都传的值，给它一个默认值；有默认值的参数写在后面。"
+        }
+      ]
+    },
+    {
+      "id": "U8L6",
+      "title": "函数里的变量",
+      "concept": "作用域：这些例子中，函数里定义的名字不能在函数外直接使用",
+      "story": "这一关的例子里：函数里定义的名字（包括参数），不能在函数外面直接使用，外面用会报 NameError。函数里给同名的 price 重新赋值，不会改变函数外面的 price。想把函数里算出的结果拿到外面，用 return 交回来，再接住它。",
+      "introCode": "price = 8\ndef double(price):\n    price = price * 2\n    return price\nprint(double(price))\nprint(price)",
+      "exercises": [
+        {
+          "type": "pick",
+          "prompt": "程序报了 NameError: name 'drink' is not defined（drink 这个名字没有定义）。drink 明明在函数里赋过值，出错的是哪一行？",
+          "key": "line",
+          "code": "def make_order():\n    drink = \"奶茶\"\n    print(\"做好了\", drink)\nmake_order()\nprint(drink)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 5, in <module>\n    print(drink)\nNameError: name 'drink' is not defined",
+          "checks": [
+            {
+              "program": "def make_order():\n    drink = \"奶茶\"\n    print(\"做好了\", drink)\nmake_order()\nprint(drink)",
+              "type": "NameError",
+              "line": 5,
+              "msg": "name 'drink' is not defined"
+            }
+          ],
+          "options": [
+            {
+              "text": "print(drink)",
+              "correct": true,
+              "why": "最后一行报错。drink 是在 make_order() 里面定义的名字，这个例子里它不能在函数外面直接使用，外面的 print(drink) 就找不到它。"
+            },
+            {
+              "text": "drink = \"奶茶\"",
+              "correct": false,
+              "why": "给变量赋值没有问题，函数里的这一行正常运行了。"
+            },
+            {
+              "text": "make_order()",
+              "correct": false,
+              "why": "调用没有问题：函数体运行了，屏幕上已经显示了“做好了 奶茶”。"
+            },
+            {
+              "text": "print(\"做好了\", drink)",
+              "correct": false,
+              "why": "这一行在函数里面，drink 在函数里有值，它正常运行了，已经显示了“做好了 奶茶”。"
+            }
+          ],
+          "tip": "这些例子中，函数里定义的名字不能在函数外直接使用。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "price = 8\ndef change():\n    price = 100\n    print(price)\nchange()\nprint(price)",
+          "options": [
+            {
+              "text": "100\n8",
+              "correct": true,
+              "why": "本题在函数里给 price 重新赋值（price = 100），函数里的 print 显示 100；这不会改变函数外面的 price，最后一行显示 8。"
+            },
+            {
+              "text": "100\n100",
+              "correct": false,
+              "why": "本题函数里的 price = 100 不会改变函数外面的 price，最后一行还是 8。"
+            },
+            {
+              "text": "8\n8",
+              "correct": false,
+              "why": "函数里有自己的 price = 100，函数里的 print 显示的是 100。"
+            },
+            {
+              "text": "8\n100",
+              "correct": false,
+              "why": "顺序反了：先调用 change()，函数里的 print 先显示 100；最后一行是函数外面的 price，还是 8。"
+            }
+          ],
+          "tip": "本题在函数里给 price 重新赋值，不会改变函数外面的 price。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def double(price):\n    price = price * 2\n    return price\nprice = 8\nprint(double(price))\nprint(price)",
+          "options": [
+            {
+              "text": "16\n8",
+              "correct": true,
+              "why": "8 传给参数 price；本题在函数里给参数 price 重新赋值（price = price * 2），交回 16，但不会改变函数外面的 price，最后一行显示 8。"
+            },
+            {
+              "text": "16\n16",
+              "correct": false,
+              "why": "本题给参数 price 重新赋值，不会改变函数外面的 price，最后一行还是 8。想让外面的 price 变，要自己把交回的结果存回去，比如 price = double(price)。"
+            },
+            {
+              "text": "8\n8",
+              "correct": false,
+              "why": "第 5 行 print(double(price)) 显示的是函数交回的结果，函数里的 price 已经乘了 2，是 16。"
+            },
+            {
+              "text": "8\n16",
+              "correct": false,
+              "why": "顺序反了：第 5 行先显示函数交回的 16，最后一行才是函数外面没变的 price，也就是 8。"
+            }
+          ],
+          "tip": "本题给参数 price 重新赋值，不会改变外面的 price。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想让屏幕显示 16。现在最后一行报了 NameError: name 'result' is not defined（result 这个名字没有定义）。怎么改，屏幕才会显示 16？",
+          "key": "fix",
+          "code": "def calc(price):\n    result = price * 2\ncalc(8)\nprint(result)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 4, in <module>\n    print(result)\nNameError: name 'result' is not defined",
+          "checks": [
+            {
+              "program": "def calc(price):\n    result = price * 2\ncalc(8)\nprint(result)",
+              "type": "NameError",
+              "line": 4,
+              "msg": "name 'result' is not defined"
+            }
+          ],
+          "expected": "16",
+          "options": [
+            {
+              "text": "在函数里加一行 return result，最后一行改成 print(calc(8))",
+              "correct": true,
+              "why": "result 是在 calc 里定义的名字，不能在函数外直接使用。用 return 把它交回来，外面用 print(calc(8)) 接住，就显示 16 了。",
+              "fixed": "def calc(price):\n    result = price * 2\n    return result\ncalc(8)\nprint(calc(8))"
+            },
+            {
+              "text": "把最后一行改成 print(price)",
+              "correct": false,
+              "why": "price 是 calc 的参数，这个例子里它也不能在函数外直接使用，外面用它还是 NameError。",
+              "fixed": "def calc(price):\n    result = price * 2\ncalc(8)\nprint(price)"
+            },
+            {
+              "text": "在最后一行前面加 result = 0",
+              "correct": false,
+              "why": "不报错了，但这是函数外面新建的另一个 result，里面是 0，显示的是 0，不是 16。",
+              "fixed": "def calc(price):\n    result = price * 2\ncalc(8)\nresult = 0\nprint(result)"
+            },
+            {
+              "text": "把 calc(8) 多调用一次",
+              "correct": false,
+              "why": "不管调用几次，result 都是在 calc 里定义的名字，函数外面不能直接使用，仍然是 NameError。",
+              "fixed": "def calc(price):\n    result = price * 2\ncalc(8)\ncalc(8)\nprint(result)"
+            }
+          ],
+          "tip": "想把函数里算出的结果拿到外面，用 return 交回来。"
+        }
+      ]
+    }
+  ],
+  "heldLessons": [
+    {
+      "id": "U8L7",
+      "title": "价格计算器",
+      "concept": "项目：算总价、满减、默认杯数，用 return 交回",
+      "story": "项目：奶茶店的价格计算器。函数 bill(price, cups) 算顾客应付的钱：总价 = 单价 × 杯数；总价满 30 元（正好 30 元也算）减 5 元；只写单价时按 1 杯算。结果要用 return 交回，让别的地方可以接住它、继续算。已经写好的 total(price, cups) 可以直接调用。",
+      "introCode": "def late_fee(days, rate=2):\n    amount = days * rate\n    if amount > 10:\n        amount = 10\n    return amount\nprint(late_fee(3))\nprint(late_fee(8))\nprint(late_fee(8, 1))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def fee(hours, rate=3):\n    amount = hours * rate\n    if amount > 12:\n        return 12\n    return amount\nprint(fee(2))\nprint(fee(5))\nprint(fee(5, 2))",
+          "options": [
+            {
+              "text": "6\n12\n10",
+              "correct": true,
+              "why": "fee(2)：2 × 3 = 6，不超过 12，交回 6。fee(5)：5 × 3 = 15，超过 12，return 12。fee(5, 2)：传了 rate 是 2，5 × 2 = 10，不超过 12，交回 10。"
+            },
+            {
+              "text": "6\n15\n10",
+              "correct": false,
+              "why": "15 超过 12，会执行 return 12，封顶交回 12，不是 15。"
+            },
+            {
+              "text": "6\n12\n12",
+              "correct": false,
+              "why": "fee(5, 2) 传了 rate = 2，不是默认的 3：5 × 2 = 10，没超过 12。"
+            },
+            {
+              "text": "6\n12\n20",
+              "correct": false,
+              "why": "fee(5, 2) 的第二个值传给 rate，不是乘 2 的倍数：5 × 2 = 10。"
+            }
+          ],
+          "tip": "先算 amount，再看是不是超过 12；传了第二个值就用它，没传才用默认值 3。"
+        },
+        {
+          "type": "predict",
+          "prompt": "下面是“总价满 30 元减 5 元”的判断（总价正好 30 元也算）。屏幕上会显示什么？",
+          "code": "amount = 10 * 3\nif amount >= 30:\n    amount = amount - 5\nprint(amount)\namount = 29\nif amount >= 30:\n    amount = amount - 5\nprint(amount)",
+          "options": [
+            {
+              "text": "25\n29",
+              "correct": true,
+              "why": "第一段：amount 是 30，amount >= 30 成立（正好 30 也成立），减 5 得 25。第二段：amount 是 29，不满 30，不减，显示 29。"
+            },
+            {
+              "text": "30\n29",
+              "correct": false,
+              "why": "条件是 amount >= 30，30 也成立，要减 5。"
+            },
+            {
+              "text": "25\n24",
+              "correct": false,
+              "why": "第二段 amount 是 29，不满 30，不减，仍是 29。"
+            },
+            {
+              "text": "5\n29",
+              "correct": false,
+              "why": "amount = amount - 5 是在原来的数上减 5：30 - 5 = 25，不是直接变成 5。"
+            }
+          ],
+          "tip": "边界：>= 30 包含 30。"
+        },
+        {
+          "type": "pick",
+          "prompt": "想显示 7（6 再加 1）。现在运行先显示了 6，又报了 TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'（None 和整数不能用 + 相加）。怎么改，屏幕才会显示 7？",
+          "key": "fix",
+          "code": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nresult = fee(2) + 1\nprint(result)",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 4, in <module>\n    result = fee(2) + 1\nTypeError: unsupported operand type(s) for +: 'NoneType' and 'int'",
+          "checks": [
+            {
+              "program": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nresult = fee(2) + 1\nprint(result)",
+              "type": "TypeError",
+              "line": 4,
+              "msg": "unsupported operand type(s) for +: 'NoneType' and 'int'"
+            }
+          ],
+          "expected": "7",
+          "options": [
+            {
+              "text": "把 fee 里的 print(amount) 改成 return amount",
+              "correct": true,
+              "why": "fee 里是 print：显示了 6，函数却没遇到 return，自动返回 None，None + 1 报错。改成 return amount，fee(2) 交回 6，6 + 1 = 7。",
+              "fixed": "def fee(hours, rate=3):\n    amount = hours * rate\n    return amount\nresult = fee(2) + 1\nprint(result)"
+            },
+            {
+              "text": "把第 4 行的 + 1 去掉",
+              "correct": false,
+              "why": "不报错了，但 fee 里的 print 先显示 6，result 得到的是 None，最后显示 6 和 None，不是 7。",
+              "fixed": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nresult = fee(2)\nprint(result)"
+            },
+            {
+              "text": "把第 4 行改成 result = fee(2, 1) + 1",
+              "correct": false,
+              "why": "多传一个值给 rate，fee 还是只 print、不 return，得到的仍是 None，None + 1 仍然是 TypeError。",
+              "fixed": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nresult = fee(2, 1) + 1\nprint(result)"
+            },
+            {
+              "text": "把第 4 行改成 print(fee(2) + 1)",
+              "correct": false,
+              "why": "fee(2) 得到的还是 None，None + 1 仍然是 TypeError。",
+              "fixed": "def fee(hours, rate=3):\n    amount = hours * rate\n    print(amount)\nprint(fee(2) + 1)"
+            }
+          ],
+          "tip": "想把结果拿去继续算，函数里要用 return 交回。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def fee(hours, rate=3):\n    amount = hours * rate\n    if amount > 12:\n        return 12\nprint(fee(2))\nprint(fee(5))",
+          "options": [
+            {
+              "text": "None\n12",
+              "correct": true,
+              "why": "fee(2)：amount 是 6，不超过 12，if 里的 return 没有执行，函数执行结束时没有遇到 return，自动返回 None。fee(5)：15 超过 12，return 12。"
+            },
+            {
+              "text": "6\n12",
+              "correct": false,
+              "why": "不超过 12 的情况没有 return amount，函数不会自己把 amount 交回来，得到的是 None。"
+            },
+            {
+              "text": "6\n15",
+              "correct": false,
+              "why": "fee(5) 超过 12，会执行 return 12，交回 12，不是 15。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "没有 return 的调用不会报错，只是得到 None；print(None) 显示 None。"
+            }
+          ],
+          "tip": "每一种情况都要有 return；没遇到 return，就是 None。"
+        }
+      ],
+      "pending": [
+        {
+          "type": "modify",
+          "replaces": 4,
+          "status": "待 Claude 的代码题运行器，暂不开放",
+          "plan": "改一改（项目）：价格计算器 bill(price, cups=1)；总价、满 30 减 5、默认 1 杯，用 return 交回（call 模式）",
+          "task": {
+            "id": "U8L7-M1",
+            "version": 1,
+            "type": "modify",
+            "prompt": "价格计算器：函数 bill(price, cups) 要算出顾客应付的钱，用 return 交回（不是 print）。输入范围：price、cups 都是正整数（至少为 1）。规则：① 总价 = price × cups；② 总价满 30 元（正好 30 元也算）减 5 元，不满不减；③ 只写单价、不写杯数时，按 1 杯算。已经写好的 total(price, cups) 可以直接用。",
+            "given": [],
+            "checkMode": "call",
+            "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\n",
+            "tests": [
+              {
+                "name": "3 杯 8 元，不满 30",
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    8,
+                    3
+                  ]
+                },
+                "expectedReturn": 24
+              },
+              {
+                "name": "3 杯 12 元，总价满 30",
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    12,
+                    3
+                  ]
+                },
+                "expectedReturn": 31
+              },
+              {
+                "name": "只写单价，默认 1 杯",
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    8
+                  ]
+                },
+                "expectedReturn": 8
+              },
+              {
+                "name": "总价正好 30 元也减",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    10,
+                    3
+                  ]
+                },
+                "expectedReturn": 25
+              },
+              {
+                "name": "默认 1 杯，29 元不减",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    29
+                  ]
+                },
+                "expectedReturn": 29
+              },
+              {
+                "name": "默认 1 杯，30 元要减",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    30
+                  ]
+                },
+                "expectedReturn": 25
+              },
+              {
+                "name": "杯数多",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    6,
+                    10
+                  ]
+                },
+                "expectedReturn": 55
+              },
+              {
+                "name": "1 杯 40 元",
+                "hidden": true,
+                "call": {
+                  "fn": "bill",
+                  "args": [
+                    40,
+                    1
+                  ]
+                },
+                "expectedReturn": 35
+              }
+            ],
+            "hints": [
+              "先运行：起始代码的 bill 里是 print，调用 bill(…) 得到的是 None；再看规则 ③：只写单价时 cups 要有默认值。",
+              "bill 里先算总价 amount = total(price, cups)；总价满 30 才减 5；每种情况都要把结果 return 交回，不是 print。"
+            ],
+            "reference": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\n",
+            "worked": {
+              "code": "def pay(price, cups=1):\n    amount = price * cups\n    if amount >= 20:\n        amount = amount - 3\n    return amount\nprint(pay(9, 3))",
+              "output": "24",
+              "explain": "三步：先算总价 amount；再判断：满 20 才减 3；最后把 amount return 交回去。函数里只算不 return，调用得到的就是 None。"
+            },
+            "alternatives": [
+              "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    else:\n        return amount\n",
+              "def bill(price, cups=1):\n    amount = price * cups\n    if amount >= 30:\n        amount = amount - 5\n    return amount\n",
+              "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    if total(price, cups) >= 30:\n        return total(price, cups) - 5\n    return total(price, cups)\n",
+              "def bill(price, cups=1):\n    amount = price * cups\n    if amount < 30:\n        return amount\n    return amount - 5\n"
+            ],
+            "wrongAnswers": [
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        print(amount - 5)\n    else:\n        print(amount)\n",
+                "why": "只补了默认值，函数里还是 print，没有 return：调用得到 None"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n    return amount\n",
+                "why": "忘了默认值：bill(8) 只传了一个值，会报 TypeError"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount > 30:\n        return amount - 5\n    return amount\n",
+                "why": "边界：总价正好 30 元也要减，用 >= 不用 >"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if price >= 30:\n        return amount - 5\n    return amount\n",
+                "why": "拿单价去比，不是总价：12 元 × 3 杯 = 36 元，也要减"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return cups * (price - 5)\n    return amount\n",
+                "why": "每杯减 5 元，不是总价减 5 元"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        amount - 5\n    return amount\n",
+                "why": "只算了 amount - 5，没有 return，也没有存回去，还是交回原来的总价"
+              },
+              {
+                "code": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 30:\n        return amount - 5\n",
+                "why": "不满 30 的情况没有 return：函数执行结束时没有遇到 return，自动返回 None"
+              }
+            ],
+            "requiresVariationAfterSolution": true,
+            "variation": {
+              "id": "U8L7-M1-V1",
+              "prompt": "满 60 元减 12 元（满 60 时只减 12 元，不再减 5 元）；满 30 元但不满 60 元，仍减 5 元；不满 30 元不减。只写单价时按 1 杯算，其他不变。输入范围同上。",
+              "starter": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    # 在这里写：满 60 减 12；满 30 不满 60 减 5\n    return amount\n",
+              "tests": [
+                {
+                  "name": "3 杯 8 元",
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      8,
+                      3
+                    ]
+                  },
+                  "expectedReturn": 24
+                },
+                {
+                  "name": "满 30 不满 60",
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      9,
+                      6
+                    ]
+                  },
+                  "expectedReturn": 49
+                },
+                {
+                  "name": "总价正好 60",
+                  "hidden": true,
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      10,
+                      6
+                    ]
+                  },
+                  "expectedReturn": 48
+                },
+                {
+                  "name": "总价 59",
+                  "hidden": true,
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      59
+                    ]
+                  },
+                  "expectedReturn": 54
+                },
+                {
+                  "name": "杯数多",
+                  "hidden": true,
+                  "call": {
+                    "fn": "bill",
+                    "args": [
+                      5,
+                      20
+                    ]
+                  },
+                  "expectedReturn": 88
+                }
+              ],
+              "hints": [
+                "三档要从大到小判断：先问是不是满 60，再问是不是满 30，都不满才原价。",
+                "if amount >= 60: return amount - 12；elif amount >= 30: return amount - 5；最后 return amount。"
+              ],
+              "solution": "def total(price, cups):\n    return price * cups\n\ndef bill(price, cups=1):\n    amount = total(price, cups)\n    if amount >= 60:\n        return amount - 12\n    elif amount >= 30:\n        return amount - 5\n    return amount\n"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

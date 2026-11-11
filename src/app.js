@@ -14,6 +14,8 @@ import unit4 from "../content/unit4.json";
 import unit5 from "../content/unit5.json";
 import unit6 from "../content/unit6.json";
 import unit7 from "../content/unit7.json";
+import unit8 from "../content/unit8.json";
+import sampleDebug from "../content/sample-debug.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
 import { makeRunnerExecutor } from "./judge.js";
@@ -45,7 +47,9 @@ import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
-const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6, U7: unit7 };
+const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6, U7: unit7, U8: unit8 };
+// 支线（样板关，读代码与调试）：不进主线顺序、完成数和随机练习；前置单元全部完成才解锁。仅联合分支，未正式发布。
+const SIDELINES = [{ unit: sampleDebug, after: "U3", requires: "U3" }];
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;
@@ -301,8 +305,12 @@ if (sync) {
 }
 const allLessons = () => course.units.filter((u) => u.available).flatMap((u) => UNITS[u.id].lessons.map((l) => ({ ...l, unit: u.id })));
 const firstUndone = () => allLessons().find((l) => !state.done[l.id]);
+const sideFor = (l) => SIDELINES.find((s) => s.unit.lessons.some((x) => x.id === l.id));
+const sideOpen = (s) => UNITS[s.requires].lessons.every((x) => state.done[x.id]);
 function lessonStatus(l) {
   if (state.done[l.id]) return "done";
+  const side = sideFor(l);
+  if (side) return sideOpen(side) && side.unit.lessons.find((x) => !state.done[x.id])?.id === l.id ? "current" : "locked";
   return firstUndone()?.id === l.id ? "current" : "locked";
 }
 let currentRun = null;
@@ -510,6 +518,21 @@ function renderPath() {
       })),
     );
   });
+  for (const s of SIDELINES) {
+    const at = course.units.findIndex((u) => u.id === s.after);
+    if (at < 0) continue;
+    const open = sideOpen(s), done = s.unit.lessons.every((x) => state.done[x.id]);
+    units.splice(at + 1 + SIDELINES.indexOf(s), 0, h("section", { class: "unit side" + (done ? " complete" : "") + (open ? "" : " side-locked"), "data-side": s.unit.id },
+      h("div", { class: "unit-banner" }, h("div", { class: "unit-no", text: `支线${done ? " · 已完成" : open ? "" : ` · 完成第 ${at + 1} 单元后解锁`}` }), h("h2", { text: s.unit.title }), h("p", { text: s.unit.subtitle })),
+      h("ol", { class: "path" }, s.unit.lessons.map((l) => {
+        const st = lessonStatus(l);
+        return h("li", { class: "path-item", style: "--off:0" },
+          st === "current" ? h("div", { class: "bubble", "aria-hidden": "true", onclick: () => openLessonSheet(l), text: "开始" }) : null,
+          button(h("span", { class: "node-face", "aria-hidden": "true" }, hexNode(st, false)), () => openLessonSheet(l), `node side side-${st}`,
+            { "aria-label": `${l.title}（${st === "done" ? "已完成" : st === "current" ? "当前关卡" : "未解锁"}）`, "data-lesson": l.id }),
+          h("div", { class: "node-label", text: l.title }));
+      }))));
+  }
   appEl.replaceChildren(
     circuit("full"),
     statsBar(),
@@ -522,7 +545,7 @@ function renderPath() {
 
 // 当前关卡（含上方“开始”气泡和下方关名）滚到可见：可见区域要扣掉吸顶的“随机练习”入口，不能被它挡住
 function scrollToCurrent() {
-  const view = appEl.querySelector(".pathview"), node = view?.querySelector(".node.current");
+  const view = appEl.querySelector(".pathview"), node = view?.querySelector(".unit:not(.side) .node.current") || view?.querySelector(".node.current");
   if (!node) return;
   const parts = [node, node.parentElement?.querySelector(".bubble"), node.parentElement?.querySelector(".node-label")].filter(Boolean);
   const vr = view.getBoundingClientRect();
@@ -540,7 +563,7 @@ function openLessonSheet(l) {
     h("div", { class: "lsheet" },
       h("div", { class: "lsheet-concept", text: l.concept }),
       h("h2", { text: l.title }),
-      h("p", { text: st === "locked" ? "先完成前面的关卡，这一关才会解锁。" : l.story }),
+      h("p", { text: st === "locked" ? (sideFor(l) ? `先完成「${UNITS[sideFor(l).requires].title}」单元的全部关卡，这条支线才会解锁。` : "先完成前面的关卡，这一关才会解锁。") : l.story }),
       st === "locked" ? button("知道了", close, "btn3d wide")
         : st === "done" ? [button("复习（不扣红心，完成后 +1 红心）", () => { close(); startLesson(l, { review: true }); }, "btn3d primary wide"), button("关闭", close, "btn3d ghost wide")]
         : [button(`开始 +${l.exercises.length * XP_CORRECT + XP_FINISH} XP`, () => { close(); startLesson(l); }, "btn3d primary wide"), button("关闭", close, "btn3d ghost wide")],
