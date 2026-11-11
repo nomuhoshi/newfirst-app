@@ -5,16 +5,26 @@ const results = [];
 const check = (n, ok, d = "") => { results.push(!!ok); console.log(`${ok ? "✅" : "❌"} ${n}${!ok && d ? "  — " + d : ""}`); };
 const PROD_URL = "https://aqlcunkmggzzvyavlkjg.supabase.co";
 let n = 0;
-async function load({ id, test } = {}) {
-  delete globalThis.__PREVIEW_ID__; delete globalThis.__TEST_CLOUD__;
+async function load({ id, test, live } = {}) {
+  delete globalThis.__PREVIEW_ID__; delete globalThis.__TEST_CLOUD__; delete globalThis.__ACCOUNTS_LIVE__;
+  if (live !== undefined) globalThis.__ACCOUNTS_LIVE__ = live;
   if (id !== undefined) globalThis.__PREVIEW_ID__ = id;
   if (test !== undefined) globalThis.__TEST_CLOUD__ = test;
   return (await import(`../src/cloud-config.js?case=${++n}`)).CLOUD;
 }
-const prod = await load();
-check("正式构建（没设 PREVIEW_ID）：用正式项目", prod.url === PROD_URL && prod.anonKey.length > 10, JSON.stringify(prod));
-const prod2 = await load({ id: "", test: { url: "https://test.supabase.co", anonKey: "k" } });
+// 账号发布开关（2026-11-11）：正式构建默认关闭 = 云端未开通；打开后才连正式项目
+const off = await load();
+check("正式构建，账号开关默认关闭：云端关闭（网址和密钥都为空，不会连正式项目）", off.url === "" && off.anonKey === "", JSON.stringify(off));
+const offExplicit = await load({ live: false });
+check("正式构建，开关明确为 false：云端关闭", offExplicit.url === "" && offExplicit.anonKey === "");
+const offTruthy = await load({ live: "true" });
+check("开关只认布尔 true：字符串 \"true\" 不算打开", offTruthy.url === "");
+const prod = await load({ live: true });
+check("正式构建，开关打开：用正式项目", prod.url === PROD_URL && prod.anonKey.length > 10, JSON.stringify(prod));
+const prod2 = await load({ id: "", test: { url: "https://test.supabase.co", anonKey: "k" }, live: true });
 check("正式构建即使有测试配置也不读：仍用正式项目", prod2.url === PROD_URL);
+const prevLive = await load({ id: "rc1", test: { url: "https://abcdefgh.supabase.co", anonKey: "sb_publishable_test" }, live: false });
+check("测试入口不受账号开关影响：照常用测试项目", prevLive.url === "https://abcdefgh.supabase.co");
 const none = await load({ id: "rc1" });
 check("测试入口没给测试项目：云端关闭（网址和密钥都为空）", none.url === "" && none.anonKey === "");
 const empty = await load({ id: "rc1", test: { url: "", anonKey: "" } });

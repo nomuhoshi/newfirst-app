@@ -23,6 +23,11 @@ function testCloud() {
   } catch { return { url: "", anonKey: "" }; }
 }
 const IS_PREVIEW = typeof __PREVIEW_ID__ !== "undefined" && !!__PREVIEW_ID__;
+// 账号功能发布开关（只管正式构建；测试入口照常用自己的测试项目）。
+// 2026-11-11 产品官 5 号决定：先发布 U1–U5 游客版；正式发信（C2：Resend SMTP）配好、真实邮件送达 / 登录 / 双会话同步验收通过后，再把它改成 true 开放账号。
+// 关闭时正式构建等同“云端未开通”：不发任何请求到 Supabase，看不到登录 / 注册 / 验证码入口；本机已有的登录凭证和账号副本不使用、也不删除，云端数据不会被读写。
+const ACCOUNTS_LIVE = typeof __ACCOUNTS_LIVE__ !== "undefined" ? __ACCOUNTS_LIVE__ === true : false;
+export const PROD_CLOUD = DEFAULT;
 // 只有在本机（localhost / 127.0.0.1，自动测试用）才允许用浏览器里的设置覆盖；线上站点永远只用上面写死的配置。
 function pick() {
   try {
@@ -36,9 +41,10 @@ function pick() {
       }
     }
   } catch { /* 忽略 */ }
-  return IS_PREVIEW ? testCloud() : DEFAULT;
+  return IS_PREVIEW ? testCloud() : ACCOUNTS_LIVE ? DEFAULT : { url: "", anonKey: "" };
 }
 export const CLOUD = pick();
+export const ACCOUNTS_ENABLED = IS_PREVIEW ? !!CLOUD.url : ACCOUNTS_LIVE;
 
 // 当前构建实际连接的云项目（给测试入口的信息面板和自动测试用）：只返回主机名和项目编号，不含密钥。
 export function cloudTarget() {
