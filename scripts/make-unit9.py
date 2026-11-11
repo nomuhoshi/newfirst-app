@@ -344,7 +344,7 @@ lessons = [
     pick("怎么改，bill 对各种订单都算对？（拿一杯、两杯、三杯的订单都核对过）", "fix", [
         opt("把 total = 0 挪到 for 上面", T, "清零只在开始时做一次：先 total = 0，再循环把每一杯加进去，最后交回。一杯、两杯、三杯都对。", fixed=q23_harness(FIX_MOVE)),
         opt("把 total += menu[name] 改成 total = total + menu[name]", F, "两种写法意思一样，total = 0 还在循环里，每轮照样清零，两杯以上还是错。", fixed=q23_harness(FIX_PLUS)),
-        opt("删掉 total = 0", F, "total 一开始没有值，第一轮就要往上加，会报 UnboundLocalError（和 NameError 同类：用到了还没有值的名字）。", fixed=q23_harness(FIX_DEL)),
+        opt("删掉 total = 0", F, "函数里的 total 还没有初始值就被拿来计算，因此报 UnboundLocalError。", fixed=q23_harness(FIX_DEL)),
         opt("把 return total 也缩进到循环里", F, "第一轮就交回了，只算第一杯；两杯以上还是错。", fixed=q23_harness(FIX_RET)),
     ], code=BILL_RESET, checks=[], expected="全部一致", tip="清零应该做几次？放在循环里面，就是每杯一次。"),
     pred("修好之后，再用刚才露馅的订单（两杯奶茶）跑一遍，并算上优惠。屏幕上会显示什么？", Q24, [

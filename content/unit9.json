@@ -866,7 +866,7 @@
             {
               "text": "删掉 total = 0",
               "correct": false,
-              "why": "total 一开始没有值，第一轮就要往上加，会报 UnboundLocalError（和 NameError 同类：用到了还没有值的名字）。",
+              "why": "函数里的 total 还没有初始值就被拿来计算，因此报 UnboundLocalError。",
               "fixed": "def bill(order, menu):\n    for name in order:\n        total += menu[name]\n    return total\nmenu = {\"奶茶\": 15,\n        \"果茶\": 12}\nok = True\nfor order in [[\"奶茶\"], [\"奶茶\", \"果茶\"],\n              [\"果茶\", \"奶茶\", \"奶茶\"]]:\n    want = 0\n    for name in order:\n        want += menu[name]\n    if bill(order, menu) != want:\n        ok = False\nprint(\"全部一致\" if ok else \"有不一致\")"
             },
             {
