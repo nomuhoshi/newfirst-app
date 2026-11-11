@@ -18,14 +18,14 @@
 | # | 项 | 入口 |
 |---|---|---|
 | B1 | 正式、测试两边 Auth / SMTP / 限额 / 区域 / 套餐，抄进差异表 | `ops/prod-supabase-init` 分支 `supabase/prod-init/README.md` §2.2 |
-| B2 | 两边运行 `00-precheck.sql`，结果贴回 | 同上 |
-| B3 | 安全顾问三条告警原文 + 正式项目运行 `10-advisor-readonly.sql` | 同上 §7 |
+| B2 | 两边运行 `00-precheck.sql`，结果贴回 | **测试项目已完成**；正式项目待做（重点看 0.2 BYPASSRLS、0.5 / 0.7 有没有 `rls_auto_enable`） |
+| B3 | 安全顾问三条告警原文 + 正式项目运行 `10-advisor-readonly.sql` | 测试项目已取得两类（0029 三个 RPC、泄露密码防护）；**正式项目原文待取** |
 
 ## C. 待授权（老大一次授权；见 `supabase/prod-init/README.md` §11）
 
 | # | 项 | 状态 |
 |---|---|---|
-| C0 | 测试项目 suipian-test 演练 `01-init.sql` | **老大 13:15 已同意**；需要有后台权限的人执行（程序员进不去后台） |
+| C0 | 测试项目 suipian-test 演练 `01-init.sql` | **已完成（13:33，传话员经连接器）**：成功，已有数据不变；结果和据此做的脚本修正见 `ops/prod-supabase-init` `7712ff6` README §0 |
 | C1 | 正式项目运行 `01-init.sql`（建表、RLS、三个 RPC） | 待授权；本地演练 20 项通过 |
 | C2 | 正式项目认证地址、模板、注册开关、OTP、Resend SMTP | 待 B1 后授权 |
 | C3 | 安全顾问修正（只收紧 `rls_auto_enable`） | 待 B3 后定稿、授权 |
