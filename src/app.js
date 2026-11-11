@@ -31,7 +31,7 @@ import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
-  loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
+  loadState, saveState, mergeStored, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
 } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
@@ -236,7 +236,7 @@ const loaded = loadState();
 let state = loaded.state;
 let notice = loaded.notice;
 feel.setPrefs(state.prefs);
-if (notice) saveState(state); // 迁移或修复后的记录立即存一次，下次不再重复提示
+if (notice && !loaded.readFailed) saveState(state); // 读取失败时不存空记录（会盖掉真实进度）；迁移或修复后的记录立即存一次，下次不再重复提示
 // ---------- 账号与云端 ----------
 // 登录后，学习进度写进“这个账号在本机的副本”（再在后台同步到云端），不再写游客记录；退出登录后回到游客记录。
 let safeStorage = null;
@@ -271,8 +271,10 @@ function persist() {
     if (!r.ok) showToast("无法保存进度到这台设备（" + (r.message || "存储不可用") + "），关掉页面后进度可能丢失。");
     return;
   }
-  if (!saveState(state)) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
+  if (!saveState(state, { replace: clearing })) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
+  clearing = false;
 }
+let clearing = false; // 清除学习记录后的第一次保存不合并旧记录
 accountUi = createAccountUi({
   h, button, sheet, icon, showToast, sync, api: cloudApi, getState: () => state,
   rerender: () => (currentView === "me" ? renderMe() : renderPath()),
@@ -803,7 +805,7 @@ function renderMe() {
     if (confirmBox) return;
     confirmBox = h("div", { class: "confirm", role: "alertdialog" },
       h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
-      button("确定清除", () => { const prefs = state.prefs; state = clearState(); state.prefs = prefs; state.onboarded = true; persist(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
+      button("确定清除", () => { const prefs = state.prefs; state = clearState(); state.prefs = prefs; state.onboarded = true; clearing = true; persist(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
       button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
     );
     clearBtn.after(confirmBox);
@@ -1407,7 +1409,16 @@ if (vv) {
   fit();
 }
 // 回到前台时刷新红心显示
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
+// 回到前台 / 从后退缓存恢复 / 别的标签页改了存储：先把存储里更新的进度读进来，再写，避免旧标签页把新进度盖掉
+function refreshFromStorage() {
+  if (sync && sync.account()) return;
+  const changed = mergeStored(state);
+  if (changed && currentView === "path" && appEl.querySelector(".statsbar")) renderPath();
+  else if (changed && currentView === "me" && appEl.querySelector(".statsbar")) renderMe();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { refreshFromStorage(); regenHearts(state); persist(); appEl.querySelector(".statsbar")?.replaceWith(statsBar()); } });
+window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
+window.addEventListener("storage", (e) => { if (e.key === "suipian.progress") refreshFromStorage(); });
 
 window.__app = { allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------

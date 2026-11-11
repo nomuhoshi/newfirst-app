@@ -64,7 +64,8 @@ export function loadState() {
   try {
     raw = localStorage.getItem(KEY);
   } catch {
-    return { state: freshState(), notice: "这个浏览器不允许保存进度（可能是无痕模式），关掉页面后进度会丢失。" };
+    // 读取失败不等于“没有记录”：标记 readFailed，调用方不能把这份空记录存回去（可能盖掉真实进度）
+    return { state: freshState(), notice: "这个浏览器不允许保存进度（可能是无痕模式），关掉页面后进度会丢失。", readFailed: true };
   }
   if (!raw) return { state: freshState(), notice: null };
   let data;
@@ -88,8 +89,40 @@ export function loadState() {
   return { state: { ...base, ...data, prefs, doneOn }, notice: null };
 }
 
-export function saveState(state) {
+// 读取存储里现有的 v3 记录（没有、读不懂、读取失败都返回 null）
+function readStoredV3() {
   try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    return d && d.version === DATA_VERSION && d.done && typeof d.done === "object" ? d : null;
+  } catch { return null; }
+}
+// 把存储里可能更新的进度并进内存记录（就地修改）：完成关卡取并集，XP、完成次数取较大，连续天数跟着最后学习日期较新的一边。
+// 为什么：旧标签页 / 另一个窗口可能已经写入了更新的进度，整份内存记录写回去会把它盖掉。返回内存记录是否有变化。
+export function mergeStored(state) {
+  const d = readStoredV3();
+  if (!d) return false;
+  let changed = false;
+  for (const k of Object.keys(d.done)) if (d.done[k] && !state.done[k]) { state.done[k] = true; changed = true; }
+  if (d.doneOn && typeof d.doneOn === "object") {
+    state.doneOn = state.doneOn || {};
+    for (const [k, v] of Object.entries(d.doneOn)) if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !state.doneOn[k]) state.doneOn[k] = v;
+  }
+  const xp = Number(d.xp) || 0, lc = Number(d.lessonsCompleted) || 0;
+  if (xp > state.xp) { state.xp = xp; changed = true; }
+  if (lc > (state.lessonsCompleted || 0)) { state.lessonsCompleted = lc; changed = true; }
+  if (d.onboarded && !state.onboarded) { state.onboarded = true; changed = true; }
+  const a = state.lastDay, b = d.lastDay;
+  if (typeof b === "string" && (!a || b > a)) { state.streak = Number(d.streak) || 0; state.lastDay = b; changed = true; }
+  else if (b && a === b && Number(d.streak) > state.streak) { state.streak = Number(d.streak); changed = true; }
+  return changed;
+}
+
+// opts.replace：用户主动“清除学习记录”之后的保存，不合并旧记录
+export function saveState(state, opts = {}) {
+  try {
+    if (!opts.replace) mergeStored(state);
     state.lastActive = Date.now();
     localStorage.setItem(KEY, JSON.stringify(state));
     return true;
