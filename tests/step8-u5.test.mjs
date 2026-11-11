@@ -29,7 +29,7 @@ const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 
 check("U1–U4 通关后 U5L1 是当前关，U5L2–L7 锁定（共 7 关）", unitN.lessons.length === 7 && await page.evaluate(() => document.querySelector('[data-lesson="U5L1"]')?.classList.contains("current") && ["U5L2", "U5L3", "U5L4", "U5L5", "U5L6", "U5L7"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
-check("只有第 9 单元（小项目）显示即将推出（支线锁定不算）", (await page.locator(".unit.locked").count()) === 1);
+check("没有即将推出的单元（支线锁定不算）", (await page.locator(".unit.locked").count()) === 0);
 
 async function answer(ex, right) {
   if (ex.type === "predict") {

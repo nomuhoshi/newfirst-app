@@ -41,7 +41,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
   const cls = (id) => page.evaluate((i) => document.querySelector(`[data-lesson="${i}"]`)?.className || "MISSING", id);
   const doneCount = () => page.evaluate(() => Object.keys(window.__app.getState().done).length);
 
-  check(`${tag} 起点：地图 53 个节点（含支线 1 关），U6L1 当前关，U6L2 与 U7L1 锁定`, (await page.locator(".node").count()) === 53 && /current/.test(await cls("U6L1")) && /locked/.test(await cls("U6L2")) && /locked/.test(await cls("U7L1")));
+  check(`${tag} 起点：地图 59 个节点（含支线 1 关），U6L1 当前关，U6L2 与 U7L1 锁定`, (await page.locator(".node").count()) === 59 && /current/.test(await cls("U6L1")) && /locked/.test(await cls("U6L2")) && /locked/.test(await cls("U7L1")));
 
   // 长解析：答错后的反馈区
   async function probe() {

@@ -132,7 +132,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
 
   // ── U8 六关 ──
   await seed(asDone(U1to7));
-  check(`${tag} U8：U7 全部完成后 U8L1 是当前关，U8L2 锁定；第 9 单元即将推出`, /current/.test(await cls("U8L1")) && /locked/.test(await cls("U8L2")) && /第 9 单元 · 即将推出/.test(await mapText()));
+  check(`${tag} U8：U7 全部完成后 U8L1 是当前关，U8L2 锁定`, /current/.test(await cls("U8L1")) && /locked/.test(await cls("U8L2")));
   for (const [i, id] of U8.entries()) {
     const r = await playViaMap(id);
     check(`${tag} ${id}：通关并记为已完成`, r.ok);
@@ -141,7 +141,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
   }
   await page.reload(); await page.waitForSelector(".pathview"); await page.waitForFunction(() => window.__app?.getState);
   const d = await done();
-  check(`${tag} 刷新后：U8 六关都已完成，完成数 52（U1–U7 46 + U8 6）`, U8.every((x) => d[x]) && Object.keys(d).length === 52 && /52\/52/.test(await doneStat()), `${Object.keys(d).length} ${await doneStat()}`);
+  check(`${tag} 刷新后：U8 六关都已完成，完成数 52（U1–U7 46 + U8 6），U9L1 成为当前关`, U8.every((x) => d[x]) && Object.keys(d).length === 52 && /52\/58/.test(await doneStat()) && /current/.test(await cls("U9L1")), `${Object.keys(d).length} ${await doneStat()}`);
   check(`${tag} 无脚本错误`, errors.length === 0, errors.join("; "));
   await ctx.close();
 }

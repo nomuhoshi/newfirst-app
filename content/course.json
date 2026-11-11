@@ -59,9 +59,10 @@
     },
     {
       "id": "U9",
-      "title": "小项目",
-      "subtitle": "把学过的拼成完整程序",
-      "available": false
+      "title": "小项目：点单小票",
+      "subtitle": "字典、列表、循环、函数合起来用",
+      "available": true,
+      "file": "unit9.json"
     }
   ]
 }
