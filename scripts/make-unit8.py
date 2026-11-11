@@ -671,6 +671,55 @@ held = [
     "task": L7_TASK}]},
 ]
 
+# ---------------- U8L8 按名字传值（草稿，暂缓：放在 heldLessons，app 不显示；等产品官决定放进哪一关）----------------
+D_ORDER = 'def order(drink, cups=1):\n    print(cups, "杯", drink)'
+K1 = D_ORDER + '\norder(cups=2, drink="奶茶")'
+assert real_out(K1) == "2 杯 奶茶"
+assert real_out(D_ORDER + '\norder("奶茶")') == "1 杯 奶茶"
+D_TOTAL = 'def total(price, cups=1):\n    return price * cups'
+K2 = D_TOTAL + '\nprint(total(8, cups=3))\nt = total(cups=3, price=8)\nprint(t)'
+assert real_out(K2) == "24\n24"
+assert real_out(D_TOTAL + '\nprint(total(8, cups=3))\nprint(total(3, 8))') == "24\n24"     # 按位置时数字顺序反了，乘法碰巧一样（解析里不用它）
+K3 = D_TOTAL + '\nprint(total(8, price=3))'
+r_k3 = real_error(K3)
+assert (r_k3["type"], r_k3["msg"], r_k3["code_line"]) == ("TypeError", "total() got multiple values for argument 'price'", "print(total(8, price=3))")
+K4_CODE = D_ORDER + '\norder(cups=2, {0}="果茶")'
+def k4(t): return K4_CODE.replace("{0}", t)
+assert real_out(k4("drink")) == "2 杯 果茶"
+assert run(k4("cups"))[1] == "SyntaxError"            # 同一个名字写两次：语法上就不允许
+assert run(k4("name"))[1] == "TypeError" and real_error(k4("name"))["msg"] == "order() got an unexpected keyword argument 'name'"
+assert real_error(k4("Drink"))["msg"] == "order() got an unexpected keyword argument 'Drink'"
+held.append(
+ {"id": "U8L8", "title": "按名字传值", "concept": "关键字参数：名字=值，和顺序无关；按位置的写在前面，同一个参数只给一次",
+  "story": "参数一多，按位置传容易记错顺序。也可以按名字传：order(cups=2, drink=\"奶茶\")，名字对上就行，和先后顺序无关。按位置和按名字可以一起用，但按位置的要写在前面；同一个参数只能给一次。",
+  "introCode": D_ORDER + '\norder("奶茶")\norder(cups=2, drink="果茶")',
+  "exercises": [
+    pred(SHOW, K1, [
+        ("2 杯 奶茶", T, "按名字传：cups=2 给了 cups，drink=\"奶茶\" 给了 drink，和写的先后无关。函数里 print(cups, \"杯\", drink)，显示 2 杯 奶茶。"),
+        ("奶茶 杯 2", F, "显示的顺序由函数里的 print 决定：先 cups，再“杯”，再 drink。调用时按名字写的先后不影响。"),
+        ("1 杯 奶茶", F, "cups 的默认值 1 只在没有传 cups 时才用；这里按名字传了 cups=2。"),
+        ("报错", F, "按名字传的时候，顺序可以和 def 里不一样，不会报错。")],
+        tip="按名字传：看等号左边的名字，值就给那个参数。"),
+    pred(SHOW, K2, [
+        ("24\n24", T, "第一次 8 按位置给 price，cups=3 按名字给 cups：8 × 3 = 24。第二次 t = total(cups=3, price=8) 两个都按名字给，顺序无关，还是 price 8、cups 3，t 是 24。"),
+        ("24\n报错", F, "全部按名字传时，先写 cups 后写 price 也可以，不会报错。"),
+        ("8\n24", F, "第一次传了 cups=3，不会用默认的 1：8 × 3 = 24。"),
+        ("24\n8", F, "第二次也传了 cups=3：8 × 3 = 24。")],
+        tip="按位置的先对上，按名字的再各找各的参数。"),
+    pick("运行报了 TypeError: total() got multiple values for argument 'price'。这句报错在说什么？", "type", [
+        opt("price 收到了两次值：8 按位置给了 price，price=3 又按名字给了一次", T, "第一个位置就是 price，8 已经给了它；后面 price=3 又给了一次，同一个参数给了两次。想给 cups，要写 cups=3。", value="TypeError"),
+        opt("price 这个名字还没有定义", F, "那是 NameError。price 是 total 的参数，定义过了；这里报的是 TypeError，说的是同一个参数收到了两个值。", value="NameError"),
+        opt("按名字传值时等号写错了", F, "写法不对是 SyntaxError，程序一行都不会运行；这里前面的 def 正常运行了，是调用时才报错。", value="SyntaxError"),
+        opt("字典里没有 price 这个键", F, "那是 KeyError，查字典时才会有；这里没有字典，是调用函数时同一个参数给了两次。", value="KeyError"),
+    ], code=K3, trace=trace_of(K3), tip="multiple values：同一个参数收到了不止一个值。数一数位置和名字各给了谁。"),
+    {**fill("屏幕要显示：2 杯 果茶", K4_CODE,
+        ["drink", "cups", "name", "Drink"], ["drink"], "2 杯 果茶",
+        {"cups": "cups 已经按名字给过 2 了，同一个名字写两次，写法本身就不允许，报 SyntaxError。",
+         "name": "order 里没有叫 name 的参数，报 TypeError：got an unexpected keyword argument 'name'。名字要和 def 里的参数一致。",
+         "Drink": "大小写不同就是另一个名字：order 里没有 Drink 这个参数，报 TypeError：got an unexpected keyword argument 'Drink'。"},
+        "等号左边写 def 里参数的名字：要把果茶给哪个参数？")},
+  ]})
+
 unit = {"id": "U8", "title": "函数", "subtitle": "def、参数、return", "lessons": lessons, "heldLessons": held}
 p = pathlib.Path(__file__).resolve().parent.parent / "content/unit8.json"
 p.write_text(json.dumps(unit, ensure_ascii=False, indent=2) + "\n")

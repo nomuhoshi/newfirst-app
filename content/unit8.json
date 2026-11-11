@@ -1152,6 +1152,134 @@
           }
         }
       ]
+    },
+    {
+      "id": "U8L8",
+      "title": "按名字传值",
+      "concept": "关键字参数：名字=值，和顺序无关；按位置的写在前面，同一个参数只给一次",
+      "story": "参数一多，按位置传容易记错顺序。也可以按名字传：order(cups=2, drink=\"奶茶\")，名字对上就行，和先后顺序无关。按位置和按名字可以一起用，但按位置的要写在前面；同一个参数只能给一次。",
+      "introCode": "def order(drink, cups=1):\n    print(cups, \"杯\", drink)\norder(\"奶茶\")\norder(cups=2, drink=\"果茶\")",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def order(drink, cups=1):\n    print(cups, \"杯\", drink)\norder(cups=2, drink=\"奶茶\")",
+          "options": [
+            {
+              "text": "2 杯 奶茶",
+              "correct": true,
+              "why": "按名字传：cups=2 给了 cups，drink=\"奶茶\" 给了 drink，和写的先后无关。函数里 print(cups, \"杯\", drink)，显示 2 杯 奶茶。"
+            },
+            {
+              "text": "奶茶 杯 2",
+              "correct": false,
+              "why": "显示的顺序由函数里的 print 决定：先 cups，再“杯”，再 drink。调用时按名字写的先后不影响。"
+            },
+            {
+              "text": "1 杯 奶茶",
+              "correct": false,
+              "why": "cups 的默认值 1 只在没有传 cups 时才用；这里按名字传了 cups=2。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "按名字传的时候，顺序可以和 def 里不一样，不会报错。"
+            }
+          ],
+          "tip": "按名字传：看等号左边的名字，值就给那个参数。"
+        },
+        {
+          "type": "predict",
+          "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+          "code": "def total(price, cups=1):\n    return price * cups\nprint(total(8, cups=3))\nprint(total(cups=3, price=8))",
+          "options": [
+            {
+              "text": "24\n24",
+              "correct": true,
+              "why": "第一次 8 按位置给 price，cups=3 按名字给 cups：8 × 3 = 24。第二次两个都按名字给，顺序无关，还是 price 8、cups 3，24。"
+            },
+            {
+              "text": "24\n报错",
+              "correct": false,
+              "why": "全部按名字传时，先写 cups 后写 price 也可以，不会报错。"
+            },
+            {
+              "text": "8\n24",
+              "correct": false,
+              "why": "第一次传了 cups=3，不会用默认的 1：8 × 3 = 24。"
+            },
+            {
+              "text": "24\n8",
+              "correct": false,
+              "why": "第二次也传了 cups=3：8 × 3 = 24。"
+            }
+          ],
+          "tip": "按位置的先对上，按名字的再各找各的参数。"
+        },
+        {
+          "type": "pick",
+          "prompt": "运行报了 TypeError: total() got multiple values for argument 'price'。这句报错在说什么？",
+          "key": "type",
+          "code": "def total(price, cups=1):\n    return price * cups\nprint(total(8, price=3))",
+          "trace": "Traceback (most recent call last):\n  File \"main.py\", line 3, in <module>\n    print(total(8, price=3))\nTypeError: total() got multiple values for argument 'price'",
+          "checks": [
+            {
+              "program": "def total(price, cups=1):\n    return price * cups\nprint(total(8, price=3))",
+              "type": "TypeError",
+              "line": 3,
+              "msg": "total() got multiple values for argument 'price'"
+            }
+          ],
+          "options": [
+            {
+              "text": "price 收到了两次值：8 按位置给了 price，price=3 又按名字给了一次",
+              "correct": true,
+              "why": "第一个位置就是 price，8 已经给了它；后面 price=3 又给了一次，同一个参数给了两次。想给 cups，要写 cups=3。",
+              "value": "TypeError"
+            },
+            {
+              "text": "price 这个名字还没有定义",
+              "correct": false,
+              "why": "那是 NameError。price 是 total 的参数，定义过了；这里报的是 TypeError，说的是同一个参数收到了两个值。",
+              "value": "NameError"
+            },
+            {
+              "text": "按名字传值时等号写错了",
+              "correct": false,
+              "why": "写法不对是 SyntaxError，程序一行都不会运行；这里前面的 def 正常运行了，是调用时才报错。",
+              "value": "SyntaxError"
+            },
+            {
+              "text": "字典里没有 price 这个键",
+              "correct": false,
+              "why": "那是 KeyError，查字典时才会有；这里没有字典，是调用函数时同一个参数给了两次。",
+              "value": "KeyError"
+            }
+          ],
+          "tip": "multiple values：同一个参数收到了不止一个值。数一数位置和名字各给了谁。"
+        },
+        {
+          "type": "fill",
+          "prompt": "屏幕要显示：2 杯 果茶",
+          "code": "def order(drink, cups=1):\n    print(cups, \"杯\", drink)\norder(cups=2, {0}=\"果茶\")",
+          "tokens": [
+            "drink",
+            "cups",
+            "name",
+            "\"drink\""
+          ],
+          "answer": [
+            "drink"
+          ],
+          "expected": "2 杯 果茶",
+          "why": {
+            "cups": "cups 已经按名字给过 2 了，同一个名字写两次，写法本身就不允许，报 SyntaxError。",
+            "name": "order 里没有叫 name 的参数，报 TypeError：got an unexpected keyword argument 'name'。名字要和 def 里的参数一致。",
+            "\"drink\"": "按名字传时，等号左边是参数的名字，不加引号；加了引号会报 SyntaxError。"
+          },
+          "hint": "等号左边写 def 里参数的名字：要把果茶给哪个参数？"
+        }
+      ]
     }
   ]
 }
