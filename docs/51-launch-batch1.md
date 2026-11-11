@@ -152,7 +152,7 @@
 | #62 `fix/feedbar-scroll` | `1532446` | 反馈区内部滚动、「继续」贴底 | Draft，**等产品官定**是否进正式版 | 含在 u9c |
 | #58 `content/u6-u7-release` | `7a67e12` | U6+U7 + #60 | 自动化通过（run 42995565229）；等 iPhone 真机 | — |
 | #59 `integration/u8-sample` | `34b3d37` | U8 + 样板关 + #60 + 计分断言 | 自动化通过（run 42995570917） | 含在 u9c |
-| #61 `integration/u8-sample-u9` | `b312f0a` | U9 + #62 | 本地 Chromium 对预览产物 joint-u9 44/44；CI 见 PR | https://nomuhoshi.github.io/newfirst-app-preview/u9c/ （`preview/u9c` 9a23b39） |
+| #61 `integration/u8-sample-u9` | `b312f0a` | U9 + #62 | **自动化通过**（run 42998264433：WebKit / Chromium 各 joint-u9 44、choice-layout 124、joint-u8-sample 60、joint-u6-u7 46，0 失败） | https://nomuhoshi.github.io/newfirst-app-preview/u9c/ （`preview/u9c` 9a23b39） |
 
 **#60 验收**（`tests/choice-layout.test.mjs`，390×450、390×844 × WebKit / Chromium）：代码排法单列上下排开；`white-space: pre`、渲染行数 = 源码行数；长选项在卡片内横滚（滚轮两内核 + CDP 触摸横扫 Chromium），横滚后无选中、「检查」不可点；选错标红、正确标绿、有反馈；整页无横向溢出。正式版验 U1L1；D1L1、U8L5、U8L2 在 #59 / #61 上验（U8L5 有需要横滚的长选项）。#59 的 `joint-u8-sample` 代码选项折行已改为断言。
 
