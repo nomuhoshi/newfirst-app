@@ -100,6 +100,30 @@ const savedMerged = merged;
   check("旧键原样保留（迁移只读）", (await p.evaluate((k) => localStorage.getItem(k), RAWKEY)) === legacy);
   await ctx.close(); ctx = await open(dir); p = await load(ctx); await p.reload(); await p.waitForFunction(() => window.__app?.getState);
   const b = await merged(p); check("关闭重开 + 刷新后仍是 130 / 5，不重复加分", b.xp === 130 && b.lessonsCompleted === 5, JSON.stringify(b));
+  // 第二类升级：已经有 v4 之后（更新 / 刷新），旧代码页面后来写旧键，不能覆盖 v4 存档，也不会被自动迁入
+  await p.evaluate((k) => localStorage.setItem(k, JSON.stringify({ version: 3, onboarded: true, xp: 9999, hearts: 1, heartsAt: 1, streak: 9, lastDay: "2026-11-11", done: { U1L9: true }, doneOn: {}, lessonsCompleted: 77, installTipClosed: false, lastActive: 5, prefs: { sound: true, haptics: true, soundStyle: "J" } })), RAWKEY);
+  await p.reload(); await p.waitForFunction(() => window.__app?.getState);
+  const c = await merged(p); check("已有 v4 后旧键被旧代码改写：v4 存档不变（130 / 5 / 2 关），旧键内容不被迁入", c.xp === 130 && c.lessonsCompleted === 5 && Object.keys(c.done).length === 2 && !c.done.U1L9, JSON.stringify(c));
+  await p.evaluate(() => { window.__app.persist(); }); await p.reload(); await p.waitForFunction(() => window.__app?.getState);
+  const d2 = await merged(p); check("之后保存、再刷新，仍不受旧键影响", d2.xp === 130 && d2.lessonsCompleted === 5, JSON.stringify(d2));
+  await ctx.close();
+}
+// ---------- 通过真实页面按钮清除（生产清除路径）：旧页面、刷新、关闭重开都不复活 ----------
+{
+  const dir = newDir(); let ctx = await open(dir); const p1 = await load(ctx); await passOnboarding(p1); await finishLesson(p1, "U1L1");
+  await p1.locator(".finish .btn3d.primary").click().catch(() => {}); // 回到地图（按钮文字不同则忽略）
+  const p2 = await load(ctx); const before = await merged(p2);
+  check("清除前：第二个页面看到 U1L1 已完成", before.done.U1L1 === true && before.xp > 0, JSON.stringify(before));
+  await p2.getByRole("button", { name: "我的" }).click(); await p2.getByRole("button", { name: "清除学习记录" }).click(); await p2.getByRole("button", { name: "确定清除" }).click();
+  await p2.waitForFunction(() => Object.keys(window.__app.getState().done).length === 0);
+  const afterClear = await merged(p2); check("真实按钮清除后：本页进度为空", afterClear.xp === 0 && Object.keys(afterClear.done).length === 0, JSON.stringify(afterClear));
+  // 旧页面（p1 内存里还是清除前的进度）：保存 / 回前台 / 再合并，都不复活
+  await p1.evaluate(() => { window.__app.persist(); window.__app.syncFromStorage(); });
+  const old1 = await merged(p1); check("旧页面保存 / 回前台后：仍是清除后的空记录（不复活）", old1.xp === 0 && Object.keys(old1.done).length === 0, JSON.stringify(old1));
+  await p1.reload(); await p1.waitForFunction(() => window.__app?.getState);
+  const r1 = await merged(p1); check("旧页面刷新后：仍为空", r1.xp === 0 && Object.keys(r1.done).length === 0, JSON.stringify(r1));
+  await ctx.close(); ctx = await open(dir); const p3 = await load(ctx);
+  const r3 = await merged(p3); check("关闭浏览器重开后：仍为空，没有回到开场介绍", r3.xp === 0 && Object.keys(r3.done).length === 0 && (await p3.locator(".onboard").count()) === 0, JSON.stringify(r3));
   await ctx.close();
 }
 
