@@ -4,7 +4,7 @@
 # - 单空题记录每个错误词块的真实输出和解释，--verbose 时打印，供人工核对解释（verify-fill 的输出）。
 # - 任何组合都不能卡死（超时）：while 题里学生可能点出死循环，题目要避免。
 # - 组合超过 400 种只验标准答案（计为跳过）；initial 不能直接得到 expected。
-import itertools
+import itertools, re
 from .common import run, Check
 def fill_code(ex, combo):
     c = ex["code"]
@@ -15,7 +15,7 @@ def check(items):
     for w, l, ex in items:
         if ex["type"] != "fill": continue
         if "expected" not in ex: c.skip(w, "没有 expected"); continue
-        n = ex["code"].count("{")
+        n = len(re.findall(r"\{\d+\}", ex["code"]))  # 只数 {0} {1} 这样的空；字典写法 {"a": 1} 里的花括号不是空（和 src/app.js 的 /\{\d+\}/ 一致）
         accepted = [list(a) for a in ex.get("answers", [ex["answer"]])]
         c.ok(list(ex["answer"]) in accepted, w, "answer 不在 answers 里")
         for a in accepted:
