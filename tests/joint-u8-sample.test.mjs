@@ -58,8 +58,9 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
       // 题目代码块：每行 white-space: pre、整块可横滚（不自动折行）；选项里的代码：渲染行数 = 源码行数（没有被折成两行）
       const cbs = [...document.querySelectorAll(".codeblock")];
       const cbOk = cbs.every((b) => /(auto|scroll)/.test(getComputedStyle(b).overflowX) && [...b.querySelectorAll(".cl")].every((l) => getComputedStyle(l).whiteSpace === "pre"));
-      const lineCount = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size; };
-      const wrapped = [...document.querySelectorAll(".choice pre")].filter((p) => lineCount(p) > p.textContent.split("\n").length).map((p) => p.textContent.slice(0, 40));
+      // 文字包围盒高度：原样式 vs 强制 white-space: pre；变矮了说明原样式下有行被折开
+      const textH = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect().height; };
+      const wrapped = [...document.querySelectorAll(".choice pre")].filter((p) => { const h0 = textH(p), old = p.style.whiteSpace; p.style.whiteSpace = "pre"; const h1 = textH(p); p.style.whiteSpace = old; return h0 > h1 + 2; }).map((p) => p.textContent.slice(0, 40));
       const codeOk = cbOk && wrapped.length === 0;
       return { text: fb.innerText.replace(/\s+/g, " ").trim().slice(0, 80), contInView: cr.top >= 0 && cr.bottom <= vh + 1 && cr.height >= 44, contOnTop: !!top && (top === c || c.contains(top)), readable, scrollable: sc, codeOk, cbOk, wrapped, docWide: document.documentElement.scrollWidth > innerWidth + 1 };
     });
