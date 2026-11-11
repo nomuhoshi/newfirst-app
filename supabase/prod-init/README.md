@@ -24,6 +24,22 @@
 - `11-advisor-fix.sql`：项目里没有 `rls_auto_enable` 时什么都不做、不报错（原写法会直接失败）。
 - 本地演练加 F 组（没有 `rls_auto_enable` 的项目），共 22 项全部通过。
 
+## 0b. 正式项目只读核查结果（2026-11-11 13:38 东京，传话员经连接器，老大授权只读）
+
+对象 `suipian-app`（`aqlcunkmggzzvyavlkjg`，ap-southeast-1，PostgreSQL 17.11，组织套餐 **Free**）。只运行了 `00-precheck.sql`、`10-advisor-readonly.sql` 和安全顾问读取，没有任何写入。
+
+| 检查 | 结果 | 对变更包的影响 |
+|---|---|---|
+| 0.2 `postgres.rolbypassrls` | **true** | FORCE RLS 下三个函数能写表，`01-init.sql` 按原稿执行 |
+| 0.3 业务对象 | 没有 `progress`，没有三个 RPC；public 里只有 `rls_auto_enable()` | 新库路径：`02-postcheck.sql` §8 期望 0 行 |
+| 0.4 默认权限 | 比测试项目紧：`postgres` 新函数默认只给自己执行；新表默认只给三个角色 `Dxtm`；新序列只给自己 | `01-init.sql` 不依赖默认授权（先全部收回，再只给 authenticated SELECT 和三个 RPC 的 EXECUTE）。本地加 G 组模拟正式项目的默认权限，初始化、验收 29 项、告警修正都通过。service_role 在正式项目上不会自动拿到表和函数的全部权限，应用不用 service_role，不影响 |
+| 0.5 / 0.7 | **有** `rls_auto_enable()` 和 `ensure_rls`（启用） | 初始化建表时 `ensure_rls` 会顺带给 `progress` 开 RLS（脚本本来就开），不冲突；`11-advisor-fix.sql` 在正式项目上要执行 |
+| 0.6 账号 | 1 个（已确认、登录过） | 初始化不碰 `auth.users` |
+| 0.8 迁移记录表 | 不存在 | 用连接器 `apply_migration` 会新建并记录一条；SQL Editor 不会 |
+| 安全顾问 | 3 条 WARN：0028（anon 能执行 `rls_auto_enable`）、0029（authenticated 能执行 `rls_auto_enable`）、泄露密码防护未开 | 0028、0029 由 `11-advisor-fix.sql` 消除；泄露密码见 §8 |
+| `rls_auto_enable` 定义 | SECURITY DEFINER，`search_path=pg_catalog`，返回 `event_trigger`，`proacl` 为空（PUBLIC 可执行）；比文档版多了按 `%I.%I` 拼表名、出错只记日志不抛出 | 收回 PUBLIC / anon / authenticated 的 EXECUTE 后属主 `postgres` 仍保留；事件触发器照常工作（本地 D5、G4 用探针表验证；正式执行时 `11-advisor-fix.sql` 也会建探针表再删掉，确认一次） |
+
+
 ## 1. 现状
 
 | 项 | 状态 | 依据 |
@@ -54,10 +70,10 @@
 | 发信 / 验证限额 | Rate Limits 页的每小时发信数、验证次数；记实际值 | 待查 | 待查 | 曾遇 `over_email_send_rate_limit`，待复查 |
 | 匿名登录、手机登录 | 关 | 待查 | 待查 | |
 | 密码登录 | 应用不使用密码（只有 `/auth/v1/otp` 和 `/auth/v1/verify`） | 待查 | 待查 | 见 §8 |
-| 数据区域 | 数据库：新加坡（正式）；Resend：东京 | 登记 | 待查 | 写进隐私说明前再核 |
-| 套餐 | 见 §9 | 待查 | 待查 | 决策项 |
+| 数据区域 | 数据库：新加坡（正式）；Resend：东京 | ap-southeast-1（已核） | ap-southeast-1（已核） | Resend 区域写进隐私说明前再核 |
+| 套餐 | 见 §9 | Free（已核） | Free（已核） | 老大 11:07 定：继续免费 |
 
-建议发件地址：`noreply@mail.suipiancode.com`（需产品官 / 老大定）。
+发件地址：**`noreply@mail.suipiancode.com`**（老大 11:07 已定）。数据库区域两边都是 ap-southeast-1（新加坡）；套餐 Free（老大 11:07 同意继续用免费套餐）。其余各项连接器读不到，需要后台抄值。
 
 ## 3. 初始化 SQL（需授权）
 
@@ -102,13 +118,13 @@ schema 内容：`progress` 表（`doc` 必须是 JSON 对象、小于 64 KB，`r
 
 ## 7. 安全顾问告警（单独处理）
 
-测试项目实际只有两类告警，没有 `rls_auto_enable`（项目里根本没有这个函数）。**正式项目仍需要先拿到全部三条告警原文**（Advisors → Security，告警名称、对象、说明原样贴回），并在正式项目跑 `10-advisor-readonly.sql`：看 `rls_auto_enable()` 的定义、属主、SECURITY DEFINER、`search_path`、授权、依赖它的事件触发器，以及 public 里所有 SECURITY DEFINER 函数的执行权限。
+测试项目只有两类告警（没有 `rls_auto_enable` 这个函数）。**正式项目三条告警原文已取得（§0b）**：0028、0029 都指向 `rls_auto_enable()`，第三条是泄露密码防护。原要求是先拿到原文（Advisors → Security，告警名称、对象、说明原样贴回），并在正式项目跑 `10-advisor-readonly.sql`：看 `rls_auto_enable()` 的定义、属主、SECURITY DEFINER、`search_path`、授权、依赖它的事件触发器，以及 public 里所有 SECURITY DEFINER 函数的执行权限。
 
 已验证的事实（本地 PostgreSQL 16，`prod-init-local.sh` D 组）：
 - `rls_auto_enable()` 返回 `event_trigger`，任何角色直接调用都会报错；事件触发器触发时不检查调用者的 EXECUTE 权限。
 - 收回 `public` / `anon` / `authenticated` 的 EXECUTE 后：非超级用户新建 public 表，RLS 照常自动开启；三个 RPC 的 authenticated 执行权限不受影响；初始化验收 29 项仍全过。
 
-修正草案 `11-advisor-fix.sql`：只对 `rls_auto_enable()` 收回这三个角色的 EXECUTE，自带检查（收紧没生效、或误伤了三个 RPC，都会回滚）；项目里没有这个函数时什么都不做。**等告警原文和只读结果对上后定稿。** 测试项目已确认告警会点到三个 RPC（lint `0029_authenticated_security_definer_function_executable`）：这是应用的设计，它们只按 `auth.uid()` 操作本人数据，不接受 user_id 参数，保留并在告警里记录理由，不收紧。
+修正草案 `11-advisor-fix.sql`：只对 `rls_auto_enable()` 收回这三个角色的 EXECUTE，自带检查（收紧没生效、或误伤了三个 RPC，都会回滚）；项目里没有这个函数时什么都不做。**已和正式项目的告警原文、只读结果对上，定稿**；收紧后会建一张探针表确认 `ensure_rls` 照常开 RLS，再删掉（都在同一事务里，失败整体回滚）。 测试项目已确认告警会点到三个 RPC（lint `0029_authenticated_security_definer_function_executable`）：这是应用的设计，它们只按 `auth.uid()` 操作本人数据，不接受 user_id 参数，保留并在告警里记录理由，不收紧。
 
 ## 8. 泄露密码防护告警
 
@@ -123,7 +139,7 @@ Supabase 文档：免费项目在 **7 天内活动很少**时会被暂停，暂�
 | 留在免费套餐 | 低活跃时会被暂停，期间用户登录和同步失败（应用本机学习不受影响）；泄露密码防护不可用 |
 | 升级 Pro | 不会因不活跃暂停；可开泄露密码防护；按月付费（价格以 supabase.com/pricing 为准，升级前核实） |
 
-需要老大决定。
+**已定（老大 11:07）：继续免费套餐。**
 
 ## 10. 收到核查结果后的实测顺序
 
@@ -131,13 +147,20 @@ Supabase 文档：免费项目在 **7 天内活动很少**时会被暂停，暂�
 2. iPhone Safari 本体、主屏幕 PWA 登录。
 3. 两个隔离会话的真实同步（清单 A）。
 
-## 11. 请老大一次授权的写入清单
+## 11. 请老大一次授权的写入清单（按顺序执行；每步有期望结果，不符就停）
 
-1. 测试项目运行 `01-init.sql`（演练，重复执行）。
-2. 正式项目运行 `01-init.sql`。
-3. 正式项目按差异表改认证地址、模板、注册开关、OTP 设置。
-4. 正式项目填 Resend SMTP（老大亲自填密钥）。
-5. 正式项目运行定稿后的 `11-advisor-fix.sql`。
-6. 套餐选择（§9）。
+数据库部分（C1、C3）只读核查已齐，可以授权；认证和 SMTP 部分（C2）还差后台抄值。可以先授权 C1 + C3，C2 等抄值后再授权。
+
+| 步 | 内容 | 执行方式 | 期望结果（不符即停，按 §5 处理） |
+|---|---|---|---|
+| C1 | 正式项目运行 `01-init.sql`（文件与测试项目演练时逐字节一致） | 建议用和演练相同的连接器 `apply_migration`（会建迁移表并记一条）；或 SQL Editor 粘贴（能看到“初始化自检通过”） | 成功；随后 `02-postcheck.sql` 1–8 全部符合，§8 为 0 行，§9 与执行前一样（`ensure_rls` 仍在）；账号数仍是 1 |
+| C3 | 正式项目运行 `11-advisor-fix.sql` | 同上 | 成功（内含探针表检查）；`10-advisor-readonly.sql` 显示 anon、authenticated 都不能执行 `rls_auto_enable`；三个 RPC 的 authenticated 执行权限不变 |
+| — | 重新读安全顾问 | 只读 | 期望剩下：0029 × 3（三个 RPC，属设计，保留，理由见 §7）+ 泄露密码防护（见 §8）；0028 和指向 `rls_auto_enable` 的 0029 消失 |
+| C2a | 后台按 §2.2 改：Site URL、Redirect URLs、注册开关（开）、Email provider / Confirm email、OTP 6 位 600 秒、两个模板只含 `{{ .Token }}` | 后台 | 改后再抄一遍差异表，全部符合 |
+| C2b | 后台填 Resend SMTP：`smtp.resend.com`、465 或 587、用户名 `resend`、密码 = Resend API key（老大亲手填）、发件 `noreply@mail.suipiancode.com`、发件人“碎片编程” | 后台 | 用专用测试邮箱发一次验证码，收到且发件域是 `mail.suipiancode.com`、DKIM / SPF 通过 |
+| C4 | 套餐 | — | 已定：继续 Free（老大 11:07）。已知限制：约 7 天低活跃可能暂停，1 年内可手动恢复 |
+| C5 | 合并 main、正式部署 | — | 等“合并” |
+
+C1 之后用**专用测试账号**做一次端到端：正式站登录 → 做一关 → 换浏览器登录看到同一进度 → 删号；老大现有的那个账号不做删号测试。
 
 来源：[Supabase Event Triggers](https://supabase.com/docs/guides/database/postgres/event-triggers)（`rls_auto_enable` 原文）、[Password security](https://supabase.com/docs/guides/auth/password-security)（泄露密码防护仅 Pro 及以上）、[Project Pausing](https://supabase.com/docs/guides/platform/free-project-pausing)（7 天低活跃暂停、1 年内可恢复）。

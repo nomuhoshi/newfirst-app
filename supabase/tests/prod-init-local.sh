@@ -81,4 +81,16 @@ ok "F1 没有 rls_auto_enable 时：01-init.sql、02-postcheck.sql 都正常" $(
 psql -v ON_ERROR_STOP=1 -qAt -d pf -f "$PI/11-advisor-fix.sql" >"$W/ff.txt" 2>&1; rcf=$?
 ok "F2 没有 rls_auto_enable 时：11-advisor-fix.sql 什么都不做、不报错，三个 RPC 的权限不变" $([ $rcf = 0 ] && grep -q "什么都没做" "$W/ff.txt" && [ "$(Q pf -c "select bool_and(has_function_privilege('authenticated', p.oid, 'execute')) from pg_proc p where p.pronamespace='public'::regnamespace and p.proname in ('create_progress','save_progress','delete_my_account')")" = t ] && echo 1 || echo 0)
 
-echo; echo "合计 $((pass+fail)) 项，失败 $fail 项"; [ $fail = 0 ] && [ $((pass+fail)) = 22 ] && { echo 全部通过; exit 0; } || exit 1
+echo "== G 正式项目的默认权限（2026-11-11 只读核查）：postgres 新函数默认只给自己执行，新表只给三个角色 Dxtm"
+newdb pg || die "模拟环境失败"
+Q pg -c "alter default privileges for role postgres in schema public revoke all on functions from anon, authenticated, service_role, public;
+         alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated, service_role;
+         alter default privileges for role postgres in schema public grant truncate, references, trigger on tables to anon, authenticated, service_role;
+         alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated, service_role;" >/dev/null
+psql -v ON_ERROR_STOP=1 -qAt -d pg -f "$PI/01-init.sql" >"$W/g1.txt" 2>&1; ok "G1 01-init.sql 成功且自检通过" $(grep -q "初始化自检通过" "$W/g1.txt" && echo 1 || echo 0)
+OUT="$(psql -v ON_ERROR_STOP=1 -qAt -d pg -f "$D/tests/prod-init-acceptance.sql" 2>&1)"; ok "G2 验收 29 项全部通过" $([ $? = 0 ] && [ "$(echo "$OUT" | grep -c 'PASS  ')" = 29 ] && echo 1 || echo 0)
+ok "G3 表权限：anon 没有任何权限（默认的 TRUNCATE/REFERENCES/TRIGGER 也已收回）" $([ "$(Q pg -c "select count(*) from information_schema.role_table_grants where table_schema='public' and table_name='progress' and grantee='anon'")" = 0 ] && echo 1 || echo 0)
+psql -v ON_ERROR_STOP=1 -qAt -d pg -f "$PI/11-advisor-fix.sql" >"$W/g4.txt" 2>&1; rcg=$?
+ok "G4 11-advisor-fix.sql：收紧成功，探针表确认 ensure_rls 照常开 RLS，探针表已删除" $([ $rcg = 0 ] && [ "$(Q pg -c "select to_regclass('public._rls_probe_after_fix') is null and not has_function_privilege('anon','public.rls_auto_enable()','execute')")" = t ] && echo 1 || echo 0)
+
+echo; echo "合计 $((pass+fail)) 项，失败 $fail 项"; [ $fail = 0 ] && [ $((pass+fail)) = 26 ] && { echo 全部通过; exit 0; } || exit 1

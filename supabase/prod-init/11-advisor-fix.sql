@@ -12,6 +12,14 @@ do $$ begin
   if has_function_privilege('anon', 'public.rls_auto_enable()', 'execute') or has_function_privilege('authenticated', 'public.rls_auto_enable()', 'execute') then
     raise exception '收紧失败：anon / authenticated 仍能执行 rls_auto_enable';
   end if;
+  -- 探针：收紧后新建一张 public 表，ensure_rls 必须照常给它开 RLS；探针表随即删除（都在本事务里）
+  if exists (select 1 from pg_event_trigger where evtfoid = 'public.rls_auto_enable()'::regprocedure and evtenabled <> 'D') then
+    execute 'create table public._rls_probe_after_fix (x int)';
+    if not (select relrowsecurity from pg_class where oid = 'public._rls_probe_after_fix'::regclass) then
+      raise exception '收紧后 ensure_rls 没有给新表开 RLS，已回滚';
+    end if;
+    execute 'drop table public._rls_probe_after_fix';
+  end if;
 end $$;
 do $$ begin
   if exists (select 1 from pg_proc p where p.pronamespace='public'::regnamespace and p.proname in ('create_progress','save_progress','delete_my_account') and not has_function_privilege('authenticated', p.oid, 'execute')) then

@@ -7,7 +7,7 @@ select relname, relrowsecurity as rls_on, relforcerowsecurity as rls_forced from
 select conname, pg_get_constraintdef(oid) from pg_constraint where conrelid = 'public.progress'::regclass order by conname;
 -- 4. 策略（期望：1 条，SELECT，roles {authenticated}，qual (auth.uid() = user_id)）
 select policyname, cmd, roles, qual, with_check from pg_policies where schemaname='public' and tablename='progress';
--- 5. 表权限（期望：anon 没有任何一行；authenticated 只有 SELECT；service_role 有全部权限是 Supabase 默认，service_role 密钥只在服务端，不在前端）
+-- 5. 表权限（期望：anon 没有任何一行；authenticated 只有 SELECT；service_role 的权限随项目的默认权限而异：测试项目是全部，正式项目默认只有 Dxtm；应用不用 service_role，不影响）
 select grantee, string_agg(privilege_type, ',' order by privilege_type) from information_schema.role_table_grants where table_schema='public' and table_name='progress' group by grantee order by grantee;
 -- 6. 三个函数（期望：3 行，security_definer = true，proconfig 有 search_path，属主能绕过 RLS）
 select p.proname, pg_get_function_identity_arguments(p.oid) as args, p.prosecdef as security_definer, p.proconfig, pg_get_userbyid(p.proowner) as owner,
