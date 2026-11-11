@@ -1,0 +1,30 @@
+{
+  "format": "suipian-progress",
+  "exportVersion": 1,
+  "exportedAt": "2026-11-11T18:13:10.306Z",
+  "build": "2026-11-11T18:05:45.689Z",
+  "state": {
+    "version": 3,
+    "onboarded": true,
+    "xp": 60,
+    "hearts": 5,
+    "heartsAt": 1794420788947,
+    "streak": 1,
+    "lastDay": "2026-11-11",
+    "done": {
+      "U1L1": true
+    },
+    "doneOn": {
+      "U1L1": "2026-11-11"
+    },
+    "lessonsCompleted": 1,
+    "installTipClosed": false,
+    "lastActive": 1794420782990,
+    "prefs": {
+      "sound": true,
+      "haptics": true,
+      "soundStyle": "J"
+    }
+  },
+  "unreadable": []
+}

@@ -58,6 +58,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .onboard-mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; }
 .onboard-mid h1 { font-size: 24px; margin: 8px 0 0; }
 .onboard-mid p { color: var(--g-muted); margin: 0; font-size: 16px; line-height: 1.6; }
+.onboard-migrate { color: var(--g-muted); font-size: 14px; line-height: 1.6; text-align: center; margin: 0 8px 12px; }
 .onboard-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 16px; }
 .onboard-dots span { width: 8px; height: 8px; border-radius: 4px; background: var(--g-line); }
 .onboard-dots span.on { width: 22px; background: var(--g-copper); }
@@ -178,6 +179,11 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .choice { border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); border-radius: 12px; padding: 12px; min-height: 60px; transition: border-color .08s, background-color .08s, transform .08s; }
 .choice:active { transform: translateY(1px); }
 .choice pre { margin: 0; font: 16px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+/* D5：代码 / 多行输出选项单列，保留换行和缩进，过长时在选项内部横滚（不让整页横滚） */
+.choices.code { grid-template-columns: minmax(0, 1fr); }
+.choices.code .choice { min-width: 0; text-align: left; }
+.choices.code .opt-scroll { display: block; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.choices.code .choice pre { white-space: pre; width: max-content; min-width: 100%; }
 .choice.sel { border-color: var(--g-primary); border-width: 2.5px; padding: 11.5px; background: color-mix(in srgb, var(--g-primary) 10%, var(--g-card)); }
 .choice.right { border-color: var(--g-ok); background: var(--g-ok-bg); }
 .choice.wrong { border-color: var(--g-bad); background: var(--g-bad-bg); animation: nudge .16s ease-in-out; }
@@ -220,6 +226,9 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 
 /* 答题反馈条：从下方 8px 淡入 */
 .feedbar { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); border-top: none; animation: fb-in .16s ease-out; }
+/* 反馈区过高（正确答案是整段长程序、矮屏）时：反馈区内部滚动，「继续」贴在底部始终可见可点，不被挤出屏幕 */
+.feedbar { flex-shrink: 0; max-height: min(72vh, calc(100vh - 130px)); max-height: min(72dvh, calc(100dvh - 130px)); overflow-y: auto; overscroll-behavior: contain; }
+.feedbar > [data-continue] { position: sticky; bottom: 0; }
 @keyframes fb-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .feedbar.ok { background: var(--g-ok-bg); color: var(--g-ok); }
 .feedbar.bad { background: var(--g-bad-bg); color: var(--g-bad); }

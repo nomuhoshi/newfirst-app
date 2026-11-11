@@ -31,7 +31,7 @@ import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
-  loadState, saveState, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
+  loadState, saveState, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
 } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
@@ -236,7 +236,7 @@ const loaded = loadState();
 let state = loaded.state;
 let notice = loaded.notice;
 feel.setPrefs(state.prefs);
-if (notice) saveState(state); // 迁移或修复后的记录立即存一次，下次不再重复提示
+if (notice && !loaded.readFailed) saveState(state); // 读取失败时不存空记录（会盖掉真实进度）；迁移或修复后的记录立即存一次，下次不再重复提示
 // ---------- 账号与云端 ----------
 // 登录后，学习进度写进“这个账号在本机的副本”（再在后台同步到云端），不再写游客记录；退出登录后回到游客记录。
 let safeStorage = null;
@@ -273,6 +273,7 @@ function persist() {
   }
   if (!saveState(state)) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
 }
+function clearProgress() { const prefs = state.prefs; const f = clearState(); if (f.clearFailed) { showToast("清除失败（存储不可用），学习记录没有清除。"); return false; } state = f; state.prefs = prefs; state.onboarded = true; persist(); return true; }
 accountUi = createAccountUi({
   h, button, sheet, icon, showToast, sync, api: cloudApi, getState: () => state,
   rerender: () => (currentView === "me" ? renderMe() : renderPath()),
@@ -448,6 +449,7 @@ function renderOnboarding(i = 0) {
   appEl.replaceChildren(h("main", { class: "onboard" },
     h("div", { class: "onboard-mid" }, mascot(120, s.mood), h("h1", { text: s.text }), s.sub ? h("p", { text: s.sub }) : null),
     h("div", { class: "onboard-dots" }, steps.map((_, k) => h("span", { class: k === i ? "on" : "" }))),
+    i === 0 && standalone && !Object.keys(state.done).length ? h("p", { class: "onboard-migrate", "data-migrate-hint": "", text: "这里暂时没有学习记录。如果你之前在 Safari 学习，可以从 Safari 的「我的」导出进度文件，再到这里导入。" }) : null,
     i === steps.length - 1 && cloudApi.configured ? button("已有账号？登录", () => accountUi.openLogin({ reason: "登录后会取回你在云端保存的进度。" }), "btn3d ghost wide", { "data-onboard-login": "" }) : null,
     button(i < steps.length - 1 ? "继续" : "开始学习", () => {
       if (i < steps.length - 1) renderOnboarding(i + 1);
@@ -591,6 +593,8 @@ function selfTest() {
       `离线支持：${swInfo.status}`,
       `网络：${navigator.onLine === false ? "离线" : "在线"}`,
       `运行方式：${standalone ? "主屏幕 App" : "浏览器"}`,
+      `入口网址：${location.origin}${location.pathname}`, // 不含查询参数和片段，避免暴露认证信息
+      `学习记录：已完成 ${Object.keys(state.done).length} 关，XP ${state.xp}；最后一次成功保存：${getLastSavedAt() ? new Date(getLastSavedAt()).toLocaleString() : "本次打开后尚未保存"}`,
       `音效开关：${d.soundPref ? "开" : "关"}`,
       `AudioContext：${d.audioState}${d.sampleRate ? `（${d.sampleRate} Hz）` : ""}`,
       `音频会话：${d.audioSession}`,
@@ -755,7 +759,7 @@ function backupCard() {
   };
   const doExport = () => {
     try {
-      const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
+      syncFromStorage(state); const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = h("a", { href: url, download: exportFileName(new Date()), hidden: "" });
@@ -779,7 +783,7 @@ function backupCard() {
       h("p", { text: `文件里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（导出于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
       button("确认导入", () => {
         if (blockedByLogin()) return;
-        state = mergeImport(state, r.state); persist(); renderMe(); showToast("进度已导入。");
+        syncFromStorage(state); state = mergeImport(state, r.state); persist(); renderMe(); showToast("进度已导入。");
       }, "btn3d primary"),
       button("取消", () => { panel.replaceChildren(); }, "btn"),
     ));
@@ -803,7 +807,7 @@ function renderMe() {
     if (confirmBox) return;
     confirmBox = h("div", { class: "confirm", role: "alertdialog" },
       h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
-      button("确定清除", () => { const prefs = state.prefs; state = clearState(); state.prefs = prefs; state.onboarded = true; persist(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
+      button("确定清除", () => { if (clearProgress()) { renderMe(); showToast("学习记录已清除。"); } }, "btn danger"),
       button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
     );
     clearBtn.after(confirmBox);
@@ -987,7 +991,7 @@ function renderExercise(run) {
     if (ok) {
       run.correct++;
       const gain = run.review ? XP_REVIEW : XP_CORRECT;
-      run.xp += gain; state.xp += gain; persist();
+      run.xp += gain; addXp(state, gain, run.lesson?.id, !run.review); persist();
     } else {
       run.mistakes++;
       if (!run.review) { loseHeart(state); persist(); }
@@ -1054,11 +1058,28 @@ function correctAnswerText(ex) {
   return ex.answers[0].map((k) => ex.lines[k]).join("\n");
 }
 
+// 选项排法（D5，产品官 2026-11-11 18:07）：含代码或多行输出的题，整组选项单列、保留原有换行和缩进、过长在选项内横滚；普通文字三列、自然折行。
+// 只按题型和明确标记判断，不从括号、引号等字符猜：
+//   选输出题（predict）：选项是屏幕上的原样输出 → 代码排法；
+//   pick：key 为 line（选代码行）、stdout（选输出）、fix（选改法，含代码）→ 代码排法；key 为 type（选原因，文字）→ 文字排法；
+//   题目可用 "optionLayout": "code" | "text" 明确指定，优先于上面的默认。
+const CODE_PICK_KEYS = new Set(["line", "stdout", "fix"]);
+function optionLayout(ex) {
+  if (ex.optionLayout === "code" || ex.optionLayout === "text") return ex.optionLayout;
+  if (ex.type === "predict") return "code";
+  if (ex.type === "pick") return CODE_PICK_KEYS.has(ex.key) ? "code" : "text";
+  return "text";
+}
+function choiceLabel(text, layout) {
+  return layout === "code" ? h("span", { class: "opt-scroll" }, h("pre", { text })) : h("pre", { text });
+}
+
 // 选输出题
 function predictArea(ex, onChange) {
   let picked = null; let locked = false;
-  const opts = h("div", { class: "choices" }, ex.options.map((o, i) => {
-    const b = button(h("pre", { text: o.text }), () => {
+  const layout = optionLayout(ex);
+  const opts = h("div", { class: `choices ${layout}`, "data-layout": layout }, ex.options.map((o, i) => {
+    const b = button(choiceLabel(o.text, layout), () => {
       if (locked) return;
       picked = i;
       feel.play("select");
@@ -1166,9 +1187,9 @@ function renderFinish(run) {
   const l = run.lesson;
   const firstTime = !state.done[l.id];
   state.done[l.id] = true;
-  state.lessonsCompleted++;
+  addRun(state);
   const bonus = run.review ? 0 : XP_FINISH;
-  run.xp += bonus; state.xp += bonus;
+  run.xp += bonus; addXp(state, bonus, l.id, !run.review);
   const newDay = bumpStreak(state);
   if (firstTime && state.lastDay) state.doneOn = { ...(state.doneOn ?? {}), [l.id]: state.lastDay }; // 完成日期 = 刚记的学习日
   let heartMsg = null;
@@ -1390,9 +1411,18 @@ if (vv) {
   fit();
 }
 // 回到前台时刷新红心显示
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { regenHearts(state); persist(); appEl.querySelector(".statsbar").replaceWith(statsBar()); } });
+// 回到前台 / 从后退缓存恢复 / 别的标签页改了存储：先把存储里更新的进度读进来，再写，避免旧标签页把新进度盖掉
+function refreshFromStorage() {
+  if (sync && sync.account()) return;
+  const changed = syncFromStorage(state);
+  if (changed && currentView === "path" && appEl.querySelector(".statsbar")) renderPath();
+  else if (changed && currentView === "me" && appEl.querySelector(".statsbar")) renderMe();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { refreshFromStorage(); regenHearts(state); persist(); appEl.querySelector(".statsbar")?.replaceWith(statsBar()); } });
+window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
+window.addEventListener("storage", (e) => { if (e.key && e.key.includes("suipian.v4.")) refreshFromStorage(); }); // 测试入口里键带前缀，所以用 includes
 
-window.__app = { allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;

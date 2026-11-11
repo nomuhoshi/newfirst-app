@@ -2,7 +2,7 @@
 // 所有函数都接收一个“像 localStorage 的对象”（getItem / setItem / removeItem），所以可以在 Node 里用假存储测试。
 // 读写都包在 try/catch 里：存储被禁用或写满时返回失败，不抛错、不留下写了一半的内容。
 import { normalizeDoc, docsEquivalent, isId, newId, guestFingerprint } from "./account-data.js";
-import { HEARTS_MAX, HEART_REGEN_MS, regenHearts } from "./storage.js";
+import { HEARTS_MAX, HEART_REGEN_MS, regenHearts, hasV4, guestRawV3, clearGuestV4 } from "./storage.js";
 
 export const GUEST_KEY = "suipian.progress";      // 游客记录（storage.js 在用，这里只读，只有 clearGuestAfterVerified 一处会删）
 export const GUEST_ID_KEY = "suipian.guestId";     // 这份游客记录的随机编号
@@ -36,10 +36,15 @@ export const getDeviceId = (storage) => getOrCreateId(storage, DEVICE_KEY);
 export const getGuestId = (storage) => getOrCreateId(storage, GUEST_ID_KEY);
 
 // 原样读取游客记录的文本（不解析、不修改）
-export const readGuestRaw = (storage) => { const r = safeRead(storage, GUEST_KEY); return r.ok ? r.value : null; };
+// v4 存储存在时，游客记录 = 完整的 v4 合并视图（旧格式文本）；视图不完整 / 读取失败时返回 { ok:false }，绝不当成“没有记录”
+function readGuestSource(storage) {
+  if (hasV4(storage)) { const raw = guestRawV3(storage); return raw === null ? { ok: false } : { ok: true, value: raw }; }
+  return safeRead(storage, GUEST_KEY);
+}
+export const readGuestRaw = (storage) => { const r = readGuestSource(storage); return r.ok ? r.value : null; };
 // 区分：{ status:"none" } 没有游客记录；{ status:"read-failed" } 读取失败；{ status:"corrupt", raw } 记录损坏；{ status:"ok", raw, state }
 export function readGuest(storage) {
-  const r = safeRead(storage, GUEST_KEY);
+  const r = readGuestSource(storage);
   if (!r.ok) return { status: "read-failed" };
   if (r.value === null) return { status: "none" };
   try { const state = JSON.parse(r.value); if (state && typeof state === "object") return { status: "ok", raw: r.value, state }; } catch {}
@@ -208,7 +213,9 @@ export function clearGuestAfterVerified(storage, { userChoseTransfer, uploadOk, 
   if (userChoseTransfer !== true || uploadOk !== true) return false;
   if (!readBack || !uploaded || !docsEquivalent(uploaded, readBack)) return false;
   if (typeof guestSnapshotRaw !== "string") return false;
-  const cur = safeRead(storage, GUEST_KEY);
+  const cur = readGuestSource(storage);
   if (!cur.ok || cur.value !== guestSnapshotRaw) return false;
+  // v4 存储存在时，游客记录就在 v4 里：清除成功 = v4 清除成功（旧键只是镜像，清除函数里尽力一并删除）；v4 清除失败必须返回 false，游客记录仍在，可以重试
+  if (hasV4(storage)) return clearGuestV4(storage) === true;
   return safeRemove(storage, GUEST_KEY);
 }

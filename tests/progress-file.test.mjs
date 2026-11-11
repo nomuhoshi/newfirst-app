@@ -65,7 +65,7 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block", acceptDownloads: true });
   const page = await ctx.newPage();
   const errors = []; page.on("pageerror", (e) => errors.push(String(e.message)));
-  await page.addInitScript((raw) => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("suipian.progress", raw); localStorage.setItem("suipian.progress.unreadable.1700000000000", "{旧的坏记录"); } }, FIX);
+  await page.addInitScript((raw) => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", raw); localStorage.setItem("suipian.progress.unreadable.1700000000000", "{旧的坏记录"); } }, FIX);
   await page.goto(URLBASE); await page.waitForSelector(".statsbar", { timeout: 15000 });
   await page.getByRole("button", { name: "我的" }).tap();
   await page.waitForSelector("[data-backup]");
@@ -78,7 +78,7 @@ try {
   check("导出后提示保管文件", /已导出/.test(await page.locator("[data-backup-msg]").innerText()));
 
   // 清掉进度（模拟清了浏览器数据）后导入
-  await page.evaluate(() => { const st = window.__app.getState(); st.xp = 0; st.done = {}; st.streak = 0; st.lastDay = null; st.lessonsCompleted = 0; window.__app.persist(); window.__app.renderMe ? window.__app.renderMe() : null; });
+  await page.evaluate(() => { window.__app.clearProgress(); /* v4 的 XP 与关卡只增不减，改用真实清除来模拟“清了浏览器数据” */ });
   await page.reload(); await page.waitForSelector(".statsbar");
   await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-backup]");
   await page.locator("[data-import-file]").setInputFiles(saved);
