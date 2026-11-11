@@ -15,6 +15,7 @@ import unit5 from "../content/unit5.json";
 import unit6 from "../content/unit6.json";
 import unit7 from "../content/unit7.json";
 import unit8 from "../content/unit8.json";
+import unit9 from "../content/unit9.json";
 import sampleDebug from "../content/sample-debug.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
@@ -47,7 +48,7 @@ import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
-const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6, U7: unit7, U8: unit8 };
+const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6, U7: unit7, U8: unit8, U9: unit9 };
 // 支线（样板关，读代码与调试）：不进主线顺序、完成数和随机练习；前置单元全部完成才解锁。仅联合分支，未正式发布。
 const SIDELINES = [{ unit: sampleDebug, after: "U3", requires: "U3" }];
 const XP_CORRECT = 10;
