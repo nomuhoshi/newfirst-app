@@ -66,6 +66,7 @@
 正式站账号开关 `ACCOUNTS_LIVE` 保持关闭。验收这样做（PR #57 上线后可用）：
 
 1. 后台：§1 第 3 项“允许新用户注册”保持**关**。Authentication → Users → Add user（或 Invite），手动加 2 个专用测试邮箱（建议 Gmail 一个、QQ 或 163 一个）；不动老大现有账号。
-2. 测试设备：打开 `https://nomuhoshi.github.io/newfirst-app/?accounts-pilot=1`，这台设备才会出现“邮箱登录 / 注册”。别的设备看不到；就算别人也加了参数，注册是关的，进不来。
+2. 测试设备：打开 `https://nomuhoshi.github.io/newfirst-app/?accounts-pilot=1`，这台设备才会出现“邮箱登录 / 注册”。
+   **边界**：这个参数是公开的功能入口，**不是访问控制**。注册关闭只挡新账号；已有账号（目前正式库里有 1 个）的人加了参数仍能登录。数据隔离靠 RLS 和只认 `auth.uid()` 的函数。
 3. 验：验证码送达（Gmail、QQ、163 各记耗时、垃圾箱、发件域名、DKIM / SPF）→ 登录 → 刷新保持 → 两个隔离浏览器配置登录同一测试邮箱做双会话同步（`v1rc-test/README.md` 清单 A）→ 游客进度首次登录“安全合并” → 用专用测试账号删号。
-4. 验完：测试设备打开 `?accounts-pilot=0` 关掉；通过后再把 `ACCOUNTS_LIVE` 改为 true 单独发布，同时把“允许新用户注册”改为开。
+4. 验完：测试设备打开 `?accounts-pilot=0` 关掉，确认回到“云端暂未开通”、凭证和进度都还在（自动化 D1–D5 已覆盖）；通过后再把 `ACCOUNTS_LIVE` 改为 true 单独发布，同时把“允许新用户注册”改为开。
