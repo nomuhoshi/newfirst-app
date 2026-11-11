@@ -228,6 +228,10 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 
 /* 答题反馈条：从下方 8px 淡入 */
 .feedbar { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); border-top: none; animation: fb-in .16s ease-out; }
+/* 反馈区过高（正确答案是整段长程序、矮屏）时：反馈区内部滚动，「继续」贴在底部始终可见可点，不被挤出屏幕 */
+.feedbar { flex-shrink: 0; max-height: min(72vh, calc(100vh - 130px)); max-height: min(72dvh, calc(100dvh - 130px)); overflow-y: auto; overscroll-behavior: contain; }
+.feedbar > [data-continue] { position: sticky; bottom: env(safe-area-inset-bottom, 0px); }
+.ios-browser .feedbar > [data-continue] { bottom: 80px; } /* iOS 浏览器底部工具栏：和反馈区原有 80px 底部留白一致 */
 @keyframes fb-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .feedbar.ok { background: var(--g-ok-bg); color: var(--g-ok); }
 .feedbar.bad { background: var(--g-bad-bg); color: var(--g-bad); }
