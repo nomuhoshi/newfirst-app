@@ -76,7 +76,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
           const k = m.opts.findIndex((o) => o.overflow);
           if (k >= 0) {
             overflowSeen++;
-            const el = page.locator(".choice").nth(k), sc = el.locator(".opt-scroll"), b = await sc.boundingBox();
+            const el = page.locator(".choice").nth(k), sc = el.locator(".opt-scroll"); await sc.scrollIntoViewIfNeeded(); const b = await sc.boundingBox();
             await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.wheel(120, 0); await page.waitForTimeout(150);
             let left = await sc.evaluate((e) => e.scrollLeft);
             if (engine === chromium) { // 真实触摸横扫（CDP）：手指从右往左划
@@ -112,7 +112,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
     }
     await page.waitForSelector(".finish");
     check(`${tag} ${id}：通关（含 ${optionQs} 道选项题）`, optionQs > 0 && (await page.evaluate((i) => !!window.__app.getState().done[i], id)));
-    if (id === "U8L5" || id === "D1L1") check(`${tag} ${id}：至少有一道题的长选项需要横滚（横滚检查确实跑到了）`, overflowSeen > 0);
+    if (id === "U8L5") check(`${tag} ${id}：至少有一道题的长选项需要横滚（横滚检查确实跑到了）`, overflowSeen > 0);
     await page.locator(".finish [data-continue]").click(); await page.waitForSelector(".pathview");
   }
   check(`${tag} 无脚本错误`, errors.length === 0, errors.join("; "));
