@@ -215,7 +215,7 @@ export function clearGuestAfterVerified(storage, { userChoseTransfer, uploadOk, 
   if (typeof guestSnapshotRaw !== "string") return false;
   const cur = readGuestSource(storage);
   if (!cur.ok || cur.value !== guestSnapshotRaw) return false;
-  const removed = safeRemove(storage, GUEST_KEY);
-  if (removed && hasV4(storage)) clearGuestV4(storage); // v4 存储里的游客进度一并清除
-  return removed;
+  // v4 存储存在时，游客记录就在 v4 里：清除成功 = v4 清除成功（旧键只是镜像，清除函数里尽力一并删除）；v4 清除失败必须返回 false，游客记录仍在，可以重试
+  if (hasV4(storage)) return clearGuestV4(storage) === true;
+  return safeRemove(storage, GUEST_KEY);
 }

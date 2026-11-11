@@ -110,8 +110,11 @@ function getEpoch(S) { const r = rd(S, K_EPOCH); return r.ok ? r.v || M0 : null;
 function ensureBase(S, epoch) {
   const key = K_BASE + epoch, r = rd(S, key);
   if (!r.ok) return { ok: false };
-  const have = r.v && parse(r.v);
-  if (have && have.v === 4 && have.epoch === epoch) return { ok: true, base: have, notice: null };
+  if (r.v) { // 已有基线：必须读得懂；读不懂（损坏 / 未知版本 / 代数对不上）一律当读取失败，绝不重新迁移旧键（会少算或重复算进度），原文保留不动
+    const have = parse(r.v);
+    if (have && have.v === 4 && have.epoch === epoch && have.s && typeof have.s === "object") return { ok: true, base: have, notice: null };
+    return { ok: false, corrupt: true };
+  }
   let base = { v: 4, epoch, s: {}, legacyXp: 0, legacyRuns: 0 }, notice = null;
   if (epoch !== M0) base.ignoreLegacy = true;
   else {
@@ -137,7 +140,9 @@ function ensureBase(S, epoch) {
       }
     }
   }
-  const unsaved = !wr(S, key, JSON.stringify(base)); // 写不进去：本次先用内存里的基线，旧键没动，下次打开会再迁移（幂等）
+  // 基线必须先可靠建立：写入后读回，读回的内容才是以后所有读取共用的基线（两个页面同时首次迁移，内容相同；极端情况下不同，以最后写入者为准，双方读回后一致）
+  const unsaved = !wr(S, key, JSON.stringify(base));
+  if (!unsaved) { const back = rd(S, key), got = back.ok && back.v ? parse(back.v) : null; if (got && got.v === 4 && got.epoch === epoch && got.s) base = got; else return { ok: true, base, notice, unsaved: true }; }
   return { ok: true, base, notice, unsaved };
 }
 // 读出所有账本，合并成 { 页面id: 条目 }（只认当前这一代）；same 是本页面的内存账本（和存储里同 id 的取最大）
@@ -149,8 +154,9 @@ function scanEntries(S, epoch, own) {
     if (!r.ok) return null;       // 某个账本读取失败：视图不完整，调用方必须当成读取异常
     if (!r.v) continue;
     const rec = parse(r.v);
-    if (!rec) { if (!listUnreadable().some((x) => x.raw === r.v)) stashUnreadable(r.v); continue; } // 读不懂的账本：留一份备份，不当进度
-    if (rec.v !== 4 || rec.epoch !== epoch || !rec.entries || typeof rec.entries !== "object") continue;
+    // 读不懂的账本（损坏 / 未知版本 / 缺少代数）：视图不完整，一律当读取失败（原文原样保留；备份一份供排查）。不能跳过后当成完整记录，否则会悄悄少算进度。
+    if (!rec || rec.v !== 4 || typeof rec.epoch !== "string" || !rec.entries || typeof rec.entries !== "object") { if (!listUnreadable().some((x) => x.raw === r.v)) stashUnreadable(r.v); return null; }
+    if (rec.epoch !== epoch) continue; // 其他代的账本（已被清除的数据）：忽略
     for (const [id, e] of Object.entries(rec.entries)) joinEntry(all[id] || (all[id] = emptyEntry()), e);
   }
   if (own) joinEntry(all[own.id] || (all[own.id] = emptyEntry()), own.e);
@@ -263,7 +269,7 @@ export function saveState(state) {
     const epoch = getEpoch(S);
     if (epoch === null) return false;
     const b = ensureBase(S, epoch);
-    if (!b.ok) return false;
+    if (!b.ok || b.unsaved) return false; // 基线没能可靠写入：不写账本、不写镜像，旧数据原样保留，下次保存再试
     let L = LEDGERS.get(state);
     if (L && L.epoch !== epoch) return adoptEpoch(S, state, epoch, b.base); // 别处清除过：采用新一代
     if (!L) L = attach(S, state, epoch);
@@ -283,7 +289,7 @@ export function saveState(state) {
     // 写完再核对一次代数：处理期间发生了清除 → 刚写的是旧代账本（读者会忽略），不写镜像，内存采用新一代，不显示旧进度
     const ep2 = getEpoch(S);
     if (ep2 === null) return false;
-    if (ep2 !== epoch) return adoptEpoch(S, state, ep2, ensureBase(S, ep2).base || { s: {} });
+    if (ep2 !== epoch) { const nb = ensureBase(S, ep2); return nb.ok ? adoptEpoch(S, state, ep2, nb.base) : false; }
     const v1 = computeView(S, epoch, b.base, L);
     if (!v1) return false;
     applyView(state, v1, L, { adoptMeta: false });
@@ -352,7 +358,7 @@ export function hasV4(S) { const k = keysWith(S, "suipian.v4."); return k === nu
 // 内容只由存储决定（lastActive 固定 0），同一份存储每次导出逐字相同。
 export function guestRawV3(S) {
   const epoch = getEpoch(S); if (epoch === null) return null;
-  const b = ensureBase(S, epoch); if (!b.ok) return null;
+  const b = ensureBase(S, epoch); if (!b.ok || b.unsaved) return null; // 基线没能可靠建立也不能接管
   const v = computeView(S, epoch, b.base, null);
   if (!v) return null;
   const s = freshState(), m = v.meta || {}, bs = b.base.s || {};

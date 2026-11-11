@@ -174,4 +174,36 @@ const day = "2026-11-12";
   ok("19 两个页面各写各的键", tabs.length === 2); ok("19 互不覆盖：两关、XP 120", seen().xp === 120 && seen().done === "U1L1,U1L2");
   const ids = new Set(); for (let i = 0; i < 20; i++) ids.add(Date.now().toString(36) + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10));
   ok("19 页面 id 随机生成（不依赖 sessionStorage）", ids.size === 20); }
+
+// 20 基线保存失败：不写账本 / 镜像，旧数据原样；恢复后再保存，不重复计分
+{ reset(); const raw = legacyV3({ done: { U1L1: true }, xp: 70, lessonsCompleted: 1 }); mem["suipian.progress"] = raw;
+  const orig = globalThis.localStorage.setItem; globalThis.localStorage.setItem = (k, v) => { if (k.includes(".base.")) throw new Error("quota"); return orig(k, v); };
+  const A = page(); finish(A, "U1L2"); const r1 = saveState(A); globalThis.localStorage.setItem = orig;
+  ok("20 基线写失败：保存返回 false，没有账本键、没有镜像、旧键原样", r1 === false && !Object.keys(mem).some((k) => k.includes(".tab.")) && mem["suipian.progress"] === raw);
+  ok("20 基线恢复后保存成功，XP 130（70 + 60），不重复计分", saveState(A) === true && seen().xp === 130 && seen().runs === 2, JSON.stringify(seen())); }
+
+// 21 首次双页面同时迁移：基线写入之前另一个页面完成同样的迁移（内容相同），结果不重复
+{ reset(); mem["suipian.progress"] = legacyV3({ done: { U1L1: true }, xp: 70, lessonsCompleted: 1 });
+  beforeSet = () => { loadState(); };                         // A 写基线之前，B 已经迁移完成
+  const A = page(); const B = page();
+  finish(A, "U1L2"); finish(B, "U1L3"); saveState(A); saveState(B);
+  const r = seen(); ok("21 同时迁移：XP 190（70 + 60 + 60），两关都在，不重复", r.xp === 190 && r.done === "U1L1,U1L2,U1L3" && r.runs === 3, JSON.stringify(r));
+  ok("21 只有一份基线", Object.keys(mem).filter((k) => k.includes(".base.")).length === 1); }
+
+// 22 损坏的 v4 数据：读取失败，不重新迁移旧键，不跳过后当完整视图；原文保留；保存 / 导出 / 账号接管都被阻止
+{ reset(); mem["suipian.progress"] = legacyV3({ done: { U1L1: true }, xp: 70, lessonsCompleted: 1 });
+  const A = page(); finish(A, "U1L2"); saveState(A);
+  const baseKey = Object.keys(mem).find((k) => k.includes(".base.")), tabKey = Object.keys(mem).find((k) => k.includes(".tab."));
+  // 22a 账本损坏
+  const goodTab = mem[tabKey]; mem[tabKey] = "{坏的";
+  let lr = loadState(); const sv = saveState(A), mg = mergeStored(A), ex = guestRawV3(globalThis.localStorage);
+  ok("22a 账本损坏：loadState 读取失败、保存 false、合并不动内存、账号导出 null", lr.readFailed === true && sv === false && mg === false && ex === null && A.xp === 130);
+  ok("22a 损坏的原文原样保留（没有被覆盖 / 删除）", mem[tabKey] === "{坏的");
+  mem[tabKey] = goodTab; ok("22a 修复后恢复正常", loadState().readFailed !== true && seen().xp === 130);
+  mem[tabKey] = JSON.stringify({ v: 5, epoch: "m0", entries: {} }); ok("22a 未知版本的账本也当读取失败", loadState().readFailed === true); mem[tabKey] = goodTab;
+  // 22b 基线损坏：不重新迁移旧键
+  const goodBase = mem[baseKey]; mem[baseKey] = "{坏的"; mem["suipian.progress"] = legacyV3({ done: {}, xp: 5 });
+  lr = loadState(); ok("22b 基线损坏：读取失败，不重新迁移旧键（不会读到旧键里的 5）", lr.readFailed === true && lr.state.xp === 0 && mem[baseKey] === "{坏的" && saveState(A) === false);
+  mem[baseKey] = JSON.stringify({ v: 4, epoch: "别的", s: {} }); ok("22b 基线代数对不上也当读取失败", loadState().readFailed === true);
+  mem[baseKey] = goodBase; ok("22b 修复后恢复", seen().xp === 130); }
 process.exit(fail ? 1 : 0);
