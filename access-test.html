@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>碎片编程 · 连接测试</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.7 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; margin: 0 auto; padding: 20px 16px 48px; max-width: 560px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  button { font: inherit; padding: 12px 20px; border-radius: 10px; border: 1px solid currentColor; background: transparent; color: inherit; }
+  button[disabled] { opacity: .5; }
+  #go { width: 100%; font-weight: 600; margin: 8px 0 16px; }
+  .row { padding: 8px 0; border-top: 1px solid rgba(128,128,128,.3); }
+  .ok { color: #1a7f37; } .bad { color: #cf222e; } .skip { opacity: .65; }
+  @media (prefers-color-scheme: dark) { .ok { color: #3fb950; } .bad { color: #ff7b72; } }
+  .small { font-size: 13px; opacity: .75; word-break: break-all; }
+  textarea { width: 100%; box-sizing: border-box; height: 220px; font: 13px/1.5 ui-monospace, Menlo, monospace; margin: 8px 0; }
+</style>
+</head>
+<body>
+<h1>碎片编程 · 连接测试</h1>
+<p>点下面的按钮，等它跑完（最多约 1 分钟）。然后点“复制结果”，把内容发给开发者。不需要运行任何命令。</p>
+<button id="go" type="button">开始测试</button>
+<div id="env" class="small"></div>
+<div id="out"></div>
+<div id="done" hidden>
+  <p><b>测试完成。</b></p>
+  <button id="copy" type="button">复制结果</button>
+  <textarea id="report" readonly></textarea>
+  <p class="small">如果“复制结果”没有反应，请长按上面的文字框，选择“全选”再“拷贝”。</p>
+</div>
+<script src="./access-test-config.js"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var cfg = window.ACCESS_TEST_CONFIG || {};
+  var lines = [];
+  function now() { return (window.performance && performance.now) ? performance.now() : new Date().getTime(); }
+  function say(cls, label, detail) {
+    var d = document.createElement("div"); d.className = "row " + cls;
+    d.textContent = (cls === "ok" ? "✅ " : cls === "bad" ? "❌ " : "⏭ ") + label + (detail ? "  " + detail : "");
+    $("out").appendChild(d);
+    lines.push((cls === "ok" ? "通过 " : cls === "bad" ? "失败 " : "跳过 ") + label + (detail ? "  " + detail : ""));
+  }
+  function withTimeout(promise, ms) {
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () { reject(new Error("超时（" + (ms / 1000) + " 秒没有响应）")); }, ms);
+      promise.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+    });
+  }
+  function errText(e) { return (e && (e.name ? e.name + ": " : "") + (e.message || e)) || "未知错误"; }
+
+  // ---- 环境信息 ----
+  var ua = navigator.userAgent || "";
+  var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
+  var tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { tz = "未知"; }
+  var env = [
+    "时间：" + new Date().toString(),
+    "时区：" + tz + "；语言：" + (navigator.language || ""),
+    "在微信/QQ 里打开：" + (/MicroMessenger|QQ\//i.test(ua) ? "是" : "否"),
+    "网络类型：" + (conn.type || "未知") + " / " + (conn.effectiveType || "未知") + "；浏览器认为在线：" + navigator.onLine,
+    "网址：" + location.href,
+    "浏览器：" + ua
+  ];
+  $("env").textContent = env.join("\n");
+  $("env").style.whiteSpace = "pre-wrap";
+
+  function fetchTimed(url, opts, ms) {
+    var t0 = now();
+    return withTimeout(fetch(url, opts), ms).then(function (r) {
+      return r.arrayBuffer().then(function (b) { return { status: r.status, ok: r.ok, bytes: b.byteLength, ms: Math.round(now() - t0), res: r, buf: b }; });
+    });
+  }
+  function fmt(r) { return "HTTP " + r.status + "，" + r.bytes + " 字节，" + r.ms + " 毫秒"; }
+
+  // ---- 1. 网站文件 ----
+  function siteFiles() {
+    var base = location.href.replace(/[^\/]*$/, "");
+    var list = ["index.html", "manifest.webmanifest", "icon-192.png", "pyodide/pyodide-lock.json"];
+    var chain = Promise.resolve();
+    list.forEach(function (f) {
+      chain = chain.then(function () {
+        return fetchTimed(base + f + "?t=" + new Date().getTime(), { cache: "no-store" }, 20000).then(function (r) {
+          say(r.ok ? "ok" : "bad", "网站文件 " + f, fmt(r));
+          if (f === "index.html" && r.ok) {
+            var html = new TextDecoder("utf-8").decode(r.buf);
+            var m = html.match(/src="\.\/(assets\/[^"]+\.js)"/) || html.match(/src="(\.\/src\/[^"]+\.js)"/);
+            if (m) list.push(m[1]);
+          }
+        }, function (e) { say("bad", "网站文件 " + f, errText(e)); });
+      });
+    });
+    // 主程序文件名要从首页里读出来，所以放在最后单独测
+    return chain.then(function () {
+      if (list.length > 4) {
+        var f = list[4];
+        return fetchTimed(base + f, { cache: "no-store" }, 30000).then(function (r) { say(r.ok ? "ok" : "bad", "主程序 " + f, fmt(r)); }, function (e) { say("bad", "主程序 " + f, errText(e)); });
+      }
+      say("bad", "主程序文件", "没能从首页里找到主程序的文件名");
+    });
+  }
+
+  // ---- 2~4. Supabase ----
+  function supa() {
+    var url = (cfg.supabaseUrl || "").replace(/\/+$/, ""), key = cfg.supabaseKey || "";
+    if (!url || !key) { say("skip", "Supabase 未配置", "（项目主人还没填写，本次只测网站文件）"); return Promise.resolve(); }
+    var host = url.replace(/^https?:\/\//, "");
+    var token = null, uid = null;
+    var hdr = function (extra) { var h = { apikey: key, "Content-Type": "application/json" }; if (token) h.Authorization = "Bearer " + token; for (var k in extra) h[k] = extra[k]; return h; };
+    return fetchTimed(url + "/auth/v1/health", { headers: hdr({}) }, 20000).then(function (r) {
+      say(r.ok ? "ok" : "bad", "Supabase 连通（" + host + "）", fmt(r));
+      if (!r.ok) throw new Error("健康检查没通过");
+    }).then(function () {
+      return fetchTimed(url + "/auth/v1/signup", { method: "POST", headers: hdr({}), body: "{}" }, 25000).then(function (r) {
+        var j = {}; try { j = JSON.parse(new TextDecoder("utf-8").decode(r.buf)); } catch (e) {}
+        if (r.ok && j.access_token) { token = j.access_token; uid = j.user && j.user.id; say("ok", "测试账号登录（匿名）", fmt(r)); }
+        else { say("bad", "测试账号登录（匿名）", fmt(r) + "；" + (j.msg || j.message || j.error_description || "")); throw new Error("登录失败"); }
+      });
+    }).then(function () {
+      var note = "hello-" + new Date().getTime();
+      return fetchTimed(url + "/rest/v1/access_test?on_conflict=user_id", { method: "POST", headers: hdr({ Prefer: "resolution=merge-duplicates,return=minimal" }), body: JSON.stringify({ user_id: uid, note: note }) }, 25000).then(function (r) {
+        if (!r.ok) { say("bad", "写入自己的进度", fmt(r) + "；" + new TextDecoder("utf-8").decode(r.buf).slice(0, 120)); throw new Error("写入失败"); }
+        say("ok", "写入自己的进度", fmt(r));
+        return fetchTimed(url + "/rest/v1/access_test?select=note&user_id=eq." + uid, { headers: hdr({}) }, 25000).then(function (g) {
+          var rows = []; try { rows = JSON.parse(new TextDecoder("utf-8").decode(g.buf)); } catch (e) {}
+          var same = rows && rows[0] && rows[0].note === note;
+          say(g.ok && same ? "ok" : "bad", "读回自己的进度并核对一致", fmt(g) + (same ? "" : "；内容对不上"));
+        });
+      });
+    }).catch(function (e) { say("bad", "Supabase 测试中断", errText(e)); });
+  }
+
+  $("go").onclick = function () {
+    $("go").disabled = true; $("go").textContent = "测试中……"; $("out").innerHTML = ""; lines = []; $("done").hidden = true;
+    siteFiles().then(supa).then(function () {
+      $("go").disabled = false; $("go").textContent = "重新测试";
+      $("report").value = "【碎片编程 连接测试结果】\n" + env.join("\n") + "\n\n" + lines.join("\n");
+      $("done").hidden = false;
+    });
+  };
+  $("copy").onclick = function () {
+    var ta = $("report"); ta.focus(); ta.select();
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(ta.value).then(function () { $("copy").textContent = "已复制 ✓"; }, function () { document.execCommand("copy"); $("copy").textContent = "已复制 ✓"; }); } else { document.execCommand("copy"); $("copy").textContent = "已复制 ✓"; } } catch (e) { $("copy").textContent = "请长按文字框手动复制"; }
+  };
+})();
+</script>
+</body>
+</html>
