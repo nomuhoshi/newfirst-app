@@ -795,7 +795,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
 
   // 旧版（第 2 版教程）记录迁移
-  const p4 = await ctx.newPage();
+  const p4 = await (await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })).newPage(); /* 新的浏览器环境：旧存档首次迁移不受同环境其他页面的 v4 记录影响 */
   await p4.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
     Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", JSON.stringify({ version: 2, lesson: "L01", page: 6, started: true, lessonDone: { L01: true }, exDone: { X1: true, X2: true }, drafts: { P1a: { code: "x" } }, installTipClosed: true }));
