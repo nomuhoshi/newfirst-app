@@ -29,7 +29,7 @@ const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
 
 check("U1–U5 通关后 U6L1 是当前关，U6L2–U6L6 锁定（共 6 关可玩；U6L6-M1 代码题待开放）", unitN.lessons.length === 6 && unitN.lessons.some((l) => l.id === "U6L6") && unitN.lessons.find((l) => l.id === "U6L6").pending?.[0]?.task?.id === "U6L6-M1" && !(unitN.heldLessons || []).length && await page.evaluate(() => document.querySelector('[data-lesson="U6L1"]')?.classList.contains("current") && ["U6L2", "U6L3", "U6L4", "U6L5", "U6L6"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
-check("只有第 8 单元（函数）显示即将推出", (await page.locator(".unit.locked").count()) === 1);
+check("只有第 9 单元（小项目）显示即将推出（支线锁定不算）", (await page.locator(".unit.locked").count()) === 1);
 
 async function answer(ex, right) {
   if (ex.type === "predict" || ex.type === "pick") {
