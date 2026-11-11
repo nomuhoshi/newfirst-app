@@ -33,7 +33,7 @@
 
 | 验收项 | 状态 | 对应 SHA 或环境 | 证据 | 负责人 |
 |---|---|---|---|---|
-| 修复后自动化 | 本地 Chromium 对预览 d6 产物 102/102；CI 见 PR #62 | `fix/feedbar-scroll` `f7c5f22` | `tests/feedback-scroll.test.mjs` | 程序员 |
+| 修复后自动化 | **自动化通过**：CI run 43003264198（build、WebKit、Chromium 全绿）；本地 Chromium 对预览 d6 产物 102/102 | `fix/feedbar-scroll` `f7c5f22` | `tests/feedback-scroll.test.mjs` | 程序员 |
 | 预览 d6 人工复核 | **待传话员** | https://nomuhoshi.github.io/newfirst-app-preview/d6/（`preview/d6` 0a16177） | §3 | 传话员 |
 | 合并部署 | 待 CI + 人工复核（通过后直接发布，不再请示） | — | — | 程序员 |
 
