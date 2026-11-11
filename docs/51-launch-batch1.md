@@ -175,6 +175,7 @@
 | 19:15 | #60 快进合并 main（`cfb368a` → `fcac0a5`） | 回退点 `cfb368a` |
 | 19:16–19:24 | main CI 全绿（build、webkit、chromium、deploy） | run 43002188359；Pages deployment 7707592520；构建标识「应用版本：2026-11-11 10:16 UTC」、缓存版本 `2026-11-11T10:16:43.543Z` |
 | 19:2x | D6 修复补全 + 验收测试，预览 d6 发布 | `fix/feedbar-scroll` `f7c5f22`；`preview/d6` 0a16177 |
-| — | #58 / #59 / #61 在 #62 发布后合并最新 main 并核对差异；课程发布仍等真机 | — |
+| 19:58–20:05 | #62 合并部署 | main `f7c5f22`；run 43007952241；deployment 7708405781；版本 2026-11-11 10:58 UTC；回退点 `fcac0a5` |
+| 20:0x | #58 / #59 / #61 合并最新 main：账号开关三条都仍为关闭；与 main 的差异只在课程接入（`src/app.js`、`content/`、相关测试）；受影响检查（choice-layout、feedback-scroll、joint-*）在各自 CI 里跑 | #58 `f759b35`、#59 `0e89d6f`、#61 `4ee4a32` |
 
 验收细节、截图链接：`docs/54`。
