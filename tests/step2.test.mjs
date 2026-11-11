@@ -668,7 +668,7 @@ try {
   // ---------- 按键音效：J 默认，A–J 可选，选中的风格用在答题里 ----------
   {
     const EVS = ["select", "place", "undo", "correct", "wrong", "finish"];
-    const pk2 = await ctx.newPage();
+    const pk2 = await (await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })).newPage(); /* 新的浏览器环境：旧存档首次迁移不受同环境其他页面的 v4 记录影响 */
     const kerrs = []; pk2.on("pageerror", (e) => kerrs.push(e.message));
     await pk2.addInitScript(fakeAudio);
     await pk2.goto(BASE); await pk2.waitForSelector(".statsbar, .onboard");
