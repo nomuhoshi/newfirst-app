@@ -67,7 +67,7 @@ export function loadState() {
     // 读取失败不等于“没有记录”：标记 readFailed，调用方不能把这份空记录存回去（可能盖掉真实进度）
     return { state: freshState(), notice: "这个浏览器不允许保存进度（可能是无痕模式），关掉页面后进度会丢失。", readFailed: true };
   }
-  if (!raw) { const f = freshState(); track(f); return { state: f, notice: null }; }
+  if (!raw) { const f = normalize(freshState()); EPOCHS.set(f, readEpoch() ?? ""); return { state: f, notice: null }; }
   let data;
   try {
     data = JSON.parse(raw);
@@ -86,63 +86,105 @@ export function loadState() {
   if (data.doneOn && typeof data.doneOn === "object" && !Array.isArray(data.doneOn)) {
     for (const [k, v] of Object.entries(data.doneOn)) if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) doneOn[k] = v;
   }
-  const out = { ...base, ...data, prefs, doneOn }; track(out);
+  const out = normalize({ ...base, ...data, prefs, doneOn }); EPOCHS.set(out, readEpoch() ?? "");
   return { state: out, notice: null };
 }
 
 // ---------- 多标签页安全 ----------
-// 每个内存记录（一个标签页里的 state 对象）带两个不写进存储的“基线”：
-//   xp / lessonsCompleted：上一次与存储对齐时的值。保存时只把“这个标签页自上次对齐以来新增的 XP”加到存储里已有的 XP 上，
-//   所以两个标签页分别完成不同关卡，XP 是相加而不是取大；同一份记录重复保存，新增量为 0，不会重复加分。
-//   epoch：这个标签页看到的“清除学习记录”代数。别处清除过（代数变了），这个标签页的旧内存记录整个作废，改为采用存储里的新状态，不会复活清除前的数据。
+// 学习进度写成“可合并”的形式：任意顺序、重复、同时的写入合并后结果相同，不丢也不重复计。
+//   done / doneOn：并集（完成过就是完成过）。
+//   firstXp：{关卡id: 该关首次通关拿到的 XP}，合并取每关较大值——两个标签同时首次完成同一关，奖励只算一次。
+//   xpLed / runsLed：{标签页id: 这个标签页挣的非首次通关 XP / 完成次数}，合并取每个标签页的较大值（每个标签页只增不减），再求和——两个标签页各做各的不会互相覆盖。
+//   xpBase / runsBase：新记录格式出现之前就有的数（旧存档、导入文件带来的数），合并取较大值。
+//   xp = xpBase + Σ xpLed + Σ firstXp；lessonsCompleted = runsBase + Σ runsLed。xp / lessonsCompleted 仍是照常读取的总数，计分规则（每题 +10 / +5、通关 +10）不变。
+// 另外：清除学习记录会写入新的“清除代数”（epoch）；标签页发现代数变了，丢弃自己内存里的旧记录，采用存储里的新状态，不会把清除前的记录写回来。
 const EPOCH_KEY = KEY + ".epoch";
-const BASE = new WeakMap(); // state -> { xp, lc, epoch }
+const TAB_ID = Math.random().toString(36).slice(2, 10);
+const TABS = new WeakMap(); // 仅测试用：让同一个进程里的多个内存记录扮成不同标签页
+export const _asTab = (state, id) => { TABS.set(state, id); return state; };
+const tabOf = (state) => TABS.get(state) || TAB_ID;
+const EPOCHS = new WeakMap(); // state -> 这个记录最后一次对齐时看到的清除代数
+const sum = (o) => Object.values(o || {}).reduce((t, v) => t + (Number(v) > 0 ? Number(v) : 0), 0);
+const num = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : 0);
 function readEpoch() { try { return localStorage.getItem(EPOCH_KEY) || ""; } catch { return null; } }
-function track(state) { BASE.set(state, { xp: state.xp || 0, lc: state.lessonsCompleted || 0, epoch: readEpoch() ?? "" }); }
+// 补齐字段；如果 xp / lessonsCompleted 被直接改过（旧存档、导入合并），差额并入 Base，保证“总数”不会因为迁移变小
+function normalize(state) {
+  for (const k of ["firstXp", "xpLed", "runsLed"]) if (!state[k] || typeof state[k] !== "object" || Array.isArray(state[k])) state[k] = {};
+  state.xp = num(state.xp); state.lessonsCompleted = num(state.lessonsCompleted);
+  const cx = num(state.xpBase) + sum(state.xpLed) + sum(state.firstXp);
+  state.xpBase = Math.max(0, num(state.xpBase) + (state.xp - cx));
+  const cr = num(state.runsBase) + sum(state.runsLed);
+  state.runsBase = Math.max(0, num(state.runsBase) + (state.lessonsCompleted - cr));
+  return state;
+}
+function recalc(state) {
+  state.xp = num(state.xpBase) + sum(state.xpLed) + sum(state.firstXp);
+  state.lessonsCompleted = num(state.runsBase) + sum(state.runsLed);
+}
+// 加 XP。first 是“这一关首次通关途中拿到的 XP”（记在 firstXp[lessonId]），其余（复习、练习）记在本标签页名下
+export function addXp(state, amount, lessonId = null, first = false) {
+  normalize(state);
+  if (first && lessonId) state.firstXp[lessonId] = num(state.firstXp[lessonId]) + amount;
+  else state.xpLed[tabOf(state)] = num(state.xpLed[tabOf(state)]) + amount;
+  recalc(state);
+}
+// 完成一关（含复习）的次数 +1
+export function addRun(state) { normalize(state); state.runsLed[tabOf(state)] = num(state.runsLed[tabOf(state)]) + 1; recalc(state); }
+
 // 读取存储里现有的 v3 记录：{ ok:false } 读取异常；{ ok:true, d:null } 没有 / 读不懂；{ ok:true, d } 正常
 function readStoredV3() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { ok: true, d: null };
+    if (!raw) return { ok: true, d: null, raw: null };
     const d = JSON.parse(raw);
-    return { ok: true, d: d && d.version === DATA_VERSION && d.done && typeof d.done === "object" ? d : null };
-  } catch (e) { return e instanceof SyntaxError ? { ok: true, d: null } : { ok: false }; }
+    return { ok: true, raw, d: d && d.version === DATA_VERSION && d.done && typeof d.done === "object" ? normalize(d) : null };
+  } catch (e) { return e instanceof SyntaxError ? { ok: true, d: null, raw: null } : { ok: false }; }
 }
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
+const maxMap = (into, from) => { let ch = false; for (const [k, v] of Object.entries(from || {})) { const n = num(v); if (n > num(into[k])) { into[k] = n; ch = true; } } return ch; };
 // 清除学习记录发生在别处：采用存储里的新状态（没有记录就是空记录），保留本标签页的偏好
 function adoptStored(state, d) {
   const prefs = state.prefs, keep = freshState();
   for (const k of Object.keys(state)) delete state[k];
   Object.assign(state, keep, d || {}, { prefs: { ...keep.prefs, ...(d && d.prefs ? d.prefs : {}), ...prefs }, onboarded: true });
   state.done = { ...(d && d.done) }; state.doneOn = { ...(d && d.doneOn) };
+  normalize(state);
 }
 // 把存储里可能更新的进度并进内存记录（就地修改）；返回内存记录是否有变化。
 export function mergeStored(state) {
   const r = readStoredV3();
   if (!r.ok) return false;
   const d = r.d, ep = readEpoch() ?? "";
-  const base = BASE.get(state);
-  if (base && base.epoch !== ep) { adoptStored(state, d); track(state); return true; }
-  if (!d) { if (!base) track(state); return false; }
-  const bx = base ? base.xp : null, bl = base ? base.lc : null;
+  normalize(state);
+  if (EPOCHS.has(state) && EPOCHS.get(state) !== ep) { adoptStored(state, d); EPOCHS.set(state, ep); return true; }
+  EPOCHS.set(state, ep);
+  if (!d) return false;
   let changed = false;
   for (const k of Object.keys(d.done)) if (d.done[k] && !state.done[k]) { state.done[k] = true; changed = true; }
   if (d.doneOn && typeof d.doneOn === "object") {
     state.doneOn = state.doneOn || {};
     for (const [k, v] of Object.entries(d.doneOn)) if (typeof v === "string" && ISO.test(v) && !state.doneOn[k]) state.doneOn[k] = v;
   }
-  const sx = Number(d.xp) || 0, sl = Number(d.lessonsCompleted) || 0;
-  // 有基线：存储值 + 本标签页新增量；没有基线（刚导入 / 刚合并生成的新对象）：保守取较大值
-  const xp = bx === null ? Math.max(state.xp, sx) : sx + Math.max(0, state.xp - bx);
-  const lc = bl === null ? Math.max(state.lessonsCompleted || 0, sl) : sl + Math.max(0, (state.lessonsCompleted || 0) - bl);
-  if (xp !== state.xp) { state.xp = xp; changed = true; }
-  if (lc !== (state.lessonsCompleted || 0)) { state.lessonsCompleted = lc; changed = true; }
+  if (maxMap(state.firstXp, d.firstXp)) changed = true;
+  if (maxMap(state.xpLed, d.xpLed)) changed = true;
+  if (maxMap(state.runsLed, d.runsLed)) changed = true;
+  if (num(d.xpBase) > num(state.xpBase)) { state.xpBase = num(d.xpBase); changed = true; }
+  if (num(d.runsBase) > num(state.runsBase)) { state.runsBase = num(d.runsBase); changed = true; }
+  const x0 = state.xp, r0 = state.lessonsCompleted;
+  recalc(state);
+  if (state.xp !== x0 || state.lessonsCompleted !== r0) changed = true;
   if (d.onboarded && !state.onboarded) { state.onboarded = true; changed = true; }
   const a = state.lastDay, b = d.lastDay;
   if (typeof b === "string" && ISO.test(b) && (!a || b > a)) { state.streak = Number(d.streak) || 0; state.lastDay = b; changed = true; }
   else if (b && a === b && Number(d.streak) > state.streak) { state.streak = Number(d.streak); changed = true; }
-  track(state); // 与存储对齐，基线更新
   return changed;
+}
+// 存储里的记录是否已经包含内存记录的全部进度（用来判断别的标签页的写入有没有把我们的盖掉）
+function storedCovers(d, state) {
+  if (!d) return false;
+  for (const k of Object.keys(state.done)) if (state.done[k] && !d.done[k]) return false;
+  for (const f of ["firstXp", "xpLed", "runsLed"]) for (const [k, v] of Object.entries(state[f])) if (num(d[f][k]) < num(v)) return false;
+  return num(d.xpBase) >= num(state.xpBase) && num(d.runsBase) >= num(state.runsBase) && (!state.lastDay || (d.lastDay || "") >= state.lastDay);
 }
 
 // 最后一次“写入成功”的时间（毫秒），写入失败不更新；给“我的”页自测用
@@ -151,23 +193,42 @@ export const getLastSavedAt = () => lastSavedAt;
 // opts.replace：用户主动“清除学习记录”之后的保存，不合并旧记录
 export function saveState(state, opts = {}) {
   try {
-    if (!opts.replace) {
-      if (!readStoredV3().ok) return false; // 读取异常：保留原始存储，不写
-      mergeStored(state);
+    if (opts.replace) {
+      normalize(state); EPOCHS.set(state, readEpoch() ?? "");
+      state.lastActive = Date.now();
+      localStorage.setItem(KEY, JSON.stringify(state));
+      lastSavedAt = Date.now();
+      return true;
     }
-    state.lastActive = Date.now();
-    localStorage.setItem(KEY, JSON.stringify(state));
-    track(state);
+    // 读-并-写，写完回读核对：两个页面同时写，后写的会盖掉先写的，但每个页面都保留着自己的进度，
+    // 回读发现存储没包含自己的内容就再合并再写，最多 4 轮，最终双方进度都在。
+    for (let i = 0; i < 4; i++) {
+      const r = readStoredV3();
+      if (!r.ok) return false; // 读取异常：保留原始存储，不写
+      mergeStored(state);
+      state.lastActive = Date.now();
+      localStorage.setItem(KEY, JSON.stringify(state));
+      const v = readStoredV3();
+      if (v.ok && storedCovers(v.d, state)) { lastSavedAt = Date.now(); return true; }
+    }
     lastSavedAt = Date.now();
     return true;
   } catch {
     return false;
   }
 }
+// 别的标签页写入后调用：把存储里的进度读进来；如果存储缺了我们的内容（被盖掉了），补写回去。返回内存记录是否有变化。
+export function syncFromStorage(state) {
+  const r = readStoredV3();
+  if (!r.ok) return false;
+  const changed = mergeStored(state);
+  if (!storedCovers(readStoredV3().d, state)) saveState(state);
+  return changed;
+}
 
 export function clearState() {
   try { localStorage.removeItem(KEY); localStorage.setItem(EPOCH_KEY, Date.now() + "-" + Math.random().toString(36).slice(2)); } catch { /* 忽略 */ }
-  const f = freshState(); track(f);
+  const f = freshState(); normalize(f); EPOCHS.set(f, readEpoch() ?? "");
   return f;
 }
 

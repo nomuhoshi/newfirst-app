@@ -31,7 +31,7 @@ import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
-  loadState, saveState, mergeStored, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
+  loadState, saveState, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
 } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
@@ -992,7 +992,7 @@ function renderExercise(run) {
     if (ok) {
       run.correct++;
       const gain = run.review ? XP_REVIEW : XP_CORRECT;
-      run.xp += gain; state.xp += gain; persist();
+      run.xp += gain; addXp(state, gain, run.lesson?.id, !run.review); persist();
     } else {
       run.mistakes++;
       if (!run.review) { loseHeart(state); persist(); }
@@ -1188,9 +1188,9 @@ function renderFinish(run) {
   const l = run.lesson;
   const firstTime = !state.done[l.id];
   state.done[l.id] = true;
-  state.lessonsCompleted++;
+  addRun(state);
   const bonus = run.review ? 0 : XP_FINISH;
-  run.xp += bonus; state.xp += bonus;
+  run.xp += bonus; addXp(state, bonus, l.id, !run.review);
   const newDay = bumpStreak(state);
   if (firstTime && state.lastDay) state.doneOn = { ...(state.doneOn ?? {}), [l.id]: state.lastDay }; // 完成日期 = 刚记的学习日
   let heartMsg = null;
@@ -1415,7 +1415,7 @@ if (vv) {
 // 回到前台 / 从后退缓存恢复 / 别的标签页改了存储：先把存储里更新的进度读进来，再写，避免旧标签页把新进度盖掉
 function refreshFromStorage() {
   if (sync && sync.account()) return;
-  const changed = mergeStored(state);
+  const changed = syncFromStorage(state);
   if (changed && currentView === "path" && appEl.querySelector(".statsbar")) renderPath();
   else if (changed && currentView === "me" && appEl.querySelector(".statsbar")) renderMe();
 }
@@ -1423,7 +1423,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
 window.addEventListener("storage", (e) => { if (e.key === "suipian.progress") refreshFromStorage(); });
 
-window.__app = { allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;
