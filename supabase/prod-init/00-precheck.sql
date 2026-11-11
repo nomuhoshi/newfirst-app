@@ -23,3 +23,10 @@ select evtname, evtevent, evtenabled, evttags, evtfoid::regprocedure as function
 -- 0.6 现有账号数量（只看数量；初始化不会改账号；期望正式库保留现有账号）
 select count(*) as auth_users from auth.users;
 select count(*) filter (where email_confirmed_at is not null) as confirmed, count(*) filter (where last_sign_in_at is not null) as signed_in_once from auth.users;
+
+-- 0.7 rls_auto_enable 是否存在（决定 11-advisor-fix.sql 要不要做；没有就跳过那一步）
+select to_regprocedure('public.rls_auto_enable()') is not null as rls_auto_enable_exists;
+
+-- 0.8 迁移记录表在不在（用连接器的 apply_migration 时会多记录一条；SQL Editor 里直接运行不会记录）
+select to_regclass('supabase_migrations.schema_migrations') is not null as has_migration_table;
+-- 上面为 true 时再单独运行：select version, name from supabase_migrations.schema_migrations order by version;

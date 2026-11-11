@@ -73,4 +73,12 @@ Q pa -c "delete from public.progress;" >/dev/null
 psql -v ON_ERROR_STOP=1 -qAt -d pa -f "$PI/03-rollback.sql" >/dev/null 2>&1
 ok "E2 空表时 03-rollback.sql 撤回表和三个函数；账号不受影响" $([ "$(Q pa -c "select to_regclass('public.progress') is null and to_regprocedure('public.delete_my_account()') is null and (select count(*) from auth.users where email='existing-owner@example.com') = 1")" = t ] && echo 1 || echo 0)
 
-echo; echo "合计 $((pass+fail)) 项，失败 $fail 项"; [ $fail = 0 ] && [ $((pass+fail)) = 20 ] && { echo 全部通过; exit 0; } || exit 1
+echo "== F 项目里没有 rls_auto_enable（suipian-test 的实际情况）"
+newdb pf || die "模拟环境失败"
+Q pf -c "drop event trigger ensure_rls; drop function public.rls_auto_enable();" >/dev/null
+psql -v ON_ERROR_STOP=1 -qAt -d pf -f "$PI/01-init.sql" >/dev/null 2>&1 && psql -v ON_ERROR_STOP=1 -qAt -d pf -f "$PI/02-postcheck.sql" >/dev/null 2>&1
+ok "F1 没有 rls_auto_enable 时：01-init.sql、02-postcheck.sql 都正常" $([ $? = 0 ] && echo 1 || echo 0)
+psql -v ON_ERROR_STOP=1 -qAt -d pf -f "$PI/11-advisor-fix.sql" >"$W/ff.txt" 2>&1; rcf=$?
+ok "F2 没有 rls_auto_enable 时：11-advisor-fix.sql 什么都不做、不报错，三个 RPC 的权限不变" $([ $rcf = 0 ] && grep -q "什么都没做" "$W/ff.txt" && [ "$(Q pf -c "select bool_and(has_function_privilege('authenticated', p.oid, 'execute')) from pg_proc p where p.pronamespace='public'::regnamespace and p.proname in ('create_progress','save_progress','delete_my_account')")" = t ] && echo 1 || echo 0)
+
+echo; echo "合计 $((pass+fail)) 项，失败 $fail 项"; [ $fail = 0 ] && [ $((pass+fail)) = 22 ] && { echo 全部通过; exit 0; } || exit 1

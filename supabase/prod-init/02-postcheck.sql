@@ -16,7 +16,10 @@ select p.proname, pg_get_function_identity_arguments(p.oid) as args, p.prosecdef
 -- 7. 执行权限（期望：anon = false，authenticated = true）
 select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon, has_function_privilege('authenticated', p.oid, 'execute') as authenticated
   from pg_proc p where p.pronamespace='public'::regnamespace and p.proname in ('create_progress','save_progress','delete_my_account') order by p.proname;
--- 8. 行数（期望：初始化刚完成是 0；只看数量）
-select count(*) as progress_rows from public.progress;
--- 9. 事件触发器仍在（期望：ensure_rls 启用，函数 rls_auto_enable）
+-- 8. 行数（只看数量）。期望：新库初始化后是 0；重复执行（如测试项目演练）时和执行前完全一样
+select count(*) as progress_rows, min(rev) as min_rev, max(rev) as max_rev, max(updated_at) as max_updated, sum(pg_column_size(doc)) as doc_bytes_sum from public.progress;
+-- 9. rls_auto_enable 和 ensure_rls（01-init 不创建、不修改它们）。期望：和 00-precheck 0.5 的结果一样。
+--    有些项目有（Supabase 的“新表自动开启 RLS”），有些没有（suipian-test 2026-11-11 演练时就没有）；两种都正常，不算失败。
+select to_regprocedure('public.rls_auto_enable()') is not null as rls_auto_enable_exists,
+       (select string_agg(evtname || ':' || evtenabled::text, ',') from pg_event_trigger where evtfoid = to_regprocedure('public.rls_auto_enable()')) as its_event_triggers;
 select evtname, evtenabled, evtfoid::regprocedure from pg_event_trigger order by evtname;

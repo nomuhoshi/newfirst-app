@@ -5,6 +5,25 @@
 
 **授权边界**：当前授权只覆盖“恢复项目 + 只读核查”。本包里所有写操作（第 3、4、6 节）都要老大**一次性明确授权**后才执行；正式合并仍等“合并”。
 
+## 0. 测试项目演练结果（2026-11-11 13:33 东京，传话员经 Supabase 连接器执行，老大 13:15 同意）
+
+对象 suipian-test（`tqdwhtrextqlmctkryyg`，区域 ap-southeast-1，PostgreSQL 17.11），正式项目未动；SQL 文件与 `9666d7a` 一致，未改动。
+
+| 步骤 | 结果 |
+|---|---|
+| `00-precheck.sql` | 运行身份 `postgres`，`postgres.rolbypassrls = true`（F2 通过）；已有 `progress` 表（1 行）和三个函数；**没有 `rls_auto_enable` 和 `ensure_rls`** |
+| `01-init.sql`（`apply_migration`，记为迁移 `20261111043317 01_init`） | `success: true`；外层 `begin/commit` 被接受。连接器不显示 `RAISE NOTICE`，看不到“初始化自检通过”字样，以“成功 + 迁移已记录 + 复核通过”判定（自检不通过会抛错回滚，不会成功） |
+| `02-postcheck.sql` 1–8 | 全部符合：列、RLS + FORCE、5 个约束、1 条只读策略、表权限（authenticated 只 SELECT，anon 无）、三个函数 SECURITY DEFINER 且属主可绕过 RLS、anon 不能执行 / authenticated 能执行 |
+| 已有数据 | 进度 1 行、rev 6、更新时间、doc 大小与执行前完全一样；账号数 2 / 2 / 1 不变 |
+| `02-postcheck.sql` 9 | 和文件里写的期望不符：期望有 `ensure_rls`，实际项目里本来就没有。**不是初始化造成的，是期望写错了**，已改（见下） |
+| 安全顾问（执行后） | 两类 WARN：`0029 authenticated_security_definer_function_executable`（三个 RPC，属设计，保留）；`auth_leaked_password_protection`（见 §8）。没有 `rls_auto_enable` 相关告警 |
+
+据此修改（本分支新提交，不需要授权）：
+- `02-postcheck.sql` §9：改成“和 00-precheck 0.5 一样即可”，有没有 `rls_auto_enable` 都正常；§9 原写法里 `evtname || evtenabled` 在真实 PostgreSQL 上会报“operator is not unique”，本地补测时发现，已加类型转换。§8：新库期望 0、重复执行期望和执行前一样，并多给 rev、更新时间、大小用于对比。
+- `00-precheck.sql`：加 0.7 `rls_auto_enable` 是否存在、0.8 迁移记录表是否存在。
+- `11-advisor-fix.sql`：项目里没有 `rls_auto_enable` 时什么都不做、不报错（原写法会直接失败）。
+- 本地演练加 F 组（没有 `rls_auto_enable` 的项目），共 22 项全部通过。
+
 ## 1. 现状
 
 | 项 | 状态 | 依据 |
@@ -14,7 +33,7 @@
 | 正式库现有账号 | 保留，不动 | 初始化脚本不碰 `auth.users`（本地 A7、P6.4 验证） |
 | 发信域名 | `mail.suipiancode.com` Verified，东京，追踪关闭 | 后台实查 10:47 |
 | Supabase 实际用的 SMTP 和发件地址 | **待只读核查**（正式、测试两边） | 域名验证 ≠ 验证码链路 |
-| 安全顾问 3 条告警 | **待取原文**（含 `rls_auto_enable()`、泄露密码防护） | 本包第 7、8 节 |
+| 安全顾问告警 | 测试项目已取得：0029（三个 RPC，保留）+ 泄露密码防护。**正式项目的三条原文仍待取**（产品官提到含 `rls_auto_enable()`） | 本包第 7、8 节 |
 
 ## 2. 只读核查（现在就能做，不需要额外授权）
 
@@ -47,7 +66,7 @@ schema 内容：`progress` 表（`doc` 必须是 JSON 对象、小于 64 KB，`r
 
 ### 3.1 本地验证结果（真实 PostgreSQL 16 + 模拟 Supabase 新项目默认状态）
 
-`bash supabase/tests/prod-init-local.sh`：**20 项全部通过**。模拟内容：anon / authenticated / service_role、`auth.users`、`auth.uid()`、public 默认权限（新表新函数自动授给三个角色，和 Supabase 一致）、Supabase 文档原版 `rls_auto_enable` 事件触发器、一个已存在的正式账号。
+`bash supabase/tests/prod-init-local.sh`：**22 项全部通过**（含 F 组：项目里没有 `rls_auto_enable`）。模拟内容：anon / authenticated / service_role、`auth.users`、`auth.uid()`、public 默认权限（新表新函数自动授给三个角色，和 Supabase 一致）、Supabase 文档原版 `rls_auto_enable` 事件触发器、一个已存在的正式账号。
 
 | 组 | 结果 |
 |---|---|
@@ -63,7 +82,8 @@ schema 内容：`progress` 表（`doc` 必须是 JSON 对象、小于 64 KB，`r
 
 ## 4. 执行步骤（授权后）
 
-1. **先在测试项目演练**：测试项目已有 schema，运行 `01-init.sql` 等于“重复执行”，本地 R3 / A3 证明已有数据不变。用来确认 SQL Editor 的行为和真实权限。
+1. ~~先在测试项目演练~~：**已完成**（§0）。
+   - 正式执行可以用同样的连接器 `apply_migration`（会记录迁移，看不到 NOTICE），也可以在 SQL Editor 粘贴（能看到“初始化自检通过”，不记录迁移）。两种都以 `02-postcheck.sql` 全部符合为准。
 2. 正式项目：`00-precheck.sql` → 确认 0.2 为 true、0.3 没有 `progress` 和三个函数 → `01-init.sql`（看到“初始化自检通过”）→ `02-postcheck.sql`，结果贴回对照。
 3. 应用侧：用**专用测试账号**在正式站登录、做一关、换浏览器登录看到同一进度、删号；老大的现有账号不做删号测试。
 
@@ -82,13 +102,13 @@ schema 内容：`progress` 表（`doc` 必须是 JSON 对象、小于 64 KB，`r
 
 ## 7. 安全顾问告警（单独处理）
 
-**需要先拿到全部三条告警原文**（Advisors → Security，告警名称、对象、说明原样贴回），并在正式项目跑 `10-advisor-readonly.sql`：看 `rls_auto_enable()` 的定义、属主、SECURITY DEFINER、`search_path`、授权、依赖它的事件触发器，以及 public 里所有 SECURITY DEFINER 函数的执行权限。
+测试项目实际只有两类告警，没有 `rls_auto_enable`（项目里根本没有这个函数）。**正式项目仍需要先拿到全部三条告警原文**（Advisors → Security，告警名称、对象、说明原样贴回），并在正式项目跑 `10-advisor-readonly.sql`：看 `rls_auto_enable()` 的定义、属主、SECURITY DEFINER、`search_path`、授权、依赖它的事件触发器，以及 public 里所有 SECURITY DEFINER 函数的执行权限。
 
 已验证的事实（本地 PostgreSQL 16，`prod-init-local.sh` D 组）：
 - `rls_auto_enable()` 返回 `event_trigger`，任何角色直接调用都会报错；事件触发器触发时不检查调用者的 EXECUTE 权限。
 - 收回 `public` / `anon` / `authenticated` 的 EXECUTE 后：非超级用户新建 public 表，RLS 照常自动开启；三个 RPC 的 authenticated 执行权限不受影响；初始化验收 29 项仍全过。
 
-修正草案 `11-advisor-fix.sql`：只对 `rls_auto_enable()` 收回这三个角色的 EXECUTE，自带检查（收紧没生效、或误伤了三个 RPC，都会回滚）。**等告警原文和只读结果对上后定稿。** 如果告警也点到三个 RPC（authenticated 能执行 SECURITY DEFINER 函数）：这是应用的设计，它们只按 `auth.uid()` 操作本人数据，不接受 user_id 参数，保留并在告警里记录理由，不收紧。
+修正草案 `11-advisor-fix.sql`：只对 `rls_auto_enable()` 收回这三个角色的 EXECUTE，自带检查（收紧没生效、或误伤了三个 RPC，都会回滚）；项目里没有这个函数时什么都不做。**等告警原文和只读结果对上后定稿。** 测试项目已确认告警会点到三个 RPC（lint `0029_authenticated_security_definer_function_executable`）：这是应用的设计，它们只按 `auth.uid()` 操作本人数据，不接受 user_id 参数，保留并在告警里记录理由，不收紧。
 
 ## 8. 泄露密码防护告警
 
