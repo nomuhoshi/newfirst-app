@@ -1058,11 +1058,28 @@ function correctAnswerText(ex) {
   return ex.answers[0].map((k) => ex.lines[k]).join("\n");
 }
 
+// 选项排法（D5，产品官 2026-11-11 18:07）：含代码或多行输出的题，整组选项单列、保留原有换行和缩进、过长在选项内横滚；普通文字三列、自然折行。
+// 只按题型和明确标记判断，不从括号、引号等字符猜：
+//   选输出题（predict）：选项是屏幕上的原样输出 → 代码排法；
+//   pick：key 为 line（选代码行）、stdout（选输出）、fix（选改法，含代码）→ 代码排法；key 为 type（选原因，文字）→ 文字排法；
+//   题目可用 "optionLayout": "code" | "text" 明确指定，优先于上面的默认。
+const CODE_PICK_KEYS = new Set(["line", "stdout", "fix"]);
+function optionLayout(ex) {
+  if (ex.optionLayout === "code" || ex.optionLayout === "text") return ex.optionLayout;
+  if (ex.type === "predict") return "code";
+  if (ex.type === "pick") return CODE_PICK_KEYS.has(ex.key) ? "code" : "text";
+  return "text";
+}
+function choiceLabel(text, layout) {
+  return layout === "code" ? h("span", { class: "opt-scroll" }, h("pre", { text })) : h("pre", { text });
+}
+
 // 选输出题
 function predictArea(ex, onChange) {
   let picked = null; let locked = false;
-  const opts = h("div", { class: "choices" }, ex.options.map((o, i) => {
-    const b = button(h("pre", { text: o.text }), () => {
+  const layout = optionLayout(ex);
+  const opts = h("div", { class: `choices ${layout}`, "data-layout": layout }, ex.options.map((o, i) => {
+    const b = button(choiceLabel(o.text, layout), () => {
       if (locked) return;
       picked = i;
       feel.play("select");
