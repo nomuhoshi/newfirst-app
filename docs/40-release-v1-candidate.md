@@ -166,11 +166,12 @@ object-src 'none'; base-uri 'self'; form-action 'self'
 |---|---|
 | 浏览器（实测的是 Edge；iOS 上和 Safari 同为 WebKit 内核）| Gmail 验证码登录成功；做题正常 |
 | 主屏幕 PWA | 添加后能打开、能做题；飞行模式下重新打开显示正常 |
-| 主屏幕 PWA 里的验证码登录 | **环境阻塞**：测试云报 `over_email_send_rate_limit`（每小时发信上限），限额恢复后复测 |
+| 主屏幕 PWA 里的验证码登录 | 曾遇到发信限额，**当前待复查**。原始记录：2026-11-11 04:00 东京那一轮，测试云报 `over_email_send_rate_limit`（每小时发信上限）；这一次报错不作为限额持续存在的证据，下一次合法测试时记录实际结果 |
 | iPhone Safari 本体 | **待验**：本次测的是 Edge，Safari 单独保留 |
 | 写代码题 | 第一版未开放，移出本轮验收清单（不是缺陷） |
-| QQ 邮箱收验证码 | **环境阻塞**：Resend 仍在测试模式，只能发给 Resend 账号本人邮箱，日志报 550。不是应用缺陷；正式发信域名验证后重测 |
-| 163 邮箱 | 未实测；正式发信配置后分别验收 |
+| QQ 邮箱收验证码 | 此前被 Resend 测试模式拒收，日志报 550（测试模式只能发给 Resend 账号本人邮箱）。不是应用缺陷；域名验证及 SMTP 配置完成后重测 |
+| 163 邮箱 | **尚未实测** |
+| 正式邮件链路（Resend 域名 `suipiancode.com`，发信子域名 `mail.suipiancode.com`） | **域名验证及 SMTP 配置完成后验收**（Gmail、QQ、163 分别验送达与登录） |
 | 中国大陆网络 | 老大决定本轮跳过，标“暂缓” |
 | 这份回报里没写的 | U1L1 第 1 题“运行结果”显示 `欢迎光临！`；离线时隐私页能否打开。随 PWA 复测一并补 |
 
@@ -183,9 +184,11 @@ object-src 'none'; base-uri 'self'; form-action 'self'
 
 授权：老大 2026-11-11 同意清理旧分支和预览目录；产品官规则：先核对开放 PR、工作流、验收链接的引用，再删确认已废弃的项目；保留 `main`、当前候选、`v1rc`、验收证据、U6 #51、U7 #48 和仍在使用的开发线；清理后回报实际删除和保留清单。执行结果见本节后续提交。
 
-## 9. 正式发信（Resend）配置项（待老大提供域名信息）
+## 9. 正式发信（Resend）配置项（域名已定：`suipiancode.com`；DNS 记录等 Resend 后台生成）
 
 采用 Resend，优先用项目自有域名下的专用发信子域名（如 `mail.<自有域名>`，避免影响主域名收发信）。需要先确认：现有域名是什么、DNS 在哪里管理、谁有权限。配置项清单：
+
+（2026-11-11 10:30 更新）项目域名是 `suipiancode.com`，发信子域名用 `mail.suipiancode.com`；此前提到的 `suipian.com` 是误报。老大下一步在 Resend 添加 `mail.suipiancode.com` 并提供后台生成的 DNS 记录列表；记录值以 Resend 后台为准，这里不预写。注册商 / DNS 平台（Cloudflare）的访问方式待确认。配置项清单：
 1. Resend 后台添加发信域名，取得 DKIM（TXT/CNAME）、SPF（TXT）、回执用 MX/TXT 记录；在 DNS 添加并等待 Verified。
 2. DMARC 记录（`_dmarc` TXT，先 `p=none` 观察）。
 3. 在 Resend 创建 API key（只用于 SMTP，不入库、不贴聊天）。
