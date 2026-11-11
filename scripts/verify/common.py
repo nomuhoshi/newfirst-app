@@ -49,7 +49,7 @@ def real_error(code):
         src = code.split("\n")
         lines = ["Traceback (most recent call last):"]
         for f in frames:
-            lines.append(f'  File "main.py", line {f.lineno}, in <module>')
+            lines.append(f'  File "main.py", line {f.lineno}, in {f.name}')
             lines.append("    " + src[f.lineno - 1].strip())
         lines.append(f"{type(e).__name__}: {e}")
         out = buf.getvalue()
