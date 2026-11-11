@@ -72,6 +72,37 @@ const pick = (s) => s && { done: Object.keys(s.done || {}).sort().join(","), xp:
 const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
 
 
+// 存储 v4 里没有单一的“进度键”：用任意一个页面合并后的内存记录（先读一遍存储）作为“新打开的页面看到的进度”
+const merged = (page) => page.evaluate(() => { window.__app.syncFromStorage(); const s = window.__app.getState(); return { done: s.done, xp: s.xp, lessonsCompleted: s.lessonsCompleted, hearts: s.hearts, streak: s.streak, lastDay: s.lastDay, onboarded: s.onboarded, doneOn: s.doneOn }; });
+const savedMerged = merged;
+
+// ---------- 通关 → 保存 → 关闭浏览器 → 重开：关卡、XP、红心、连续天数都在 ----------
+{
+  const dir = newDir(); let ctx = await open(dir); let p = await load(ctx);
+  await passOnboarding(p); await finishLesson(p, "U1L1", { firstWrong: true });
+  const before = pick(await merged(p));
+  check("通关后内存记录：1 关、XP > 0", before.done === "U1L1" && before.xp > 0, JSON.stringify(before));
+  await ctx.close(); ctx = await open(dir); p = await load(ctx);
+  const after = pick(await merged(p));
+  check("关闭重开：关卡、XP、红心、连续天数、完成次数都在", JSON.stringify(after) === JSON.stringify(before), JSON.stringify([before, after]));
+  check("重开后没有再出现开场介绍", (await p.locator(".onboard").count()) === 0 && (await p.locator(".pathview").count()) === 1);
+  await p.reload(); await p.waitForFunction(() => window.__app?.getState);
+  check("再刷新一次仍一致（刷新不重复计分）", JSON.stringify(pick(await merged(p))) === JSON.stringify(before));
+  await ctx.close();
+}
+// ---------- 旧版本存档（v3 单键）升级：原样保留，旧键不被改动，重复打开不加分 ----------
+{
+  const dir = newDir(); const legacy = JSON.stringify({ version: 3, onboarded: true, xp: 130, hearts: 4, heartsAt: Date.now(), streak: 3, lastDay: "2026-11-10", done: { U1L1: true, U1L2: true }, doneOn: {}, lessonsCompleted: 5, installTipClosed: false, lastActive: 1, prefs: { sound: true, haptics: true, soundStyle: "J" } });
+  let ctx = await open(dir); await ctx.addInitScript(([k, v]) => { if (!localStorage.getItem(k) && !Object.keys(localStorage).some((x) => x.includes("suipian.v4."))) localStorage.setItem(k, v); }, [RAWKEY, legacy]);
+  let p = await load(ctx); const a = await merged(p);
+  check("旧存档升级：XP 130、2 关、次数 5、连续 3、红心 4", a.xp === 130 && Object.keys(a.done).length === 2 && a.lessonsCompleted === 5 && a.streak === 3 && a.hearts === 4, JSON.stringify(a));
+  check("旧存档升级：没有出现开场介绍，没有“已从头开始”提示", (await p.locator(".onboard").count()) === 0 && !(await p.locator(".toast").count()));
+  check("旧键原样保留（迁移只读）", (await p.evaluate((k) => localStorage.getItem(k), RAWKEY)) === legacy);
+  await ctx.close(); ctx = await open(dir); p = await load(ctx); await p.reload(); await p.waitForFunction(() => window.__app?.getState);
+  const b = await merged(p); check("关闭重开 + 刷新后仍是 130 / 5，不重复加分", b.xp === 130 && b.lessonsCompleted === 5, JSON.stringify(b));
+  await ctx.close();
+}
+
 // ---------- 真实并发：同一浏览器存储下的两个页面，同时在各自的渲染进程里循环写入 ----------
 const S = (page, fn, arg) => page.evaluate(fn, arg);
 const lessonsOf = (pre, n) => Array.from({ length: n }, (_, i) => `${pre}${i + 1}`);
@@ -85,7 +116,7 @@ for (const round of [1, 2, 3]) {
   const only1 = lessonsOf("X", 25), only2 = lessonsOf("Y", 25), shared = lessonsOf("Z", 10);
   await Promise.all([S(p1, work(), [...only1, ...shared]), S(p2, work(), [...only2, ...shared.slice().reverse()])]);
   await settle(p1, p2);
-  const st = await saved(p1), n = only1.length + only2.length + shared.length;
+  const st = await merged(p1), n = only1.length + only2.length + shared.length;
   check(`并发${round}：同时完成不同关卡 + 同一关，关卡不丢（${n} 关）`, Object.keys(st.done).length === n, `实际 ${Object.keys(st.done).length}`);
   check(`并发${round}：XP = 每关只算一次首次奖励（${n * 60}）`, st.xp === n * 60, `实际 ${st.xp}`);
   check(`并发${round}：完成次数 = 实际完成次数（${n + shared.length}，同一关两个页面各完成一次）`, st.lessonsCompleted === n + shared.length, `实际 ${st.lessonsCompleted}`);
@@ -104,14 +135,14 @@ for (const round of [1, 2, 3]) {
   // p1 继续做旧关卡并保存，同时 p2 清除
   const [, ] = await Promise.all([S(p1, work(), lessonsOf("O", 20).concat(lessonsOf("P", 20))), S(p2, () => window.__app.clearProgress())]);
   await settle(p1, p2);
-  const st = await saved(p1);
+  const st = await merged(p1);
   check("清除交错：清除之前的旧关卡（O 系列）没有复活", !Object.keys(st.done).some((k) => k.startsWith("O")), Object.keys(st.done).join(","));
   const a = await S(p1, () => { const s = window.__app.getState(); return [s.xp, Object.keys(s.done).length]; }), b = await S(p2, () => { const s = window.__app.getState(); return [s.xp, Object.keys(s.done).length]; });
   check("清除交错：两个页面和存储最终一致", a[0] === st.xp && b[0] === st.xp && a[1] === Object.keys(st.done).length && b[1] === a[1], JSON.stringify([a, b, st.xp]));
   // 清除后，旧页面再做题、刷新，不复活
   await S(p1, work(), ["Q1", "Q2"]); await settle(p1, p2);
   await p1.reload(); await p1.waitForFunction(() => window.__app?.getState);
-  const after = await saved(p1);
+  const after = await merged(p1);
   check("清除后再做题、刷新：只有清除后做的关卡，没有 O 系列", !Object.keys(after.done).some((k) => k.startsWith("O")) && after.done.Q1 && after.done.Q2, Object.keys(after.done).join(","));
   await ctx.close();
 }

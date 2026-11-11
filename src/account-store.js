@@ -2,7 +2,7 @@
 // 所有函数都接收一个“像 localStorage 的对象”（getItem / setItem / removeItem），所以可以在 Node 里用假存储测试。
 // 读写都包在 try/catch 里：存储被禁用或写满时返回失败，不抛错、不留下写了一半的内容。
 import { normalizeDoc, docsEquivalent, isId, newId, guestFingerprint } from "./account-data.js";
-import { HEARTS_MAX, HEART_REGEN_MS, regenHearts } from "./storage.js";
+import { HEARTS_MAX, HEART_REGEN_MS, regenHearts, hasV4, clearGuestV4 } from "./storage.js";
 
 export const GUEST_KEY = "suipian.progress";      // 游客记录（storage.js 在用，这里只读，只有 clearGuestAfterVerified 一处会删）
 export const GUEST_ID_KEY = "suipian.guestId";     // 这份游客记录的随机编号
@@ -210,5 +210,7 @@ export function clearGuestAfterVerified(storage, { userChoseTransfer, uploadOk, 
   if (typeof guestSnapshotRaw !== "string") return false;
   const cur = safeRead(storage, GUEST_KEY);
   if (!cur.ok || cur.value !== guestSnapshotRaw) return false;
-  return safeRemove(storage, GUEST_KEY);
+  const removed = safeRemove(storage, GUEST_KEY);
+  if (removed && hasV4(storage)) clearGuestV4(storage); // v4 存储里的游客进度一并清除
+  return removed;
 }

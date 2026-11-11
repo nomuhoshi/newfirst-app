@@ -271,11 +271,9 @@ function persist() {
     if (!r.ok) showToast("无法保存进度到这台设备（" + (r.message || "存储不可用") + "），关掉页面后进度可能丢失。");
     return;
   }
-  if (!saveState(state, { replace: clearing })) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
-  clearing = false;
+  if (!saveState(state)) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
 }
-function clearProgress() { const prefs = state.prefs; state = clearState(); state.prefs = prefs; state.onboarded = true; clearing = true; persist(); }
-let clearing = false; // 清除学习记录后的第一次保存不合并旧记录
+function clearProgress() { const prefs = state.prefs; const f = clearState(); if (f.clearFailed) { showToast("清除失败（存储不可用），学习记录没有清除。"); return false; } state = f; state.prefs = prefs; state.onboarded = true; persist(); return true; }
 accountUi = createAccountUi({
   h, button, sheet, icon, showToast, sync, api: cloudApi, getState: () => state,
   rerender: () => (currentView === "me" ? renderMe() : renderPath()),
@@ -785,7 +783,7 @@ function backupCard() {
       h("p", { text: `文件里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（导出于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
       button("确认导入", () => {
         if (blockedByLogin()) return;
-        state = mergeImport(state, r.state); persist(); renderMe(); showToast("进度已导入。");
+        syncFromStorage(state); state = mergeImport(state, r.state); persist(); renderMe(); showToast("进度已导入。");
       }, "btn3d primary"),
       button("取消", () => { panel.replaceChildren(); }, "btn"),
     ));
@@ -809,7 +807,7 @@ function renderMe() {
     if (confirmBox) return;
     confirmBox = h("div", { class: "confirm", role: "alertdialog" },
       h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
-      button("确定清除", () => { clearProgress(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
+      button("确定清除", () => { if (clearProgress()) { renderMe(); showToast("学习记录已清除。"); } }, "btn danger"),
       button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
     );
     clearBtn.after(confirmBox);
@@ -1422,7 +1420,7 @@ function refreshFromStorage() {
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { refreshFromStorage(); regenHearts(state); persist(); appEl.querySelector(".statsbar")?.replaceWith(statsBar()); } });
 window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
-window.addEventListener("storage", (e) => { if (e.key === "suipian.progress") refreshFromStorage(); });
+window.addEventListener("storage", (e) => { if (e.key && e.key.includes("suipian.v4.")) refreshFromStorage(); }); // 测试入口里键带前缀，所以用 includes
 
 window.__app = { clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
