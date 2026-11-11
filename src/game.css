@@ -181,6 +181,11 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .choice { border: 1.5px solid var(--g-line); background: var(--g-card); color: var(--g-fg); border-radius: 12px; padding: 12px; min-height: 60px; transition: border-color .08s, background-color .08s, transform .08s; }
 .choice:active { transform: translateY(1px); }
 .choice pre { margin: 0; font: 16px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+/* D5：代码 / 多行输出选项单列，保留换行和缩进，过长时在选项内部横滚（不让整页横滚） */
+.choices.code { grid-template-columns: minmax(0, 1fr); }
+.choices.code .choice { min-width: 0; text-align: left; }
+.choices.code .opt-scroll { display: block; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.choices.code .choice pre { white-space: pre; width: max-content; min-width: 100%; }
 .choice.sel { border-color: var(--g-primary); border-width: 2.5px; padding: 11.5px; background: color-mix(in srgb, var(--g-primary) 10%, var(--g-card)); }
 .choice.right { border-color: var(--g-ok); background: var(--g-ok-bg); }
 .choice.wrong { border-color: var(--g-bad); background: var(--g-bad-bg); animation: nudge .16s ease-in-out; }
