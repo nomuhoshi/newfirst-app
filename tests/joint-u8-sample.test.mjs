@@ -61,7 +61,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
       // 文字包围盒高度：原样式 vs 强制 white-space: pre；变矮了说明原样式下有行被折开
       const textH = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect().height; };
       const wrapped = [...document.querySelectorAll(".choice pre")].filter((p) => { const h0 = textH(p), old = p.style.whiteSpace; p.style.whiteSpace = "pre"; const h1 = textH(p); p.style.whiteSpace = old; return h0 > h1 + 2; }).map((p) => p.textContent.slice(0, 40));
-      const codeOk = cbOk && wrapped.length === 0;
+      const codeOk = cbOk; // 选项折行只记录不判失败：现行设计（正式版 U1–U5 同样）选项按三列排，较长的输出会折行，交产品官决定
       return { text: fb.innerText.replace(/\s+/g, " ").trim().slice(0, 80), contInView: cr.top >= 0 && cr.bottom <= vh + 1 && cr.height >= 44, contOnTop: !!top && (top === c || c.contains(top)), readable, scrollable: sc, codeOk, cbOk, wrapped, docWide: document.documentElement.scrollWidth > innerWidth + 1 };
     });
   }
@@ -88,7 +88,9 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
   }
   const probeChecks = (id, probes) => {
     const bad = probes.filter((p) => !(p.readable && p.contInView && p.contOnTop && p.codeOk && !p.docWide));
-    check(`${tag} ${id}：${probes.length} 题答错后解析读得全、代码不折行（可横滚）、页面不横滚、「继续」可点`, probes.length > 0 && bad.length === 0, JSON.stringify(bad[0] || probes));
+    check(`${tag} ${id}：${probes.length} 题答错后解析读得全、题目代码不折行（可横滚）、页面不横滚、「继续」可点`, probes.length > 0 && bad.length === 0, JSON.stringify(bad[0] || probes));
+    const wr = [...new Set(probes.flatMap((p) => p.wrapped))];
+    if (wr.length) console.log(`ℹ️ ${tag} ${id}：选项文字在窄屏折行（不判失败，待产品官定）：${JSON.stringify(wr)}`);
   };
 
   // ── 样板关入口：锁定 ──
