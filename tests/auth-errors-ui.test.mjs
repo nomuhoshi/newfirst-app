@@ -317,7 +317,7 @@ await scenario("退出登录：提示里说清账号的 XP 在云端", { nav: "n
   const t = await T(d.page, ".toast");
   check("X0：已退出登录。账号里的 120 XP 在云端，重新登录就回来。", t === "已退出登录。账号里的 120 XP 在云端，重新登录就回来。", t);
 });
-await scenario("退出登录：账号 XP 为 0 时只说已退出", { nav: "none" }, async (d) => {
+await scenario("退出登录：账号 XP 为 0 时只说已退出", { nav: "none", xp: 0 }, async (d) => {
   await patchedAccount(d, { status: "synced", xp: 0 });
   await d.page.locator("[data-logout]").tap();
   await d.page.waitForSelector(".toast");
