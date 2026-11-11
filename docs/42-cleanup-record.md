@@ -8,9 +8,17 @@
 |---|---|---|---|
 | 预览仓库目录 `exp-quick`、`exp-u3`、`ink-3d` | 已删（约 42 MB） | `nomuhoshi/newfirst-app-preview` 的 `3111ae9` | 开放 PR 正文和评论、工作流、预览 README、验收文档都没有引用；历史可从该仓库 git 记录找回 |
 
-## 暂停：远端分支删除（环境阻塞）
+## 已完成：27 条旧分支删除（2026-11-11，老大在 GitHub 网页删除）
 
-本环境的代理禁止删除远端分支（GitHub 接口和 `git push --delete` 都被拒），所以**一条也没删**。下面是核对过、可以删的 27 条，由老大在 GitHub 网页上删，或换一个有删除权限的环境。
+核对时间 2026-11-11 10:48 东京（`git ls-remote --heads origin` + GitHub REST 开放 PR 列表）：
+- 下表 27 条在远端**全部不存在**（0 条残留）；删前完整 SHA 保留在下表，误删可用 `git push origin <SHA>:refs/heads/<分支名>` 恢复。
+- 必须保留的都还在：`main`、`release/v1-candidate`、`preview/acc2`、`preview/v1rc`、两条开放 PR 的 base（`dsh/login-sync-hardening-2`、`opus/11-token-refresh-tabs`）、`content/u6-on-candidate`、`content/u7-on-candidate`、`content/u6-u7-stack`。
+- 开放 PR 33 个：每个的 head 和 base 分支都还在，没有一个引用已删的 27 条。
+- 远端现有分支 122 条（含保留的开发线和预览产物分支）。
+
+### 删前核对记录（原“暂停”一节，保留）
+
+（当时）本环境的代理禁止删除远端分支（GitHub 接口和 `git push --delete` 都被拒），所以由老大在网页上删。下面是核对过、可以删的 27 条，由老大在 GitHub 网页上删，或换一个有删除权限的环境。
 
 更正：之前回报写“31 条（23 祖先 + 8 等价）”不对。祖先类原有 23 条，实际可删 **19 条**，排除了 4 条：
 - `preview/acc2`、`preview/v1rc`：触发预览构建的分支，**要保留**（acc2 是当前验收，v1rc 是发布候选的预览）；

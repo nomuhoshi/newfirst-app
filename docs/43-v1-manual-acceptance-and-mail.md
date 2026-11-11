@@ -20,13 +20,12 @@
 
 ## 2. 正式发信配置（Resend + 自有域名子域名）
 
-> **状态（2026-11-11 10:30，产品官更正）：项目域名是 `suipiancode.com`，发信子域名用 `mail.suipiancode.com`。**
-> `suipian.com` 是此前的误报（10:23 提出、10:25 暂停），**记为误报，关闭它的归属询问**，不对它做任何操作。
-> 依据：老大 10:26 更正域名，并提供了 Cloudflare 注册和 DNS 信息（含 11 月 4 日 Cloudflare 的 `suipiancode.com` 验证邮件截图）。
-> **当前待办：**
-> 1. 确认 Cloudflare 和 Resend 后台各自“可用的访问方式”：谁登录、我们这边能不能直接看到，还是由老大贴出（DNS 记录值不含密钥，可以贴）。
-> 2. 取得 **Resend 后台实际生成的 DNS 记录**（DKIM、SPF、回执 MX / TXT 等）。**记录值以 Resend 后台显示的为准**，本文不预写、不猜；添加到 Cloudflare 的 DNS 前先把清单交产品官核对。
-> 3. 验证通过后，Supabase 正式项目写 SMTP 仍按已有权限边界执行（需要明确授权；API key 不进仓库、不贴聊天、不写日志），写完再分别实测 Gmail、QQ、163 的验证码送达与登录。
+> **状态（2026-11-11 10:47，后台实查）：发信域名已就绪。** `mail.suipiancode.com` 在 Resend 已 **Verified**，区域东京，发信启用，打开追踪和点击追踪关闭。项目域名 `suipiancode.com`；`suipian.com` 是误报，已关闭。原来的“确认 DNS 平台、取得 Resend 记录、整理 Cloudflare 填写表”三项**已完成，关闭**。
+> **注意：域名验证通过 ≠ 验证码链路通过。** 下一步核对 Supabase 实际使用的 SMTP 和发件地址：
+> 1. 正式 Supabase（恢复后只读核查）：Authentication → SMTP Settings 是否启用自定义 SMTP、Host / 端口 / 用户名、发件地址是否在 `mail.suipiancode.com` 下、发件人名称；Rate Limits 的发信上限。密码 / API key 不看、不记。
+> 2. 测试 Supabase（`tqdwhtrextqlmctkryyg`）同样核对，弄清楚预览站发的验证码走哪条链路。
+> 3. 核对完，Gmail、QQ、163 分别实测验证码送达与登录（记发件域名、DKIM / SPF 结果、耗时、是否进垃圾箱）。
+> 配置修改仍按原权限边界执行（写 SMTP 需要明确授权）。
 > **发信限额：待复查。** 此前一次 `over_email_send_rate_limit` 不能继续当作“限额尚未解除”的证据；下一次合法测试时记录实际结果（时间、是否限流、错误原文）。
 > 登录系统其他验收（真实双会话同步、Safari / PWA 登录、DB-3 等）继续，不依赖此项；发信配置完成前，QQ / 163 项仍记「环境阻塞」。
 
