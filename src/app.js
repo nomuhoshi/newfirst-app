@@ -274,6 +274,7 @@ function persist() {
   if (!saveState(state, { replace: clearing })) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
   clearing = false;
 }
+function clearProgress() { const prefs = state.prefs; state = clearState(); state.prefs = prefs; state.onboarded = true; clearing = true; persist(); }
 let clearing = false; // 清除学习记录后的第一次保存不合并旧记录
 accountUi = createAccountUi({
   h, button, sheet, icon, showToast, sync, api: cloudApi, getState: () => state,
@@ -808,7 +809,7 @@ function renderMe() {
     if (confirmBox) return;
     confirmBox = h("div", { class: "confirm", role: "alertdialog" },
       h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
-      button("确定清除", () => { const prefs = state.prefs; state = clearState(); state.prefs = prefs; state.onboarded = true; clearing = true; persist(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
+      button("确定清除", () => { clearProgress(); renderMe(); showToast("学习记录已清除。"); }, "btn danger"),
       button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
     );
     clearBtn.after(confirmBox);
@@ -1423,7 +1424,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
 window.addEventListener("storage", (e) => { if (e.key === "suipian.progress") refreshFromStorage(); });
 
-window.__app = { addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 let swReg = null;
