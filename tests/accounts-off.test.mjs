@@ -3,7 +3,8 @@
 //  1. 看不到任何登录 / 注册 / 验证码入口（我的页、地图页、开场介绍最后一屏），点不出验证码流程；
 //  2. 不发任何请求到 Supabase；
 //  3. 本机已有的正式版登录凭证、账号副本、游客记录逐字不变（不清除、不改写），刷新后也不变；
-//  4. 游客学习的本地进度能保存，刷新后保留。
+//  4. 游客学习的本地进度能保存，刷新后保留；
+//  5. 受控验收：只有用 ?accounts-pilot=1 打开过的设备看得到账号入口，=0 关掉。
 // 运行：npm run build && MOBILE_BROWSER=chromium|webkit node tests/accounts-off.test.mjs
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -80,6 +81,20 @@ const raw = (page) => page.evaluate((keys) => Object.fromEntries(keys.map((k) =>
   check("B4 账号副本仍在（没有被删除）", !!now["suipian.acct.prodUser1"]);
   check("B5 没有任何请求发到 Supabase（云端数据不会被读写）", supa.length === 0, supa.join(" "));
   check("B6 没有脚本错误", errors.length === 0, errors.join("; "));
+  await ctx.close();
+}
+// C 受控验收：?accounts-pilot=1 只对这台设备打开账号入口；=0 关掉；打开页面本身不发请求
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers: "block" });
+  const supa = []; ctx.on("request", (r) => { if (/supabase\.(co|in)/i.test(r.url())) supa.push(r.url()); });
+  await ctx.addInitScript(() => { if (!localStorage.getItem("suipian.progress")) localStorage.setItem("suipian.progress", JSON.stringify({ version: 3, onboarded: true, xp: 0, hearts: 5, heartsAt: Date.now(), streak: 0, lastDay: null, done: {}, lessonsCompleted: 0, installTipClosed: true, lastActive: 0 })); });
+  const page = await ctx.newPage(); const errors = []; page.on("pageerror", (e) => errors.push(e.message));
+  const meCount = async (url) => { await page.goto(url); await page.waitForFunction(() => window.__app?.getState); await page.getByRole("button", { name: "我的" }).click(); await page.waitForTimeout(300); return page.locator("[data-open-login]").count(); };
+  check("C1 加 ?accounts-pilot=1 打开：我的页出现“邮箱登录 / 注册”", (await meCount(BASE + "?accounts-pilot=1")) === 1);
+  check("C2 之后不带参数打开：这台设备仍看得到（记在本机）", (await meCount(BASE)) === 1);
+  check("C3 加 ?accounts-pilot=0：关掉，回到“云端暂未开通”", (await meCount(BASE + "?accounts-pilot=0")) === 0 && /云端暂未开通/.test(await page.locator("#app").innerText()));
+  check("C4 只是打开页面、没点登录：没有请求发到 Supabase", supa.length === 0, supa.join(" "));
+  check("C5 没有脚本错误", errors.length === 0, errors.join("; "));
   await ctx.close();
 }
 await browser.close(); srv.close();
