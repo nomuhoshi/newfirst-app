@@ -1,11 +1,12 @@
 // 存储 v4（每页独立键 + 读时合并）的单元测试。两个“页面” = 两个 loadState() 出来的内存记录（_asTab 给不同页面 id），共用一份 localStorage。node tests/storage-merge.test.mjs
 const mem = {}; let failRead = false, failWrite = false, quota = Infinity;
 globalThis.localStorage = {
-  getItem: (k) => { if (failRead) throw new Error("denied"); return k in mem ? mem[k] : null; },
+  getItem: (k) => { if (beforeGetLegacy && k === "suipian.progress") { const f = beforeGetLegacy; beforeGetLegacy = null; f(); } if (failRead) throw new Error("denied"); return k in mem ? mem[k] : null; },
   setItem: (k, v) => { if (beforeSet) { const f = beforeSet; beforeSet = null; f(); } if (failWrite) throw new Error("quota"); if (Object.values(mem).join("").length + String(v).length > quota) throw new Error("quota"); mem[k] = String(v); },
   removeItem: (k) => { delete mem[k]; }, key: (i) => Object.keys(mem)[i] ?? null, get length() { return Object.keys(mem).length; },
 };
 const { loadState, saveState, mergeStored, syncFromStorage, addXp, addRun, clearState, freshState, getLastSavedAt, _asTab, hasV4, guestRawV3, clearGuestV4 } = await import("../src/storage.js");
+let beforeGetLegacy = null; // 可控交错：在读取旧键之前先执行一段动作（模拟另一个页面此刻已迁移并学习）
 let beforeSet = null; // 可控交错：在某次写入之前先执行一段动作（模拟另一个页面在这一刻清除 / 写入）
 let fail = 0; const ok = (n, c, d = "") => { if (!c) fail++; console.log((c ? "✅ " : "❌ ") + n + (c ? "" : "  — " + d)); };
 const reset = () => { for (const k of Object.keys(mem)) delete mem[k]; failRead = failWrite = false; quota = Infinity; };
@@ -206,4 +207,20 @@ const day = "2026-11-12";
   lr = loadState(); ok("22b 基线损坏：读取失败，不重新迁移旧键（不会读到旧键里的 5）", lr.readFailed === true && lr.state.xp === 0 && mem[baseKey] === "{坏的" && saveState(A) === false);
   mem[baseKey] = JSON.stringify({ v: 4, epoch: "别的", s: {} }); ok("22b 基线代数对不上也当读取失败", loadState().readFailed === true);
   mem[baseKey] = goodBase; ok("22b 修复后恢复", seen().xp === 130); }
+
+// 23 PO 03:15 的竞争顺序：B 读到“基线不存在”后暂停 → A 完成迁移、学习并更新旧键镜像 → B 继续读旧键。B 不能把含新奖励的镜像再写成基线（会重复计分）
+{ reset(); mem["suipian.progress"] = legacyV3({ done: { U1L1: true }, xp: 70, lessonsCompleted: 1 });
+  let A = null;
+  beforeGetLegacy = () => { A = page(); finish(A, "U1L2"); saveState(A); };   // B 读旧键之前，A 已建好基线、学完一关并写了镜像
+  const B = page();                                                              // B：读到基线不存在 → 读旧键（此刻 A 的镜像已在）
+  const baseKeys = Object.keys(mem).filter((k) => k.includes(".base."));
+  ok("23 B 没有把 A 的镜像写成第二份基线：只有一份基线，且基线 XP 是原始的 70", baseKeys.length === 1 && JSON.parse(mem[baseKeys[0]]).s.xp === 70, JSON.stringify(baseKeys));
+  finish(B, "U1L3"); saveState(B);
+  const r = seen(); ok("23 XP 190（70 + 60 + 60）、三关都在、次数 3，A 的奖励没有重复", r.xp === 190 && r.done === "U1L1,U1L2,U1L3" && r.runs === 3, JSON.stringify(r)); }
+
+// 24 旧键是 v4 镜像、但基线读不到（基线被外部删掉）：安全失败，不拿镜像当旧存档迁移，不保存
+{ reset(); mem["suipian.progress"] = legacyV3({ done: { U1L1: true }, xp: 70, lessonsCompleted: 1 });
+  const A = page(); finish(A, "U1L2"); saveState(A);
+  for (const k of Object.keys(mem)) if (k.includes(".base.")) delete mem[k];
+  const lr = loadState(); ok("24 镜像在、基线没了：读取失败，不重新迁移，不保存，不写新基线", lr.readFailed === true && saveState(A) === false && !Object.keys(mem).some((k) => k.includes(".base."))); }
 process.exit(fail ? 1 : 0);
