@@ -41,6 +41,7 @@ import { createPreviewInfo } from "./preview-info.js";
 import { cloudTarget } from "./cloud-config.js";
 import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
+import { ensurePersist, firstSeenAt, storageReport } from "./storage-health.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
@@ -585,6 +586,7 @@ function toggleRow(label, sub, key, { disabled = false } = {}) {
 // 声音与振动自测：真机上点试听，并显示诊断信息，方便确认声音和振动到底有没有
 function selfTest() {
   const diag = h("pre", { class: "diag", "aria-label": "诊断信息" });
+  let health = []; // 本机存储体检（异步取到后补进诊断）
   const showDiag = (extra = "") => {
     const d = feel.diagnostics();
     diag.textContent = [
@@ -595,6 +597,7 @@ function selfTest() {
       `运行方式：${standalone ? "主屏幕 App" : "浏览器"}`,
       `入口网址：${location.origin}${location.pathname}`, // 不含查询参数和片段，避免暴露认证信息
       `学习记录：已完成 ${Object.keys(state.done).length} 关，XP ${state.xp}；最后一次成功保存：${getLastSavedAt() ? new Date(getLastSavedAt()).toLocaleString() : "本次打开后尚未保存"}`,
+      ...health,
       `音效开关：${d.soundPref ? "开" : "关"}`,
       `AudioContext：${d.audioState}${d.sampleRate ? `（${d.sampleRate} Hz）` : ""}`,
       `音频会话：${d.audioSession}`,
@@ -607,6 +610,13 @@ function selfTest() {
   };
   showDiag();
   refreshSwInfo().then(() => { if (diag.isConnected) showDiag(); });
+  storageReport().then((l) => { health = l; if (diag.isConnected) showDiag(); });
+  // 一键复制诊断：用户不用截图，直接粘贴给开发者。clipboard 不可用时（旧浏览器 / 非安全环境）选中文字让用户长按复制
+  const copyDiag = async () => {
+    const text = diag.textContent || "";
+    try { await navigator.clipboard.writeText(text); showToast("诊断信息已复制，可以粘贴发给开发者。"); return; } catch { /* 走下面的选中 */ }
+    try { const r = document.createRange(); r.selectNodeContents(diag); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); showToast("已选中诊断文字，请长按选择“拷贝”。"); } catch { showToast("复制失败，请截图诊断区域。"); }
+  };
   return h("div", { class: "selftest" },
     h("div", { class: "selftest-btns" },
       button("试听音效", () => { feel.preview().then((ok) => showDiag(ok ? "试听：已播放答对音（听不到就看上面的状态）" : "试听：没有播放成功")); showDiag("试听：请求中…"); }, "btn3d wide", { "data-selftest": "sound" }),
@@ -619,6 +629,7 @@ function selfTest() {
     h("div", { class: "soundrow", role: "group", "aria-label": "正式音效试听" },
       ...[["select", "点选"], ["place", "放入"], ["undo", "撤销"], ["correct", "答对"], ["wrong", "答错"], ["finish", "过关"]].map(([k, label]) =>
         button(label, () => { feel.play(k, { force: true }).then((ok) => showDiag(`正式音效「${label}」：${ok ? "已播放" : "没有播放成功"}`)); }, "chip", { "data-sound": k }))),
+    h("div", { class: "selftest-btns" }, button("复制诊断", copyDiag, "btn3d wide", { "data-selftest": "copy" })),
     diag,
   );
 }
@@ -828,6 +839,9 @@ function renderMe() {
       ),
       accountUi?.accountCard(),
       previewInfo?.card(),
+      isIOS && !standalone ? h("section", { class: "notice", role: "note", "data-safari-tip": "" },
+        h("b", { text: "你正在 Safari 里学习" }),
+        h("p", { class: "small", text: "Safari 可能清理长期不打开的网站数据，无痕浏览里关掉标签就清空。把本页「添加到主屏幕」后记录更稳（主屏幕 App 的记录和 Safari 分开保存）。也建议隔一阵用下面的“导出进度文件”备份一次。" })) : null,
       backupCard(),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
@@ -1451,4 +1465,5 @@ window.addEventListener("online", () => {
 });
 // 先把界面画出来，再在后台加载 Python：Python 出任何问题都不能让页面一片空白
 if (state.onboarded) renderPath(); else renderOnboarding();
+firstSeenAt(); ensurePersist(); // 记下这份存储的首次使用时间；申请持久存储（失败不影响使用）
 try { runner.boot(); } catch { /* 失败时 runner 已经记录为 loadError，“运行结果”面板会如实提示 */ }
