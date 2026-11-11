@@ -759,7 +759,7 @@ function backupCard() {
   };
   const doExport = () => {
     try {
-      const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
+      syncFromStorage(state); const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = h("a", { href: url, download: exportFileName(new Date()), hidden: "" });

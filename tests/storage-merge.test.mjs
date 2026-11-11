@@ -2,10 +2,11 @@
 const mem = {}; let failRead = false, failWrite = false, quota = Infinity;
 globalThis.localStorage = {
   getItem: (k) => { if (failRead) throw new Error("denied"); return k in mem ? mem[k] : null; },
-  setItem: (k, v) => { if (failWrite) throw new Error("quota"); if (Object.values(mem).join("").length + String(v).length > quota) throw new Error("quota"); mem[k] = String(v); },
+  setItem: (k, v) => { if (beforeSet) { const f = beforeSet; beforeSet = null; f(); } if (failWrite) throw new Error("quota"); if (Object.values(mem).join("").length + String(v).length > quota) throw new Error("quota"); mem[k] = String(v); },
   removeItem: (k) => { delete mem[k]; }, key: (i) => Object.keys(mem)[i] ?? null, get length() { return Object.keys(mem).length; },
 };
-const { loadState, saveState, mergeStored, syncFromStorage, addXp, addRun, clearState, freshState, getLastSavedAt, _asTab, hasV4, clearGuestV4 } = await import("../src/storage.js");
+const { loadState, saveState, mergeStored, syncFromStorage, addXp, addRun, clearState, freshState, getLastSavedAt, _asTab, hasV4, guestRawV3, clearGuestV4 } = await import("../src/storage.js");
+let beforeSet = null; // 可控交错：在某次写入之前先执行一段动作（模拟另一个页面在这一刻清除 / 写入）
 let fail = 0; const ok = (n, c, d = "") => { if (!c) fail++; console.log((c ? "✅ " : "❌ ") + n + (c ? "" : "  — " + d)); };
 const reset = () => { for (const k of Object.keys(mem)) delete mem[k]; failRead = failWrite = false; quota = Infinity; };
 let n = 0; const page = () => _asTab(loadState().state, "p" + ++n);            // 打开一个新页面
@@ -42,9 +43,13 @@ const day = "2026-11-12";
 // 5 刷新后不能重复提交已保存的奖励：刷新 = 同一页面 id 再次 loadState，接着写同一个键
 { reset(); const A = page(); const aid = "p" + n; finish(A, "U1L1"); saveState(A);
   const keysBefore = Object.keys(mem).filter((k) => k.includes(".tab.")).length;
-  const R = _asTab(loadState().state, aid); saveState(R); saveState(R);
-  const r = seen(); ok("5 刷新再保存：XP 仍 60、次数 1", r.xp === 60 && r.runs === 1, JSON.stringify(r));
-  ok("5 刷新没有多写键", Object.keys(mem).filter((k) => k.includes(".tab.")).length === keysBefore); }
+  const R = page(); saveState(R); saveState(R);      // 刷新 = 新页面 id（不继承旧 id）
+  let r = seen(); ok("5 刷新再保存：XP 仍 60、次数 1（旧账本保留，不重复计分）", r.xp === 60 && r.runs === 1, JSON.stringify(r));
+  finish(R, "U1L1", 60, true); saveState(R); r = seen();   // 刷新后重做已保存的关卡 = 复习（+5 的话记在本页面名下，这里用 60 验证只加一次复习 XP）
+  ok("5 刷新后重做已保存的关卡：只增加复习 XP，不再给首次奖励", r.xp === 120 && r.runs === 2, JSON.stringify(r));
+  // 刷新后没有保存就重新做同一关首次通关（旧页面已经保存过这一关的首次奖励）：不叠加
+  const R2 = page(), R3 = page(); const q = seen(); finish(R2, "U1L2"); saveState(R2); finish(R3, "U1L2"); saveState(R3); // R3 在 R2 保存前就打开了（它眼里这一关还没通关）
+  r = seen(); ok("5 两个页面先后首次通关同一关：奖励只算一次", r.xp === q.xp + 60 && r.runs === q.runs + 2, JSON.stringify([q, r])); }
 
 // 6 复习 XP 记在各自页面名下，相加
 { reset(); mem["suipian.progress"] = legacyV3({ done: { U1L1: true }, xp: 60, lessonsCompleted: 1 });
@@ -60,14 +65,14 @@ const day = "2026-11-12";
   const A = page(); finish(A, "U1L3"); saveState(A); r = seen();
   ok("7 重复迁移 / 打开不加分；通关一关后 XP 190、次数 6", r.xp === 190 && r.runs === 6, JSON.stringify(r)); }
 
-// 8 迁移后旧代码覆盖旧键：新存档不受影响；旧代码多出来的进度被并入，且不重复计分；旧键被删除后也不丢
+// 8 迁移后旧代码覆盖旧键：新存档不受影响；旧页面之后写进旧键的内容不自动迁入（一次性迁移）；旧键被删也不影响
 { reset(); mem["suipian.progress"] = legacyV3({ done: { U1L1: true }, xp: 100, lessonsCompleted: 2 });
   const N = page(); finish(N, "U1L2"); saveState(N);                              // 新代码：XP 160
-  mem["suipian.progress"] = legacyV3({ done: { U1L1: true, U1L9: true }, xp: 120, lessonsCompleted: 3 }); // 旧代码页面把旧键写成 120（比迁移时多 20、多一关 U1L9）
-  let r = seen(); ok("8 旧代码覆盖旧键：新进度不丢，旧页多出的 20 XP / 一关被并入（XP 180）", r.xp === 180 && r.done === "U1L1,U1L2,U1L9" && r.runs === 4, JSON.stringify(r));
-  for (let i = 0; i < 3; i++) { const P = page(); saveState(P); }
-  r = seen(); ok("8 反复打开 / 保存不重复计分", r.xp === 180 && r.runs === 4, JSON.stringify(r));
-  delete mem["suipian.progress"]; r = seen(); ok("8 旧键被删后，已并入的部分仍在", r.xp === 180 && r.done.includes("U1L9"), JSON.stringify(r)); }
+  mem["suipian.progress"] = legacyV3({ done: { U1L1: true, U1L9: true }, xp: 120, lessonsCompleted: 3 }); // 旧代码页面写旧键（多 20 XP、一关）
+  let r = seen(); ok("8 旧代码覆盖旧键：新进度不受影响，旧页面后续写入不自动迁入（XP 160、2 关）", r.xp === 160 && r.done === "U1L1,U1L2" && r.runs === 3, JSON.stringify(r));
+  const P = page(); saveState(P); finish(P, "U1L3"); saveState(P); r = seen();
+  ok("8 之后新代码继续累加，不受旧键内容影响", r.xp === 220 && r.runs === 4 && !r.done.includes("U1L9"), JSON.stringify(r));
+  delete mem["suipian.progress"]; r = seen(); ok("8 旧键被删后进度不变", r.xp === 220 && r.done === "U1L1,U1L2,U1L3", JSON.stringify(r)); }
 
 // 9 导入进度文件（直接改总数）后不被旧页面覆盖
 { reset(); const A = page(), B = page();
@@ -114,32 +119,59 @@ const day = "2026-11-12";
   ok("14 旧键没动、没有半成品基线", mem["suipian.progress"] === raw && !Object.keys(mem).some((k) => k.includes(".base.")));
   const r = seen(); ok("14 下次打开重新迁移，结果一致", r.xp === 70 && r.runs === 1); }
 
-// 15 键数量：很多页面（每次启动新页面）后压缩，不丢进度；压缩被中断（写池失败）不删任何键
-{ reset(); const expect = { xp: 0, ids: [] };
-  const pages = Array.from({ length: 60 }, () => page()); // 先全部打开（此时还没有账本键，不触发压缩），再各自保存
-  pages.forEach((P, i) => { finish(P, "L" + i); saveState(P); });
-  const before = Object.keys(mem).filter((k) => k.includes(".tab.")).length;
-  failWrite = true; loadState(); failWrite = false;
-  ok("15 压缩写池失败：不删任何键", Object.keys(mem).filter((k) => k.includes(".tab.")).length === before);
-  loadState();
-  const after = Object.keys(mem).filter((k) => k.includes(".tab.")).length, r = seen();
-  ok(`15 压缩后键数明显减少（${before} → ${after}）`, after < before / 3 + 3);
-  ok("15 压缩后进度一致：60 关、XP 3600", Object.keys(r.done.split(",")).length === 60 && r.xp === 3600 && r.runs === 60, JSON.stringify(r));
-  const P = _asTab(loadState().state, "p-late"); finish(P, "LATE"); saveState(P); ok("15 压缩后继续累加", seen().xp === 3660); }
+// 15 不自动压缩 / 删除：很多页面后键数 = 页面数，进度完整；空间不足时保存明确失败，已保存的数据不丢
+{ reset(); const pages = Array.from({ length: 60 }, () => page()); pages.forEach((P, i) => { finish(P, "L" + i); saveState(P); });
+  const keys = Object.keys(mem).filter((k) => k.includes(".tab.")).length; loadState(); loadState();
+  ok("15 不删任何键（60 个页面 = 60 个键）", keys === 60 && Object.keys(mem).filter((k) => k.includes(".tab.")).length === 60);
+  const r = seen(); ok("15 进度完整：60 关、XP 3600、次数 60", r.done.split(",").length === 60 && r.xp === 3600 && r.runs === 60, JSON.stringify(r));
+  quota = Object.values(mem).join("").length + 10; const Q = page(); finish(Q, "FULL"); const res = saveState(Q); quota = Infinity;
+  ok("15 空间不足：保存返回 false（页面提示失败），已保存的 60 关不受影响", res === false && seen().xp === 3600);
+  ok("15 空间恢复后补存成功", saveState(Q) === true && seen().xp === 3660); }
 
-// 16 镜像：每次保存后旧键是最新合并结果（带指纹）；旧代码改了镜像 → 只并入多出来的部分；没改 → 忽略
+// 16 镜像只是兼容副本：v4 不读回；写失败不影响保存结果
 { reset(); const A = page(); finish(A, "U1L1"); saveState(A);
   const m = JSON.parse(mem["suipian.progress"]);
-  ok("16 镜像内容 = 合并结果（XP 60、一关、次数 1），带 mirror 字段", m.version === 3 && m.xp === 60 && m.done.U1L1 === true && m.lessonsCompleted === 1 && m.mirrorXp === 60 && typeof m.mirrorFp === "string", JSON.stringify(m));
-  for (let i = 0; i < 4; i++) { const P = page(); saveState(P); mergeStored(P); }
-  ok("16 镜像没被改：反复打开 / 保存不重复计分", seen().xp === 60 && seen().runs === 1);
-  m.xp += 20; m.done.U1L7 = true; m.lessonsCompleted += 1; mem["suipian.progress"] = JSON.stringify(m); // 旧代码页面读了镜像、做了一关、整份写回（保留未知字段）
-  let r = seen(); ok("16 旧代码在镜像上做了一关（+20 XP）：并入且只并一次", r.xp === 80 && r.done === "U1L1,U1L7" && r.runs === 2, JSON.stringify(r));
-  const B = page(); finish(B, "U1L8"); saveState(B); saveState(B); r = seen();
-  ok("16 之后新代码继续累加，镜像重写后不重复计旧代码增量", r.xp === 140 && r.runs === 3, JSON.stringify(r)); }
+  ok("16 保存后旧键有最新合并结果（旧格式）", m.version === 3 && m.xp === 60 && m.done.U1L1 === true && m.lessonsCompleted === 1, JSON.stringify(m));
+  mem["suipian.progress"] = legacyV3({ xp: 9999, done: { U1L9: true } });
+  ok("16 v4 不读回旧键：镜像被改写，进度不变", seen().xp === 60 && seen().done === "U1L1");
+  delete mem["suipian.progress"]; ok("16 镜像被删，进度不变", seen().xp === 60);
+  // 镜像写失败不影响保存结果：只对旧键 setItem 失败
+  const orig = globalThis.localStorage.setItem; globalThis.localStorage.setItem = (k, v) => { if (k === "suipian.progress") throw new Error("quota"); return orig(k, v); };
+  finish(A, "U1L2"); const okSave = saveState(A); globalThis.localStorage.setItem = orig;
+  ok("16 镜像写失败：保存仍成功，进度在 v4 里", okSave === true && seen().xp === 120); }
 
-// 17 账号兼容：清除游客记录（账号接管后）连 v4 一起清
+// 17 账号接管 / 导出读取完整 v4 视图（不读镜像）；视图不完整时返回 null（不当成“没有记录”）；清除游客记录连 v4 一起清
 { reset(); const A = page(); finish(A, "U1L1"); saveState(A);
   ok("17 有 v4 存储", hasV4(globalThis.localStorage));
-  ok("17 清除游客记录后进度为空，旧键也被删", clearGuestV4(globalThis.localStorage) === true && seen().xp === 0 && !("suipian.progress" in mem && JSON.parse(mem["suipian.progress"]).xp > 0)); }
+  mem["suipian.progress"] = legacyV3({ xp: 1 });          // 镜像过时 / 被旧代码改写，不影响账号读到的内容
+  const raw1 = guestRawV3(globalThis.localStorage), o = JSON.parse(raw1);
+  ok("17 账号读取的游客记录 = 完整合并视图（XP 60，一关）且逐字稳定", o.xp === 60 && o.done.U1L1 === true && raw1 === guestRawV3(globalThis.localStorage), raw1);
+  failRead = true; const bad = guestRawV3(globalThis.localStorage); failRead = false;
+  ok("17 读取失败：返回 null，不是空记录", bad === null);
+  const orig = globalThis.localStorage.getItem; const tabKey = Object.keys(mem).find((k) => k.includes(".tab.")); globalThis.localStorage.getItem = (k) => { if (k === tabKey) throw new Error("x"); return orig(k); };
+  const part = guestRawV3(globalThis.localStorage); const lr = loadState(); const ms = mergeStored(A); globalThis.localStorage.getItem = orig;
+  ok("17 某个账本读取失败：视图不完整 → 导出 null、loadState 报 readFailed、不更新内存", part === null && lr.readFailed === true && ms === false && A.xp === 60);
+  ok("17 账号接管后清除游客记录：v4 和旧键都清", clearGuestV4(globalThis.localStorage) === true && seen().xp === 0); }
+
+// 18 清除与保存交错（可控）：保存过程中另一页恰好清除
+{ reset(); const A = page(); finish(A, "U1L1"); saveState(A);
+  // 18a：在 A 写自己的账本之前清除
+  finish(A, "U1L2"); beforeSet = () => { const C = clearState(); _asTab(C, "pcX"); };
+  const r1 = saveState(A); let r = seen();
+  ok("18a 清除发生在写账本前：保存后视图为空，A 内存是新一代空记录，旧进度不复活", r.xp === 0 && r.done === "" && A.xp === 0 && Object.keys(A.done).length === 0, JSON.stringify(r) + " A.xp=" + A.xp);
+  ok("18a 旧代写入的残留账本被忽略；旧键镜像不再被当作进度", mem["suipian.progress"] === undefined || JSON.parse(mem["suipian.progress"]).xp === 0 || r.xp === 0);
+  // 18b：A 已写完账本、写镜像之前清除（用对旧键 setItem 的钩子触发清除）
+  const B = page(); finish(B, "U1L1"); saveState(B);
+  const origSet = globalThis.localStorage.setItem; let fired = false;
+  globalThis.localStorage.setItem = (k, v) => { if (k === "suipian.progress" && !fired) { fired = true; const C = clearState(); _asTab(C, "pcY"); } return origSet(k, v); };
+  finish(B, "U1L2"); const r2 = saveState(B); globalThis.localStorage.setItem = origSet; r = seen();
+  ok("18b 清除发生在写镜像前：v4 视图为空（旧进度不复活）", r.xp === 0 && r.done === "", JSON.stringify(r));
+  mergeStored(B); /* 收到另一页清除的 storage 事件 */ finish(B, "U1L5"); saveState(B); r = seen(); ok("18b 收到清除通知后新做的一关保住", r.xp === 60 && r.done === "U1L5", JSON.stringify(r) + " r2=" + r2); }
+
+// 19 同时存活的页面各有独立写入身份：两个页面加载（即使 sessionStorage 被复制）也不共用键
+{ reset(); const A = page(), B = page(); finish(A, "U1L1"); finish(B, "U1L2"); saveState(A); saveState(B);
+  const tabs = Object.keys(mem).filter((k) => k.includes(".tab."));
+  ok("19 两个页面各写各的键", tabs.length === 2); ok("19 互不覆盖：两关、XP 120", seen().xp === 120 && seen().done === "U1L1,U1L2");
+  const ids = new Set(); for (let i = 0; i < 20; i++) ids.add(Date.now().toString(36) + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10));
+  ok("19 页面 id 随机生成（不依赖 sessionStorage）", ids.size === 20); }
 process.exit(fail ? 1 : 0);
