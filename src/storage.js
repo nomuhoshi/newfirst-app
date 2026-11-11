@@ -107,6 +107,7 @@ const cloneEntry = (e) => joinEntry(emptyEntry(), e);
 
 function getEpoch(S) { const r = rd(S, K_EPOCH); return r.ok ? r.v || M0 : null; }
 // 读取 / 建立某一代的基线。返回 { ok, base, notice, unsaved }。读取异常 ok:false（绝不当成“没有记录”）。
+const validBase = (raw, epoch) => { const b = parse(raw); return b && b.v === 4 && b.epoch === epoch && b.s && typeof b.s === "object" ? b : null; };
 function ensureBase(S, epoch) {
   const key = K_BASE + epoch, r = rd(S, key);
   if (!r.ok) return { ok: false };
@@ -120,6 +121,12 @@ function ensureBase(S, epoch) {
   else {
     const l = rd(S, KEY);
     if (!l.ok) return { ok: false };
+    // 旧键里带 v4 镜像标记，说明它不是“原始旧存档”，而是某个 v4 页面已经建好基线之后写的合并镜像（含新奖励）：绝不能再拿它当迁移来源，
+    // 否则新奖励会同时进基线和账本、重复计分。此时基线一定已经由别的页面建好：重新读基线并采用；读不到就安全失败（不迁移、不保存）。
+    if (l.v && parse(l.v)?.v4mirror === true) {
+      const again = rd(S, key), b = again.ok && again.v ? validBase(again.v, epoch) : null;
+      return b ? { ok: true, base: b, notice: null } : { ok: false };
+    }
     if (l.v) {
       let data = null, syntaxBad = false;
       try { data = JSON.parse(l.v); } catch { syntaxBad = true; }
@@ -133,7 +140,7 @@ function ensureBase(S, epoch) {
         const prefs = { ...freshState().prefs, ...(data.prefs && typeof data.prefs === "object" ? data.prefs : {}) };
         if (!/^[A-J]$/.test(prefs.soundStyle)) prefs.soundStyle = "J";
         delete prefs.keySound;
-        const KNOWN = new Set(["version", "done", "doneOn", "xp", "lessonsCompleted", "streak", "lastDay", "onboarded", "installTipClosed", "hearts", "heartsAt", "prefs", "lastActive", "mirrorXp", "mirrorRuns", "mirrorFp"]);
+        const KNOWN = new Set(["version", "done", "doneOn", "xp", "lessonsCompleted", "streak", "lastDay", "onboarded", "installTipClosed", "hearts", "heartsAt", "prefs", "lastActive", "v4mirror", "mirrorXp", "mirrorRuns", "mirrorFp"]);
         const extra = {}; for (const [k, v] of Object.entries(data)) if (!KNOWN.has(k)) extra[k] = v;
         base.s = { extra, done: { ...(data.done && typeof data.done === "object" ? data.done : {}) }, doneOn, xp: num(data.xp), lessonsCompleted: num(data.lessonsCompleted), streak: num(data.streak), lastDay: typeof data.lastDay === "string" ? data.lastDay : null, onboarded: !!data.onboarded, installTipClosed: !!data.installTipClosed, hearts: Number.isFinite(data.hearts) ? data.hearts : HEARTS_MAX, heartsAt: Number.isFinite(data.heartsAt) ? data.heartsAt : Date.now(), prefs, lastActive: num(data.lastActive) };
         base.legacyXp = base.s.xp; base.legacyRuns = base.s.lessonsCompleted;
@@ -141,6 +148,10 @@ function ensureBase(S, epoch) {
     }
   }
   // 基线必须先可靠建立：写入后读回，读回的内容才是以后所有读取共用的基线（两个页面同时首次迁移，内容相同；极端情况下不同，以最后写入者为准，双方读回后一致）
+  // 写之前再看一眼：别的页面刚把基线建好就直接采用，不覆盖（同一份旧存档算出的基线内容相同，所以剩下的极窄窗口里双方写入的也是同一内容）
+  const pre = rd(S, key);
+  if (!pre.ok) return { ok: false };
+  if (pre.v) { const b = validBase(pre.v, epoch); return b ? { ok: true, base: b, notice: null } : { ok: false, corrupt: true }; }
   const unsaved = !wr(S, key, JSON.stringify(base));
   if (!unsaved) { const back = rd(S, key), got = back.ok && back.v ? parse(back.v) : null; if (got && got.v === 4 && got.epoch === epoch && got.s) base = got; else return { ok: true, base, notice, unsaved: true }; }
   return { ok: true, base, notice, unsaved };
@@ -165,7 +176,7 @@ function scanEntries(S, epoch, own) {
 // ---- 旧键 suipian.progress ----
 // 只在迁移时读一次；之后只是“尽力而为”的镜像（v4 保存成功后写一份旧格式的合并结果，供回滚 / 旧页面 / 排查参考，不是进度来源，v4 不读回）。
 function mirrorRaw(v, state) {
-  return JSON.stringify({ version: DATA_VERSION, onboarded: !!state.onboarded, xp: v.xp, hearts: state.hearts, heartsAt: state.heartsAt, streak: v.streak, lastDay: v.lastDay, done: v.done, doneOn: v.doneOn, lessonsCompleted: v.runs, installTipClosed: !!state.installTipClosed, lastActive: state.lastActive, prefs: state.prefs });
+  return JSON.stringify({ version: DATA_VERSION, onboarded: !!state.onboarded, xp: v.xp, hearts: state.hearts, heartsAt: state.heartsAt, streak: v.streak, lastDay: v.lastDay, done: v.done, doneOn: v.doneOn, v4mirror: true, lessonsCompleted: v.runs, installTipClosed: !!state.installTipClosed, lastActive: state.lastActive, prefs: state.prefs });
 }
 // 启动时：旧键里如果出现读不懂的内容（例如旧代码写坏），留一份备份（不当进度，不提示）
 function stashLegacyIfUnreadable(S) {

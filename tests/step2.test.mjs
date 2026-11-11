@@ -705,7 +705,7 @@ try {
     await pk2.getByRole("button", { name: "我的" }).tap();
     check("按键音效：刷新后选择仍在（A 是最后一次点的）", (await pk2.evaluate(() => window.__app.getState().prefs.soundStyle)) === "A" && (await pk2.locator('[data-keysound="A"]').getAttribute("aria-pressed")) === "true" && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "A");
     // 坏数据：不认识的风格回到 J
-    await pk2.evaluate(() => { const s = JSON.parse(localStorage.getItem("suipian.progress")); s.prefs.soundStyle = "Z"; Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); });
+    await pk2.evaluate(() => { const s = JSON.parse(localStorage.getItem("suipian.progress")); s.prefs.soundStyle = "Z"; delete s.v4mirror; /* 取出的是 v4 写的镜像：去掉镜像标记，模拟原始旧存档 */ Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); });
     await pk2.reload(); await pk2.waitForSelector(".statsbar");
     check("按键音效：存档里的风格不认识时回到 J", (await pk2.evaluate(() => window.__app.getState().prefs.soundStyle)) === "J" && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "J");
     // 在关卡里：选 D 后做一题，点选/检查都用 D（日志里是 select/correct 等事件名），流程不变
