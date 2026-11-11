@@ -116,7 +116,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
   await page.reload(); await page.waitForSelector(".pathview"); await page.waitForFunction(() => window.__app?.getState);
   // 重玩 = 复习：每题 +5、无通关奖励、不扣红心、完成后 +1 红心（未满时）、同一天连续天数不变
   await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 3; window.__app.persist(); });
-  const s2 = await snap();
+  const s2 = await snap(); const doneOn1 = await page.evaluate(() => window.__app.getState().doneOn?.D1L1 ?? null);
   await page.locator('[data-lesson="D1L1"]').scrollIntoViewIfNeeded(); await page.locator('[data-lesson="D1L1"]').click();
   const sheetTxt = await page.locator(".overlay").innerText();
   await page.locator(".overlay .btn3d.primary").click(); await page.locator(".lessonfoot .btn3d.primary").click(); await page.waitForSelector("[data-check]");
@@ -128,6 +128,11 @@ for (const vp of [{ width: 390, height: 844 }, { width: 390, height: 450 }]) {
   await page.waitForSelector(".finish"); const s3 = await snap();
   check(`${tag} D1L1 重玩（复习）计分：入口写“复习”，XP +20（4×5、无通关奖励），红心 3→4，完成次数 +1，连续天数不变`, /复习/.test(sheetTxt) && s3.xp - s2.xp === 20 && s3.hearts === 4 && s3.lc - s2.lc === 1 && s3.streak === s2.streak, JSON.stringify({ s2, s3 }));
   await page.locator(".finish [data-continue]").click(); await page.waitForSelector(".pathview");
+  // D7（产品官 19:11）：完成次数 +1 只对应既有统计；主线“已完成关卡”的分子、分母都不变；重玩不重复领首次通关奖励、首次完成日期不变
+  const statAfter = await doneStat(), num = (t) => (t.match(/(\d+)\/(\d+)/) || []).slice(1).map(Number);
+  check(`${tag} D1L1 首次 + 重玩后：主线“已完成关卡”分子、分母都不变（${statBefore} → ${statAfter}）`, JSON.stringify(num(statAfter)) === JSON.stringify(num(statBefore)) && num(statBefore).length === 2, `${statBefore} → ${statAfter}`);
+  const doneOn2 = await page.evaluate(() => window.__app.getState().doneOn?.D1L1 ?? null);
+  check(`${tag} D1L1 重玩不重复领首次奖励：XP 只 +20（无 +10 通关奖励、非 +50），首次完成日期不变`, s3.xp - s2.xp === 20 && !!doneOn1 && doneOn2 === doneOn1, JSON.stringify({ d: s3.xp - s2.xp, doneOn1, doneOn2 }));
   check(`${tag} 刷新后：D1L1 仍已完成，支线显示“已完成”`, /side-done/.test(await cls("D1L1")) && /支线 · 已完成/.test(await mapText()) && (await done()).D1L1 === true, await cls("D1L1"));
 
   // ── U8 六关 ──
