@@ -75,7 +75,7 @@ export const EXPORT_EVERY_MS = 14 * 24 * 3600 * 1000, EXPORT_SNOOZE_MS = 3 * 24 
 export function ensureBackupBase(doneCount, now = Date.now(), forEpoch) {
   try {
     const ks = keySet(); if (!ks) return 0;
-    if (forEpoch !== undefined && forEpoch !== ks.e) return 0;
+    
     let v = Number(localStorage.getItem(ks.base)) || 0;
     if (!v && doneCount > 0) { localStorage.setItem(ks.base, String(now)); v = now; }
     if (currentEpoch() !== ks.e) return 0; // 操作期间换代了：键属于旧一代，新一代没有起点，等新进度成功保存后再建立
@@ -84,10 +84,10 @@ export function ensureBackupBase(doneCount, now = Date.now(), forEpoch) {
 }
 export function backupBaseAt() { try { const ks = keySet(); return ks ? Number(localStorage.getItem(ks.base)) || 0 : 0; } catch { return 0; } }
 export function markExported(now = Date.now()) {
-  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.exp, String(now)); localStorage.removeItem(ks.snz); const end = currentEpoch(); return done(end === null ? "failed" : end === ks.e ? "ok" : "epoch"); } catch { return done("failed"); }
+  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.exp, String(now)); localStorage.removeItem(ks.snz); return done("ok"); } catch { return done("failed"); }
 }
 export function snoozeExport(now = Date.now()) {
-  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.snz, String(now + EXPORT_SNOOZE_MS)); const end = currentEpoch(); return done(end === null ? "failed" : end === ks.e ? "ok" : "epoch"); } catch { return done("failed"); }
+  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.snz, String(now + EXPORT_SNOOZE_MS)); return done("ok"); } catch { return done("failed"); }
 }
 export function lastExportAt() { try { const ks = keySet(); return ks ? Number(localStorage.getItem(ks.exp)) || 0 : 0; } catch { return 0; } }
 export function exportReminderDue({ now = Date.now(), doneCount = 0, signedIn = false } = {}) {
@@ -96,7 +96,7 @@ export function exportReminderDue({ now = Date.now(), doneCount = 0, signedIn = 
     const ks = keySet(); if (!ks) return false; // 一次读代数，三个键都由它派生
     const ref = Number(localStorage.getItem(ks.exp)) || Number(localStorage.getItem(ks.base)) || 0; // 从没确认备份过：从首次成功保存进度（升级用户从升级那次）算起；还没有起点就不提醒
     if (!ref || now - ref < EXPORT_EVERY_MS) return false;
-    return now >= (Number(localStorage.getItem(ks.snz)) || 0);
+    const e2 = currentEpoch(); const z = e2 === DEFAULT_EPOCH ? META_SNOOZE : META_SNOOZE + "." + e2; return now >= (Number(localStorage.getItem(z)) || 0);
   } catch { return false; }
 }
 
