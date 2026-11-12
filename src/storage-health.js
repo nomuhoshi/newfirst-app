@@ -84,10 +84,10 @@ export function ensureBackupBase(doneCount, now = Date.now(), forEpoch) {
 }
 export function backupBaseAt() { try { const ks = keySet(); return ks ? Number(localStorage.getItem(ks.base)) || 0 : 0; } catch { return 0; } }
 export function markExported(now = Date.now()) {
-  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.exp, String(now)); localStorage.removeItem(ks.snz); return done(currentEpoch() === ks.e ? "ok" : "epoch"); } catch { return done("failed"); }
+  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.exp, String(now)); localStorage.removeItem(ks.snz); const end = currentEpoch(); return done(end === null ? "failed" : end === ks.e ? "ok" : "epoch"); } catch { return done("failed"); }
 }
 export function snoozeExport(now = Date.now()) {
-  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.snz, String(now + EXPORT_SNOOZE_MS)); return done(currentEpoch() === ks.e ? "ok" : "epoch"); } catch { return done("failed"); }
+  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.snz, String(now + EXPORT_SNOOZE_MS)); const end = currentEpoch(); return done(end === null ? "failed" : end === ks.e ? "ok" : "epoch"); } catch { return done("failed"); }
 }
 export function lastExportAt() { try { const ks = keySet(); return ks ? Number(localStorage.getItem(ks.exp)) || 0 : 0; } catch { return 0; } }
 export function exportReminderDue({ now = Date.now(), doneCount = 0, signedIn = false } = {}) {

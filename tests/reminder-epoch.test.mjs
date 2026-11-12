@@ -84,6 +84,14 @@ localStorage.getItem = og;
     const sEpoch = stateEpoch(A); clearState(); const n0 = metas().length;
     ok("J5 保存之后别页清除：依据旧代保存建立起点 → 不写任何键", H.ensureBackupBase(1, now, sEpoch) === 0 && metas().length === n0 && H.backupBaseAt() === 0, metas().join());
     ok("J5 同一代的保存 → 正常建立", H.ensureBackupBase(1, now, (realG("suipian.v4.epoch") || "m0")) === now && H.backupBaseAt() === now); }
+  // J6 结束时读代数失败（浏览器拒绝读存储）：报 failed，不是“别页清除了”（GPT1 00:37）
+  for (const [nm, fn] of [["markExported", () => H.markExported(now)], ["snoozeExport", () => H.snoozeExport(now)]]) {
+    reset(); loadState(); oldSetup(); calls = 0; fn(); const total = calls;
+    reset(); loadState(); oldSetup(); calls = 0;
+    const g0 = localStorage.getItem; localStorage.getItem = (k) => { if (calls + 1 === total && k === "suipian.v4.epoch") { calls++; throw new Error("denied"); } return g0(k); };
+    const r = fn(); localStorage.getItem = g0;
+    ok(`J6 ${nm}：结束时读代数失败 → 返回 false，状态 failed（不是 epoch）`, r === false && H.getLastReminderStatus() === "failed", H.getLastReminderStatus());
+  }
   localStorage.getItem = realG; localStorage.setItem = realS; localStorage.removeItem = realR;
 }
 
