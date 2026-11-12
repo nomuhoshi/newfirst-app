@@ -770,17 +770,28 @@ function exportProgressFile() {
   } catch { return false; }
 }
 // 完成第 2 关后，iPhone Safari（非主屏幕 App）里提示一次“添加到主屏幕”：主屏幕 App 实测记录保留。可展开步骤、可“不再提示”，主屏幕 App 里永不显示，不弹窗、不打断答题
+const A2HS_SNOOZE = "suipian.meta.a2hsSnooze";
+async function copyProgressCode() {
+  try { syncFromStorage(state); await navigator.clipboard.writeText(encodeCode(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" })); return true; } catch { return false; }
+}
 function a2hsPrompt() {
   if (!isIOS || standalone || state.installTipClosed || Object.keys(state.done).length < 2) return null;
+  let snoozed = 0; try { snoozed = Number(localStorage.getItem(A2HS_SNOOZE)) || 0; } catch { /* 读不到就当没稍后 */ }
+  if (Date.now() < snoozed) return null;
+  const msg = h("p", { class: "small", role: "status", "data-a2hs-msg": "" });
   const steps = h("ol", { class: "small", hidden: "", "data-a2hs-steps": "" },
-    h("li", { text: "点 Safari 底部（或顶部）的分享按钮（方框加向上箭头）" }),
-    h("li", { text: "往下滑，点「添加到主屏幕」，再点「添加」" }),
-    h("li", { text: "以后从主屏幕上的图标打开。主屏幕 App 的学习记录和 Safari 里的是分开保存的：Safari 里已有的进度，用“我的 → 备份学习记录”的进度码带过去" }));
+    h("li", { text: "先点上面的「复制进度码」备份当前进度（添加到主屏幕不会自动搬进度）" }),
+    h("li", { text: "点 Safari 的分享按钮（方框加向上箭头）→「添加到主屏幕」→「添加」" }),
+    h("li", { text: "从主屏幕图标打开碎片编程，进入“我的 → 备份学习记录 → 粘贴进度码”，粘贴后确认导入，进度就带过去了" }));
   const box = h("div", { class: "notice a2hs-prompt", role: "note", "data-a2hs": "" },
-    h("p", { text: "把碎片编程添加到主屏幕：全屏学习，记录也更稳（在 Safari 里长期不打开，网站数据可能被清理）。" }),
-    steps,
+    h("p", { text: "把碎片编程添加到主屏幕：全屏学习，记录也更稳（在 Safari 里长期不打开，网站数据可能被清理）。主屏幕 App 的记录和 Safari 是分开保存的，添加之前请先备份进度码，打开后再恢复。" }),
+    steps, msg,
     h("div", { class: "acct-row" },
+      button("复制进度码", async () => { msg.textContent = (await copyProgressCode()) ? "进度码已复制，请先粘贴到备忘录或发给自己保存；再按步骤添加到主屏幕。" : "这个浏览器不让自动复制：请到“我的 → 备份学习记录 → 复制进度码”手动复制。"; }, "btn3d", { "data-a2hs-code": "" }),
       button("怎么添加", () => { steps.hidden = !steps.hidden; }, "btn3d", { "data-a2hs-how": "" }),
+    ),
+    h("div", { class: "acct-row" },
+      button("稍后", () => { try { localStorage.setItem(A2HS_SNOOZE, String(Date.now() + 3 * 24 * 3600 * 1000)); } catch { /* 记不住就只关掉这一次 */ } box.remove(); }, "btn3d ghost", { "data-a2hs-later": "" }),
       button("不再提示", () => { state.installTipClosed = true; persist(); box.remove(); }, "btn3d ghost", { "data-a2hs-close": "" }),
     ));
   return box;
