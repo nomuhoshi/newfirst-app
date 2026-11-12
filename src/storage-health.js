@@ -64,22 +64,39 @@ const META_BASE = "suipian.meta.backupBase"; // 备份提醒起算点：首次�
 const META_EXPORT = "suipian.meta.confirmedExport", META_SNOOZE = "suipian.meta.exportSnooze";
 // 提醒记录按“代数”隔离：用户明确清除学习记录后是新的一代，重新计时；旧代的确认 / 稍后 / 起点记录原样保留（不删除），但不再影响新一代。
 // 从没清除过（代数 m0）继续用原来的键，老用户的记录不需要迁移；读不到代数时当作没有记录、不写。
-const mk = (base) => { const e = currentEpoch(); return e === null ? null : e === DEFAULT_EPOCH ? base : base + "." + e; };
+// 每次提醒操作只读一次代数，这次操作的所有键都由它派生（不会读写到两代混合的键）；读不到代数返回 null（不读不写）。
+const keySet = () => { const e = currentEpoch(); if (e === null) return null; const sfx = e === DEFAULT_EPOCH ? "" : "." + e; return { e, base: META_BASE + sfx, exp: META_EXPORT + sfx, snz: META_SNOOZE + sfx }; };
+// 写类操作的结果：ok = 已记录且操作期间没有换代；epoch = 操作期间别的页面清除了学习记录（只写到了旧代的键，新一代记录没有被碰，不能报“已确认”）；failed = 读写失败
+let lastReminderStatus = "ok";
+export const getLastReminderStatus = () => lastReminderStatus;
+const done = (st) => { lastReminderStatus = st; return st === "ok"; };
 export const EXPORT_EVERY_MS = 14 * 24 * 3600 * 1000, EXPORT_SNOOZE_MS = 3 * 24 * 3600 * 1000, EXPORT_MIN_LESSONS = 3;
-export function ensureBackupBase(doneCount, now = Date.now()) {
-  try { const k = mk(META_BASE); if (!k) return 0; if (doneCount > 0 && !localStorage.getItem(k)) localStorage.setItem(k, String(now)); return Number(localStorage.getItem(k)) || 0; } catch { return 0; }
+// forEpoch：这次“有进度了”所依据的那次成功保存（或启动时读到的记录）属于哪一代；和现在的代数不同就不建立起点（旧一代的进度不能给新一代起算）。不传 = 不核对（仅测试用）。
+export function ensureBackupBase(doneCount, now = Date.now(), forEpoch) {
+  try {
+    const ks = keySet(); if (!ks) return 0;
+    if (forEpoch !== undefined && forEpoch !== ks.e) return 0;
+    let v = Number(localStorage.getItem(ks.base)) || 0;
+    if (!v && doneCount > 0) { localStorage.setItem(ks.base, String(now)); v = now; }
+    if (currentEpoch() !== ks.e) return 0; // 操作期间换代了：键属于旧一代，新一代没有起点，等新进度成功保存后再建立
+    return v;
+  } catch { return 0; }
 }
-export function backupBaseAt() { try { const k = mk(META_BASE); return k ? Number(localStorage.getItem(k)) || 0 : 0; } catch { return 0; } }
-export function markExported(now = Date.now()) { try { const k = mk(META_EXPORT), z = mk(META_SNOOZE); if (!k || !z) return false; localStorage.setItem(k, String(now)); localStorage.removeItem(z); return true; } catch { return false; } }
-export function snoozeExport(now = Date.now()) { try { const k = mk(META_SNOOZE); if (!k) return false; localStorage.setItem(k, String(now + EXPORT_SNOOZE_MS)); return true; } catch { return false; } }
-export function lastExportAt() { try { const k = mk(META_EXPORT); return k ? Number(localStorage.getItem(k)) || 0 : 0; } catch { return 0; } }
+export function backupBaseAt() { try { const ks = keySet(); return ks ? Number(localStorage.getItem(ks.base)) || 0 : 0; } catch { return 0; } }
+export function markExported(now = Date.now()) {
+  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.exp, String(now)); localStorage.removeItem(ks.snz); return done(currentEpoch() === ks.e ? "ok" : "epoch"); } catch { return done("failed"); }
+}
+export function snoozeExport(now = Date.now()) {
+  try { const ks = keySet(); if (!ks) return done("failed"); localStorage.setItem(ks.snz, String(now + EXPORT_SNOOZE_MS)); return done(currentEpoch() === ks.e ? "ok" : "epoch"); } catch { return done("failed"); }
+}
+export function lastExportAt() { try { const ks = keySet(); return ks ? Number(localStorage.getItem(ks.exp)) || 0 : 0; } catch { return 0; } }
 export function exportReminderDue({ now = Date.now(), doneCount = 0, signedIn = false } = {}) {
   try {
     if (signedIn || doneCount < EXPORT_MIN_LESSONS) return false;
-    const ref = lastExportAt() || backupBaseAt(); // 从没确认备份过：从首次成功保存进度（升级用户从升级那次）算起；还没有起点就不提醒
+    const ks = keySet(); if (!ks) return false; // 一次读代数，三个键都由它派生
+    const ref = Number(localStorage.getItem(ks.exp)) || Number(localStorage.getItem(ks.base)) || 0; // 从没确认备份过：从首次成功保存进度（升级用户从升级那次）算起；还没有起点就不提醒
     if (!ref || now - ref < EXPORT_EVERY_MS) return false;
-    const sk = mk(META_SNOOZE); const snooze = sk ? Number(localStorage.getItem(sk)) || 0 : 0;
-    return now >= snooze;
+    return now >= (Number(localStorage.getItem(ks.snz)) || 0);
   } catch { return false; }
 }
 
