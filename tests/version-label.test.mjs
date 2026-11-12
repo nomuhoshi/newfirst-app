@@ -1,0 +1,26 @@
+// 版本显示（M）：短提交号、构建时间格式，以及“我的”页和诊断共用同一个函数、index.html 的分享文案。
+import { shortSha, buildTimeText, versionLabel } from "../src/version-label.js";
+import { readFileSync } from "node:fs";
+let fail = 0;
+const check = (n, ok, d = "") => { console.log(`${ok ? "PASS" : "FAIL"}  ${n}${ok ? "" : "  " + d}`); if (!ok) fail++; };
+const SHA = "8677c116153f7b5dfa751c6f3a3151c3757501eb";
+check("A1 40 位提交号 → 前 7 位小写", shortSha(SHA) === "8677c11");
+check("A2 大写提交号 → 小写", shortSha(SHA.toUpperCase()) === "8677c11");
+check("A3 有未提交改动的标记保留", shortSha(SHA + "-dirty") === "8677c11（有未提交改动）");
+check("A4 unknown / 空 / 非十六进制 / 过短 → 未知", ["unknown", "", undefined, null, "zzzzzzzz", "abc12"].every((x) => shortSha(x) === "未知"));
+check("B1 构建时间 → UTC 精确到分钟", buildTimeText("2026-11-13T04:20:31.123Z") === "2026-11-13 04:20 UTC");
+check("B2 缺失 / 异常 → 开发版", ["", undefined, "garbage"].every((x) => buildTimeText(x) === "开发版"));
+check("C1 完整标签", versionLabel({ sha: SHA, build: "2026-11-13T04:20:31.123Z" }) === "2026-11-13 04:20 UTC（提交 8677c11）");
+check("C2 开发环境标签", versionLabel({ sha: "", build: "" }) === "开发版（提交 未知）");
+const app = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+check("D1 app.js 只通过 versionLabel 生成版本文字（一个包装函数，诊断 + “我的”页各调用一次）", (app.match(/\bversionLabel\(/g) || []).length === 1 && (app.match(/appVersionLabel\(\)/g) || []).length === 2 && /data-app-version/.test(app));
+check("D2 诊断不再自己切 __BUILD__ 拼时间", !/__BUILD__\.slice\(0, 16\)/.test(app));
+const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const T = "碎片编程｜在手机上学习 Python", D = "每天几分钟，通过点选闯关学习 Python。免费，支持学习进度备份。";
+const meta = (attr, name) => (html.match(new RegExp(`<meta ${attr}="${name}" content="([^"]*)"`)) || [])[1];
+check("E1 title / description", /<title>碎片编程｜在手机上学习 Python<\/title>/.test(html) && meta("name", "description") === D);
+check("E2 og:title / og:description / og:type / og:locale", meta("property", "og:title") === T && meta("property", "og:description") === D && meta("property", "og:type") === "website" && meta("property", "og:locale") === "zh_CN");
+check("E3 twitter:card / title / description", meta("name", "twitter:card") === "summary" && meta("name", "twitter:title") === T && meta("name", "twitter:description") === D);
+check("E4 没有写死的绝对网址（og:url / og:image 需要正式域名，不在本 PR 范围）", !/og:url|og:image|twitter:image/.test(html));
+check("E5 主屏幕名称仍是“碎片编程”", meta("name", "apple-mobile-web-app-title") === "碎片编程");
+process.exit(fail ? 1 : 0);

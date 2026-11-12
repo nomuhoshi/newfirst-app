@@ -84,6 +84,11 @@ try {
     const d = await page.locator('[aria-label="诊断信息"]').innerText();
     return /应用版本：\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC/.test(d) && /缓存版本：\d{4}-\d{2}-\d{2}T/.test(d) && /离线支持：已启用/.test(d);
   })());
+  check("“我的”页的版本行和复制诊断里的版本行完全一致（构建时间 + 7 位提交号）", await (async () => {
+    const d = (await page.locator('[aria-label="诊断信息"]').innerText()).split("\n")[0].trim();
+    const v = (await page.locator("[data-app-version]").innerText()).trim();
+    return d === v && /^应用版本：\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC（提交 ([0-9a-f]{7}|未知)）$/.test(v);
+  })());
   await page.getByRole("button", { name: "学习", exact: true }).tap();
 
   // ===== 2. 断网：地图、第 1/2 单元、“我的”页都能打开；刷新不白屏 =====
