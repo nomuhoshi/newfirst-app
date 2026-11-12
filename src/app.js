@@ -516,7 +516,7 @@ function renderPath() {
   appEl.replaceChildren(
     circuit("full"),
     statsBar(),
-    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, a2hsPrompt(), exportReminder(), practiceEntry(), accountUi?.accountRow(), units),
+    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, updateNotice(), a2hsPrompt(), exportReminder(), practiceEntry(), accountUi?.accountRow(), units),
     tabBar("path"),
   );
   notice = null;
@@ -810,6 +810,23 @@ function a2hsPrompt() {
   return box;
 }
 // 地图页顶部的导出提醒：非阻塞、可关闭，不在答题中出现
+// ---- 新版本提示（只在地图 / “我的”页出现；答题中从不弹、不刷新、不接管）----
+let updateReady = false, updateDismissed = false, updateRequestedByUser = false, swReg = null;
+function inLesson() { return !!(currentRun || currentPractice); }
+function updateNotice() {
+  if (!updateReady || updateDismissed || inLesson()) return null;
+  return h("div", { class: "notice update-notice", role: "status", "data-update": "" },
+    h("p", { text: "有新版本可用。更新会刷新页面，你的学习进度已经保存。" }),
+    button("现在更新", () => {
+      const w = swReg?.waiting; if (!w) { updateReady = false; renderCurrentSafe(); return; }
+      updateRequestedByUser = true; w.postMessage({ type: "skipWaiting" });
+    }, "btn3d primary", { "data-update-now": "" }),
+    button("稍后", () => { updateDismissed = true; renderCurrentSafe(); }, "btn", { "data-update-later": "" }));
+}
+function renderCurrentSafe() { // 只在地图 / “我的”页重画；其他页面（答题、结算、开场）不动
+  if (currentView === "path" && appEl.querySelector(".pathview")) renderPath();
+  else if (currentView === "me" && appEl.querySelector(".statsbar")) renderMe();
+}
 function exportReminder() {
   if (!exportReminderDue({ doneCount: Object.keys(state.done).length, signedIn: !!sync?.account() })) return null;
   const box = h("div", { class: "notice export-reminder", role: "note", "data-export-reminder": "" },
@@ -936,7 +953,7 @@ function renderMe() {
   const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? icon(ic, { size: 20 }) : null, value), h("span", { text: label }));
   appEl.replaceChildren(
     statsBar(),
-    h("main", { class: "view me" },
+    h("main", { class: "view me" }, updateNotice(),
       replacedMsg ? h("p", { class: "notice", role: "status", "data-replaced-notice": "", text: replacedMsg }) : null,
       h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: sync?.account() ? "记录已关联账号，会同步到云端" : "没登录时，记录只保存在这台设备上" }))),
       h("div", { class: "me-grid" },
@@ -1169,8 +1186,14 @@ function renderCodeTaskLoading(run, idx) {
   loadCodeTask().then(() => { if (still()) renderExercise(run); }, () => {
     if (!still()) return;
     // “重试”先在本页再加载一次（Safari 可以）；Chrome 会记住同一页面里失败的模块导入，再失败就重新加载页面
-    msg.textContent = "代码题没有加载成功（可能是网络问题）。联网后点“重试”；仍不行会重新加载页面：回到地图，这一关从第 1 题开始，已得的 XP 会保留。";
-    msg.after(button("重试", () => loadCodeTask().then(() => { if (currentRun === run && run.queue[0] === idx) renderExercise(run); }, () => location.reload()), "btn small", { "data-retry-code-task": "" }));
+    msg.textContent = "代码题没有加载成功（可能是网络问题）。联网后点“重试”。";
+    const retry = button("重试", () => loadCodeTask().then(() => { if (currentRun === run && run.queue[0] === idx) renderExercise(run); }, () => {
+      // 不自动刷新页面（刷新会丢掉这一关的进度）。Chrome 会记住同一页面里失败的模块导入，所以再失败时由用户自己决定要不要重新加载页面
+      if (!still() || document.querySelector("[data-reload-page]")) return;
+      msg.textContent = "还是没有加载成功。你可以稍后再点“重试”；或者重新加载页面：这一关会从第 1 题重新开始，已得的 XP 会保留。";
+      retry.after(button("重新加载页面", () => location.reload(), "btn small", { "data-reload-page": "" }));
+    }), "btn small", { "data-retry-code-task": "" });
+    msg.after(retry);
   });
 }
 
@@ -1547,7 +1570,6 @@ window.addEventListener("storage", (e) => { if (e.key && e.key.includes("suipian
 window.__app = { clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
-let swReg = null;
 async function refreshSwInfo() {
   if (!("serviceWorker" in navigator)) { swInfo.status = "此浏览器不支持"; return swInfo; }
   try {
@@ -1559,10 +1581,19 @@ async function refreshSwInfo() {
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (hadController) showToast("已更新到新版本，刷新页面后使用最新内容。");
     refreshSwInfo();
+    if (!hadController) return; // 第一次安装接管，不是更新
+    // 只有用户在地图 / “我的”页点了“现在更新”，并且此刻不在答题中，才刷新页面；其他情况（别的标签页更新了、答题中）一律不刷新，只提示
+    if (updateRequestedByUser && !inLesson()) { location.reload(); return; }
+    showToast("已更新到新版本。当前这一关不受影响，退出这一关后刷新页面即可使用最新内容。");
   });
-  const register = () => navigator.serviceWorker.register("./sw.js").then((reg) => { swReg = reg; refreshSwInfo(); }).catch((e) => { swInfo.status = "注册失败：" + (e?.message || e); });
+  const watchUpdate = (reg) => {
+    const check = () => { if (reg.waiting && navigator.serviceWorker.controller) { updateReady = true; renderCurrentSafe(); } };
+    const track = (w) => { if (!w) return; if (w.state === "installed") check(); else w.addEventListener("statechange", () => { if (w.state === "installed") check(); }); };
+    check(); track(reg.installing); // 页面加载时新版可能已经在安装中
+    reg.addEventListener("updatefound", () => track(reg.installing));
+  };
+  const register = () => navigator.serviceWorker.register("./sw.js").then((reg) => { swReg = reg; watchUpdate(reg); refreshSwInfo(); }).catch((e) => { swInfo.status = "注册失败：" + (e?.message || e); });
   if (document.readyState === "complete") register(); else window.addEventListener("load", register);
   // 回到前台、恢复网络时检查有没有新版本，避免长期停在旧课程
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") swReg?.update().catch(() => {}); });

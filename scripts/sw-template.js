@@ -6,10 +6,13 @@
 // 2. 不缓存 Pyodide（几十 MB 的 Python 运行环境）：它走普通网络请求，离线时由页面显示“Python运行功能需要联网后加载”。
 //    也不缓存 sfx/ 下的测试音频。绝不用预先写好的输出冒充 Python 真实执行。
 // 3. 联网时优先取新版：先请求网络，成功就更新缓存；失败（离线、服务器错误）或网络超过 4 秒没响应，才读缓存。
-// 4. 缓存名带版本号。新版激活时删除所有旧的 suipian- 缓存，并立刻接管页面。
+// 4. 缓存名带版本号。新版装好后不立刻接管：先等着（waiting），页面在地图 / “我的”页提示“有新版本”，用户点了才更新（页面发 skipWaiting 消息）；
+//    这样正在答题的页面不会被中途换版本。新版激活时保留“上一版”的缓存（正在答题的旧页面还可能按需加载旧版的文件），再更早的 suipian- 缓存才删除。
+//    注意：从旧机制（装好即接管）升级到本机制的那一次，仍按旧机制接管一次；这一次无法避免。
 const VERSION = "__VERSION__";
 const PREFIX = "__PREFIX__";
 const CACHE = PREFIX + VERSION;
+const STATE_CACHE = "suipian_state";
 const PRECACHE = __PRECACHE__;
 const SLOW_MS = 4000;          // 网络超过这个时间没响应，就先用缓存
 const SLOW_AFTER_MS = 800;     // 刚发现网络很慢之后的一小段时间里，后面的请求只等这么久（页面的 JS、CSS 是一个接一个请求的，不然会累加）
@@ -28,13 +31,21 @@ self.addEventListener("install", (event) => {
       await caches.delete(CACHE); // 不留下缺文件的半个缓存；安装失败，旧版继续使用
       throw err;
     }
-    await self.skipWaiting();
-  })());
+  })()); // 不 skipWaiting：新版等页面确认再接管
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "skipWaiting") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) if (key.startsWith(PREFIX) && key !== CACHE) await caches.delete(key);
+    // 记在 suipian_state（名字不以 suipian- 开头，不会被当成版本缓存）里的是“上一个激活版本”的缓存名：保留它，其余旧版本缓存删除
+    const st = await caches.open(STATE_CACHE);
+    const prevRes = await st.match("active");
+    const prev = prevRes ? await prevRes.text() : null;
+    for (const key of await caches.keys()) if (key.startsWith(PREFIX) && key !== CACHE && key !== prev) await caches.delete(key);
+    await st.put("active", new Response(CACHE));
     await self.clients.claim();
   })());
 });
@@ -48,10 +59,20 @@ function skip(request, url) {
   return rel.startsWith("pyodide/") || rel.startsWith("sfx/");   // 大文件和测试音频不缓存
 }
 
+// 在所有 suipian- 版本缓存里找（本版优先由调用方先查）；不含状态缓存
+async function matchAny(request) {
+  for (const key of await caches.keys()) {
+    if (!key.startsWith(PREFIX)) continue;
+    const hit = await (await caches.open(key)).match(request, { ignoreSearch: true });
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 async function networkFirst(request) {
   const cache = await caches.open(CACHE);
   const fromCache = async () => {
-    const hit = await cache.match(request, { ignoreSearch: true });
+    const hit = (await cache.match(request, { ignoreSearch: true })) || (await matchAny(request)); // 本版缓存没有时，到保留的上一版缓存里找
     if (hit) return hit;
     if (request.mode === "navigate") return (await cache.match("./index.html")) || Response.error();
     return Response.error();
@@ -65,7 +86,7 @@ async function networkFirst(request) {
     const first = await Promise.race([network, slow]);
     if (first) return first.ok ? first : ((await fromCache()) ?? first);
     // 网络太慢：有缓存就先用缓存（网络请求继续，成功后更新缓存）
-    const hit = await cache.match(request, { ignoreSearch: true });
+    const hit = (await cache.match(request, { ignoreSearch: true })) || (await matchAny(request));
     if (hit) return hit;
     return await network;
   } catch {

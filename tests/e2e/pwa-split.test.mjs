@@ -94,11 +94,16 @@ try {
     check(G, "代码题分块下载失败：显示说明和“重试”，不白屏", /没有加载成功/.test(await page.locator(".lesson").innerText()));
     failChunks = false;
     const xp0 = await page.evaluate(() => window.__app.getState().xp);
+    await page.evaluate(() => { window.__noReload = "same-page"; });
     await page.locator("[data-retry-code-task]").tap();
-    await page.locator("[data-code-task], .pathview").first().waitFor({ timeout: 15000 });
-    const inPage = (await page.locator("[data-code-task]").count()) === 1;
-    check(G, "恢复后点“重试”：本页直接显示代码题，或重新加载回到地图（记录保留）", inPage || (await page.evaluate(() => window.__app.getState().xp)) === xp0, inPage ? "本页重试成功" : "重新加载了页面");
+    await page.locator("[data-code-task], [data-reload-page]").first().waitFor({ timeout: 15000 });
+    let inPage = (await page.locator("[data-code-task]").count()) === 1;
+    // 不再自动刷新页面：重试失败时仍停在这一关，由用户决定是否“重新加载页面”（刷新会丢掉这一关的进度）
+    check(G, "重试后没有被自动刷新（页面标记还在）：要么本页显示代码题，要么提示并给“重新加载页面”按钮", (await page.evaluate(() => window.__noReload)) === "same-page" && (inPage || (await page.locator("[data-reload-page]").count()) === 1), inPage ? "本页重试成功" : "显示了“重新加载页面”按钮");
     if (!inPage) {
+      await page.locator("[data-reload-page]").tap();
+      await page.locator(".pathview").waitFor({ timeout: 15000 });
+      check(G, "用户点“重新加载页面”后回到地图，记录保留", (await page.evaluate(() => window.__app.getState().xp)) === xp0);
       await page.evaluate((l) => window.__app.startLesson(l), LESSON);
       await page.getByRole("button", { name: "继续", exact: true }).tap();
       await page.waitForSelector("[data-code-task], [data-retry-code-task]", { timeout: 15000 }).catch(() => {});
