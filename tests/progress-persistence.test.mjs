@@ -223,7 +223,7 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   await page.locator("[data-code-paste]").click(); await page.locator("[data-code-in]").fill(code); await page.locator("[data-code-read]").click();
   await page.waitForSelector("[data-import-confirm]");
   // 模拟“另一页在这一刻清除”：下一次写账本之前，先把代数换成新的（清除的核心动作），再让这次写入继续
-  await page.evaluate(() => { const real = Storage.prototype.setItem; let armed = true; Storage.prototype.setItem = function (k, v) { if (armed && String(k).includes("suipian.v4.tab.")) { armed = false; real.call(this, "suipian.v4.epoch", "cOTHER" + Date.now().toString(36)); real.call(this, "suipian.v4.base.cOTHER", "{}"); } return real.call(this, k, v); }; });
+  await page.evaluate(() => { const real = Storage.prototype.setItem; let armed = true; Storage.prototype.setItem = function (k, v) { if (armed && String(k).includes("suipian.v4.tab.")) { armed = false; real.call(this, "suipian.v4.base.cOTHER", JSON.stringify({ v: 4, epoch: "cOTHER", s: {}, legacyXp: 0, legacyRuns: 0, ignoreLegacy: true })); real.call(this, "suipian.v4.epoch", "cOTHER"); } return real.call(this, k, v); }; });
   await page.getByRole("button", { name: "确认导入" }).click(); await page.waitForTimeout(400);
   const msg = await page.locator("[data-backup-msg]").innerText(), toast = await page.locator(".toast").innerText().catch(() => "");
   check("I1 保存时被清除：提示“其他页面已清除学习记录，本次恢复未完成”", /其他页面已清除学习记录/.test(msg) && /本次恢复未完成/.test(msg), msg);
