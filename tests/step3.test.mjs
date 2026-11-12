@@ -62,7 +62,7 @@ try {
   const errors = []; page.on("pageerror", (e) => errors.push(e.message));
   const text = () => page.locator("#app").innerText();
   const seed = (done, extra = {}) => page.evaluate(([d, x]) => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, done: Object.fromEntries(d.map((k) => [k, true])), prefs: { ...s.prefs, sound: false } }, x); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); }, [done, extra]);
-  const cacheKeys = () => page.evaluate(async () => (await caches.keys()).sort());
+  const cacheKeys = () => page.evaluate(async () => (await caches.keys()).filter((k) => k !== "suipian_state").sort()); // suipian_state 是 SW 自己记“上一版缓存名”的状态缓存，不是版本缓存
   const waitKeys = async (pred, ms = 15000) => { const t = Date.now(); let k = []; while (Date.now() - t < ms) { k = await cacheKeys(); if (pred(k)) return k; await page.waitForTimeout(300); } return k; };
   const U1 = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"];
 
