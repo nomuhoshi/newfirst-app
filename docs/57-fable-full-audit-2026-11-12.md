@@ -71,3 +71,9 @@ A 的剩余：定期导出提醒（隔 14 天提示一次）——未做；C mai
 - **#65、#66 已合并部署**：main `1be695a`（含 `2b8755a` 的 #65 + #66）。部署 run https://github.com/nomuhoshi/newfirst-app/actions/runs/43090937292 ：build / chromium / webkit / deploy 全部成功；Pages 部署 7720471814（2026-11-11T20:09:01Z = 05:09 JST）。正式构建源码提交 `1be695a03d8dad3fa9128fe0aef7b9a2b53b83bf`，构建时间约 19:59 UTC，所以“我的”页底部「应用版本」应显示约「2026-11-11 19:59 UTC」（± 1 分钟）。这边连不上正式站，线上核对由传话员做。
 - **插曲**：#65 合并后 main 第一次 CI 的 webkit 作业因浏览器渲染进程崩溃（`page.reload: Page crashed`，不是断言失败）失败，deploy 被跳过；重跑通过后部署（`2b8755a`，7720249636），随后 #66 合并再部署（`1be695a`）。
 - **C main 分支保护：受阻，需要老大在网页上操作**。从这边调用 GitHub 的分支保护接口被代理拒绝（`Write access to this GitHub API path is not permitted through this proxy`，403），无法替老大设置。操作步骤（约 1 分钟）：GitHub 仓库 nomuhoshi/newfirst-app → Settings → Branches → Add branch ruleset（或 Add classic branch protection rule）→ 分支名 `main` → 勾选 Require a pull request before merging（审批数 0）+ Require status checks to pass，选 `build`、`mobile (chromium)`、`mobile (webkit)` → 勾选 Do not allow bypassing（让管理员也受限）→ Save。设置之前，团队约定自觉：main 只通过 PR 合并（#65、#66 就是这样做的）。
+
+### 7.5 10:13 产品官 10:09 更正
+- **C 完成**：main 分支保护由传话员 10:09 设置并读回（必须 PR 审批 0 + 必须通过 `build` / `mobile (chromium)` / `mobile (webkit)` + 管理员不可绕过）。7.4 里“受阻”作废。docs/57 另提的“部署环境审批”**单独登记，未做**。
+- **B 状态：已部署，安全复核未通过**。竞争：`compactLedgers()` 删除前再读一次原键，再删除，两步之间另一页仍可能保存新数据；3 天没动过不能证明页面已关闭；16 项测试没有消除这个窗口。**处理**：PR #67 关闭删除（AUTO_COMPACT=false；默认 allowDelete=false，写汇总键之前就返回，不写汇总键也不删原键）；已写出的汇总键和账本保持原样，读取合并不变。**恢复删除的前提**：保存与压缩共同遵守同一把锁（例如 Web Locks 同时包住 saveState 和压缩），或等效可靠机制；只给压缩器加锁不足以保护保存。
+- **Safari 失败项**：04:07 真机记为：反馈遮挡通过、PWA 自身关闭重开通过；Safari 关闭重开、双标签、新标签读取仍失败。无痕只是假设，不是根因；等老大确认普通/私密标签和“复制诊断”结果。普通 Safari 仍失败时，按同一网址、同一存储环境继续定位，不要求清数据或重装。
+- **后续顺序**：存档风险修正/Safari 定位 → A 的 14 天导出提醒（非阻塞，“导出进度”“稍后”，成功导出后重新计时，不弹系统通知、不打断答题；持久存储结果如实显示，不承诺永久）→ D（服务端验证码防滥用、发信限制、受控登录/同步验收；前端倒计时不能代替服务端限制）→ E 先交合并语义对照和最小改造方案。
