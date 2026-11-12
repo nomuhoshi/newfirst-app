@@ -54,6 +54,25 @@ export async function storageReport() {
   return lines;
 }
 
+// ---- 14 天导出提醒（Fable 审计 A）----
+// 本机记录只存在这台设备的浏览器里；Safari 可能清理长期不用的网站数据。每隔 14 天轻轻提醒一次导出进度文件。
+// 非阻塞、只在地图页显示一条可关闭的提示，不弹系统通知、不在答题中出现；导出成功后重新计时；点“稍后”3 天内不再提示。
+// 已登录账号的记录在云端，不提醒。持久存储的结果如实显示在诊断里，这里不承诺“永久不丢”。
+const META_EXPORT = "suipian.meta.lastExport", META_SNOOZE = "suipian.meta.exportSnooze";
+export const EXPORT_EVERY_MS = 14 * 24 * 3600 * 1000, EXPORT_SNOOZE_MS = 3 * 24 * 3600 * 1000, EXPORT_MIN_LESSONS = 3;
+export function markExported(now = Date.now()) { try { localStorage.setItem(META_EXPORT, String(now)); localStorage.removeItem(META_SNOOZE); return true; } catch { return false; } }
+export function snoozeExport(now = Date.now()) { try { localStorage.setItem(META_SNOOZE, String(now + EXPORT_SNOOZE_MS)); return true; } catch { return false; } }
+export function lastExportAt() { try { return Number(localStorage.getItem(META_EXPORT)) || 0; } catch { return 0; } }
+export function exportReminderDue({ now = Date.now(), doneCount = 0, signedIn = false } = {}) {
+  try {
+    if (signedIn || doneCount < EXPORT_MIN_LESSONS) return false;
+    const ref = lastExportAt() || firstSeenAt(now); // 从没导出过：从这份存储首次使用时算起
+    if (!ref || now - ref < EXPORT_EVERY_MS) return false;
+    const snooze = Number(localStorage.getItem(META_SNOOZE)) || 0;
+    return now >= snooze;
+  } catch { return false; }
+}
+
 // ---- 打开记录与浏览器存储探针（Safari 进度丢失定位用）----
 // 每次打开记一次时间（最多留 8 条）。老大下次点“复制诊断”就能看出：关掉再打开后“打开次数”是 1 还是在累加——
 // 1 = 这个标签页的本机存储没有保留（无痕 / 每个标签独立 / 被清）；累加 = 存储在，问题在别处。

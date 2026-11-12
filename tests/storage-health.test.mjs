@@ -21,6 +21,24 @@ setNav({ estimate: async () => ({ usage: 5 * 1024 * 1024, quota: 1024 * 1024 * 1
 const rep = await m.storageReport(); ok("体检报告含首次使用、键数、持久、额度", rep.length >= 4 && /首次使用/.test(rep[0]) && /4 个键/.test(rep[1]) && /持久存储/.test(rep[2]) && /5 MB/.test(rep.at(-1)) && /1024 MB/.test(rep.at(-1)), rep.join(" | "));
 broken = true; ok("存储被禁用：首次使用返回 0、键数 null、不抛错", m.firstSeenAt() === 0 && m.localCounts() === null);
 const rep2 = await m.storageReport(); ok("存储被禁用：报告仍然生成", rep2.length >= 3 && /无法读取|读取失败/.test(rep2.join("")), rep2.join(" | "));
+
+// ---- 14 天导出提醒 ----
+broken = false; for (const k of Object.keys(mem)) delete mem[k];
+const D = 24 * 3600 * 1000, T0 = 1_000_000_000_000;
+m.firstSeenAt(T0);
+ok("刚开始用：不提醒", !m.exportReminderDue({ now: T0 + 15 * D, doneCount: 2 }));
+ok("满 14 天但课太少：不提醒", !m.exportReminderDue({ now: T0 + 15 * D, doneCount: 2 }));
+ok("不满 14 天：不提醒", !m.exportReminderDue({ now: T0 + 13 * D, doneCount: 5 }));
+ok("满 14 天且有进度：提醒", m.exportReminderDue({ now: T0 + 15 * D, doneCount: 5 }));
+ok("已登录账号：不提醒", !m.exportReminderDue({ now: T0 + 15 * D, doneCount: 5, signedIn: true }));
+m.snoozeExport(T0 + 15 * D);
+ok("点稍后：3 天内不提醒", !m.exportReminderDue({ now: T0 + 17 * D, doneCount: 5 }));
+ok("稍后过期后再次提醒", m.exportReminderDue({ now: T0 + 18.5 * D, doneCount: 5 }));
+m.markExported(T0 + 20 * D);
+ok("导出成功后重新计时（并清掉稍后）", !m.exportReminderDue({ now: T0 + 33 * D, doneCount: 5 }) && m.lastExportAt() === T0 + 20 * D);
+ok("导出后再满 14 天又提醒", m.exportReminderDue({ now: T0 + 35 * D, doneCount: 5 }));
+broken = true;
+ok("存储被禁用：不抛错、不提醒", m.exportReminderDue({ now: T0 + 99 * D, doneCount: 9 }) === false && m.markExported() === false && m.snoozeExport() === false);
 // ---- 打开记录与探针 ----
 broken = false; for (const k of Object.keys(mem)) delete mem[k];
 m.recordLoad(1000); m.recordLoad(2000); m.recordLoad(3000);
