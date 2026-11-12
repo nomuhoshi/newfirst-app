@@ -1,6 +1,7 @@
 // 本机存储体检（只读诊断 + 申请持久存储）。所有函数都不抛错：存储被禁用、浏览器不支持时返回说明文字。
 // 为什么需要：Safari 对长期不打开的网站会清理本机数据（主屏幕 App 不受影响）；无痕 / 私密浏览里每个标签的存储互相独立、关标签就清空。
 // 用户看到的现象都是“进度没了”，必须能从诊断里区分这几种情况。
+import { currentEpoch, DEFAULT_EPOCH } from "./storage.js";
 let persistText = "未检查";
 export const persistLabel = () => persistText;
 
@@ -61,20 +62,23 @@ export async function storageReport() {
 const META_BASE = "suipian.meta.backupBase"; // 备份提醒起算点：首次成功保存有效学习进度（或升级时已有进度）的时间
 // 注意：旧版（#68 `57793a2`）点下载就写 suipian.meta.lastExport，没经用户确认——新版不再把它当确认凭据，改用独立的 confirmedExport
 const META_EXPORT = "suipian.meta.confirmedExport", META_SNOOZE = "suipian.meta.exportSnooze";
+// 提醒记录按“代数”隔离：用户明确清除学习记录后是新的一代，重新计时；旧代的确认 / 稍后 / 起点记录原样保留（不删除），但不再影响新一代。
+// 从没清除过（代数 m0）继续用原来的键，老用户的记录不需要迁移；读不到代数时当作没有记录、不写。
+const mk = (base) => { const e = currentEpoch(); return e === null ? null : e === DEFAULT_EPOCH ? base : base + "." + e; };
 export const EXPORT_EVERY_MS = 14 * 24 * 3600 * 1000, EXPORT_SNOOZE_MS = 3 * 24 * 3600 * 1000, EXPORT_MIN_LESSONS = 3;
 export function ensureBackupBase(doneCount, now = Date.now()) {
-  try { if (doneCount > 0 && !localStorage.getItem(META_BASE)) localStorage.setItem(META_BASE, String(now)); return Number(localStorage.getItem(META_BASE)) || 0; } catch { return 0; }
+  try { const k = mk(META_BASE); if (!k) return 0; if (doneCount > 0 && !localStorage.getItem(k)) localStorage.setItem(k, String(now)); return Number(localStorage.getItem(k)) || 0; } catch { return 0; }
 }
-export function backupBaseAt() { try { return Number(localStorage.getItem(META_BASE)) || 0; } catch { return 0; } }
-export function markExported(now = Date.now()) { try { localStorage.setItem(META_EXPORT, String(now)); localStorage.removeItem(META_SNOOZE); return true; } catch { return false; } }
-export function snoozeExport(now = Date.now()) { try { localStorage.setItem(META_SNOOZE, String(now + EXPORT_SNOOZE_MS)); return true; } catch { return false; } }
-export function lastExportAt() { try { return Number(localStorage.getItem(META_EXPORT)) || 0; } catch { return 0; } }
+export function backupBaseAt() { try { const k = mk(META_BASE); return k ? Number(localStorage.getItem(k)) || 0 : 0; } catch { return 0; } }
+export function markExported(now = Date.now()) { try { const k = mk(META_EXPORT), z = mk(META_SNOOZE); if (!k || !z) return false; localStorage.setItem(k, String(now)); localStorage.removeItem(z); return true; } catch { return false; } }
+export function snoozeExport(now = Date.now()) { try { const k = mk(META_SNOOZE); if (!k) return false; localStorage.setItem(k, String(now + EXPORT_SNOOZE_MS)); return true; } catch { return false; } }
+export function lastExportAt() { try { const k = mk(META_EXPORT); return k ? Number(localStorage.getItem(k)) || 0 : 0; } catch { return 0; } }
 export function exportReminderDue({ now = Date.now(), doneCount = 0, signedIn = false } = {}) {
   try {
     if (signedIn || doneCount < EXPORT_MIN_LESSONS) return false;
     const ref = lastExportAt() || backupBaseAt(); // 从没确认备份过：从首次成功保存进度（升级用户从升级那次）算起；还没有起点就不提醒
     if (!ref || now - ref < EXPORT_EVERY_MS) return false;
-    const snooze = Number(localStorage.getItem(META_SNOOZE)) || 0;
+    const sk = mk(META_SNOOZE); const snooze = sk ? Number(localStorage.getItem(sk)) || 0 : 0;
     return now >= snooze;
   } catch { return false; }
 }
