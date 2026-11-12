@@ -351,7 +351,7 @@ function runForOutput(code) {
     listeners.add(waiter);
     // 兜底：无论什么原因一直等不到，到时间就结束“运行中…”，显示失败提示和“重试”
     timer = setTimeout(() => finish(null), LIMITS.loadMs + 2000);
-    if (runner.state === "loadError") runner.boot();
+    if (runner.state === "idle" || runner.state === "loadError") runner.boot(); // idle = 本次打开后第一次真正要执行：此时才开始加载 Python
   });
 }
 
@@ -1622,4 +1622,5 @@ window.addEventListener("online", () => {
 // 先把界面画出来，再在后台加载 Python：Python 出任何问题都不能让页面一片空白
 if (state.onboarded) renderPath(); else renderOnboarding();
 firstSeenAt(); recordLoad(); ensureBackupBase(Object.keys(state.done).length, Date.now(), stateEpoch(state)); ensurePersist(); // 记下这份存储的首次使用时间；申请持久存储（失败不影响使用）
-try { runner.boot(); } catch { /* 失败时 runner 已经记录为 loadError，“运行结果”面板会如实提示 */ }
+// Python（约 13 MB）不再在打开应用时下载：第一次真正要执行时才加载——runForOutput（答题后的“运行结果”）、判题执行器（judge.js 的 ensureReady）、代码题答题区。
+// 加载失败时 runner 记录为 loadError，“运行结果”面板如实提示并给“重试”；恢复网络后（上面的 online 监听）只会重试已经失败过的加载，不会替没用到 Python 的人提前下载。
