@@ -47,12 +47,12 @@ const directive = (csp, name) => csp.split(";").map((s) => s.trim()).find((s) =>
 if (!existsSync(DIST + "/index.html")) { console.log("环境失败：没有 dist/，先 npm run build:ci（测试专用构建）"); process.exit(2); }
 const indexHtml = readFileSync(DIST + "/index.html", "utf8");
 const CSP = cspOf(indexHtml);
+const HAS_TEST = CSP.includes(TEST_CLOUD_ORIGIN), EXPECT = process.env.CSP_EXPECT || (HAS_TEST ? "test" : "formal"); // CI 显式设置，防止拿错目录测
 {
   check("B dist/index.html 有且只有一条 CSP meta", (indexHtml.match(/Content-Security-Policy/g) || []).length === 1 && !!CSP);
   const inline = [...indexHtml.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].filter((m) => !/\bsrc\s*=/.test(m[1])).map((m) => sha(m[2]));
   check("B 产物里每段内联脚本的哈希都在 script-src 里", inline.length >= 1 && inline.every((h) => directive(CSP, "script-src").includes(h)), JSON.stringify(inline));
   const previewId = /PREFIX = "([a-z0-9-]+)-suipian-"/.exec(readFileSync(DIST + "/sw.js", "utf8"))?.[1];
-  const HAS_TEST = CSP.includes(TEST_CLOUD_ORIGIN), EXPECT = process.env.CSP_EXPECT || (HAS_TEST ? "test" : "formal"); // CI 显式设置，防止拿错目录测
   check(`B 这份产物是“${EXPECT === "test" ? "测试专用构建（含测试域）" : "正式构建（不含测试域）"}”，与预期一致`, HAS_TEST === (EXPECT === "test"), `CSP_EXPECT=${EXPECT} HAS_TEST=${HAS_TEST}`);
   if (!previewId) check("B 正式云项目构建：connect-src 只有本站和正式项目" + (EXPECT === "test" ? "和测试保留域名" : "（没有测试域）") + "，没有通配", directive(CSP, "connect-src") === `connect-src 'self' https://${PROD_HOST}${EXPECT === "test" ? " " + TEST_CLOUD_ORIGIN : ""}`, directive(CSP, "connect-src"));
   else check(`B 测试入口 ${previewId}：connect-src 不含正式项目、没有通配`, !directive(CSP, "connect-src").includes(PROD_HOST) && !directive(CSP, "connect-src").includes("*"), directive(CSP, "connect-src"));
