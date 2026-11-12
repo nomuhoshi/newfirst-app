@@ -41,7 +41,7 @@ import { createPreviewInfo } from "./preview-info.js";
 import { cloudTarget } from "./cloud-config.js";
 import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
-import { ensurePersist, firstSeenAt, storageReport } from "./storage-health.js";
+import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue } from "./storage-health.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
@@ -514,7 +514,7 @@ function renderPath() {
   appEl.replaceChildren(
     circuit("full"),
     statsBar(),
-    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, practiceEntry(), accountUi?.accountRow(), units),
+    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, exportReminder(), practiceEntry(), accountUi?.accountRow(), units),
     tabBar("path"),
   );
   notice = null;
@@ -756,6 +756,30 @@ function keyLab() {
 }
 
 // ---------- 备份学习记录：导出 / 导入进度文件 ----------
+// 导出进度文件（“我的”里的按钮和地图页的 14 天提醒共用）。成功才返回 true，并重新计时 14 天提醒
+function exportProgressFile() {
+  try {
+    syncFromStorage(state); const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = h("a", { href: url, download: exportFileName(new Date()), hidden: "" });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    markExported();
+    return true;
+  } catch { return false; }
+}
+// 地图页顶部的导出提醒：非阻塞、可关闭，不在答题中出现
+function exportReminder() {
+  if (!exportReminderDue({ doneCount: Object.keys(state.done).length, signedIn: !!sync?.account() })) return null;
+  const box = h("div", { class: "notice export-reminder", role: "note", "data-export-reminder": "" },
+    h("p", { text: "隔了一阵没备份学习记录了。记录只存在这台设备的浏览器里，导出一份进度文件更保险。" }),
+    h("div", { class: "acct-row" },
+      button("导出进度", () => { if (exportProgressFile()) { box.remove(); showToast("已导出，文件在下载位置。"); } else showToast("导出失败，请到“我的”里再试。"); }, "btn3d", { "data-export-now": "" }),
+      button("稍后", () => { snoozeExport(); box.remove(); }, "btn3d ghost", { "data-export-later": "" }),
+    ));
+  return box;
+}
 function backupCard() {
   const signedIn = !!sync?.account();
   const msg = h("p", { class: "backup-msg small muted", role: "status", "data-backup-msg": "" });
@@ -769,15 +793,8 @@ function backupCard() {
     return true;
   };
   const doExport = () => {
-    try {
-      syncFromStorage(state); const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = h("a", { href: url, download: exportFileName(new Date()), hidden: "" });
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-      say("已导出。文件在浏览器的下载位置（iPhone：“文件”App → 下载），请自己保管好。");
-    } catch { say("导出失败，请换个浏览器再试。", true); }
+    if (exportProgressFile()) say("已导出。文件在浏览器的下载位置（iPhone：“文件”App → 下载），请自己保管好。");
+    else say("导出失败，请换个浏览器再试。", true);
   };
   const file = h("input", { type: "file", accept: "application/json,.json", hidden: "", "data-import-file": "" });
   file.addEventListener("change", async () => {
