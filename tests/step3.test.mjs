@@ -136,8 +136,13 @@ try {
   await page.waitForSelector(".statsbar", { timeout: 15000 });
   const mk = await page.evaluate(() => window.__marker);
   check("更新：恢复网络后刷新，拿到的是新版本的页面和脚本（联网优先）", mk === "v2" && (await page.evaluate(async () => (await (await fetch(location.href)).text()).includes("MARKER-v2"))), String(mk));
-  const keysB = await waitKeys((k) => k.includes("suipian-v2") && !k.includes("suipian-old-decoy"));
-  check("更新：新版本激活后，旧的 suipian- 缓存被自动删除，别的应用的缓存不动", keysB.includes("suipian-v2") && !keysA.some((k) => keysB.includes(k)) && !keysB.includes("suipian-old-decoy") && keysB.includes("other-app-cache"), keysB.join());
+  // 新版装好后不立刻接管：旧缓存还在，等地图上用户点“现在更新”才激活（旧机制是装好即接管、立刻删旧缓存）
+  const acceptUpdate = async () => { await page.waitForSelector("[data-update-now]", { timeout: 20000 }); await Promise.all([page.waitForEvent("load"), page.locator("[data-update-now]").tap()]); await page.waitForSelector(".statsbar", { timeout: 15000 }); };
+  const keysB0 = await waitKeys((k) => k.includes("suipian-v2"));
+  check("更新：新版装好后不立刻接管——旧缓存仍在，地图上出现“有新版本”提示", keysB0.includes("suipian-v2") && keysA.every((k) => keysB0.includes(k)) && keysB0.includes("suipian-old-decoy") && (await page.locator("[data-update-now]").count()) === 1, keysB0.join());
+  await acceptUpdate();
+  const keysB = await waitKeys((k) => k.includes("suipian-v2"));
+  check("更新：用户点“现在更新”后新版激活：不删除任何历史版本缓存（旧页面可能还要按需加载旧文件），别的应用的缓存不动", keysB.includes("suipian-v2") && keysA.every((k) => keysB.includes(k)) && keysB.includes("suipian-old-decoy") && keysB.includes("other-app-cache"), keysB.join());
   const cachedB = await page.evaluate(async () => { const c = await caches.open("suipian-v2"); return (await c.keys()).map((r) => r.url); });
   check("缓存：用过 Python 之后，Pyodide 文件仍然没有进入缓存", cachedB.length > 5 && !cachedB.some((u) => /pyodide/.test(u)) && !cachedB.some((u) => /sfx/.test(u)));
   // 新版再次断网也能打开（缓存已换成新版）
@@ -154,8 +159,9 @@ try {
   check("更新：新版本缺文件时安装失败，不会留下缺文件的半个缓存，旧缓存继续可用", keysC.includes("suipian-v2") && !keysC.includes("suipian-v3-broken"), keysC.join());
   root = makeVersion("v4");
   await page.reload(); await page.waitForSelector(".statsbar");
-  const keysD = await waitKeys((k) => k.includes("suipian-v4") && !k.includes("suipian-v2"));
-  check("更新：之后发布完整的新版本，仍能正常升级并清理 v2 缓存", keysD.includes("suipian-v4") && !keysD.includes("suipian-v2") && (await page.evaluate(() => window.__marker)) === "v4", keysD.join());
+  await acceptUpdate();
+  const keysD = await waitKeys((k) => k.includes("suipian-v4"));
+  check("更新：之后发布完整的新版本，仍能正常升级；历史版本缓存都保留", keysD.includes("suipian-v4") && keysD.includes("suipian-v2") && keysA.every((k) => keysD.includes(k)) && (await page.evaluate(() => window.__marker)) === "v4", keysD.join());
 
   // ===== 5. 网络很慢：不要让人干等，先用缓存 =====
   delayMs = 8000;
