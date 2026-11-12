@@ -196,3 +196,23 @@ PR #76：首轮 run 43202010306 build 失败（我写的 a2hs 读取失败用例
 **CI 日志（run 43203372510 build job）**：`✅ rc=0 node tests/progress-file.test.mjs`（7s）、`storage-health`（0s）、`export-reminder`（3s）、`a2hs-prompt`（3s）、`progress-persistence`（39s）。
 **新版待验（与已修项分开）**：GPT1 对 `e283734` 的差异复审（原复审基线 `85429ea` 过旧）；传话员对新版的隔离实测（原实测针对 `85429ea`）；iPhone 实际备份恢复；Safari 两份诊断。
 **A 仍为部分完成。** 关闭条件：最新版独立复审无阻断、专项自动化与隔离人工通过、iPhone 实际备份恢复通过；Safari 原失败须定位解决或由老大明确接受有证据的环境限制；账号同步单独跟踪。
+
+### 8.7 20:48 JST GPT1 对 `fc83c83` 差异复审（19:47）+ 传话员实测 2 — PR #77 合并 `5f5b678`
+PR #77：run 43206488148（首轮 build 失败：我的新测试写在结算页上点不到底部导航，已修）→ run 43207903701（WebKit 偶发“清除交错”旧不稳测试失败，已知问题，`gh run rerun --failed` 后全绿；它与本 PR 无关，稳定版 `da4b1dd` 仍只在 release/accounts-pilot）→ main run 43210790767 build/chromium/webkit/deploy 全成功；Pages deployment 7736309891（11:47:08Z）。正式版 `5f5b678`。
+
+逐条对照 GPT1 表格（`fc83c83` 之后 #76 `e283734` 已含部分；其余本 PR）：
+| GPT1 项 | 结论 |
+|---|---|
+| 三入口共用安全快照 | 已修（#73） |
+| 文件导出、A2HS 入口读取失败入口级测试 | ✅ #76 已补（progress-file：账本读不全导出文件被拒、无下载；a2hs-prompt：基线键读取失败拒绝） |
+| 旧版未确认 `lastExport` 兼容（P1） | ✅ #77：新键 `suipian.meta.confirmedExport`，只有用户点“我已保存好”才写；旧键 `lastExport` 保留不读，不当确认凭据；升级用户起点仍按产品官 17:00 规则（首次成功保存/升级基准）。测试：纯函数（旧键到期仍提醒、确认后写新键重新计时）+ 浏览器（只有旧键仍提醒、新键为空） |
+| “我的”页 `data-export-saved-me` 确认失败测试 | ✅ #77：浏览器测试，确认区保留、提示“提醒时间未更新”、不说 14 天后再提醒 |
+| 真实通关后 doneOn 专项 | ✅ #77：progress-persistence F1–F4（chromium+webkit 都跑）：真实点击通关 U1L1 → doneOn 为学习日；导入更早日期旧码 → 取较早，XP/次数/红心/偏好不变；再导入更晚日期 → 仍较早；刷新重开仍较早 |
+| 快照 snap 纳入 doneOn | ✅ #76（snap 含 doneOn、红心、偏好） |
+| 失败恢复后再粘贴同一码串联 | ✅ #76 |
+| A2HS 复制失败原因分类 | ✅ #76（snapshot / clipboard 分开提示，a2hs-prompt 两个用例） |
+| 学习后粘贴旧码（真实通关） | ✅ #77 F2（真实通关）；progress-file 里的内存改动版保留作辅助 |
+| 首次通关后建立起点的完整应用级测试 | 部分：export-reminder 覆盖升级用户起点；persist 成功后建立起点的“真实通关”用例未单独写 |
+
+传话员实测 2（`fc83c83`，页面显示的应用版本以 bundle 内 SHA 为准，传话员已核对 `main-CWCXrRHL.js` 含 fc83c83）：8/8 通过——复制→粘贴恢复、重复粘贴不加 XP、先学后导旧码不倒退、文件导入、无痕关闭重开、改动的码被拒、导入后“学习”可点（遮挡已解）、确认文案按来源。
+**新版待验**：`5f5b678` 的差异复审（GPT1）；传话员对 `5f5b678` 的快速复测（旧 lastExport 场景只能自动化）；iPhone 实际备份恢复；Safari 两份诊断。A 仍部分完成。
