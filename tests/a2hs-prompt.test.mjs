@@ -68,6 +68,18 @@ try {
     await page.locator("[data-a2hs-later]").tap();
     check("“稍后”写入失败：明确提示记不住", /记不住/.test(await page.locator(".toast").innerText()));
     await ctx.close(); }
+  { // 复制失败要分清原因：读不全 vs 剪贴板不让复制
+    const { ctx, page } = await open({ done: 2 });
+    await page.evaluate(() => navigator.clipboard.writeText("原剪贴板内容"));
+    await page.evaluate(() => { window.__realGet = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { if (String(k).startsWith("suipian.v4.base.")) throw new DOMException("denied", "SecurityError"); return window.__realGet.call(this, k); }; });
+    await page.locator("[data-a2hs-code]").tap(); await page.waitForTimeout(300);
+    const m1 = await page.locator("[data-a2hs-msg]").innerText();
+    check("读不全本机记录：拒绝备份，原因写“没能完整读取”，剪贴板不变", /没能完整读取/.test(m1) && !/不让自动复制/.test(m1) && (await page.evaluate(() => navigator.clipboard.readText())) === "原剪贴板内容", m1);
+    await page.evaluate(() => { Storage.prototype.getItem = window.__realGet; Clipboard.prototype.writeText = async function () { throw new DOMException("denied", "NotAllowedError"); }; });
+    await page.locator("[data-a2hs-code]").tap(); await page.waitForTimeout(300);
+    const m2 = await page.locator("[data-a2hs-msg]").innerText();
+    check("剪贴板不让复制：原因写“不让自动复制”，不说读不全", /不让自动复制/.test(m2) && !/没能完整读取/.test(m2), m2);
+    await ctx.close(); }
   { const { ctx, page } = await open({ done: 1 }); check("只完成 1 关：不出现", (await count(page)) === 0); await ctx.close(); }
   { const { ctx, page } = await open({ standalone: true }); check("主屏幕 App 里：永不显示", (await count(page)) === 0); await ctx.close(); }
   { const { ctx, page } = await open({ ua: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36" }); check("非 iPhone：不显示", (await count(page)) === 0); await ctx.close(); }

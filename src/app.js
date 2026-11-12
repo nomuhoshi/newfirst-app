@@ -781,8 +781,11 @@ function exportProgressFile({ diagnostic = false } = {}) {
 }
 // 完成第 2 关后，iPhone Safari（非主屏幕 App）里提示一次“添加到主屏幕”：主屏幕 App 实测记录保留。可展开步骤、可“不再提示”，主屏幕 App 里永不显示，不弹窗、不打断答题
 const A2HS_SNOOZE = "suipian.meta.a2hsSnooze";
+// 返回 "ok" | "snapshot"（没能完整读取本机记录，拒绝备份）| "clipboard"（读取没问题，只是浏览器不让自动复制）
 async function copyProgressCode() {
-  try { const snap = snapshotForBackup(); if (!snap) return false; await navigator.clipboard.writeText(encodeCode(snap, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" })); return true; } catch { return false; }
+  let code = "";
+  try { const snap = snapshotForBackup(); if (!snap) return "snapshot"; code = encodeCode(snap, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" }); } catch { return "snapshot"; }
+  try { await navigator.clipboard.writeText(code); return "ok"; } catch { return "clipboard"; }
 }
 function a2hsPrompt() {
   if (!isIOS || standalone || state.installTipClosed || Object.keys(state.done).length < 2) return null;
@@ -797,7 +800,7 @@ function a2hsPrompt() {
     h("p", { text: "添加到主屏幕，打开更方便。请先复制进度码；从主屏幕图标打开后，在“我的 → 备份学习记录”粘贴恢复。安装后请核对进度，仍建议保留备份。" }),
     steps, msg,
     h("div", { class: "acct-row" },
-      button("复制进度码", async () => { msg.textContent = (await copyProgressCode()) ? "进度码已复制，请先粘贴到备忘录或发给自己保存；再按步骤添加到主屏幕。" : "这个浏览器不让自动复制：请到“我的 → 备份学习记录 → 复制进度码”手动复制。"; }, "btn3d", { "data-a2hs-code": "" }),
+      button("复制进度码", async () => { const r = await copyProgressCode(); msg.textContent = r === "ok" ? "进度码已复制，请先粘贴到备忘录或发给自己保存；再按步骤添加到主屏幕。" : r === "snapshot" ? BACKUP_REFUSED : "这个浏览器不让自动复制：请到“我的 → 备份学习记录 → 复制进度码”，在那里可以手动选中复制。"; }, "btn3d", { "data-a2hs-code": "" }),
       button("怎么添加", () => { steps.hidden = !steps.hidden; }, "btn3d", { "data-a2hs-how": "" }),
     ),
     h("div", { class: "acct-row" },
