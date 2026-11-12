@@ -214,6 +214,22 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   await ctx2.close();
 }
 
+// ---------- H 无变化不新增账本：真实通关后反复刷新 / 切前台，账本键数不增；真实学习才增加且进度完整 ----------
+{
+  const tabKeys = (pg) => pg.evaluate(() => { const a = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ""; if (k.startsWith("suipian.v4.tab.")) a.push(k); } return a.length; });
+  const dir = newDir(); const ctx = await open(dir); let page = await load(ctx); await passOnboarding(page);
+  await finishLesson(page, "U1L1"); const want = await saved(page);
+  page = await load(ctx); await page.waitForSelector(".pathview"); const k1 = await tabKeys(page);
+  for (let i = 0; i < 4; i++) { await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview"); await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange"))); }
+  const k2 = await tabKeys(page);
+  check("H1 通关后反复刷新 4 次并触发回前台：账本键数不增加", k2 === k1, `${k1} → ${k2}`);
+  const now = await saved(page);
+  check("H2 无变化期间进度完整（XP、关卡、次数不变）", now && now.xp === want.xp && now.lessonsCompleted === want.lessonsCompleted && !!now.done?.U1L1, JSON.stringify(now));
+  await finishLesson(page, "U1L2"); const k3 = await tabKeys(page); const s3 = await saved(page);
+  check("H3 真实学习仍正常保存（新关卡、XP 增加）", !!s3?.done?.U1L2 && s3.xp > want.xp && k3 >= k2, `keys ${k2}→${k3} xp ${want.xp}→${s3?.xp}`);
+  await ctx.close();
+}
+
 srv.close(); for (const d of dirs) { try { rmSync(d, { recursive: true, force: true }); } catch { /* 临时目录，删不掉不影响结果 */ } }
 console.log(`\n${BNAME}：通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -218,7 +218,7 @@ function attach(S, state, epoch, id = PAGE_ID) {
   const e = emptyEntry();
   const r = rd(S, K_TAB + id), rec = r.ok && r.v ? parse(r.v) : null; // 同一标签页刷新：接着写自己上一次的账本
   if (rec && rec.v === 4 && rec.epoch === epoch && rec.entries && rec.entries[id]) joinEntry(e, rec.entries[id]);
-  const L = { id, epoch, e, metaT: 0 };
+  const L = { id, epoch, e, metaT: 0, saved: JSON.stringify(e) }; // saved：最近一次成功写入（或读到）的自己的账本内容，用来判断“有没有还没存下的变化”
   LEDGERS.set(state, L);
   return L;
 }
@@ -316,6 +316,25 @@ function adoptEpoch(S, state, epoch, base) {
   return true;
 }
 
+
+// ---- 无变化不写（方案 B）----
+// 只看“学习与设置”有没有还没存下的变化；lastActive、meta.t、满红心时的 heartsAt 这类自动更新的时间不算变化，否则每次打开都会新建账本键。
+const sameFlat = (a, b) => { a = a && typeof a === "object" ? a : {}; b = b && typeof b === "object" ? b : {}; const ks = new Set([...Object.keys(a), ...Object.keys(b)]); for (const k of ks) if (a[k] !== b[k]) return false; return true; };
+function hasUnsavedChange(state, v0, base, L, pendingE) {
+  if (pendingE) return true; // 自己账本里还有没写进去的累计（addXp / addRun 的记录，或上次写入失败）
+  for (const k of Object.keys(state.done)) if (state.done[k] && !v0.done[k]) return true;
+  for (const [k, d] of Object.entries(state.doneOn || {})) if (typeof d === "string" && ISO.test(d) && (!v0.doneOn[k] || d < v0.doneOn[k])) return true;
+  if (state.lastDay && ISO.test(state.lastDay) && (!v0.lastDay || state.lastDay > v0.lastDay || (state.lastDay === v0.lastDay && num(state.streak) > v0.streak))) return true;
+  if (state.xp > v0.xp || state.lessonsCompleted > v0.runs) return true;
+  if ((state.onboarded && !v0.onboarded) || (state.installTipClosed && !v0.installTipClosed)) return true;
+  const bs = base.s || {}, m = v0.meta || {};
+  const refHearts = Number.isFinite(m.hearts) ? Math.min(HEARTS_MAX, Math.max(0, m.hearts)) : Number.isFinite(bs.hearts) ? bs.hearts : HEARTS_MAX;
+  const refAt = Number.isFinite(m.heartsAt) ? m.heartsAt : bs.heartsAt;
+  if (state.hearts !== refHearts) return true;
+  if (state.hearts < HEARTS_MAX && state.heartsAt !== refAt) return true; // 满红心时 heartsAt 只是“现在”，不算变化
+  const refPrefs = { ...freshState().prefs, ...(bs.prefs || {}), ...(m.prefs && typeof m.prefs === "object" ? m.prefs : {}) };
+  return !sameFlat(state.prefs, refPrefs);
+}
 // 保存：只写自己的键，其余键不动。失败（读取异常 / 视图不完整 / 写入失败 / 空间不足）返回 false，不更新“最后成功保存时间”，内存进度保留，下次保存补上。
 export function saveState(state) {
   const S = LS();
@@ -331,6 +350,8 @@ export function saveState(state) {
     // 记录页面自己的进度：关卡 / 日期 / 连续天数从内存记录取；XP / 次数在 addXp / addRun 里已经记过，这里只补“直接改了总数”的差额（如导入进度文件）
     const v0 = computeView(S, epoch, b.base, L);
     if (!v0) return false;
+    // 没有还没存下的变化：不写账本、不写镜像（既不新建键，也不刷新 lastActive）。失败的保存不更新 L.saved，下次仍算待保存。
+    if (!hasUnsavedChange(state, v0, b.base, L, JSON.stringify(e) !== L.saved)) return true;
     for (const k of Object.keys(state.done)) if (state.done[k]) e.done[k] = true;
     for (const [k, d] of Object.entries(state.doneOn || {})) if (typeof d === "string" && ISO.test(d)) e.doneOn[k] = d;
     if (state.lastDay) { e.lastDay = state.lastDay; e.streak = num(state.streak); }
@@ -340,6 +361,7 @@ export function saveState(state) {
     e.meta = { t: state.lastActive, hearts: state.hearts, heartsAt: state.heartsAt, prefs: state.prefs, onboarded: !!state.onboarded, installTipClosed: !!state.installTipClosed };
     L.metaT = e.meta.t;
     if (!wr(S, K_TAB + L.id, JSON.stringify({ v: 4, epoch, entries: { [L.id]: e } }))) return false;
+    L.saved = JSON.stringify(e);
     // 写完再核对一次代数：处理期间发生了清除 → 刚写的是旧代账本（读者会忽略），不写镜像，内存采用新一代，不显示旧进度
     const ep2 = getEpoch(S);
     if (ep2 === null) return false;
