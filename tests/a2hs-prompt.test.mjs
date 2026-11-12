@@ -21,7 +21,7 @@ await new Promise((res) => srv.listen(0, res)); const URLBASE = `http://localhos
 const browser = await chromium.launch();
 const DAY = 24 * 3600 * 1000;
 const IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
-const raw = (n) => { const o = JSON.parse(FIX); const ids = Object.keys(o.done).slice(0, n); o.done = Object.fromEntries(ids.map((k) => [k, true])); return JSON.stringify(o); };
+const raw = (n) => { const o = JSON.parse(FIX); const ids = Object.keys(o.done).slice(0, n); o.done = Object.fromEntries(ids.map((k) => [k, true])); o.installTipClosed = false; return JSON.stringify(o); };
 async function open({ ua = IPHONE_UA, done = 8, standalone = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block", userAgent: ua });
   const page = await ctx.newPage();
