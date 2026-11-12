@@ -514,7 +514,7 @@ function renderPath() {
   appEl.replaceChildren(
     circuit("full"),
     statsBar(),
-    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, exportReminder(), practiceEntry(), accountUi?.accountRow(), units),
+    h("main", { class: "view pathview" }, notice ? h("p", { class: "notice", role: "status", text: notice }) : null, a2hsPrompt(), exportReminder(), practiceEntry(), accountUi?.accountRow(), units),
     tabBar("path"),
   );
   notice = null;
@@ -768,6 +768,22 @@ function exportProgressFile() {
     markExported();
     return true;
   } catch { return false; }
+}
+// 完成第 2 关后，iPhone Safari（非主屏幕 App）里提示一次“添加到主屏幕”：主屏幕 App 实测记录保留。可展开步骤、可“不再提示”，主屏幕 App 里永不显示，不弹窗、不打断答题
+function a2hsPrompt() {
+  if (!isIOS || standalone || state.installTipClosed || Object.keys(state.done).length < 2) return null;
+  const steps = h("ol", { class: "small", hidden: "", "data-a2hs-steps": "" },
+    h("li", { text: "点 Safari 底部（或顶部）的分享按钮（方框加向上箭头）" }),
+    h("li", { text: "往下滑，点「添加到主屏幕」，再点「添加」" }),
+    h("li", { text: "以后从主屏幕上的图标打开。主屏幕 App 的学习记录和 Safari 里的是分开保存的：Safari 里已有的进度，用“我的 → 备份学习记录”的进度码带过去" }));
+  const box = h("div", { class: "notice a2hs-prompt", role: "note", "data-a2hs": "" },
+    h("p", { text: "把碎片编程添加到主屏幕：全屏学习，记录也更稳（在 Safari 里长期不打开，网站数据可能被清理）。" }),
+    steps,
+    h("div", { class: "acct-row" },
+      button("怎么添加", () => { steps.hidden = !steps.hidden; }, "btn3d", { "data-a2hs-how": "" }),
+      button("不再提示", () => { state.installTipClosed = true; persist(); box.remove(); }, "btn3d ghost", { "data-a2hs-close": "" }),
+    ));
+  return box;
 }
 // 地图页顶部的导出提醒：非阻塞、可关闭，不在答题中出现
 function exportReminder() {
