@@ -317,7 +317,15 @@ function adoptEpoch(S, state, epoch, base) {
 }
 
 // 保存：只写自己的键，其余键不动。失败（读取异常 / 视图不完整 / 写入失败 / 空间不足）返回 false，不更新“最后成功保存时间”，内存进度保留，下次保存补上。
+// 结果分三种："saved"（已写入本机）/ "cleared"（保存时发现别的页面已清除学习记录：清除胜出，内存采用新一代的空记录，这次的内容没有保存，也不会复活旧数据）/ "failed"（读写失败 / 空间不足 / 视图不完整，内存保留，下次再试）。
+let lastSaveStatus = "saved";
+export const getLastSaveStatus = () => lastSaveStatus;
 export function saveState(state) {
+  const r = saveStateImpl(state);
+  lastSaveStatus = r === true ? "saved" : r === "cleared" ? "cleared" : "failed";
+  return r === true;
+}
+function saveStateImpl(state) {
   const S = LS();
   try {
     const epoch = getEpoch(S);
@@ -325,7 +333,7 @@ export function saveState(state) {
     const b = ensureBase(S, epoch);
     if (!b.ok || b.unsaved) return false; // 基线没能可靠写入：不写账本、不写镜像，旧数据原样保留，下次保存再试
     let L = LEDGERS.get(state);
-    if (L && L.epoch !== epoch) return adoptEpoch(S, state, epoch, b.base); // 别处清除过：采用新一代
+    if (L && L.epoch !== epoch) return adoptEpoch(S, state, epoch, b.base) ? "cleared" : false; // 别处清除过：采用新一代，这次的内容没有保存
     if (!L) L = attach(S, state, epoch);
     const e = L.e;
     // 记录页面自己的进度：关卡 / 日期 / 连续天数从内存记录取；XP / 次数在 addXp / addRun 里已经记过，这里只补“直接改了总数”的差额（如导入进度文件）
@@ -343,7 +351,7 @@ export function saveState(state) {
     // 写完再核对一次代数：处理期间发生了清除 → 刚写的是旧代账本（读者会忽略），不写镜像，内存采用新一代，不显示旧进度
     const ep2 = getEpoch(S);
     if (ep2 === null) return false;
-    if (ep2 !== epoch) { const nb = ensureBase(S, ep2); return nb.ok ? adoptEpoch(S, state, ep2, nb.base) : false; }
+    if (ep2 !== epoch) { const nb = ensureBase(S, ep2); return nb.ok && adoptEpoch(S, state, ep2, nb.base) ? "cleared" : false; }
     const v1 = computeView(S, epoch, b.base, L);
     if (!v1) return false;
     applyView(state, v1, L, { adoptMeta: false });
@@ -379,6 +387,9 @@ export function readSnapshot(state) {
     if (L && L.epoch !== epoch) return { ok: false }; // 别处清除过：先让页面采用新一代，再备份
     const v = computeView(S, epoch, b.base, L || null);
     if (!v) return { ok: false };
+    // 扫描期间发生过清除（代数变了）：读到的是新旧混杂的残片，拒绝。
+    // 边界：这不是严格原子快照。扫描期间别的页新增或更新账本，快照可能包含也可能不包含这些写入；每个账本只增不减，所以快照是“扫描开始前已有进度”的上界以下、“扫描结束后最终进度”的下界以上。
+    if (getEpoch(S) !== epoch) return { ok: false, cleared: true };
     return { ok: true, snap: { ...state, done: { ...v.done }, doneOn: { ...v.doneOn }, xp: v.xp, lessonsCompleted: v.runs, streak: v.streak, lastDay: v.lastDay } };
   } catch { return { ok: false }; }
 }

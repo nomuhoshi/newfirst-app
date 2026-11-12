@@ -214,6 +214,29 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   await ctx2.close();
 }
 
+// ---------- I 导入保存时另一页清除：清除胜出，不报“进度已导入”，不复活旧数据，不自动重试，备份不被修改 ----------
+{
+  const dir = newDir(); const ctx = await open(dir); let page = await load(ctx); await passOnboarding(page);
+  await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview");
+  const code = encodeCode({ version: DATA_VERSION, xp: 190, lessonsCompleted: 3, streak: 2, lastDay: "2026-11-10", done: { U1L1: true, U1L2: true, U1L3: true }, doneOn: {} });
+  await page.getByRole("button", { name: "我的", exact: true }).click(); await page.waitForSelector("[data-backup]");
+  await page.locator("[data-code-paste]").click(); await page.locator("[data-code-in]").fill(code); await page.locator("[data-code-read]").click();
+  await page.waitForSelector("[data-import-confirm]");
+  // 模拟“另一页在这一刻清除”：下一次写账本之前，先把代数换成新的（清除的核心动作），再让这次写入继续
+  await page.evaluate(() => { const real = Storage.prototype.setItem; let armed = true; Storage.prototype.setItem = function (k, v) { if (armed && String(k).includes("suipian.v4.tab.")) { armed = false; real.call(this, "suipian.v4.epoch", "cOTHER" + Date.now().toString(36)); real.call(this, "suipian.v4.base.cOTHER", "{}"); } return real.call(this, k, v); }; });
+  await page.getByRole("button", { name: "确认导入" }).click(); await page.waitForTimeout(400);
+  const msg = await page.locator("[data-backup-msg]").innerText(), toast = await page.locator(".toast").innerText().catch(() => "");
+  check("I1 保存时被清除：提示“其他页面已清除学习记录，本次恢复未完成”", /其他页面已清除学习记录/.test(msg) && /本次恢复未完成/.test(msg), msg);
+  check("I2 不报“进度已导入”，不是“存储已满/无痕”的误报", !/^进度已导入/.test(toast) && !/无痕|已满/.test(msg + toast), toast + "|" + msg);
+  check("I3 没有自动重试按钮", (await page.locator("[data-import-retry]").count()) === 0);
+  const after = await page.evaluate(() => { const x = window.__app.getState(); return { xp: x.xp, done: Object.keys(x.done).length }; });
+  check("I4 清除胜出：内存里没有导入内容", after.xp === 0 && after.done === 0, JSON.stringify(after));
+  await page.reload(); await page.waitForFunction(() => window.__app?.getState);
+  const re = await page.evaluate(() => { const x = window.__app.getState(); return { xp: x.xp, done: Object.keys(x.done).length }; });
+  check("I5 刷新后旧数据没有复活", re.xp === 0 && re.done === 0, JSON.stringify(re));
+  await ctx.close();
+}
+
 srv.close(); for (const d of dirs) { try { rmSync(d, { recursive: true, force: true }); } catch { /* 临时目录，删不掉不影响结果 */ } }
 console.log(`\n${BNAME}：通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
