@@ -162,6 +162,14 @@ try {
   check("账本读不全时：拒绝生成进度码，说明没有备份", /没有生成备份/.test(await page.locator("[data-backup-msg]").innerText()) && (await page.evaluate(() => navigator.clipboard.readText())) === "原剪贴板内容");
   await page.evaluate(() => { Storage.prototype.getItem = window.__realGet; });
 
+  // 读不全时“导出进度文件”入口同样拒绝：没有下载
+  await page.evaluate(() => { window.__realGet = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { if (String(k).startsWith("suipian.v4.tab.")) throw new DOMException("denied", "SecurityError"); return window.__realGet.call(this, k); }; });
+  let downloaded = false; const onDl = () => { downloaded = true; }; page.on("download", onDl);
+  await page.locator("[data-export]").tap(); await page.waitForTimeout(800);
+  check("账本读不全时：导出文件被拒绝，没有下载，提示没有生成备份", !downloaded && /没有生成备份/.test(await page.locator("[data-backup-msg]").innerText()));
+  page.off("download", onDl);
+  await page.evaluate(() => { Storage.prototype.getItem = window.__realGet; });
+
   // 保存失败（存储写入报错）：导入不能报“成功”
   await page.evaluate(() => { window.__realSet = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith("suipian.v4.tab.")) throw new DOMException("full", "QuotaExceededError"); return window.__realSet.call(this, k, v); }; });
   await page.evaluate(() => { const st = window.__app.getState(); st.xp = 0; st.done = {}; });
@@ -174,6 +182,15 @@ try {
   await page.evaluate(() => { Storage.prototype.setItem = window.__realSet; });
   await page.locator("[data-import-retry]").tap(); await page.waitForTimeout(300);
   check("存储恢复后点重试：保存成功", /已保存到本机/.test(await page.locator("[data-backup-msg]").innerText()));
+  // 串联：导入→写入失败→恢复→重试保存→再粘贴同一码：不重复计分，刷新后与重试后一致
+  const sn = () => page.evaluate(() => { const x = window.__app.getState(); return JSON.stringify([x.xp, x.lessonsCompleted, Object.keys(x.done).sort(), x.streak, x.lastDay, x.doneOn, x.hearts, x.prefs]); });
+  const afterRetry = await sn();
+  await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill(codeText); await page.locator("[data-code-read]").tap();
+  await page.waitForSelector("[data-import-confirm]"); await page.getByRole("button", { name: "确认导入" }).tap(); await page.waitForTimeout(300);
+  check("失败→恢复→重试→再粘贴同一码：XP、次数、关卡、红心、偏好都不变", (await sn()) === afterRetry);
+  await page.reload(); await page.waitForSelector(".statsbar");
+  check("刷新重开后进度仍在，与重试后一致", (await sn()) === afterRetry);
+  await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.waitForSelector("[data-backup]");
 
   // 坏文件：给出原因，不改记录
   const badPath = join(dir, "bad.json"); writeFileSync(badPath, '{"hello":1}');
@@ -188,7 +205,7 @@ try {
   const st2 = await page.evaluate(() => window.__app.getState());
   check("导入较旧的文件：XP 不减少、已有关卡不丢", st2.xp === 500 && st2.done.U2L5 === true && Object.keys(st2.done).length === 9);
   // 学习后粘贴旧码 / 同一码重复 / 文件与进度码交替：不重复计分、不丢已有进度
-  const snap = () => page.evaluate(() => { const x = window.__app.getState(); return JSON.stringify([x.xp, x.lessonsCompleted, Object.keys(x.done).sort(), x.streak, x.lastDay]); });
+  const snap = () => page.evaluate(() => { const x = window.__app.getState(); return JSON.stringify([x.xp, x.lessonsCompleted, Object.keys(x.done).sort(), x.streak, x.lastDay, x.doneOn, x.hearts, x.prefs]); });
   const pasteCode = async (c) => { await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill(c); await page.locator("[data-code-read]").tap(); await page.waitForSelector("[data-import-confirm]"); await page.getByRole("button", { name: "确认导入" }).tap(); await page.waitForTimeout(250); };
   const importFile = async (f) => { await page.locator("[data-import-file]").setInputFiles(f); await page.waitForSelector("[data-import-confirm]"); await page.getByRole("button", { name: "确认导入" }).tap(); await page.waitForTimeout(250); };
   const before = await snap();
