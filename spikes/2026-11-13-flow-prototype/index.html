@@ -18,6 +18,7 @@
   --hex-lock-top:#EDE9DF; --hex-lock-bot:#DCD7CA; --hex-lock-side:#C9C3B4;
   --hex-cur-top:#FFFDF8; --hex-cur-bot:#F5E6D8; --hex-cur-side:#B75532;
   --glow:rgba(183,85,50,.55);
+  --side:#CFC8B8; --hi:rgba(255,255,255,.85); --shadow:rgba(23,43,58,.16);
 }
 :root[data-theme=dark] {
   --bg:#101E28; --card:#1A2D39; --card2:#223747; --line:#2C4352; --fg:#EAF0F3; --muted:#9FB1BC;
@@ -29,6 +30,7 @@
   --hex-lock-top:#2A4252; --hex-lock-bot:#223747; --hex-lock-side:#16293A;
   --hex-cur-top:#22394A; --hex-cur-bot:#182C3B; --hex-cur-side:#F3BA87;
   --glow:rgba(243,186,135,.6);
+  --side:#0D1B24; --hi:rgba(255,255,255,.14); --shadow:rgba(0,0,0,.5);
 }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:17px/1.5 "PingFang SC","Noto Sans CJK SC",system-ui,sans-serif; }
@@ -74,16 +76,11 @@ html.rm .btn:active:not(:disabled) { transform:none; outline:3px solid var(--cop
 .path { position:relative; margin:0 auto; width:390px; max-width:100%; }
 .path svg.trace { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
 .path svg.trace path { vector-effect:non-scaling-stroke; }
-.node { position:absolute; width:76px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; }
+.node { position:absolute; width:84px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; }
 .node .lab { background:var(--bg); padding:0 6px; border-radius:6px; font-size:13px; font-weight:700; line-height:1.3; white-space:nowrap; }
 .node.locked .lab { color:var(--muted); font-weight:600; }
 .node.done .lab { color:var(--muted); }
-.node .hexwrap { position:relative; width:64px; height:78px; display:grid; place-items:center; }
-.node .glow { position:absolute; left:-12px; top:-8px; width:88px; height:94px; opacity:.5; filter:blur(9px); pointer-events:none; }
-.node .glow polygon { fill:var(--glow); }
-html:not(.rm) .node.current .glow { animation:breathe 2.4s ease-in-out infinite; }
-@keyframes breathe { 50% { opacity:.18; } }
-.node .tag-now { position:absolute; top:-20px; left:50%; transform:translateX(-50%); font-size:12px; font-weight:800; padding:1px 10px; border-radius:10px; background:var(--copper); color:var(--on-copper); white-space:nowrap; }
+.node .tag-now { position:absolute; top:-22px; left:50%; transform:translateX(-50%); z-index:2; font-size:12px; font-weight:800; padding:1px 10px; border-radius:10px; background:var(--copper); color:var(--on-copper); white-space:nowrap; }
 .tabbar { flex:none; display:flex; border-top:1.5px solid var(--line); background:var(--bg); padding-bottom:env(safe-area-inset-bottom); }
 .tab { flex:1; height:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:13px; font-weight:600; color:var(--muted); }
 .tab.on { color:var(--fg); }
@@ -141,6 +138,54 @@ html:not(.rm) .fb-xp { animation:xp .18s ease-out .12s backwards; }
 .feedbar .heartline { display:flex; align-items:center; gap:6px; color:var(--bad); font-weight:600; }
 .feedbar .btn { margin-top:12px; }
 
+
+/* ===== 立体六角形关卡节点（取自 sonnet/design-ink-3d-1 的 hexNode：投影 + 厚度 + 面 + 内六边形 + 顶边高光 + 上下焊点） ===== */
+.node { color:var(--muted); }
+.node .hexslot { position:relative; width:72px; height:80px; }
+.hexnode { display:block; overflow:visible; }
+.hex-shadow { fill:var(--shadow); }
+.hex-side { fill:var(--side); stroke:var(--line); stroke-width:1.5; stroke-linejoin:round; }
+.hex-body { fill:var(--card); stroke:var(--line); stroke-width:3; stroke-linejoin:round; }
+.hex-facet { fill:none; stroke:currentColor; stroke-opacity:.22; stroke-width:1.2; stroke-linejoin:round; }
+.hex-hi { fill:none; stroke:var(--hi); stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.hex-pad { fill:var(--line); }
+.hex-ring { fill:none; stroke:var(--copper); stroke-width:2; stroke-linejoin:round; stroke-dasharray:3 5; opacity:.35; }
+html:not(.rm) .hex-ring { animation:ring 2.4s ease-in-out infinite; }
+@keyframes ring { 50% { opacity:.1; } }
+.node.locked .hex-body { fill:var(--locked); }
+.node.done { color:var(--ok); }
+.node.done .hex-body { stroke:var(--ok); fill:color-mix(in srgb,var(--ok) 16%,var(--card)); }
+.node.done .hex-side { fill:color-mix(in srgb,var(--ok) 22%,var(--side)); stroke:var(--ok); stroke-opacity:.45; }
+.node.done .hex-pad { fill:var(--ok); }
+.node.done .hexnode { filter:drop-shadow(0 0 5px color-mix(in srgb,var(--ok) 35%,transparent)); }
+.node.current { color:var(--copper-text); }
+.node.current .hex-body { stroke:var(--copper); stroke-width:4; fill:color-mix(in srgb,var(--primary) 22%,var(--card)); }
+.node.current .hex-side { fill:color-mix(in srgb,var(--copper) 26%,var(--side)); stroke:var(--copper); stroke-opacity:.55; }
+.node.current .hex-pad { fill:var(--copper); }
+.node.current .hexnode { filter:drop-shadow(0 0 9px color-mix(in srgb,var(--copper) 55%,transparent)); }
+.node:active .hexnode { transform:scale(.97); }
+html.rm .node:active .hexnode { transform:none; filter:brightness(1.12); }
+
+/* ===== 背景电路图：固定在底层，随页面类型切换，不随内容滚动 ===== */
+#bg { position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+#bg svg { width:100%; height:100%; display:block; }
+#view { position:relative; z-index:1; flex:1; min-height:0; display:flex; flex-direction:column; }
+.cb .trace { fill:none; stroke:var(--trace); stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+.cb .trace.thin { stroke-width:1; opacity:.75; }
+.cb .pad { fill:var(--bg); stroke:var(--trace); stroke-width:1.5; }
+.cb .dot { fill:var(--trace); }
+.cb .chip { fill:var(--bg); stroke:var(--trace); stroke-width:1.5; stroke-linejoin:round; }
+.cb .pin { fill:none; stroke:var(--trace); stroke-width:2.2; stroke-linecap:round; }
+.cb .gate { fill:var(--bg); stroke:var(--trace); stroke-width:1.5; stroke-linejoin:round; stroke-linecap:round; }
+.cb .part { fill:none; stroke:var(--trace); stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+.cb text { fill:var(--trace); font:700 9px ui-monospace,Menlo,monospace; letter-spacing:.3px; }
+.cb .pulse { fill:none; stroke:var(--copper); stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:5 95; stroke-dashoffset:5; opacity:.8; animation:flow 7s linear infinite; }
+@keyframes flow { from { stroke-dashoffset:5; } to { stroke-dashoffset:-95; } }
+html.rm .cb .pulse { display:none; }
+.bg-paused .cb .pulse, .bg-paused .hex-ring { animation-play-state:paused; }
+.row, .unit { background:color-mix(in srgb,var(--bg) 86%,transparent); border-radius:8px; }
+.unit::after { background:var(--line); }
+
 /* ---------- 通关占位 ---------- */
 .done-page { align-items:center; justify-content:center; text-align:center; gap:14px; padding:24px; }
 .done-page h2 { margin:0; font-size:28px; font-weight:800; }
@@ -181,10 +226,11 @@ html.show-tags [data-tag=fixed]::after { background:var(--ok); color:var(--bg); 
 /* ===== 评审条目：状态 = 当前仍存在 / 已修复 / 本次提案（对照 main 92f57d9） ===== */
 const ITEMS = [
   { id:"W1", st:"proposal", t:"欢迎页压成一屏", d:"现状 3 屏、点 3 次才到地图；这里 1 屏 1 个主按钮。" },
-  { id:"W2", st:"proposal", t:"欢迎页文案", d:"「在手机上学习 Python」「每天几分钟，点选闯关」。不写「全程点选」「每关约 2 分钟」。角色名统一为「碎碎」（改名已批；正式版源码里仍是「小码」，落地时要一起改）。" },
+  { id:"W2", st:"proposal", t:"欢迎页文案", d:"「在手机上学习 Python」「每天几分钟，点选闯关」。不写「全程点选」「每关约 2 分钟」。角色名保持「小码」（老大 11-13 02:06 明确：不改名；与 #35 / SPEC 里「小码→碎碎」那条决策冲突，需产品官更正）。" },
   { id:"M1", st:"proposal", t:"地图「下一步」主卡", d:"新用户「开始学习」，老用户关名 +「继续学习」。关内位置 main 不保存（退出后从第 1 题重来），所以继续 = 当前关第 1 题；关内恢复未模拟。" },
   { id:"M2", st:"proposal", t:"随机练习 / 登录降级成一行", d:"现状：随机练习是吸顶整宽灰块，登录是虚线整宽卡。" },
-  { id:"M3", st:"exists", t:"六边形路径（保留）", d:"沿用老大 11-04 方向；本次提案只加厚度、高光、当前关通电发光。" },
+  { id:"M3", st:"proposal", t:"立体六角形关卡节点", d:"老大 11-13 02:06 指定用截图里的这个：取自分支 sonnet/design-ink-3d-1 的 hexNode（投影、厚度、面、内六边形、顶边高光、上下焊点；当前关铜色虚线环 + 发光，已通关绿色发光）。main 现在是扁平六边形。" },
+  { id:"M6", st:"proposal", t:"背景电路图（加回并加复杂）", d:"首版原型漏掉了背景电路，已加回：每侧 2 束总线（3–4 根平行线、45° 拐角）、芯片（排针、1 脚点、位号）、6 种逻辑门、电阻 / 电容 / 二极管、过孔与测试点、VCC / GND / CLK 标注、行进脉冲（减少动态下隐藏）。布局种子固定，随宽度生成；固定在底层，不随内容滚动；课内只留很淡的边缘版。" },
   { id:"M4", st:"proposal", t:"顶栏带单位", d:"「连续 0 天」「0 XP」「红心 5/5」。现状只有图标 + 数字，说明要长按/悬停才有。" },
   { id:"M5", st:"proposal", t:"单元标题降亮度和面积", d:"现状整块实色单元卡；这里改成一行小字分隔线。" },
   { id:"Q1", st:"fixed", t:"选项竖排整宽、代码不折行", d:"main 的 #60：.choices.code 单列 + 横向滚动，原型沿用，不算新成果。" },
@@ -195,7 +241,7 @@ const ITEMS = [
   { id:"F3", st:"proposal", t:"连对提示不遮挡", d:"连对 ≥3 时在反馈头里加一枚「连对 N」小标，行内，不浮层。" },
   { id:"F4", st:"proposal", t:"答错措辞「差一点，再看看」", d:"现状标题「不对哦」。" },
   { id:"F5", st:"exists", t:"答错讲原因 + 正确答案 + 红心", d:"main 已有：错因（why）、「正确答案」、「红心 -1（剩 N 颗），这题稍后再做一次」。原型保留，不算新成果。" },
-  { id:"F6", st:"proposal", t:"答错只留一种主要动效", d:"只留选中卡抖 2 次（±5px，220ms）；碎碎只换静态表情；红心直接更新数值，不再缩放（正式版现有红心缩放动画）。现状卡抖 3px 160ms。" },
+  { id:"F6", st:"proposal", t:"答错只留一种主要动效", d:"只留选中卡抖 2 次（±5px，220ms）；小码只换静态表情；红心直接更新数值，不再缩放（正式版现有红心缩放动画）。现状卡抖 3px 160ms。" },
   { id:"F7", st:"proposal", t:"继续按钮统一铜橙", d:"现状答错时「继续」是红色危险按钮；这里改铜橙，反馈色只用在面板描边和标题。" },
   { id:"R1", st:"exists", t:"减少动态效果", d:"main 已有 prefers-reduced-motion。原型：开启后取消位移、缩放、飞行、发光呼吸、高光扫过、按钮按下的 1px 下移（按下改用描边表示），只保留颜色变化。" },
 ];
@@ -223,17 +269,147 @@ function mascot(size=52, mood="happy") {
   return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true"><path d="M16 14a8 8 0 0 1 8-8h46l20 20v56a8 8 0 0 1-8 8H24a8 8 0 0 1-8-8z" fill="#FFF8EC" stroke="#172B3A" stroke-width="4"/><path d="M70 6v14a6 6 0 0 0 6 6h14z" fill="#B75532"/><path d="M33 40q-6 8 0 16M67 40q6 8 0 16" fill="none" stroke="#172B3A" stroke-width="5" stroke-linecap="round"/>${mouth}</svg>`;
 }
 /* 六边形节点：厚度（下沉一层深色）+ 渐变面 + 左上高光边 + 当前关通电发光 */
-function hex(kind) {
-  const P = "32,2 62,19 62,53 32,70 2,53 2,19", P2 = "32,8 62,25 62,59 32,76 2,59 2,25";
-  const id = "g"+Math.random().toString(36).slice(2,7);
-  const icon = kind==="done" ? `<g transform="translate(20 18)" style="color:#fff">${I.check(24)}</g>` : kind==="locked" ? `<g transform="translate(20 18)" style="color:var(--muted)">${I.lock(24)}</g>` : `<g transform="translate(20 18)" style="color:var(--copper-text)">${I.play(24)}</g>`;
-  const [top,bot,side] = kind==="done" ? ["--hex-top","--hex-bot","--hex-side"] : kind==="locked" ? ["--hex-lock-top","--hex-lock-bot","--hex-lock-side"] : ["--hex-cur-top","--hex-cur-bot","--hex-cur-side"];
-  return `<svg width="64" height="78" viewBox="0 0 64 78" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(${top})"/><stop offset="1" style="stop-color:var(${bot})"/></linearGradient></defs>
-  <polygon points="${P2}" style="fill:var(${side})"/>
-  <polygon points="${P}" fill="url(#${id})" style="stroke:var(${side});stroke-width:${kind==="current"?3:1.5};stroke-linejoin:round"/>
-  <polyline points="3,52 3,20 32,3.500 61,20" fill="none" style="stroke:var(--hex-hi)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="${kind==="locked"?.5:1}"/>
-  ${icon}</svg>`;
+function hexNode(kind) {
+  const ic = kind==="done" ? `<path d="m5 12.500 4.500 4.500L19 7.500" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`
+    : kind==="locked" ? `<g fill="none" stroke="currentColor" stroke-width="2.200" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></g>`
+    : `<path d="M8 5.500v13l11-6.500z" fill="currentColor"/>`;
+  return `<svg viewBox="0 0 72 80" width="72" height="80" class="hexnode" aria-hidden="true">
+    ${kind==="current"?`<polygon points="36,1 67,19 67,53 36,71 5,53 5,19" class="hex-ring"/>`:""}
+    <ellipse cx="36" cy="73" rx="27" ry="5" class="hex-shadow"/>
+    <polygon points="9,51.5 36,67 63,51.5 63,59.5 36,75 9,59.5" class="hex-side"/>
+    <polygon points="36,5 63,20.5 63,51.5 36,67 9,51.5 9,20.5" class="hex-body"/>
+    <polygon points="36,16 53.5,26 53.5,46 36,56 18.5,46 18.5,26" class="hex-facet"/>
+    <polyline points="9,20.5 36,5 63,20.5" class="hex-hi"/>
+    <circle cx="36" cy="5" r="2.800" class="hex-pad"/><circle cx="36" cy="67" r="2.800" class="hex-pad"/>
+    <svg x="20" y="20" width="32" height="32" viewBox="0 0 24 24">${ic}</svg></svg>`;
 }
+
+/* ===== 背景电路图生成器（种子固定，布局稳定）：电源总线束 + 45° 拐角、芯片、逻辑门、电阻 / 电容 / 二极管、过孔、测试点、行进脉冲 ===== */
+function rngSeed(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=(t+Math.imul(t^t>>>7,61|t))^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function circuitSVG(W, H, variant) {
+  const R = rngSeed(variant==="edge" ? 11 : 20261113), rr=(a,b)=>a+R()*(b-a), ri=(a,b)=>Math.floor(rr(a,b+1));
+  const edge = variant==="edge", M = Math.max(58, Math.min(112, W*.28));      // 左右边缘区的宽度
+  const out = [], boxes = [], pulses = [];
+  const f = n => (+n).toFixed(1);
+  const poly = pts => "M" + pts.map(p=>f(p[0])+" "+f(p[1])).join(" L");
+  const free = (x,y,w,h) => !boxes.some(b => x < b[0]+b[2]+6 && x+w+6 > b[0] && y < b[1]+b[3]+6 && y+h+6 > b[1]);
+  const claim = (x,y,w,h) => boxes.push([x,y,w,h]);
+  const mirror = side => x => side===0 ? x : W - x;
+  const refN = (()=>{ let n=0; return ()=>"U"+(++n); })();
+
+  /* 1) 总线束：每侧 2 束（边缘版 1 束），每束 3–4 根平行线，竖直走线、45° 斜拐；各线在不同高度收尾于焊盘 */
+  const lanes = [];  // 供后续支线接入：{side, pts}
+  for (const side of [0,1]) {
+    const bundles = edge ? [{x:7,n:2}] : [{x:7,n:4},{x:M*.50,n:3}];
+    bundles.forEach((bd,bi)=>{
+      const sp = 6, span = (bd.n-1)*sp, lim = M - span - 8;
+      let x = bd.x, y = -10; const base = [[x,y]];
+      while (y < H + 10) {
+        y += rr(60,150); base.push([x,y]);
+        let dx = (R()<.5?-1:1) * rr(10,22); if (x+dx < 4 || x+dx > lim) dx = -dx; if (x+dx < 4 || x+dx > lim) dx = 0;
+        if (dx) { x += dx; y += Math.abs(dx); base.push([x,y]); }
+      }
+      for (let k=0;k<bd.n;k++) {
+        const yEnd = R()<.35 ? H+20 : rr(H*.25, H*.95);
+        const pts = []; for (const p of base) { pts.push([mirror(side)(p[0]+k*sp*(side?-1:1)), p[1]]); if (p[1] >= yEnd) break; }
+        const last = pts[pts.length-1];
+        out.push(`<path class="trace" d="${poly(pts)}"/>`);
+        if (last[1] < H) out.push(`<circle class="pad" cx="${f(last[0])}" cy="${f(last[1])}" r="3.200"/>`);
+        lanes.push({side, pts});
+        if (k===1 && !edge) pulses.push(poly(pts));
+      }
+    });
+  }
+  if (edge) {
+    // 边缘版：再补几个过孔和一根脉冲，保持很淡
+    for (let i=0;i<7;i++) out.push(`<circle class="dot" cx="${f(R()<.5?rr(3,18):W-rr(3,18))}" cy="${f(rr(20,H-20))}" r="1.800"/>`);
+    return { svg:`<g class="cb">${out.join("")}${pulses.slice(0,3).map((d,i)=>`<path class="pulse" pathLength="100" d="${d}" style="animation-duration:${(8+i*2)}s;animation-delay:-${i*3}s"/>`).join("")}</g>`, n:out.length };
+  }
+
+  /* 2) 芯片（DIP）：随机落位在两侧边缘区，不重叠；左右排针，带「1 脚」点和位号；部分针脚拉线接到最近的总线 */
+  const chipPins = [];
+  for (let t=0, placed=0; t<90 && placed<(W<340?4:6); t++) {
+    const w = rr(34,52), h = rr(46,92), side = R()<.5?0:1;
+    const x = side===0 ? rr(M*.52, M-w-6) : W - rr(M*.52, M-6) ;
+    const x0 = side===0 ? x : x - w, y0 = rr(70, H-h-90);
+    if (!free(x0-8,y0,w+16,h)) continue; claim(x0-8,y0,w+16,h); placed++;
+    const n = Math.max(3, Math.floor(h/11)), step = h/(n+1);
+    out.push(`<rect class="chip" x="${f(x0)}" y="${f(y0)}" width="${f(w)}" height="${f(h)}" rx="4"/>`);
+    out.push(`<circle class="dot" cx="${f(x0+7)}" cy="${f(y0+7)}" r="2"/>`);
+    out.push(`<text x="${f(x0+w/2)}" y="${f(y0+h/2+3)}" text-anchor="middle">${refN()}</text>`);
+    for (let i=1;i<=n;i++) { const yy=y0+i*step; out.push(`<path class="pin" d="M${f(x0-7)} ${f(yy)}H${f(x0)}M${f(x0+w)} ${f(yy)}H${f(x0+w+7)}"/>`); }
+    const wireTo = (xFrom, dir, yy) => { const xTo = dir<0 ? 12 : W-12; out.push(`<path class="trace thin" d="M${f(xFrom)} ${f(yy)}H${f(xTo)}"/><circle class="pad" cx="${f(xTo)}" cy="${f(yy)}" r="2.800"/>`); };
+    if (side===0) { wireTo(x0-7, -1, y0+step*1); if (n>3) wireTo(x0-7, -1, y0+step*(n-1)); } else { wireTo(x0+w+7, 1, y0+step*2); }
+    chipPins.push([side===0?x0+w+7:x0-7, y0+step*2, side]);
+  }
+
+  /* 3) 逻辑门：AND / OR / NOT / NAND / NOR / XOR，带输入输出引线和位号，可水平翻转 */
+  const kinds = ["and","or","not","nand","nor","xor"];
+  for (let t=0, placed=0; t<120 && placed<7; t++) {
+    const kind = kinds[ri(0,kinds.length-1)], sc = rr(.95,1.3), gw = 34*sc, gh = 24*sc, side = R()<.5?0:1;
+    const x = side===0 ? rr(8, M-gw-14) : W - rr(gw+14, M-8), y = rr(60, H-gh-80);
+    if (!free(x-12,y-10,gw+24,gh+20)) continue; claim(x-12,y-10,gw+24,gh+20); placed++;
+    const flip = side===1, bubble = kind==="nand"||kind==="nor"||kind==="not";
+    const body = kind==="and"||kind==="nand" ? "M0 0H13a12 12 0 0 1 0 24H0z" : kind==="not" ? "M0 0L24 12L0 24z" : "M0 0Q10 0 26 12Q10 24 0 24Q8 12 0 0z";
+    const ow = kind==="not" ? 24 : kind==="and"||kind==="nand" ? 25 : 26;
+    const ins = kind==="not" ? [12] : [6,18];
+    let g = `<g transform="translate(${f(flip?x+gw+8:x-8)} ${f(y)}) scale(${flip?-sc:sc} ${sc})">`;
+    g += `<path class="gate" d="${body}"/>`;
+    if (kind==="xor") g += `<path class="part" d="M-4.500 0Q3.500 12 -4.500 24"/>`;
+    if (bubble) g += `<circle class="gate" cx="${ow+3.2}" cy="12" r="3"/>`;
+    for (const yy of ins) g += `<path class="trace" d="M-8 ${yy}H${kind==="xor"?-1:1}"/>`;
+    g += `<path class="trace" d="M${ow+(bubble?6.2:0)} 12H${ow+(bubble?6.2:0)+9}"/>`;
+    g += `</g>`;
+    out.push(g);
+    out.push(`<text x="${f(x+gw/2)}" y="${f(y-4)}" text-anchor="middle">${refN()}</text>`);
+    // 引线接到边缘的过孔
+    const yy = y + gh/2, edgeX = side===0 ? 10 : W-10;
+    out.push(`<path class="trace thin" d="M${f(side===0?x-8:x+gw+8)} ${f(yy)}H${f(edgeX)}"/><circle class="pad" cx="${f(edgeX)}" cy="${f(yy)}" r="2.800"/>`);
+  }
+
+  /* 4) 阻容元件：横向支线上的电阻、电容、二极管；有的是竖放 */
+  for (let t=0, placed=0; t<80 && placed<9; t++) {
+    const side = R()<.5?0:1, y = rr(40,H-40), x = side===0 ? rr(14, M-34) : W - rr(40, M), kind = ["r","c","d"][ri(0,2)];
+    const vertical = R()<.4, w = kind==="r" ? 34 : 22, bw = vertical ? 12 : w, bh = vertical ? w : 12;
+    if (!free(x-4,y-bh/2,bw+8,bh+8)) continue; claim(x-4,y-bh/2,bw+8,bh+8); placed++;
+    let d = "";
+    if (kind==="r") d = "M0 0h6l3 -5 6 10 6 -10 6 10 3 -5h4";
+    else if (kind==="c") d = "M0 0h8M8 -7v14M14 -7v14M14 0h8";
+    else d = "M0 0h6M6 -6v12l9 -6zM15 -6v12M15 0h7";
+    out.push(`<g transform="translate(${f(vertical?x+6:x)} ${f(vertical?y-w/2:y)}) ${vertical?"rotate(90)":""}"><path class="part" d="${d}"/></g>`);
+  }
+
+  /* 5) 横向走线 + 过孔网：从总线接出的短支线，带 45° 转角，末端是焊盘 / 测试点 */
+  for (const L of lanes.filter((_,i)=>i%2===0).slice(0,12)) {
+    const p = L.pts[Math.floor(R()*(L.pts.length-1))], q = L.pts[Math.min(L.pts.length-1, Math.floor(L.pts.indexOf(p)+1))];
+    if (!p || !q || Math.abs(q[0]-p[0])>1) continue;               // 只在竖直段上接支线
+    const y = rr(p[1], q[1]), dir = L.side===0 ? 1 : -1, len = rr(14, M*.55);
+    const x1 = p[0]+dir*len*.6, x2 = x1+dir*8, y2 = y+(R()<.5?-8:8), x3 = x2+dir*len*.4;
+    out.push(`<path class="trace thin" d="M${f(p[0])} ${f(y)}H${f(x1)}L${f(x2)} ${f(y2)}H${f(x3)}"/><circle class="pad" cx="${f(x3)}" cy="${f(y2)}" r="2.800"/>`);
+  }
+  for (let i=0;i<26;i++) { const x = R()<.5 ? rr(3, M) : W - rr(3, M), y = rr(10, H-10); if (free(x-3,y-3,6,6)) out.push(`<circle class="dot" cx="${f(x)}" cy="${f(y)}" r="${f(rr(1.200,2.200))}"/>`); }
+  // 测试点阵列：2×3 小焊盘
+  for (const side of [0,1]) { const bx = side===0 ? rr(M*.55, M-20) : W - rr(M*.55, M-8), by = rr(H*.55, H-110); if (!free(bx-4,by-4,28,22)) continue; claim(bx-4,by-4,28,22);
+    for (let a=0;a<3;a++) for (let b=0;b<2;b++) out.push(`<circle class="pad" cx="${f(bx+a*10)}" cy="${f(by+b*10)}" r="2.600"/>`);
+    out.push(`<text x="${f(bx)}" y="${f(by+28)}">TP${side+1}</text>`); }
+  // 电源 / 信号标注
+  for (const [t,fx,fy] of [["VCC",.06,.30],["GND",.80,.62],["CLK",.12,.82],["D0",.84,.22],["RST",.78,.90]]) { const x = W*fx, y = H*fy; if (free(x-4,y-10,34,14)) { claim(x-4,y-10,34,14); out.push(`<text x="${f(x)}" y="${f(y)}">${t}</text>`); } }
+  // 芯片间的连线脉冲：取芯片侧的若干总线 + 一条跨中间区域很淡的长线
+  for (const L of lanes.filter(l=>l.pts.length>3).slice(0,9)) pulses.push(poly(L.pts));
+  out.push(`<path class="trace thin" d="M${f(M-6)} ${f(H*.38)}H${f(M+12)}L${f(M+24)} ${f(H*.38+12)}H${f(W/2-30)}" opacity=".5"/><circle class="pad" cx="${f(W/2-30)}" cy="${f(H*.38+12)}" r="3"/>`);
+  out.push(`<path class="trace thin" d="M${f(W-M+6)} ${f(H*.74)}H${f(W-M-12)}L${f(W-M-24)} ${f(H*.74-12)}H${f(W/2+34)}" opacity=".5"/><circle class="pad" cx="${f(W/2+34)}" cy="${f(H*.74-12)}" r="3"/>`);
+  return { svg:`<g class="cb">${out.join("")}${pulses.slice(0,10).map((d,i)=>`<path class="pulse" pathLength="100" d="${d}" style="animation-duration:${(5.5+(i*1.7)%5).toFixed(1)}s;animation-delay:-${(i*2.3).toFixed(1)}s"/>`).join("")}</g>`, n:out.length };
+}
+let bgKey = "";
+function setBg(variant) {
+  const W = Math.round(host.clientWidth), H = Math.round(host.clientHeight), key = variant+W+"x"+H;
+  if (key === bgKey) return; bgKey = key;
+  const c = circuitSVG(W, H, variant);
+  $("#bg").innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${c.svg}</svg>`;
+  window.__circuitCount = c.n;
+}
+addEventListener("resize", () => { clearTimeout(window.__rz); window.__rz = setTimeout(()=>{ bgKey=""; setBg(S.screen==="lesson"?"edge":"full"); }, 150); });
+document.addEventListener("visibilitychange", () => document.documentElement.classList.toggle("bg-paused", document.hidden));
 
 /* ===== 题目（取自 content/unit1.json 的 U1L1，原文） ===== */
 const Q = {
@@ -261,11 +437,11 @@ matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", appl
 let tt; function toast(m){ const e=$("#toast"); e.textContent=m; e.classList.add("on"); clearTimeout(tt); tt=setTimeout(()=>e.classList.remove("on"),1800); }
 
 /* ===== 渲染 ===== */
-const app = $("#app");
+const host = $("#app"); host.innerHTML = '<div id="bg" aria-hidden="true"></div><div id="view"></div>'; const app = $("#view");
 function go(screen) { S.ver++; S.checking = false; S.screen = screen; render(); }
 function render() {
   applyEnv();
-  const f = { welcome, map, lesson, done }[S.screen]; app.innerHTML = ""; f();
+  const f = { welcome, map, lesson, done }[S.screen]; app.innerHTML = ""; setBg(S.screen==="lesson"?"edge":"full"); f();
 }
 function el(html) { const t=document.createElement("template"); t.innerHTML=html.trim(); return t.content.firstChild; }
 
@@ -291,12 +467,12 @@ function map() {
     <button class="row" id="prac">${old?"":`<span style="color:var(--muted)">${I.lock(18)}</span>`}<b>随机练习</b><span>${old?"无奖励，自由练习":"完成第一关后开放"}</span><span class="sp"></span></button>
     <button class="row" id="log"><b>登录 / 注册</b><span>换设备也能接着学</span><span class="sp"></span>${I.chev(16)}</button></div>`;
   const xs = [195,130,195,260,195,130], dy = 124, y0 = 50, H = y0 + dy*5 + 130;
-  const pts = xs.map((x,i)=>[x, y0+i*dy+38]);
+  const pts = xs.map((x,i)=>[x, y0+i*dy+36]);
   const seg = (a,b)=>{ const m=(a[1]+b[1])/2; return `C ${a[0]} ${m}, ${b[0]} ${m}, ${b[0]} ${b[1]}`; };
   let full = `M ${pts[0][0]} ${pts[0][1]}`, lit = full;
   for (let i=1;i<pts.length;i++){ full += " "+seg(pts[i-1],pts[i]); if (i<=curIdx) lit += " "+seg(pts[i-1],pts[i]); }
   const nodes = LESSONS.map((n,i)=>{ const k = i<curIdx?"done":i===curIdx?"current":"locked";
-    return `<button class="node ${k}" data-i="${i}" style="left:${(xs[i]/390*100).toFixed(2)}%;top:${y0+i*dy}px" aria-label="${n}（${k==="done"?"已通关":k==="current"?"当前关":"未解锁"}）"><div class="hexwrap">${k==="current"?`<svg class="glow" viewBox="0 0 88 94"><polygon points="44,6 82,26 82,68 44,88 6,68 6,26"/></svg>`:""}${hex(k)}${k==="current"?`<span class="tag-now">${old?"当前":"从这里"}</span>`:""}</div><span class="lab">${n}</span></button>`; }).join("");
+    return `<button class="node ${k}" data-i="${i}" style="left:${(xs[i]/390*100).toFixed(2)}%;top:${y0+i*dy}px" aria-label="${n}（${k==="done"?"已通关":k==="current"?"当前关":"未解锁"}）"><div class="hexslot">${hexNode(k)}${k==="current"?`<span class="tag-now">${old?"当前":"从这里开始"}</span>`:""}</div><span class="lab">${n}</span></button>`; }).join("");
   const s = el(`<div class="screen"><div class="scroll">${hud}${hero}${rows}
     <div class="unit"${tagAttr("M5")}>第 1 单元 · 奶茶店点单屏</div>
     <div class="path" style="height:${H}px"${tagAttr("M3")}><svg class="trace" viewBox="0 0 390 ${H}" preserveAspectRatio="none" aria-hidden="true">
@@ -326,7 +502,7 @@ function lesson() {
     return `<button class="${cls}" data-i="${i}" ${fb?"disabled":""} aria-label="选项 ${"ABC"[i]}：${o.t.replace(/\n/g," 换行 ")}"><span class="abc">${"ABC"[i]}</span><span class="opt"><pre>${esc(o.t)}</pre></span><span class="fade" aria-hidden="true">›</span></button>`; }).join("");
   const code = q.code ? `<div class="code"><div class="ln">${q.code.split("\n").map((_,i)=>i+1).join("\n").replace(/\n/g,"<br>")}</div><pre>${hl(q.code)}</pre></div>` : "";
   const mood = fb && !fb.ok ? "care" : "happy";
-  const foot = fb ? feedbar() : `<div class="lessonfoot"><button class="mascot" id="hint" aria-label="让碎碎给个提示">${mascot(40, mood)}</button><button class="btn primary" id="check" ${S.sel==null||S.checking?"disabled":""}${tagAttr("Q3")}>${S.checking?"检查中":"检查"}</button></div>`;
+  const foot = fb ? feedbar() : `<div class="lessonfoot"><button class="mascot" id="hint" aria-label="让小码给个提示">${mascot(40, mood)}</button><button class="btn primary" id="check" ${S.sel==null||S.checking?"disabled":""}${tagAttr("Q3")}>${S.checking?"检查中":"检查"}</button></div>`;
   const s = el(`<div class="screen"><header class="lessonbar"><button class="icon-btn" id="x" aria-label="退出本关">${I.close()}</button>
     <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div class="fill ${S.sweepNow?"sweep":""}" style="width:${Math.max(4,prev)}%"${tagAttr("F1")}></div></div>
     <span class="hearts ${S.lostNow?"lost":""}" aria-label="红心 ${S.hearts}">${I.heart(22)}${S.hearts}</span></header>
@@ -343,7 +519,7 @@ function lesson() {
   const c=$("#check",s); if (c) c.onclick=()=>check(key);
   const cont=$("#cont",s); if (cont) cont.onclick=next;
 }
-function lesson_re(){ const sc=$(".scroll",app)?.scrollTop||0; app.innerHTML=""; lesson(); const n=$(".scroll",app); if(n) n.scrollTop=sc; }
+function lesson_re(){ setBg("edge"); const sc=$(".scroll",app)?.scrollTop||0; app.innerHTML=""; lesson(); const n=$(".scroll",app); if(n) n.scrollTop=sc; }
 function check(key) {
   const q=Q[key], o=q.opts[S.sel], ok=!!o.ok;
   S.prevPct = Math.round(S.solved / S.total * 100);
