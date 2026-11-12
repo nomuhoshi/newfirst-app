@@ -1,4 +1,4 @@
-# 诊断（只在 diag/h-measure 分支）：测正式构建里 Python 的请求触发点和下载量。不部署、不进 main。
+# 诊断（只在 diag/h-measure 分支）：H 的前后对比——main（启动即加载）vs feat/h-lazy-python（首次执行才加载）。不部署、不进 main。
 name: diag H measure
 on:
   push:
@@ -9,15 +9,26 @@ permissions:
 jobs:
   measure:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run build
-      - name: 测量
-        run: node scripts/measure-python-load.mjs dist
+      - run: npx playwright install --with-deps chromium || true
+      - name: 构建两份：before = origin/main，after = origin/feat/h-lazy-python
+        run: |
+          git fetch origin main feat/h-lazy-python
+          for pair in "before origin/main" "after origin/feat/h-lazy-python"; do
+            set -- $pair
+            git worktree add "/tmp/$1" "$2"
+            (cd "/tmp/$1" && git log -1 --format="$1 = %H" && npm ci && npm run build)
+          done
+          cp scripts/measure-python-load.mjs /tmp/measure.mjs
+      - name: 测量（before / after）
+        run: |
+          cd /tmp/before && cp /tmp/measure.mjs ./measure.mjs && node measure.mjs dist "before：$(git rev-parse --short HEAD) main（启动即加载）"
+          cd /tmp/after && cp /tmp/measure.mjs ./measure.mjs && node measure.mjs dist "after：$(git rev-parse --short HEAD) feat/h-lazy-python（首次执行才加载）"
