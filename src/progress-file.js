@@ -16,6 +16,15 @@ export function exportFileName(now = new Date()) {
   return `suipian-progress-${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}.json`;
 }
 
+function pickProgress(st) {
+  const s = st || {};
+  const done = {}; for (const [k, v] of Object.entries(s.done || {})) if (v === true && ID_RE.test(k) && k !== "__proto__") done[k] = true;
+  const doneOn = {}; for (const [k, v] of Object.entries(s.doneOn || {})) if (done[k] && typeof v === "string" && realDay(v)) doneOn[k] = v;
+  return { version: s.version ?? DATA_VERSION, xp: s.xp, lessonsCompleted: s.lessonsCompleted ?? 0, streak: s.streak, lastDay: s.lastDay ?? null, done, doneOn };
+}
+// 真实日历日期（2026-02-31 不合法）
+function realDay(v) { if (typeof v !== "string" || !DAY_RE.test(v)) return false; const [y, m, d] = v.split("-").map(Number); const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d; }
+
 // 导出内容：当前进度 + （如果有）读不懂而被留下来的旧记录原文，一起带走
 export function buildExport(state, { now = Date.now(), build = "", unreadable = [] } = {}) {
   return {
@@ -23,7 +32,7 @@ export function buildExport(state, { now = Date.now(), build = "", unreadable = 
     exportVersion: FILE_VERSION,
     exportedAt: new Date(now).toISOString(),
     build: String(build || ""),
-    state,
+    state: pickProgress(state), // 字段白名单：只带进度，不带偏好、红心、旧记录里的未知字段（可能含诊断或凭证）
     unreadable: unreadable.map((u) => ({ savedAt: u.savedAt, raw: u.raw })),
   };
 }
@@ -39,7 +48,7 @@ export function parseImport(text) {
   const s = obj.state;
   if (!s || typeof s !== "object" || s.version !== DATA_VERSION) return { ok: false, error: "进度文件里的学习记录格式不对，没有导入任何内容。" };
   if (!isInt(s.xp, 10_000_000) || !isInt(s.streak, 100_000) || !isInt(s.lessonsCompleted ?? 0, 10_000_000)) return { ok: false, error: "进度文件里的数字不合理，没有导入任何内容。" };
-  if (s.lastDay != null && !(typeof s.lastDay === "string" && DAY_RE.test(s.lastDay))) return { ok: false, error: "进度文件里的日期不合理，没有导入任何内容。" };
+  if (s.lastDay != null && !realDay(s.lastDay)) return { ok: false, error: "进度文件里的日期不合理，没有导入任何内容。" };
   if (!s.done || typeof s.done !== "object" || Array.isArray(s.done)) return { ok: false, error: "进度文件里缺少关卡完成记录，没有导入任何内容。" };
   const done = {};
   for (const [k, v] of Object.entries(s.done)) {
@@ -80,10 +89,13 @@ export function summarize(s) {
 // ---- 进度码：把进度文件压成一段可复制粘贴的文字（Safari 标签页 ↔ 主屏幕 App ↔ 新标签页之间转移用，不依赖“文件”App）----
 // 格式：SPC1. + base64url(进度文件 JSON，不含旧坏记录原文)。粘贴时忽略空白和换行（微信 / 备忘录常常会插入）。
 export const CODE_PREFIX = "SPC1.";
+// 完整性校验：FNV-1a 32 位。防的是复制时被截断、被聊天软件改字，不是防恶意伪造（恶意构造的码也只能走和文件导入一样的合并规则，不会让进度变少）
+function checksum(str) { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, "0"); }
 const b64 = (bytes) => { let bin = ""; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
 export function encodeCode(state, { now = Date.now(), build = "" } = {}) {
   const json = JSON.stringify(buildExport(state, { now, build, unreadable: [] }));
-  return CODE_PREFIX + b64(new TextEncoder().encode(json));
+  const body = b64(new TextEncoder().encode(json));
+  return CODE_PREFIX + body + "." + checksum(body);
 }
 // 返回 { ok:true, text } 或 { ok:false, error }；text 交给 parseImport 做全部校验
 export function decodeCode(input) {
@@ -91,7 +103,10 @@ export function decodeCode(input) {
   if (!raw) return { ok: false, error: "还没有粘贴进度码。" };
   const i = raw.indexOf(CODE_PREFIX);
   if (i < 0) return { ok: false, error: "这不是碎片编程的进度码（应以 SPC1. 开头）。" };
-  const body = raw.slice(i + CODE_PREFIX.length).replace(/-/g, "+").replace(/_/g, "/");
+  const rest = raw.slice(i + CODE_PREFIX.length), dot = rest.lastIndexOf(".");
+  const bodyUrl = dot < 0 ? rest : rest.slice(0, dot), sum = dot < 0 ? "" : rest.slice(dot + 1);
+  if (!sum || !/^[0-9a-f]{8}$/.test(sum) || checksum(bodyUrl) !== sum) return { ok: false, error: "进度码不完整或被改动过（校验不通过），请重新复制整段。" };
+  const body = bodyUrl.replace(/-/g, "+").replace(/_/g, "/");
   if (!body || body.length > MAX_FILE_BYTES * 2 || !/^[A-Za-z0-9+/]+$/.test(body)) return { ok: false, error: "进度码不完整或被改动过，请重新复制整段。" };
   try {
     const bin = atob(body + "=".repeat((4 - (body.length % 4)) % 4));

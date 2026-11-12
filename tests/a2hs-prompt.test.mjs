@@ -46,7 +46,7 @@ try {
     await page.locator("[data-a2hs-code]").tap();
     await page.waitForFunction(() => document.querySelector("[data-a2hs-msg]")?.textContent.length > 0);
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
-    check("点“复制进度码”：剪贴板里是进度码，并提示先保存", /^SPC1\.[A-Za-z0-9_-]+$/.test(clip) && /已复制/.test(await page.locator("[data-a2hs-msg]").innerText()), clip.slice(0, 20));
+    check("点“复制进度码”：剪贴板里是进度码，并提示先保存", /^SPC1\.[A-Za-z0-9_.-]+$/.test(clip) && /已复制/.test(await page.locator("[data-a2hs-msg]").innerText()), clip.slice(0, 20));
     await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.waitForSelector("[data-backup]");
     check("“我的”页不出现这条引导", (await count(page)) === 0);
     await page.getByRole("button", { name: "学习", exact: true }).tap(); await page.waitForSelector(".statsbar");

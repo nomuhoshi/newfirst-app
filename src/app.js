@@ -270,9 +270,10 @@ function persist() {
   if (sync && sync.account()) {
     const r = sync.persistLocal(state);
     if (!r.ok) showToast("无法保存进度到这台设备（" + (r.message || "存储不可用") + "），关掉页面后进度可能丢失。");
-    return;
+    return !!r.ok;
   }
-  if (!saveState(state)) showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
+  if (!saveState(state)) { showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。"); return false; }
+  return true;
 }
 function clearProgress() { const prefs = state.prefs; const f = clearState(); if (f.clearFailed) { showToast("清除失败（存储不可用），学习记录没有清除。"); return false; } state = f; state.prefs = prefs; state.onboarded = true; persist(); return true; }
 accountUi = createAccountUi({
@@ -756,7 +757,7 @@ function keyLab() {
 }
 
 // ---------- 备份学习记录：导出 / 导入进度文件 ----------
-// 导出进度文件（“我的”里的按钮和地图页的 14 天提醒共用）。成功才返回 true，并重新计时 14 天提醒
+// 导出进度文件（“我的”里的按钮和地图页的 14 天提醒共用）。返回 true = 已生成并请求下载（不代表用户已保存）
 function exportProgressFile() {
   try {
     syncFromStorage(state); const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
@@ -765,8 +766,7 @@ function exportProgressFile() {
     const a = h("a", { href: url, download: exportFileName(new Date()), hidden: "" });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    markExported();
-    return true;
+    return true; // 只表示“已生成并请求下载”，网页无法确认文件真的保存了：14 天计时要等用户点“我已保存好”才重置
   } catch { return false; }
 }
 // 完成第 2 关后，iPhone Safari（非主屏幕 App）里提示一次“添加到主屏幕”：主屏幕 App 实测记录保留。可展开步骤、可“不再提示”，主屏幕 App 里永不显示，不弹窗、不打断答题
@@ -802,8 +802,17 @@ function exportReminder() {
   const box = h("div", { class: "notice export-reminder", role: "note", "data-export-reminder": "" },
     h("p", { text: "隔了一阵没备份学习记录了。记录只存在这台设备的浏览器里，导出一份进度文件更保险。" }),
     h("div", { class: "acct-row" },
-      button("导出进度", () => { if (exportProgressFile()) { box.remove(); showToast("已导出，文件在下载位置。"); } else showToast("导出失败，请到“我的”里再试。"); }, "btn3d", { "data-export-now": "" }),
-      button("稍后", () => { snoozeExport(); box.remove(); }, "btn3d ghost", { "data-export-later": "" }),
+      button("导出进度", () => {
+        if (!exportProgressFile()) { showToast("导出失败，请到“我的”里再试。"); return; }
+        // 下载只是“请求”，网页确认不了文件真的在你手里：让用户自己确认后才重新计时
+        box.replaceChildren(
+          h("p", { "data-export-confirm": "", text: "已请求下载。请到“文件”App → 下载里确认有 suipian-progress 开头的文件，确认后点下面的按钮；没找到就再点一次“导出进度”。" }),
+          h("div", { class: "acct-row" },
+            button("我已保存好", () => { if (!markExported()) showToast("这个浏览器记不住导出时间，下次打开可能还会提醒。"); box.remove(); showToast("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved": "" }),
+            button("再导出一次", () => { exportProgressFile(); }, "btn3d ghost", { "data-export-again": "" }),
+          ));
+      }, "btn3d", { "data-export-now": "" }),
+      button("稍后", () => { if (!snoozeExport()) showToast("这个浏览器记不住“稍后”，下次打开还会提醒。"); box.remove(); }, "btn3d ghost", { "data-export-later": "" }),
     ));
   return box;
 }
@@ -820,7 +829,10 @@ function backupCard() {
     return true;
   };
   const doExport = () => {
-    if (exportProgressFile()) say("已导出。文件在浏览器的下载位置（iPhone：“文件”App → 下载），请自己保管好。");
+    if (exportProgressFile()) {
+      say("已请求下载。请到浏览器的下载位置（iPhone：“文件”App → 下载）确认文件在，并自己保管好。");
+      if (!signedIn) panel.replaceChildren(h("div", { class: "confirm" }, h("p", { text: "确认文件已经保存好了吗？确认后，14 天备份提醒会重新计时。" }), button("我已保存好", () => { markExported(); panel.replaceChildren(); say("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved-me": "" })));
+    }
     else say("导出失败，请换个浏览器再试。", true);
   };
   const file = h("input", { type: "file", accept: "application/json,.json", hidden: "", "data-import-file": "" });
@@ -834,7 +846,8 @@ function backupCard() {
       h("p", { text: `文件里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（导出于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
       button("确认导入", () => {
         if (blockedByLogin()) return;
-        syncFromStorage(state); state = mergeImport(state, r.state); persist(); renderMe(); showToast("进度已导入。");
+        syncFromStorage(state); state = mergeImport(state, r.state); const saved = persist(); renderMe();
+        if (saved) showToast("进度已导入。"); else showToast("导入的进度现在只显示在这个页面里，还没有保存到本机——请先不要关闭页面（可能是无痕模式或存储已满）。");
       }, "btn3d primary"),
       button("取消", () => { panel.replaceChildren(); }, "btn"),
     ));

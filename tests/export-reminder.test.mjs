@@ -70,13 +70,19 @@ try {
     const { ctx, page } = await open(20, { "suipian.meta.exportSnooze": Date.now() - 1000 });
     check("稍后过期后再次出现", (await count(page)) === 1); await ctx.close();
   }
-  { // 导出：下载文件、重新计时
+  { // 导出：下载只是请求；用户点“我已保存好”才重新计时
     const { ctx, page } = await open(15);
     const [dl] = await Promise.all([page.waitForEvent("download"), page.locator("[data-export-now]").tap()]);
     check("点“导出进度”：下载进度文件", /^suipian-progress-\d{4}-\d{2}-\d{2}\.json$/.test(dl.suggestedFilename()));
-    check("导出后提示消失", (await count(page)) === 0);
+    check("下载后先让用户确认文件在不在，不宣称已备份成功", (await page.locator("[data-export-confirm]").count()) === 1 && !/已备份|备份成功/.test(await page.locator("[data-export-reminder]").innerText()));
+    check("确认之前不记导出时间（不重置 14 天）", (await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport"))) === null);
+    await page.reload(); await page.waitForSelector(".statsbar");
+    check("没确认就刷新：提醒仍然在", (await count(page)) === 1);
+    await page.locator("[data-export-now]").tap().catch(() => {});
+    await page.locator("[data-export-saved]").tap();
+    check("点“我已保存好”：提示消失", (await count(page)) === 0);
     const last = Number(await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport")));
-    check("记录了导出时间（重新计时）", Math.abs(last - Date.now()) < 60000);
+    check("此时才记录导出时间（重新计时）", Math.abs(last - Date.now()) < 60000);
     await page.reload(); await page.waitForSelector(".statsbar");
     check("刷新后不再出现", (await count(page)) === 0); await ctx.close();
   }

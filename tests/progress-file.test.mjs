@@ -53,12 +53,23 @@ const base = JSON.parse(FIX);
 { // 进度码
   const code = encodeCode(base, { now: Date.UTC(2026, 10, 4, 12, 0, 0), build: "b1" });
   const d = decodeCode(code), r = d.ok ? parseImport(d.text) : null;
-  check("进度码：以 SPC1. 开头，只有安全字符", code.startsWith("SPC1.") && /^SPC1\.[A-Za-z0-9_-]+$/.test(code));
+  check("进度码：以 SPC1. 开头，只有安全字符", code.startsWith("SPC1.") && /^SPC1\.[A-Za-z0-9_.-]+$/.test(code));
   check("进度码：编码再解码，进度原样（关卡、XP、连续天数）", r && r.ok && r.state.xp === 190 && r.state.streak === 4 && Object.keys(r.state.done).length === 8);
   const chopped = code.match(/.{1,17}/g).join("\n  ");
   check("进度码：粘贴时夹着换行和空格也能读", decodeCode(chopped).ok && parseImport(decodeCode(chopped).text).ok);
   check("进度码：前面带别的文字（聊天软件常加前缀）也能读", decodeCode("我的进度码：" + code).ok);
   check("进度码：空 / 不是进度码 / 被截断都拒绝或读不出进度", !decodeCode("").ok && !decodeCode("hello").ok && (() => { const t = decodeCode(code.slice(0, 30)); return !t.ok || !parseImport(t.text).ok; })());
+  { // 字段白名单、校验和、真实日期
+    const dirty = { ...base, email: "a@b.c", accessToken: "SECRET", diagnostics: "D", prefs: { sound: false }, hearts: 1, extra: { token: "X" } };
+    const c2 = encodeCode(dirty), txt = decodeCode(c2).text, exp = buildExport(dirty);
+    check("进度码和导出文件只带进度字段：不含邮箱、令牌、诊断、偏好、红心", !/SECRET|a@b\.c|diagnostics|prefs|hearts|extra/.test(txt) && !/SECRET|a@b\.c|diagnostics|prefs|hearts|extra/.test(JSON.stringify(exp)));
+    check("白名单后进度仍完整", (() => { const q = parseImport(txt); return q.ok && q.state.xp === 190 && Object.keys(q.state.done).length === 8; })());
+    const flip = (str, i) => str.slice(0, i) + (str[i] === "A" ? "B" : "A") + str.slice(i + 1);
+    check("进度码改一个字符：校验不通过", !decodeCode(flip(c2, 20)).ok && /校验/.test(decodeCode(flip(c2, 20)).error));
+    check("进度码缺校验位（旧格式或被截断）：拒绝", !decodeCode(c2.slice(0, c2.lastIndexOf("."))).ok);
+    const bad = JSON.parse(txt); bad.state.lastDay = "2026-02-31";
+    check("拒绝不存在的日期 2026-02-31", !parseImport(JSON.stringify(bad)).ok);
+  }
 }
 
 // ===== 浏览器：我的页 =====
@@ -86,7 +97,7 @@ try {
   const fileText = readFileSync(saved, "utf8"); const parsed = JSON.parse(fileText);
   check("导出：下载的是 suipian-progress-日期.json", /^suipian-progress-\d{4}-\d{2}-\d{2}\.json$/.test(dl.suggestedFilename()), dl.suggestedFilename());
   check("导出：文件里的进度和手机里的一致，并带上旧坏记录", parsed.state.xp === 190 && Object.keys(parsed.state.done).length === 8 && parsed.unreadable.some((u) => u.raw === "{旧的坏记录"));
-  check("导出后提示保管文件", /已导出/.test(await page.locator("[data-backup-msg]").innerText()));
+  check("导出后提示去下载位置确认文件，并且不重置 14 天提醒", /已请求下载/.test(await page.locator("[data-backup-msg]").innerText()) && (await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport"))) === null);
 
   // 清掉进度（模拟清了浏览器数据）后导入
   await page.evaluate(() => { window.__app.clearProgress(); /* v4 的 XP 与关卡只增不减，改用真实清除来模拟“清了浏览器数据” */ });
@@ -106,7 +117,7 @@ try {
   await page.locator("[data-code-copy]").tap();
   await page.waitForFunction(() => /进度码已复制/.test(document.querySelector("[data-backup-msg]")?.textContent || ""));
   const codeText = await page.evaluate(() => navigator.clipboard.readText());
-  check("复制进度码：剪贴板里是 SPC1. 开头的一段文字", /^SPC1\.[A-Za-z0-9_-]+$/.test(codeText));
+  check("复制进度码：剪贴板里是 SPC1. 开头的一段文字", /^SPC1\.[A-Za-z0-9_.-]+$/.test(codeText));
   await page.evaluate(() => { window.__app.clearProgress(); });
   await page.reload(); await page.waitForSelector(".statsbar");
   await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-backup]");
@@ -121,6 +132,16 @@ try {
   check("粘贴进度码：进度恢复", Object.keys(await page.evaluate(() => window.__app.getState().done)).length === 8);
   await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill("乱写的"); await page.locator("[data-code-read]").tap();
   check("粘贴错误的进度码：说明原因", /不是碎片编程的进度码/.test(await page.locator("[data-backup-msg]").innerText()));
+
+  // 保存失败（存储写入报错）：导入不能报“成功”
+  await page.evaluate(() => { window.__realSet = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith("suipian.v4.tab.")) throw new DOMException("full", "QuotaExceededError"); return window.__realSet.call(this, k, v); }; });
+  await page.evaluate(() => { const st = window.__app.getState(); st.xp = 0; st.done = {}; });
+  await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill(codeText); await page.locator("[data-code-read]").tap();
+  await page.waitForSelector("[data-import-confirm]"); await page.getByRole("button", { name: "确认导入" }).tap();
+  await page.waitForTimeout(300);
+  const toastTxt = await page.locator(".toast").innerText();
+  check("保存失败时导入不报“进度已导入”，提示还没保存、先别关页面", !/^进度已导入/.test(toastTxt) && /还没有保存/.test(toastTxt), toastTxt);
+  await page.evaluate(() => { Storage.prototype.setItem = window.__realSet; });
 
   // 坏文件：给出原因，不改记录
   const badPath = join(dir, "bad.json"); writeFileSync(badPath, '{"hello":1}');
