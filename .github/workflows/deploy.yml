@@ -26,11 +26,14 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: 用真实 Python 验证题目答案
         run: npm run verify:content
-      - run: npm run build
-      - name: 自动测试（不通过就不部署）
+      - name: 构建两份：dist（测试专用，CSP 含测试域，不发布）和 dist-formal（正式，发布内容从这里来）
+        run: npm run build:ci
+      - name: 自动测试（不通过就不部署；跑 dist 测试专用构建）
         run: npm test
-      - name: 生成发布内容并自检（测试页 access-test.html / lab.html 等只留在仓库和测试用的 dist，不发布；PR 也跑）
-        run: node scripts/make-pages-artifact.mjs dist dist-pages
+      - name: 生成发布内容并自检（正式构建 dist-formal → dist-pages；去掉测试页；与测试专用构建对照只允许差 CSP 的测试域；PR 也跑）
+        run: node scripts/make-pages-artifact.mjs dist-formal dist-pages --test-build dist
+      - name: CSP 专项（跑真正要发布的 dist-pages：页面、真 Python/Worker/WASM、注入脚本和测试域及未获允许来源被拦、允许来源只走本地拦截）
+        run: CSP_EXPECT=formal DIST_DIR=dist-pages MOBILE_BROWSER=chromium node tests/csp.test.mjs
       - name: 上传发布文件（只有 main 上传；上传的是去掉测试页的 dist-pages）
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
@@ -63,7 +66,10 @@ jobs:
             echo "::warning::安装第 $i 次失败，$((i*30)) 秒后重试"; sudo apt-get clean || true; sleep $((i*30))
           done
           exit 1
-      - run: npm run build
+      - name: 构建两份（dist 测试专用；dist-formal 正式）并生成发布内容 dist-pages
+        run: npm run build:ci && node scripts/make-pages-artifact.mjs dist-formal dist-pages --test-build dist
+      - name: CSP 专项（${{ matrix.browser }}）：跑真正要发布的 dist-pages
+        run: CSP_EXPECT=formal DIST_DIR=dist-pages MOBILE_BROWSER=${{ matrix.browser }} node tests/csp.test.mjs
       - name: 手机模拟测试（${{ matrix.browser }}）
         id: mobile
         run: npm run test:mobile -- ${{ matrix.browser }}

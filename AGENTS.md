@@ -29,8 +29,9 @@
 ```
 npm install
 npx playwright install chromium     # 测试用
-npm run build                        # 会先把 Pyodide 复制进 public/pyodide（该目录不进 git）
-npm test                             # 需要先 build；按 package.json 的 test:chain 逐条运行（scripts/run-tests.mjs，每条有超时）
+npm run build                        # 正式构建（CSP 不含测试域）；会先把 Pyodide 复制进 public/pyodide（该目录不进 git）
+npm run build:ci                     # 跑测试前用这个：dist = 测试专用构建（CSP 含 fake.supabase.test，绝不发布）+ dist-formal = 正式构建；发布内容由 scripts/make-pages-artifact.mjs dist-formal dist-pages --test-build dist 生成
+npm test                             # 需要先 build:ci（账号 UI 测试等依赖 dist 里的测试域）；按 package.json 的 test:chain 逐条运行（scripts/run-tests.mjs，每条有超时）
 npm run test:mobile -- chromium      # 手机模拟（WebKit / Chromium）：账号、触控尺寸、CSP 等浏览器测试（tests/webkit/run.mjs 的 extra 列表决定哪些进 WebKit）
 npm run test:e2e -- chromium         # 端到端关键流程
 npm run dev                          # 本地开发
