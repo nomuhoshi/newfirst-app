@@ -119,7 +119,7 @@ try {
   const [dl2] = await Promise.all([page.waitForEvent("download"), page.locator("[data-export-diagnostic]").tap()]);
   const dsaved = join(dir, dl2.suggestedFilename()); await dl2.saveAs(dsaved);
   check("诊断文件含旧记录原文，文件名区别于普通备份", /diagnostic/.test(dl2.suggestedFilename()) && JSON.parse(readFileSync(dsaved, "utf8")).unreadable.some((u) => u.raw === "{旧的坏记录"));
-  check("导出后提示去下载位置确认文件，并且不重置 14 天提醒", /已请求下载/.test(await page.locator("[data-backup-msg]").innerText()) && (await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport"))) === null);
+  check("导出后提示去下载位置确认文件，并且不重置 14 天提醒", /已请求下载/.test(await page.locator("[data-backup-msg]").innerText()) && (await page.evaluate(() => localStorage.getItem("suipian.meta.confirmedExport"))) === null);
 
   // 清掉进度（模拟清了浏览器数据）后导入
   await page.evaluate(() => { window.__app.clearProgress(); /* v4 的 XP 与关卡只增不减，改用真实清除来模拟“清了浏览器数据” */ });

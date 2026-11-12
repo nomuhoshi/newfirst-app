@@ -12,6 +12,8 @@ import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
+import { encodeCode } from "../src/progress-file.js";
+import { DATA_VERSION } from "../src/storage.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)), DIST = resolve(process.env.DIST_DIR || join(ROOT, "dist"));
 const PFX = process.env.PREVIEW_PREFIX || "/";
@@ -167,6 +169,30 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   check(`E1 Service Worker ${swOk ? "安装并接管后" : "（这个内核没装上，只验刷新）"}刷新：进度不变`, same(JSON.parse(before), mid), JSON.stringify(pick(mid)));
   await ctx.close(); ctx = await open(dir, { serviceWorkers: "allow" }); page = await load(ctx);
   check("E2 带着 Service Worker 关闭重开：进度不变", same(JSON.parse(before), await saved(page)));
+  await ctx.close();
+}
+
+// ---------- F 真实通关后导入进度码：逐关首次完成日期取较早（doneOn） ----------
+{
+  const dir = newDir(); const ctx = await open(dir), page = await load(ctx); await passOnboarding(page);
+  await finishLesson(page, "U1L1");
+  const st0 = await page.evaluate(() => { const x = window.__app.getState(); return { xp: x.xp, runs: x.lessonsCompleted, d: x.doneOn?.U1L1, hearts: x.hearts, prefs: x.prefs }; });
+  check("F1 真实通关后 doneOn 记下了完成日期（今天的学习日）", /^\d{4}-\d{2}-\d{2}$/.test(st0.d || ""), JSON.stringify(st0));
+  const mk = (day, xp) => encodeCode({ version: DATA_VERSION, xp, lessonsCompleted: 1, streak: 1, lastDay: day, done: { U1L1: true }, doneOn: { U1L1: day } });
+  await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview"); // 结算页没有底部导航，回到地图
+  const paste = async (code) => {
+    await page.getByRole("button", { name: "我的", exact: true }).click(); await page.waitForSelector("[data-backup]");
+    await page.locator("[data-code-paste]").click(); await page.locator("[data-code-in]").fill(code); await page.locator("[data-code-read]").click();
+    await page.waitForSelector("[data-import-confirm]"); await page.getByRole("button", { name: "确认导入" }).click(); await page.waitForTimeout(300);
+    return page.evaluate(() => { const x = window.__app.getState(); return { xp: x.xp, runs: x.lessonsCompleted, d: x.doneOn?.U1L1, hearts: x.hearts, prefs: x.prefs, done: Object.keys(x.done) }; });
+  };
+  const a = await paste(mk("2020-01-01", 5));
+  check("F2 导入更早日期的旧码：同一关取较早日期；XP、次数、红心、偏好不变", a.d === "2020-01-01" && a.xp === st0.xp && a.runs === st0.runs && a.hearts === st0.hearts && JSON.stringify(a.prefs) === JSON.stringify(st0.prefs), JSON.stringify(a));
+  const b = await paste(mk("2099-12-31", 99999));
+  check("F3 再导入更晚日期的码：日期仍是较早的（XP 取较大属于既定规则）", b.d === "2020-01-01" && b.done.join() === "U1L1", JSON.stringify(b));
+  await page.reload(); await page.waitForFunction(() => window.__app?.getState);
+  const c = await page.evaluate(() => window.__app.getState().doneOn?.U1L1);
+  check("F4 刷新重开后日期仍是较早的", c === "2020-01-01", String(c));
   await ctx.close();
 }
 

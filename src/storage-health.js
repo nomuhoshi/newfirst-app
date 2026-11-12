@@ -59,7 +59,8 @@ export async function storageReport() {
 // 非阻塞、只在地图页显示一条可关闭的提示，不弹系统通知、不在答题中出现；导出成功后重新计时；点“稍后”3 天内不再提示。
 // 已登录账号的记录在云端，不提醒。持久存储的结果如实显示在诊断里，这里不承诺“永久不丢”。
 const META_BASE = "suipian.meta.backupBase"; // 备份提醒起算点：首次成功保存有效学习进度（或升级时已有进度）的时间
-const META_EXPORT = "suipian.meta.lastExport", META_SNOOZE = "suipian.meta.exportSnooze";
+// 注意：旧版（#68 `57793a2`）点下载就写 suipian.meta.lastExport，没经用户确认——新版不再把它当确认凭据，改用独立的 confirmedExport
+const META_EXPORT = "suipian.meta.confirmedExport", META_SNOOZE = "suipian.meta.exportSnooze";
 export const EXPORT_EVERY_MS = 14 * 24 * 3600 * 1000, EXPORT_SNOOZE_MS = 3 * 24 * 3600 * 1000, EXPORT_MIN_LESSONS = 3;
 export function ensureBackupBase(doneCount, now = Date.now()) {
   try { if (doneCount > 0 && !localStorage.getItem(META_BASE)) localStorage.setItem(META_BASE, String(now)); return Number(localStorage.getItem(META_BASE)) || 0; } catch { return 0; }
