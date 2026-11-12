@@ -31,5 +31,20 @@ const fake = (name, { indexExtra = "", pre = ["./", "./index.html", "./assets/ma
   ok("8 应用文件里引用 access-test-config.js：自检失败", r.problems.some((p) => /access-test-config\.js/.test(p)), r.problems.join(" | ")); }
 { const d = fake("e"); writeFileSync(join(d, "sw.js"), "no list here"); let threw = false; try { makePagesArtifact(d, join(tmp, "e-out")); } catch { threw = true; }
   ok("9 读不到预缓存清单：直接报错，不生成", threw); }
+// ---- GPT1 04:44 阻断项：“未预缓存”不等于“lab 专用”。只删能证明由 lab 独占的文件 ----
+{ const d = fake("f"); put(d, "assets/main-A.js", "import('./chunk-C.js');new Worker(new URL('./py-worker-W.js',import.meta.url),{type:'module'});");
+  put(d, "assets/chunk-C.js", "export*from'./dep-D.js'"); put(d, "assets/dep-D.js", "export const d=1"); put(d, "assets/py-worker-W.js", "export{}");
+  const o = join(tmp, "f-out"); const r = makePagesArtifact(d, o);
+  ok("10 正式入口运行时按需加载、但不在预缓存里的分块 / 它的依赖 / Worker 全部保留", ["assets/chunk-C.js", "assets/dep-D.js", "assets/py-worker-W.js"].every((f) => existsSync(join(o, f))) && r.problems.length === 0, r.problems.join(" | ") + " dropped=" + r.dropped.join()); }
+{ const d = fake("g"); put(d, "assets/shared-S.js", "export const s=1"); put(d, "assets/main-A.js", "import {s} from './shared-S.js'"); put(d, "assets/lab-B.js", "import {s} from './shared-S.js'");
+  const o = join(tmp, "g-out"); const r = makePagesArtifact(d, o);
+  ok("11 lab 和正式入口共用的分块保留，lab 独占的照样去掉", existsSync(join(o, "assets/shared-S.js")) && !existsSync(join(o, "assets/lab-B.js")) && r.problems.length === 0, r.problems.join(" | ")); }
+{ const d = fake("h"); put(d, "assets/orphan-Z.js", "x");
+  const o = join(tmp, "h-out"); const r = makePagesArtifact(d, o);
+  ok("12 没人引用的孤儿文件保留（只删能证明是 lab 独占的）", existsSync(join(o, "assets/orphan-Z.js")) && !r.dropped.includes("assets/orphan-Z.js")); }
+{ const d = fake("i"); put(d, "assets/main-A.js", "import('./missing-M.js')"); const r = makePagesArtifact(d, join(tmp, "i-out"));
+  ok("13 正式文件里的相对 import 指向发布目录里不存在的文件：自检失败", r.problems.some((p) => /missing-M\.js 不在发布目录里/.test(p)), r.problems.join(" | ")); }
+{ const d = fake("j"); put(d, "assets/main-A.js", "import('./lab-B.js')"); const r = makePagesArtifact(d, join(tmp, "j-out"));
+  ok("14 正式入口引用了 lab 文件：不会被当作 lab 独占（保留），自检通过", !r.dropped.includes("assets/lab-B.js") && r.problems.length === 0, r.problems.join(" | ") + " dropped=" + r.dropped.join()); }
 rmSync(tmp, { recursive: true, force: true });
 console.log(fail ? `\n${fail} 项失败` : "\n全部通过"); process.exit(fail ? 1 : 0);
