@@ -33,9 +33,10 @@ const directive = (csp, name) => csp.split(";").map((s) => s.trim()).find((s) =>
   check("A script-src 不含 'unsafe-inline' / 'unsafe-eval'，含 'wasm-unsafe-eval' 和内联脚本哈希", !/'unsafe-inline'|'unsafe-eval'/.test(s) && s.includes("'wasm-unsafe-eval'") && s.includes(sha("var a = 1;")), s);
   check("A object-src 'none'、base-uri 'self'", /object-src 'none'/.test(csp) && /base-uri 'self'/.test(csp), csp);
   const withCloud = buildCsp(html, { connect: ["https://abc.supabase.co"] });
-  check("A connect-src 只放行本站 + 这次构建的那一个云项目 + 本机测试用的保留域名（没有通配）", directive(withCloud, "connect-src") === `connect-src 'self' https://abc.supabase.co ${TEST_CLOUD_ORIGIN}` && !/\*/.test(withCloud), withCloud);
+  check("A connect-src 默认（正式构建）只放行本站 + 这次构建的那一个云项目，不含测试域，没有通配", directive(withCloud, "connect-src") === "connect-src 'self' https://abc.supabase.co" && !/\*/.test(withCloud) && !withCloud.includes(TEST_CLOUD_ORIGIN), directive(withCloud, "connect-src"));
+  check("A 显式 testOrigin（测试专用构建）才多放行本机测试用的保留域名", directive(buildCsp(html, { connect: ["https://abc.supabase.co"], testOrigin: true }), "connect-src") === `connect-src 'self' https://abc.supabase.co ${TEST_CLOUD_ORIGIN}`);
   check("A 测试用的假服务器域名是 RFC 2606 保留的 .test 顶级域名（公网上永远解析不到）", new URL(TEST_CLOUD_ORIGIN).hostname.endsWith(".test"));
-  check("A 云端关闭的构建：connect-src 不放行任何云项目", directive(csp, "connect-src") === `connect-src 'self' ${TEST_CLOUD_ORIGIN}`, csp);
+  check("A 云端关闭的正式构建：connect-src 只有 'self'；测试专用构建只多测试域", directive(csp, "connect-src") === "connect-src 'self'" && directive(buildCsp(html, { testOrigin: true }), "connect-src") === `connect-src 'self' ${TEST_CLOUD_ORIGIN}`, csp);
   let threw = false; try { injectCsp(out); } catch { threw = true; }
   check("A 已有 CSP 时拒绝再加一条（不会出现两条互相叠加的策略）", threw);
   const changed = html.replace("var a = 1;", "var a = 2;");
@@ -43,7 +44,7 @@ const directive = (csp, name) => csp.split(";").map((s) => s.trim()).find((s) =>
 }
 
 // ---------- B. 构建产物 ----------
-if (!existsSync(DIST + "/index.html")) { console.log("环境失败：没有 dist/，先 npm run build"); process.exit(2); }
+if (!existsSync(DIST + "/index.html")) { console.log("环境失败：没有 dist/，先 npm run build:ci（测试专用构建）"); process.exit(2); }
 const indexHtml = readFileSync(DIST + "/index.html", "utf8");
 const CSP = cspOf(indexHtml);
 {
@@ -51,7 +52,9 @@ const CSP = cspOf(indexHtml);
   const inline = [...indexHtml.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].filter((m) => !/\bsrc\s*=/.test(m[1])).map((m) => sha(m[2]));
   check("B 产物里每段内联脚本的哈希都在 script-src 里", inline.length >= 1 && inline.every((h) => directive(CSP, "script-src").includes(h)), JSON.stringify(inline));
   const previewId = /PREFIX = "([a-z0-9-]+)-suipian-"/.exec(readFileSync(DIST + "/sw.js", "utf8"))?.[1];
-  if (!previewId) check("B 正式构建：connect-src 只有本站、正式项目和测试保留域名，没有通配", directive(CSP, "connect-src") === `connect-src 'self' https://${PROD_HOST} ${TEST_CLOUD_ORIGIN}`, directive(CSP, "connect-src"));
+  const HAS_TEST = CSP.includes(TEST_CLOUD_ORIGIN), EXPECT = process.env.CSP_EXPECT || (HAS_TEST ? "test" : "formal"); // CI 显式设置，防止拿错目录测
+  check(`B 这份产物是“${EXPECT === "test" ? "测试专用构建（含测试域）" : "正式构建（不含测试域）"}”，与预期一致`, HAS_TEST === (EXPECT === "test"), `CSP_EXPECT=${EXPECT} HAS_TEST=${HAS_TEST}`);
+  if (!previewId) check("B 正式云项目构建：connect-src 只有本站和正式项目" + (EXPECT === "test" ? "和测试保留域名" : "（没有测试域）") + "，没有通配", directive(CSP, "connect-src") === `connect-src 'self' https://${PROD_HOST}${EXPECT === "test" ? " " + TEST_CLOUD_ORIGIN : ""}`, directive(CSP, "connect-src"));
   else check(`B 测试入口 ${previewId}：connect-src 不含正式项目、没有通配`, !directive(CSP, "connect-src").includes(PROD_HOST) && !directive(CSP, "connect-src").includes("*"), directive(CSP, "connect-src"));
   check("B privacy.html 在产物里，并进了离线缓存清单", existsSync(DIST + "/privacy.html") && readFileSync(DIST + "/sw.js", "utf8").includes("./privacy.html"));
   const lab = existsSync(DIST + "/lab.html") ? readFileSync(DIST + "/lab.html", "utf8") : "";
@@ -73,6 +76,9 @@ try {
   let supabaseHits = 0, otherProjectHits = 0;
   await ctx.route(TEST_CLOUD_ORIGIN + "/**", (route) => { supabaseHits++; return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: "{}" }); });
   await ctx.route("https://someone-else.supabase.co/**", (route) => { otherProjectHits++; return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*" }, body: "{}" }); });
+  // 正式云项目：只用本地拦截模拟，不会发往真实 Auth 服务
+  let prodHits = 0;
+  await ctx.route(`https://${PROD_HOST}/**`, (route) => { prodHits++; return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: "{}" }); });
   let evilHits = 0;
   await ctx.route("https://evil.example.com/**", (route) => { evilHits++; return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*" }, body: "x" }); });
   const page = await ctx.newPage();
@@ -97,7 +103,10 @@ try {
   check("C 在 CSP 下真 Pyodide 能运行 Python（print(6 * 7) → 42）", /42/.test(py.out) && !py.error, JSON.stringify(py));
 
   const sb = await page.evaluate((o) => fetch(o + "/auth/v1/health").then((r) => r.status, (e) => "blocked:" + e.message), TEST_CLOUD_ORIGIN);
-  check("C 发往允许的云项目的请求放行（本机测试用保留域名代表）", sb === 200 && supabaseHits >= 1, String(sb));
+  const prod = await page.evaluate((o) => fetch(o + "/auth/v1/health").then((r) => r.status, (e) => "blocked:" + e.message), `https://${PROD_HOST}`);
+  check("C 发往允许的正式云项目的请求放行（只由本地拦截应答，不调用真实 Auth 服务）", prod === 200 && prodHits >= 1, String(prod));
+  if (EXPECT === "test") check("C 测试专用构建：发往本机测试用保留域名的请求放行", sb === 200 && supabaseHits >= 1, String(sb));
+  else check("C 正式构建：发往测试域 fake.supabase.test 的请求被拦（正式 CSP 里没有它）", /^blocked/.test(String(sb)) && supabaseHits === 0, String(sb));
 
   // 不在 Playwright 自动化里正常发生、但攻击者会做的三件事：都必须被拦
   const before = await page.evaluate(() => window.__csp.length);

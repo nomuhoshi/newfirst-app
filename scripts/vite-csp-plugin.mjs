@@ -15,11 +15,11 @@
 //   img-src 'self' data: blob:         图标、内联 SVG 生成的 data 图片
 //   media-src 'self' data: blob:       音效
 //   font-src 'self' data:              没有外部字体
-//   connect-src 'self' <这次构建连接的 Supabase 项目> https://fake.supabase.test
+//   connect-src 'self' <这次构建连接的 Supabase 项目> [https://fake.supabase.test —— 仅“测试专用构建”]
 //                                      只放行本站和“这一份构建实际连接的那一个云项目”（正式构建 = 正式项目；测试入口 = 构建时给的测试项目；
 //                                      云端关闭的测试入口 = 不放行任何云项目）。不用 *.supabase.co 通配：否则注入的脚本能把数据发到别人开的 Supabase 项目。
-//                                      fake.supabase.test 是本机自动测试的假服务器（.test 是 RFC 2606 保留的顶级域名，公网上永远解析不到），
-//                                      自动测试和正式发布用的是同一份构建产物，所以它必须在这里；对线上用户没有任何放行效果。
+//                                      fake.supabase.test 是本机自动测试的假服务器（.test 是 RFC 2606 保留的顶级域名，公网上永远解析不到）。
+//                                      它只出现在“测试专用构建”（构建时显式 CSP_TEST_ORIGIN=1）；正式构建、发布产物 dist-pages 里没有它。
 //   worker-src 'self'                  Python 工作线程、Service Worker 都在本站
 //   manifest-src 'self'
 //   object-src 'none'; base-uri 'self'; form-action 'self'   关掉插件、防 <base> 劫持相对路径、表单只能提交回本站
@@ -30,14 +30,14 @@ export const TEST_CLOUD_ORIGIN = "https://fake.supabase.test";
 export function cloudOrigin(url) {
   try { const u = new URL(String(url)); return /^https?:$/.test(u.protocol) ? u.origin : ""; } catch { return ""; }
 }
-export const CSP_DIRECTIVES = (scriptHashes, connect = []) => [
+export const CSP_DIRECTIVES = (scriptHashes, connect = [], { testOrigin = false } = {}) => [
   "default-src 'self'",
   `script-src 'self' ${scriptHashes.map((h) => `'${h}'`).join(" ")} 'wasm-unsafe-eval'`.replace(/\s+/g, " "),
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' data: blob:",
   "font-src 'self' data:",
-  ["connect-src 'self'", ...new Set([...connect.filter(Boolean), TEST_CLOUD_ORIGIN])].join(" "),
+  ["connect-src 'self'", ...new Set([...connect.filter(Boolean), ...(testOrigin ? [TEST_CLOUD_ORIGIN] : [])])].join(" "),
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",
@@ -57,8 +57,8 @@ export function inlineScriptHashes(html) {
   return out;
 }
 
-export function buildCsp(html, { connect = [] } = {}) {
-  return CSP_DIRECTIVES(inlineScriptHashes(html), connect).join("; ");
+export function buildCsp(html, { connect = [], testOrigin = false } = {}) {
+  return CSP_DIRECTIVES(inlineScriptHashes(html), connect, { testOrigin }).join("; ");
 }
 
 // 把 meta 放在 <meta charset> 之后（必须在任何脚本之前，否则前面的脚本不受约束）
@@ -73,7 +73,8 @@ export function injectCsp(html, opts = {}) {
 
 // 只在构建时、只对 index.html 生效（开发服务器有热更新内联脚本和 websocket，不加 CSP；lab.html 是技术验证页）。
 // connect：这次构建连接的云项目网址（vite.config.js 传入；正式构建 = 正式项目，测试入口 = 测试项目，没有云端 = 空）
-export default function cspPlugin({ cloudUrl = "" } = {}) {
+// testOrigin：只有“测试专用构建”（构建时显式设置 CSP_TEST_ORIGIN=1，见 vite.config.js）才为 true；正式构建永远不带测试域。
+export default function cspPlugin({ cloudUrl = "", testOrigin = false } = {}) {
   const connect = [cloudOrigin(cloudUrl)].filter(Boolean);
   return {
     name: "suipian-csp",
@@ -82,7 +83,7 @@ export default function cspPlugin({ cloudUrl = "" } = {}) {
       order: "post", // 在 Vite 改完 HTML（插入打包后的脚本标签）之后再算哈希
       handler(html, ctx) {
         if (!/(^|[\\/])index\.html$/.test(ctx.filename || ctx.path || "")) return html;
-        return injectCsp(html, { connect });
+        return injectCsp(html, { connect, testOrigin });
       },
     },
   };

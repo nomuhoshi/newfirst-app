@@ -10,3 +10,4 @@ dist-login-sync/
 .gh-cache/
 tests/e2e/failure-*.png
 dist-pages
+dist-formal

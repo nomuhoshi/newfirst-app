@@ -3,6 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { makePagesArtifact, precacheList } from "../scripts/make-pages-artifact.mjs";
+import { injectCsp, TEST_CLOUD_ORIGIN } from "../scripts/vite-csp-plugin.mjs";
+import { PROD_HOST } from "../src/cloud-config.js";
 let fail = 0; const ok = (n, c, d = "") => { if (!c) fail++; console.log((c ? "✅ " : "❌ ") + n + (c ? "" : "  — " + d)); };
 const tmp = mkdtempSync(join(tmpdir(), "pages-"));
 const put = (root, f, s) => { mkdirSync(join(root, f, ".."), { recursive: true }); writeFileSync(join(root, f), s); };
@@ -46,5 +48,30 @@ const fake = (name, { indexExtra = "", pre = ["./", "./index.html", "./assets/ma
   ok("13 正式文件里的相对 import 指向发布目录里不存在的文件：自检失败", r.problems.some((p) => /missing-M\.js 不在发布目录里/.test(p)), r.problems.join(" | ")); }
 { const d = fake("j"); put(d, "assets/main-A.js", "import('./lab-B.js')"); const r = makePagesArtifact(d, join(tmp, "j-out"));
   ok("14 正式入口引用了 lab 文件：不会被当作 lab 独占（保留），自检通过", !r.dropped.includes("assets/lab-B.js") && r.problems.length === 0, r.problems.join(" | ") + " dropped=" + r.dropped.join()); }
+// ---- K-CSP：发布内容的 CSP 不得带测试域 / 其他项目 / 通配；与测试专用构建只允许差这一个测试域 ----
+const withCsp = (name, opts) => { const d = fake(name); const h = readFileSync(join(d, "index.html"), "utf8").replace("<!doctype html>", '<!doctype html><meta charset="utf-8">'); writeFileSync(join(d, "index.html"), injectCsp(h, opts)); return d; };
+const PROD = `https://${PROD_HOST}`;
+{ const d = withCsp("k1", { connect: [PROD] }); const r = makePagesArtifact(d, join(tmp, "k1-out"), { requireCsp: true });
+  ok("15 正式 CSP（只有 'self' 和正式项目）：自检通过", r.problems.length === 0, r.problems.join(" | ")); }
+{ const d = withCsp("k2", { connect: [PROD], testOrigin: true }); const r = makePagesArtifact(d, join(tmp, "k2-out"), { requireCsp: true });
+  ok("16 发布内容的 CSP 带测试域 fake.supabase.test：自检失败", r.problems.some((p) => /connect-src 里有不该有的来源：https:\/\/fake\.supabase\.test/.test(p)) && r.problems.some((p) => /出现了测试域/.test(p)), r.problems.join(" | ")); }
+{ const d = withCsp("k3", { connect: ["https://other-project.supabase.co"] }); const r = makePagesArtifact(d, join(tmp, "k3-out"), { requireCsp: true });
+  ok("17 CSP 放行了别的 Supabase 项目：自检失败", r.problems.some((p) => /other-project/.test(p)), r.problems.join(" | ")); }
+{ const d = withCsp("k4", { connect: ["https://*.supabase.co"] }); const r = makePagesArtifact(d, join(tmp, "k4-out"), { requireCsp: true });
+  ok("18 CSP 里有通配符：自检失败", r.problems.some((p) => /通配符/.test(p)), r.problems.join(" | ")); }
+{ const d = fake("k5"); const r = makePagesArtifact(d, join(tmp, "k5-out"), { requireCsp: true });
+  ok("19 要求有 CSP 而发布内容里没有：自检失败", r.problems.some((p) => /CSP meta 应当恰好 1 条/.test(p)), r.problems.join(" | ")); }
+{ const f = withCsp("k6f", { connect: [PROD] }), t = withCsp("k6t", { connect: [PROD], testOrigin: true });
+  const r = makePagesArtifact(f, join(tmp, "k6-out"), { requireCsp: true, testDist: t });
+  ok("20 与测试专用构建对照：只差 CSP 里的测试域 → 通过", r.problems.length === 0, r.problems.join(" | ")); }
+{ const f = withCsp("k7f", { connect: [PROD] }), t = withCsp("k7t", { connect: [PROD], testOrigin: true }); writeFileSync(join(t, "assets/main-A.js"), "console.log('different')");
+  const r = makePagesArtifact(f, join(tmp, "k7-out"), { requireCsp: true, testDist: t });
+  ok("21 对照时 JS 内容不同：失败（说明测的不是发的）", r.problems.some((p) => /assets\/main-A\.js 内容不同/.test(p)), r.problems.join(" | ")); }
+{ const f = withCsp("k8f", { connect: [PROD] }), t = withCsp("k8t", { connect: [PROD], testOrigin: true }); put(t, "assets/extra.js", "x");
+  const r = makePagesArtifact(f, join(tmp, "k8-out"), { requireCsp: true, testDist: t });
+  ok("22 对照时测试构建多出文件：失败", r.problems.some((p) => /测试专用构建里有、正式构建里没有的文件：assets\/extra\.js/.test(p)), r.problems.join(" | ")); }
+{ const f = withCsp("k9f", { connect: [PROD] }), t = withCsp("k9t", { connect: [PROD, "https://x.supabase.co"], testOrigin: true });
+  const r = makePagesArtifact(f, join(tmp, "k9-out"), { requireCsp: true, testDist: t });
+  ok("23 对照时 CSP 除测试域外还有别的差异：失败", r.problems.some((p) => /index\.html 内容不同/.test(p)), r.problems.join(" | ")); }
 rmSync(tmp, { recursive: true, force: true });
 console.log(fail ? `\n${fail} 项失败` : "\n全部通过"); process.exit(fail ? 1 : 0);

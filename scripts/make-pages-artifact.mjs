@@ -14,6 +14,8 @@
 import { readFileSync, readdirSync, statSync, mkdirSync, copyFileSync, rmSync, existsSync } from "node:fs";
 import { join, relative, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inlineScriptHashes, TEST_CLOUD_ORIGIN } from "./vite-csp-plugin.mjs";
+import { PROD_HOST } from "../src/cloud-config.js";
 
 export const TEST_ONLY_FILES = ["access-test.html", "access-test-config.js", "lab.html"];
 
@@ -43,7 +45,7 @@ function reachableAssets(distDir, all, roots) {
   return seen;
 }
 
-export function makePagesArtifact(distDir, outDir) {
+export function makePagesArtifact(distDir, outDir, { testDist = null, requireCsp = false } = {}) {
   const all = walk(distDir);
   const pre = new Set(precacheList(distDir).map((u) => (u === "" ? "index.html" : u)));
   const formalRoots = all.filter((f) => !f.startsWith("assets/") && !TEST_ONLY_FILES.includes(f));
@@ -79,13 +81,43 @@ export function makePagesArtifact(distDir, outDir) {
       if (target && !keptSet.has(target) && !/\/$/.test(m[1]) && !all.includes(target + "/index.html")) problems.push(`${f} 引用的 ${m[1]} 不在发布目录里`);
     }
   }
+  // ---- 正式 CSP 检查（K-CSP）：发布内容里的策略不得带测试域、其他项目或通配放行 ----
+  const outIndex = keptSet.has("index.html") ? readFileSync(join(outDir, "index.html"), "utf8") : "";
+  const metas = [...outIndex.matchAll(/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/g)].map((m) => m[1]);
+  if (requireCsp && metas.length !== 1) problems.push(`发布目录 index.html 的 CSP meta 应当恰好 1 条，实际 ${metas.length} 条`);
+  if (metas.length === 1) {
+    const dir = (name) => (metas[0].split(";").map((x) => x.trim()).find((x) => x.startsWith(name + " ")) || "");
+    const connect = dir("connect-src").split(/\s+/).slice(1), script = dir("script-src");
+    const allowed = new Set(["'self'", `https://${PROD_HOST}`]);
+    for (const c of connect) if (!allowed.has(c)) problems.push(`正式 CSP 的 connect-src 里有不该有的来源：${c}`);
+    if (!connect.includes("'self'")) problems.push("正式 CSP 的 connect-src 缺少 'self'");
+    if (metas[0].includes("fake.supabase.test") || metas[0].includes(TEST_CLOUD_ORIGIN)) problems.push("正式 CSP 里出现了测试域 fake.supabase.test");
+    if (/\*/.test(metas[0])) problems.push("正式 CSP 里出现了通配符 *");
+    if (/'unsafe-inline'|'unsafe-eval'/.test(script)) problems.push("正式 CSP 的 script-src 含 'unsafe-inline' / 'unsafe-eval'");
+    for (const h of inlineScriptHashes(outIndex)) if (!script.includes(h)) problems.push(`index.html 的内联脚本哈希 ${h} 不在 script-src 里`);
+  }
+  // ---- 与测试专用构建对照：除了 CSP 里的测试域，两份产物必须逐字节相同（证明测的就是发的）----
+  if (testDist) {
+    const tAll = walk(testDist), fAll = new Set(all);
+    for (const f of tAll) if (!fAll.has(f)) problems.push(`测试专用构建里有、正式构建里没有的文件：${f}`);
+    for (const f of all) {
+      if (!tAll.includes(f)) { problems.push(`正式构建里有、测试专用构建里没有的文件：${f}`); continue; }
+      const a = readFileSync(join(distDir, f)), b = readFileSync(join(testDist, f));
+      if (a.equals(b)) continue;
+      if (f === "index.html" && b.toString("utf8").replace(` ${TEST_CLOUD_ORIGIN}`, "") === a.toString("utf8")) continue;
+      problems.push(`正式构建与测试专用构建的 ${f} 内容不同（只允许 index.html 的 CSP 少一个测试域）`);
+    }
+  }
   return { dropped: [...drop].sort(), kept: kept.length, problems };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const dist = resolve(process.argv[2] || "dist"), out = resolve(process.argv[3] || "dist-pages");
-  if (!existsSync(dist)) { console.error("找不到 " + dist + "，先运行 npm run build"); process.exit(2); }
-  const r = makePagesArtifact(dist, out);
+  const args = process.argv.slice(2), ti = args.indexOf("--test-build");
+  const testDist = ti >= 0 ? resolve(args.splice(ti, 2)[1]) : null;
+  const dist = resolve(args[0] || "dist"), out = resolve(args[1] || "dist-pages");
+  if (!existsSync(dist)) { console.error("找不到 " + dist + "，先运行 npm run build:ci"); process.exit(2); }
+  console.log(`[发布内容] 正式构建目录 ${dist}｜测试专用构建目录 ${testDist || "（未提供，跳过对照）"}｜源码提交 ${process.env.GITHUB_SHA || "（本地）"}`);
+  const r = makePagesArtifact(dist, out, { testDist, requireCsp: true });
   console.log(`发布目录 ${out}：保留 ${r.kept} 个文件；去掉 ${r.dropped.length} 个测试专用文件：\n  ` + r.dropped.join("\n  "));
   if (r.problems.length) { console.error("\n自检失败：\n  " + r.problems.join("\n  ")); process.exit(1); }
   console.log("自检通过：无测试页、预缓存清单完整、没有悬空引用。");

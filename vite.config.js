@@ -8,7 +8,10 @@ import { checkPreviewCloud, resolveSourceSha } from "./scripts/preview-cloud-che
 // 两个页面：index.html 是正式的学习应用；lab.html 是第 1 步的技术验证页（保留做回归测试）。
 // 构建目标 es2020：让应用自己的脚本能在较旧的 Safari / 微信内置浏览器里解析（这只是语法层面的兼容改善；Pyodide 是预先编译好的，单独处理）。
 // 构建时间同时是应用版本号和离线缓存版本号：显示在“我的”页，方便确认手机上打开的是不是最新版本。
-const BUILD = new Date().toISOString();
+// BUILD_TIME 只给 CI 用：同一次 CI 里“测试专用构建”和“正式构建”用同一个时间，两份产物才会除了测试域之外逐字节相同（scripts/build-ci.mjs 会核对）。
+const BUILD = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(process.env.BUILD_TIME || "") ? process.env.BUILD_TIME : new Date().toISOString();
+// 测试专用构建：只能由构建时的环境变量显式开启（不是页面参数、不是运行时开关）；正式构建默认不带测试域
+const CSP_TEST_ORIGIN = process.env.CSP_TEST_ORIGIN === "1";
 // 测试入口构建（PREVIEW_ID=pr11 之类）：本地存储键加 "<id>:" 前缀、离线缓存前缀 "<id>-suipian-"。测试入口和正式站同在 github.io 域名下，不隔离的话会读到/清掉正式版的进度和缓存。正式构建不设这个变量，行为不变。
 const PREVIEW_ID = (process.env.PREVIEW_ID || "").replace(/[^a-z0-9-]/gi, ""); // 允许连字符（PREVIEW_ID=login-sync → 键前缀 login-sync:）
 // 测试入口的云端：只来自构建时的环境变量（独立的测试 Supabase 项目），不设就没有云端；正式构建不读这两个变量。
@@ -18,7 +21,7 @@ const gitSha = () => { try { const sha = execSync("git rev-parse HEAD", { stdio:
 const SOURCE_SHA = resolveSourceSha(process.env, gitSha);
 const CLOUD_CHECK = checkPreviewCloud(process.env);
 if (PREVIEW_ID && process.env.REQUIRE_TEST_CLOUD === "1" && !/^[0-9a-f]{40}$/.test(SOURCE_SHA)) CLOUD_CHECK.errors.push("严格模式需要完整的 40 位源码提交号（设置 SOURCE_SHA 或在干净的 git 工作区构建），现在是：" + SOURCE_SHA);
-console.log(`[构建] ${PREVIEW_ID ? "测试入口 " + PREVIEW_ID : "正式构建"} | 云端：${CLOUD_CHECK.info.cloud} | 源码提交：${SOURCE_SHA}`);
+console.log(`[构建] ${PREVIEW_ID ? "测试入口 " + PREVIEW_ID : CSP_TEST_ORIGIN ? "测试专用构建（CSP 含测试域，不得发布）" : "正式构建"} | 云端：${CLOUD_CHECK.info.cloud} | 源码提交：${SOURCE_SHA}`);
 for (const n of CLOUD_CHECK.notes) console.log("[构建] " + n);
 if (CLOUD_CHECK.errors.length) throw new Error("测试入口云配置校验失败，构建已中止：\n  - " + CLOUD_CHECK.errors.join("\n  - "));
 // CSP 的 connect-src 只放行这一份构建实际连接的云项目：正式构建 = 正式项目；测试入口 = 构建时给的测试项目（指向正式的已在上面被拒绝）；没给 = 不放行。
@@ -30,6 +33,6 @@ export default defineConfig({
     rollupOptions: { input: { main: "index.html", lab: "lab.html" } },
   },
   worker: { format: "es" },
-  plugins: [cspPlugin({ cloudUrl: CSP_CLOUD_URL }), swPlugin({ version: BUILD, prefix: PREVIEW_ID ? `${PREVIEW_ID}-suipian-` : "suipian-" })],
+  plugins: [cspPlugin({ cloudUrl: CSP_CLOUD_URL, testOrigin: CSP_TEST_ORIGIN }), swPlugin({ version: BUILD, prefix: PREVIEW_ID ? `${PREVIEW_ID}-suipian-` : "suipian-" })],
   define: { __SOURCE_SHA__: JSON.stringify(SOURCE_SHA), __BUILD__: JSON.stringify(BUILD), __PREVIEW_ID__: JSON.stringify(PREVIEW_ID), __TEST_CLOUD__: JSON.stringify(TEST_CLOUD) },
 });
