@@ -5,8 +5,9 @@ globalThis.localStorage = {
   setItem: (k, v) => { if (beforeSet) { const f = beforeSet; beforeSet = null; f(); } if (failWrite) throw new Error("quota"); mem[k] = String(v); },
   removeItem: (k) => { delete mem[k]; }, key: (i) => Object.keys(mem)[i] ?? null, get length() { return Object.keys(mem).length; },
 };
-const { loadState, saveState, addXp, addRun, compactLedgers, _asTab, _auto } = await import("../src/storage.js");
+const { loadState, saveState, addXp, addRun, compactLedgers: _compact, _asTab, _auto, AUTO_COMPACT } = await import("../src/storage.js");
 let fail = 0; const ok = (n, c, d = "") => { if (!c) fail++; console.log((c ? "✅ " : "❌ ") + n + (c ? "" : "  — " + d)); };
+const compactLedgers = (o = {}) => _compact({ allowDelete: true, ...o }); // 逻辑测试显式开启删除；产品默认关闭
 const DAY = 24 * 3600 * 1000, realNow = Date.now.bind(Date);
 const reset = () => { _auto.on = false; for (const k of Object.keys(mem)) delete mem[k]; beforeSet = null; failRead = failWrite = false; Date.now = realNow; };
 let n = 0; const page = () => _asTab(loadState().state, "p" + ++n);
@@ -62,17 +63,10 @@ function oldPages(count, daysAgo, startAt = 0) {
 { reset(); oldPages(30, 10); const other = JSON.stringify({ v: 4, epoch: "别代", entries: { z: { xp: 5, runs: 1, firstXp: {}, done: {}, doneOn: {}, lastDay: null, streak: 0, meta: { t: realNow() - 20 * DAY } } } });
   mem["suipian.v4.tab.old1"] = other; compactLedgers(); ok("7 别的代数的账本原样保留", mem["suipian.v4.tab.old1"] === other); }
 
-// 8 loadState 自动触发：键多时打开页面就压缩，进度不变
-{ reset(); oldPages(40, 10); const before = seen(), k0 = tabKeys().length; _auto.on = true; loadState(); loadState(); _auto.on = false;
-  ok("8 打开页面时自动压缩，视图不变", tabKeys().length < k0 && seen() === before, `${k0} → ${tabKeys().length}`); }
+// 8 默认关闭：打开页面不压缩、不写汇总键、不删任何键；直接调用默认也不删（allowDelete 默认 false）
+{ reset(); oldPages(40, 10); const before = seen(), snap = JSON.stringify(mem); _auto.on = true; loadState(); loadState(); _auto.on = false;
+  const r = _compact();
+  ok("8 默认关闭：自动压缩常量为 false", AUTO_COMPACT === false);
+  ok("8 打开页面和默认调用都不改存储（一个键都不增不减、内容不变）", JSON.stringify(mem) === snap && /删除已关闭/.test(r.skipped || ""), JSON.stringify(r)); }
 
-// 9 长期使用模拟：每天 3 次打开 × 365 天，键数保持有界，视图正确
-{ reset(); _auto.on = true; let xp = 0, runs = 0;
-  for (let day = 365; day > 0; day--) for (let o = 0; o < 3; o++) {
-    Date.now = () => realNow() - day * DAY + o * 1000; const p = page();
-    if (o === 0) { finish(p, "U1L" + ((day % 8) + 1), 50); } p.hearts = 4; saveState(p);
-  }
-  Date.now = realNow; const s = JSON.parse(seen());
-  ok("9 一年后键数有界（不再线性增长）", tabKeys().length < 80, String(tabKeys().length));
-  ok("9 一年后进度正确：8 关 + 每关首次 50 XP 只算一次", s.done.length === 8 && s.runs === 365, JSON.stringify(s)); }
 process.exit(fail ? 1 : 0);

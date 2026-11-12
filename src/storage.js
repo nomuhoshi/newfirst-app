@@ -261,7 +261,7 @@ export function loadState() {
   const r = stateFromView(S, epoch, b.base);
   if (!r) return { state: freshState(), notice: "读取本机学习记录时出错，这次先不保存，请刷新重试（记录没有被改动）。", readFailed: true };
   stashLegacyIfUnreadable(S);
-  if (!b.unsaved && _auto.on) compactLedgers(); // 键很多时顺手压缩；失败不影响加载
+  if (!b.unsaved && _auto.on && AUTO_COMPACT) compactLedgers(); // 自动压缩目前整体关闭（见 compactLedgers 说明）
   return { state: r.state, notice: b.notice };
 }
 
@@ -270,9 +270,13 @@ export function loadState() {
 // 为什么安全：条目按“页面 id”合并（同 id 取最大、关卡取并集），同一个条目出现在汇总键和原键里两份，合并结果和只有一份完全一样（幂等），
 //   所以“先写汇总键并读回确认、再删原键”的任何中间状态，任何页面读到的视图都一样；多个页面同时压缩时各写各的汇总键（不共用可变记录），
 //   删除前再读一次原键，内容变了（页面又写过）就不删。只处理 3 天以上没动过的条目、不碰自己的键、不碰别的代数；任何读取异常或读不懂的账本一律放弃本次压缩。
+export const AUTO_COMPACT = false; // 自动压缩总开关：产品官复核未通过前保持关闭
 export const _auto = { on: true }; // 仅测试用：关掉加载时的自动压缩
 export const COMPACT_MIN_KEYS = 24, COMPACT_MIN_AGE_MS = 3 * 24 * 3600 * 1000;
-export function compactLedgers({ now = Date.now(), minKeys = COMPACT_MIN_KEYS, minAgeMs = COMPACT_MIN_AGE_MS } = {}) {
+// 【2026-11-12 10:09 产品官复核未通过】删除前再读一次原键、再删除，两步之间另一页仍可能保存新数据；“3 天没动过”也不能证明页面已关闭。
+//   所以默认关闭压缩：加载时不再自动压缩（不写汇总键、不删原键），allowDelete 默认 false。要恢复删除，必须是“保存与压缩共同遵守同一把锁”
+//   （例如 Web Locks 同时包住保存和压缩）或等效的可靠机制；只给压缩器加锁不足以保护保存。已经写出的汇总键保持原样（读取时和原来一样合并）。
+export function compactLedgers({ now = Date.now(), minKeys = COMPACT_MIN_KEYS, minAgeMs = COMPACT_MIN_AGE_MS, allowDelete = false } = {}) {
   const S = LS();
   try {
     const epoch = getEpoch(S); if (epoch === null) return { skipped: "读取失败" };
@@ -293,6 +297,7 @@ export function compactLedgers({ now = Date.now(), minKeys = COMPACT_MIN_KEYS, m
     if (picked.length < 2) return { skipped: "可压缩的不够" };
     const pool = {};
     for (const p of picked) for (const [id, e] of Object.entries(p.rec.entries)) joinEntry(pool[id] || (pool[id] = emptyEntry()), e);
+    if (!allowDelete) return { skipped: "删除已关闭" }; // 不删原键，就不写汇总键（只会多出重复的键）
     const poolKey = K_TAB + "c" + rnd() + rnd(), raw = JSON.stringify({ v: 4, epoch, entries: pool });
     if (!wr(S, poolKey, raw)) return { skipped: "写入失败" };
     const back = rd(S, poolKey); if (!back.ok || back.v !== raw) { rm(S, poolKey); return { skipped: "读回不一致" }; }
