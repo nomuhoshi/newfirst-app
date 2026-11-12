@@ -171,6 +171,8 @@ try {
   await page.evaluate(() => { Storage.prototype.getItem = window.__realGet; });
 
   // 保存失败（存储写入报错）：导入不能报“成功”
+  // 方案 B（无变化不写）之后：本机存储里已经有同样的进度时，导入是“已经存下了”，不会再写。要测写入失败，必须让存储里确实没有这份进度——先用应用自己的清除（测试用的临时档案）。
+  await page.evaluate(() => window.__app.clearProgress());
   await page.evaluate(() => { window.__realSet = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith("suipian.v4.tab.")) throw new DOMException("full", "QuotaExceededError"); return window.__realSet.call(this, k, v); }; });
   await page.evaluate(() => { const st = window.__app.getState(); st.xp = 0; st.done = {}; });
   await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill(codeText); await page.locator("[data-code-read]").tap();
