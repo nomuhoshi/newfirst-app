@@ -42,7 +42,7 @@ try {
     check("引导里有“怎么添加”和“不再提示”，不是弹窗", (await page.locator("[data-a2hs-how]").count()) === 1 && (await page.locator("[data-a2hs-close]").count()) === 1 && (await page.locator(".overlay").count()) === 0);
     check("步骤默认收起，点“怎么添加”展开", (await page.locator("[data-a2hs-steps]").isHidden()) && (await page.locator("[data-a2hs-how]").tap(), await page.locator("[data-a2hs-steps]").isVisible()));
     check("步骤写明分享按钮、添加到主屏幕", /分享/.test(await page.locator("[data-a2hs-steps]").innerText()) && /添加到主屏幕/.test(await page.locator("[data-a2hs-steps]").innerText()));
-    check("引导文字写明：先备份进度码、安装不会自动搬进度、打开后恢复", /先备份进度码/.test(await page.locator("[data-a2hs]").innerText()) && /不会自动搬进度/.test(await page.locator("[data-a2hs-steps]").innerText()) && /粘贴进度码/.test(await page.locator("[data-a2hs-steps]").innerText()));
+    check("引导文字写明：先备份进度码、安装不会自动搬进度、打开后恢复", /请先复制进度码/.test(await page.locator("[data-a2hs]").innerText()) && /不会自动搬进度/.test(await page.locator("[data-a2hs-steps]").innerText()) && /粘贴进度码/.test(await page.locator("[data-a2hs-steps]").innerText()));
     await page.locator("[data-a2hs-code]").tap();
     await page.waitForFunction(() => document.querySelector("[data-a2hs-msg]")?.textContent.length > 0);
     const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));

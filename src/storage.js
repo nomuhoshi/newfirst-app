@@ -368,6 +368,20 @@ export function mergeStored(state) {
   } catch { return false; }
 }
 export const syncFromStorage = mergeStored;
+
+// 备份用的完整快照：从本机存储重新读出所有账本合并。任何一步读取失败都返回 { ok:false }，备份必须拒绝，不能退回旧内存继续报成功。
+export function readSnapshot(state) {
+  const S = LS();
+  try {
+    const epoch = getEpoch(S); if (epoch === null) return { ok: false };
+    const b = ensureBase(S, epoch); if (!b.ok || b.unsaved) return { ok: false };
+    const L = LEDGERS.get(state);
+    if (L && L.epoch !== epoch) return { ok: false }; // 别处清除过：先让页面采用新一代，再备份
+    const v = computeView(S, epoch, b.base, L || null);
+    if (!v) return { ok: false };
+    return { ok: true, snap: { ...state, done: { ...v.done }, doneOn: { ...v.doneOn }, xp: v.xp, lessonsCompleted: v.runs, streak: v.streak, lastDay: v.lastDay } };
+  } catch { return { ok: false }; }
+}
 // 加 XP。first：这是该关“首次通关途中”拿到的 XP（记在 firstXp[关卡]，合并取最大）；否则（复习、练习）记在本页面名下
 export function addXp(state, amount, lessonId = null, first = false) {
   const S = LS();

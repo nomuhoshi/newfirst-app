@@ -31,7 +31,7 @@ import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
-  loadState, saveState, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
+  loadState, saveState, readSnapshot, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
 } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
@@ -41,7 +41,7 @@ import { createPreviewInfo } from "./preview-info.js";
 import { cloudTarget } from "./cloud-config.js";
 import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize, encodeCode, decodeCode } from "./progress-file.js";
-import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad } from "./storage-health.js";
+import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad, ensureBackupBase } from "./storage-health.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
@@ -273,6 +273,7 @@ function persist() {
     return !!r.ok;
   }
   if (!saveState(state)) { showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。"); return false; }
+  ensureBackupBase(Object.keys(state.done).length); // 备份提醒的起点：首次成功保存有效进度
   return true;
 }
 function clearProgress() { const prefs = state.prefs; const f = clearState(); if (f.clearFailed) { showToast("清除失败（存储不可用），学习记录没有清除。"); return false; } state = f; state.prefs = prefs; state.onboarded = true; persist(); return true; }
@@ -758,12 +759,21 @@ function keyLab() {
 
 // ---------- 备份学习记录：导出 / 导入进度文件 ----------
 // 导出进度文件（“我的”里的按钮和地图页的 14 天提醒共用）。返回 true = 已生成并请求下载（不代表用户已保存）
-function exportProgressFile() {
+// 备份用的状态：游客从本机存储重新读取完整快照；任何读取失败都返回 null（拒绝备份，不退回旧内存）。已登录时以当前内存记录为准（云端状态另有同步）
+const BACKUP_REFUSED = "没能完整读取本机学习记录，所以没有生成备份（记录没有被改动）。请刷新页面后再试。";
+function snapshotForBackup() {
+  if (sync && sync.account()) { syncFromStorage(state); return state; }
+  const r = readSnapshot(state);
+  return r.ok ? r.snap : null;
+}
+function exportProgressFile({ diagnostic = false } = {}) {
   try {
-    syncFromStorage(state); const data = buildExport(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: listUnreadable() });
+    const snap = snapshotForBackup(); if (!snap) return false;
+    // 普通备份只带进度字段；读不懂而被留下的旧记录原文只进明确的“诊断文件”，不混进普通备份
+    const data = buildExport(snap, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "", unreadable: diagnostic ? listUnreadable() : [] });
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = h("a", { href: url, download: exportFileName(new Date()), hidden: "" });
+    const a = h("a", { href: url, download: diagnostic ? exportFileName(new Date()).replace("progress", "diagnostic") : exportFileName(new Date()), hidden: "" });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     return true; // 只表示“已生成并请求下载”，网页无法确认文件真的保存了：14 天计时要等用户点“我已保存好”才重置
@@ -772,7 +782,7 @@ function exportProgressFile() {
 // 完成第 2 关后，iPhone Safari（非主屏幕 App）里提示一次“添加到主屏幕”：主屏幕 App 实测记录保留。可展开步骤、可“不再提示”，主屏幕 App 里永不显示，不弹窗、不打断答题
 const A2HS_SNOOZE = "suipian.meta.a2hsSnooze";
 async function copyProgressCode() {
-  try { syncFromStorage(state); await navigator.clipboard.writeText(encodeCode(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" })); return true; } catch { return false; }
+  try { const snap = snapshotForBackup(); if (!snap) return false; await navigator.clipboard.writeText(encodeCode(snap, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" })); return true; } catch { return false; }
 }
 function a2hsPrompt() {
   if (!isIOS || standalone || state.installTipClosed || Object.keys(state.done).length < 2) return null;
@@ -784,7 +794,7 @@ function a2hsPrompt() {
     h("li", { text: "点 Safari 的分享按钮（方框加向上箭头）→「添加到主屏幕」→「添加」" }),
     h("li", { text: "从主屏幕图标打开碎片编程，进入“我的 → 备份学习记录 → 粘贴进度码”，粘贴后确认导入，进度就带过去了" }));
   const box = h("div", { class: "notice a2hs-prompt", role: "note", "data-a2hs": "" },
-    h("p", { text: "把碎片编程添加到主屏幕：全屏学习，记录也更稳（在 Safari 里长期不打开，网站数据可能被清理）。主屏幕 App 的记录和 Safari 是分开保存的，添加之前请先备份进度码，打开后再恢复。" }),
+    h("p", { text: "添加到主屏幕，打开更方便。请先复制进度码；从主屏幕图标打开后，在“我的 → 备份学习记录”粘贴恢复。安装后请核对进度，仍建议保留备份。" }),
     steps, msg,
     h("div", { class: "acct-row" },
       button("复制进度码", async () => { msg.textContent = (await copyProgressCode()) ? "进度码已复制，请先粘贴到备忘录或发给自己保存；再按步骤添加到主屏幕。" : "这个浏览器不让自动复制：请到“我的 → 备份学习记录 → 复制进度码”手动复制。"; }, "btn3d", { "data-a2hs-code": "" }),
@@ -803,12 +813,12 @@ function exportReminder() {
     h("p", { text: "隔了一阵没备份学习记录了。记录只存在这台设备的浏览器里，导出一份进度文件更保险。" }),
     h("div", { class: "acct-row" },
       button("导出进度", () => {
-        if (!exportProgressFile()) { showToast("导出失败，请到“我的”里再试。"); return; }
+        if (!exportProgressFile()) { showToast("没能生成备份（没有完整读到本机记录），记录没有被改动，请刷新后再试。"); return; }
         // 下载只是“请求”，网页确认不了文件真的在你手里：让用户自己确认后才重新计时
         box.replaceChildren(
           h("p", { "data-export-confirm": "", text: "已请求下载。请到“文件”App → 下载里确认有 suipian-progress 开头的文件，确认后点下面的按钮；没找到就再点一次“导出进度”。" }),
           h("div", { class: "acct-row" },
-            button("我已保存好", () => { if (!markExported()) showToast("这个浏览器记不住导出时间，下次打开可能还会提醒。"); box.remove(); showToast("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved": "" }),
+            button("我已保存好", () => { const okT = markExported(); box.remove(); showToast(okT ? "好的，14 天后再提醒你。" : "提醒时间未更新：这个浏览器记不住确认，下次打开可能还会提醒。"); }, "btn3d", { "data-export-saved": "" }),
             button("再导出一次", () => { exportProgressFile(); }, "btn3d ghost", { "data-export-again": "" }),
           ));
       }, "btn3d", { "data-export-now": "" }),
@@ -829,16 +839,17 @@ function backupCard() {
     return true;
   };
   const doExport = () => {
-    if (exportProgressFile()) {
+    if (!exportProgressFile()) { say(BACKUP_REFUSED, true); return; }
+    {
       say("已请求下载。请到浏览器的下载位置（iPhone：“文件”App → 下载）确认文件在，并自己保管好。");
-      if (!signedIn) panel.replaceChildren(h("div", { class: "confirm" }, h("p", { text: "确认文件已经保存好了吗？确认后，14 天备份提醒会重新计时。" }), button("我已保存好", () => { markExported(); panel.replaceChildren(); say("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved-me": "" })));
+      if (!signedIn) panel.replaceChildren(h("div", { class: "confirm" }, h("p", { text: "确认文件已经保存好了吗？确认后，14 天备份提醒会重新计时。" }), button("我已保存好", () => { const okT = markExported(); panel.replaceChildren(); say(okT ? "好的，14 天后再提醒你。" : "提醒时间未更新：这个浏览器记不住确认。", !okT); }, "btn3d", { "data-export-saved-me": "" })));
     }
-    else say("导出失败，请换个浏览器再试。", true);
   };
   const file = h("input", { type: "file", accept: "application/json,.json", hidden: "", "data-import-file": "" });
   // 读到一段进度文本（文件或进度码）后：校验 → 给确认 → 确认后才合并。文件和进度码走同一条路
+  const knownIds = () => new Set(Object.values(UNITS).flatMap((u) => u.lessons.map((l) => l.id)));
   const offerImport = (text) => {
-    const r = parseImport(text);
+    const r = parseImport(text, { knownIds: knownIds() });
     if (!r.ok) { say(r.error, true); return; }
     const sm = summarize(r.state);
     say("");
@@ -847,7 +858,12 @@ function backupCard() {
       button("确认导入", () => {
         if (blockedByLogin()) return;
         syncFromStorage(state); state = mergeImport(state, r.state); const saved = persist(); renderMe();
-        if (saved) showToast("进度已导入。"); else showToast("导入的进度现在只显示在这个页面里，还没有保存到本机——请先不要关闭页面（可能是无痕模式或存储已满）。");
+        if (saved) { showToast("进度已导入。"); return; }
+        // 没落盘：不报成功，原存档没有被改动；给重试
+        const p2 = document.querySelector(".backup-panel"), m2 = document.querySelector("[data-backup-msg]");
+        if (m2) { m2.textContent = "导入的进度现在只显示在这个页面里，还没有保存到本机——请先不要关闭页面（可能是无痕模式或存储已满）。原有的本机记录没有被改动。"; m2.classList.add("bad"); }
+        if (p2) p2.replaceChildren(button("重试保存", () => { if (persist()) { p2.replaceChildren(); if (m2) { m2.textContent = "已保存到本机。"; m2.classList.remove("bad"); } showToast("进度已导入。"); } }, "btn3d", { "data-import-retry": "" }));
+        showToast("导入的进度现在只显示在这个页面里，还没有保存到本机——请先不要关闭页面。");
       }, "btn3d primary"),
       button("取消", () => { panel.replaceChildren(); }, "btn"),
     ));
@@ -863,7 +879,7 @@ function backupCard() {
   // 进度码：一段文字，复制后到别的标签页 / 主屏幕 App 粘贴即可恢复，不用经过“文件”App
   const doCopyCode = async () => {
     let code = "";
-    try { syncFromStorage(state); code = encodeCode(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" }); } catch { say("生成进度码失败，请改用“导出进度文件”。", true); return; }
+    try { const snap = snapshotForBackup(); if (!snap) { say(BACKUP_REFUSED, true); return; } code = encodeCode(snap, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" }); } catch { say("生成进度码失败，请改用“导出进度文件”。", true); return; }
     try {
       await navigator.clipboard.writeText(code);
       say("进度码已复制。到另一个标签页或主屏幕 App 的“我的 → 备份学习记录 → 粘贴进度码”里粘贴即可。");
@@ -890,6 +906,7 @@ function backupCard() {
       button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
       signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
     ),
+    listUnreadable().length ? h("p", { class: "small muted" }, "本机留着一份读不懂的旧记录。普通备份不含它；需要排查时才点：", button("导出诊断文件", () => { if (!exportProgressFile({ diagnostic: true })) say(BACKUP_REFUSED, true); else say("诊断文件已请求下载（含旧记录原文，只发给开发者）。"); }, "link small", { "data-export-diagnostic": "" })) : null,
     h("div", { class: "acct-row" },
       button("复制进度码", doCopyCode, "btn3d", { "data-code-copy": "" }),
       signedIn ? null : button("粘贴进度码", showPaste, "btn3d", { "data-code-paste": "" }),
@@ -1553,5 +1570,5 @@ window.addEventListener("online", () => {
 });
 // 先把界面画出来，再在后台加载 Python：Python 出任何问题都不能让页面一片空白
 if (state.onboarded) renderPath(); else renderOnboarding();
-firstSeenAt(); recordLoad(); ensurePersist(); // 记下这份存储的首次使用时间；申请持久存储（失败不影响使用）
+firstSeenAt(); recordLoad(); ensureBackupBase(Object.keys(state.done).length); ensurePersist(); // 记下这份存储的首次使用时间；申请持久存储（失败不影响使用）
 try { runner.boot(); } catch { /* 失败时 runner 已经记录为 loadError，“运行结果”面板会如实提示 */ }

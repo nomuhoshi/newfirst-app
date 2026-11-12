@@ -59,6 +59,23 @@ const base = JSON.parse(FIX);
   check("进度码：粘贴时夹着换行和空格也能读", decodeCode(chopped).ok && parseImport(decodeCode(chopped).text).ok);
   check("进度码：前面带别的文字（聊天软件常加前缀）也能读", decodeCode("我的进度码：" + code).ok);
   check("进度码：空 / 不是进度码 / 被截断都拒绝或读不出进度", !decodeCode("").ok && !decodeCode("hello").ok && (() => { const t = decodeCode(code.slice(0, 30)); return !t.ok || !parseImport(t.text).ok; })());
+  { // doneOn、未知关卡、旧码兼容
+    const withDates = { ...base, doneOn: { U1L1: "2026-11-01", U1L2: "2026-11-02", ZZ: "2026-11-03" } };
+    const q = parseImport(decodeCode(encodeCode(withDates)).text);
+    check("进度码携带并恢复逐关首次完成日期（只保留已完成关卡的）", q.ok && q.state.doneOn.U1L1 === "2026-11-01" && q.state.doneOn.U1L2 === "2026-11-02" && !("ZZ" in q.state.doneOn));
+    const m2 = mergeImport({ ...base, xp: 10, doneOn: { U1L1: "2026-11-05" } }, q.state);
+    check("合并：同一关取较早的有效日期", m2.doneOn.U1L1 === "2026-11-01" && m2.doneOn.U1L2 === "2026-11-02");
+    const mOld = mergeImport({ ...base, doneOn: { U1L1: "2026-11-05" } }, parseImport(decodeCode(encodeCode(base)).text).state);
+    check("旧备份没有日期：不编造日期，已有日期不变", mOld.doneOn.U1L1 === "2026-11-05");
+    const b = JSON.parse(decodeCode(encodeCode(withDates)).text); b.state.doneOn = { U1L1: "2026-13-40" };
+    check("非法完成日期：拒绝", !parseImport(JSON.stringify(b)).ok);
+    const known = new Set(Object.keys(base.done));
+    check("没有未知关卡：通过", parseImport(decodeCode(encodeCode(base)).text, { knownIds: known }).ok);
+    const unk = parseImport(decodeCode(encodeCode({ ...base, done: { ...base.done, U9L9: true } })).text, { knownIds: known });
+    check("未知关卡：不悄悄丢弃，明确提示版本不兼容", !unk.ok && /不认识的关卡/.test(unk.error) && /U9L9/.test(unk.error));
+    const old = encodeCode(base); const legacy = old.slice(0, old.lastIndexOf("."));
+    check("早期没有校验位的进度码仍可读取", decodeCode(legacy).ok && parseImport(decodeCode(legacy).text).ok);
+  }
   { // 字段白名单、校验和、真实日期
     const dirty = { ...base, email: "a@b.c", accessToken: "SECRET", diagnostics: "D", prefs: { sound: false }, hearts: 1, extra: { token: "X" } };
     const c2 = encodeCode(dirty), txt = decodeCode(c2).text, exp = buildExport(dirty);
@@ -66,7 +83,7 @@ const base = JSON.parse(FIX);
     check("白名单后进度仍完整", (() => { const q = parseImport(txt); return q.ok && q.state.xp === 190 && Object.keys(q.state.done).length === 8; })());
     const flip = (str, i) => str.slice(0, i) + (str[i] === "A" ? "B" : "A") + str.slice(i + 1);
     check("进度码改一个字符：校验不通过", !decodeCode(flip(c2, 20)).ok && /校验/.test(decodeCode(flip(c2, 20)).error));
-    check("进度码缺校验位（旧格式或被截断）：拒绝", !decodeCode(c2.slice(0, c2.lastIndexOf("."))).ok);
+    
     const bad = JSON.parse(txt); bad.state.lastDay = "2026-02-31";
     check("拒绝不存在的日期 2026-02-31", !parseImport(JSON.stringify(bad)).ok);
   }
@@ -96,7 +113,12 @@ try {
   const dir = mkdtempSync(join(tmpdir(), "sp-")); const saved = join(dir, dl.suggestedFilename()); await dl.saveAs(saved);
   const fileText = readFileSync(saved, "utf8"); const parsed = JSON.parse(fileText);
   check("导出：下载的是 suipian-progress-日期.json", /^suipian-progress-\d{4}-\d{2}-\d{2}\.json$/.test(dl.suggestedFilename()), dl.suggestedFilename());
-  check("导出：文件里的进度和手机里的一致，并带上旧坏记录", parsed.state.xp === 190 && Object.keys(parsed.state.done).length === 8 && parsed.unreadable.some((u) => u.raw === "{旧的坏记录"));
+  check("导出：文件里的进度和手机里的一致", parsed.state.xp === 190 && Object.keys(parsed.state.done).length === 8);
+  check("普通备份不含读不懂的旧记录原文", parsed.unreadable.length === 0 && !fileText.includes("旧的坏记录"));
+  check("本机有读不懂的旧记录时，另有明确的“导出诊断文件”", (await page.locator("[data-export-diagnostic]").count()) === 1);
+  const [dl2] = await Promise.all([page.waitForEvent("download"), page.locator("[data-export-diagnostic]").tap()]);
+  const dsaved = join(dir, dl2.suggestedFilename()); await dl2.saveAs(dsaved);
+  check("诊断文件含旧记录原文，文件名区别于普通备份", /diagnostic/.test(dl2.suggestedFilename()) && JSON.parse(readFileSync(dsaved, "utf8")).unreadable.some((u) => u.raw === "{旧的坏记录"));
   check("导出后提示去下载位置确认文件，并且不重置 14 天提醒", /已请求下载/.test(await page.locator("[data-backup-msg]").innerText()) && (await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport"))) === null);
 
   // 清掉进度（模拟清了浏览器数据）后导入
@@ -133,6 +155,13 @@ try {
   await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill("乱写的"); await page.locator("[data-code-read]").tap();
   check("粘贴错误的进度码：说明原因", /不是碎片编程的进度码/.test(await page.locator("[data-backup-msg]").innerText()));
 
+  // 读取不完整：备份必须拒绝
+  await page.evaluate(() => { window.__realGet = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { if (String(k).startsWith("suipian.v4.tab.")) throw new DOMException("denied", "SecurityError"); return window.__realGet.call(this, k); }; window.__clip0 = null; });
+  await page.evaluate(() => navigator.clipboard.writeText("原剪贴板内容"));
+  await page.locator("[data-code-copy]").tap(); await page.waitForTimeout(300);
+  check("账本读不全时：拒绝生成进度码，说明没有备份", /没有生成备份/.test(await page.locator("[data-backup-msg]").innerText()) && (await page.evaluate(() => navigator.clipboard.readText())) === "原剪贴板内容");
+  await page.evaluate(() => { Storage.prototype.getItem = window.__realGet; });
+
   // 保存失败（存储写入报错）：导入不能报“成功”
   await page.evaluate(() => { window.__realSet = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith("suipian.v4.tab.")) throw new DOMException("full", "QuotaExceededError"); return window.__realSet.call(this, k, v); }; });
   await page.evaluate(() => { const st = window.__app.getState(); st.xp = 0; st.done = {}; });
@@ -141,7 +170,10 @@ try {
   await page.waitForTimeout(300);
   const toastTxt = await page.locator(".toast").innerText();
   check("保存失败时导入不报“进度已导入”，提示还没保存、先别关页面", !/^进度已导入/.test(toastTxt) && /还没有保存/.test(toastTxt), toastTxt);
+  check("保存失败时给出“重试保存”", (await page.locator("[data-import-retry]").count()) === 1);
   await page.evaluate(() => { Storage.prototype.setItem = window.__realSet; });
+  await page.locator("[data-import-retry]").tap(); await page.waitForTimeout(300);
+  check("存储恢复后点重试：保存成功", /已保存到本机/.test(await page.locator("[data-backup-msg]").innerText()));
 
   // 坏文件：给出原因，不改记录
   const badPath = join(dir, "bad.json"); writeFileSync(badPath, '{"hello":1}');
