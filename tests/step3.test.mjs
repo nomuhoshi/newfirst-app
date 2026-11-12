@@ -187,8 +187,12 @@ try {
 
   // ===== 7. 退出关卡：状态处理 =====
   {
-    const pe = await ctx.newPage();
+    // 这一节只测“退出关卡”的状态，和前六组的离线／换版本无关：用全新的浏览器上下文，不继承前面留下的 Service Worker、缓存和本地存储
+    // （2026-11-13：main 在这一节的真实刷新处出现过一次 30 秒 load 超时，原因未确认；隔离是 GPT1 提出的最小修复，断言一条没放宽）
+    const ctx7 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+    const pe = await ctx7.newPage();
     const eerrs = []; pe.on("pageerror", (e) => eerrs.push(e.message));
+    const netFails = []; pe.on("requestfailed", (r) => netFails.push(`${r.url().replace(BASE, "/")} ${r.failure()?.errorText || ""}`));
     await pe.goto(BASE); await pe.waitForSelector(".statsbar, .onboard");
     await pe.evaluate(() => { window.__app.clearProgress(); const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, xp: 0, streak: 0, lastDay: null, lessonsCompleted: 0, done: {}, prefs: { ...s.prefs, sound: false } }); window.__app.setState(s); window.__app.persist(); window.__app.renderPath(); });
     const startL1 = async () => { await pe.locator('[data-lesson="U1L1"]').tap(); await pe.locator(".overlay .btn3d.primary").tap(); await pe.waitForSelector(".intro-title"); await pe.getByRole("button", { name: "继续", exact: true }).tap(); await pe.waitForSelector("[data-check]"); };
@@ -202,7 +206,9 @@ try {
     await pe.getByRole("button", { name: "退出", exact: true }).tap(); await pe.waitForSelector(".pathview");
     const after = await pe.evaluate(() => { const s = window.__app.getState(); return { xp: s.xp, hearts: s.hearts, done: s.done, lc: s.lessonsCompleted, streak: s.streak, run: window.__app.getRun() }; });
     check("退出关卡：已得 XP（+10）和已扣红心（-1）保留，关卡没有被记为完成，连续天数和完成次数不变", mid.xp === 10 && mid.hearts === 4 && after.xp === 10 && after.hearts === 4 && !after.done.U1L1 && after.lc === 0 && after.streak === 0 && after.run === null, JSON.stringify({ mid, after }));
-    await pe.reload(); await pe.waitForSelector(".statsbar");
+    // 仍然是真实刷新；不等完整 load 事件（Pyodide 等大文件不属于这条断言），改为等页面文档加载完成 + 应用就绪 + 地图出现
+    try { await pe.reload({ waitUntil: "domcontentloaded" }); await pe.waitForFunction(() => window.__app?.getState, null, { timeout: 15000 }); await pe.waitForSelector(".statsbar", { timeout: 15000 }); }
+    catch (e) { throw new Error(`${e.message.split("\n")[0]} | 页面错误：${eerrs.join(";") || "无"} | 失败请求：${netFails.join(";") || "无"} | SW 接管：${await pe.evaluate(() => !!navigator.serviceWorker?.controller).catch(() => "读取失败")}`); }
     check("退出关卡：刷新后 XP 和红心仍是退出时的值", (await pe.evaluate(() => { const s = window.__app.getState(); return s.xp === 10 && s.hearts === 4 && !s.done.U1L1; })));
     await startL1();
     const re = await pe.evaluate(() => { const r = window.__app.getRun(); return { q: r.queue.join(), mistakes: r.mistakes, correct: r.correct, xp: r.xp, first: window.__app.currentEx.prompt }; });
@@ -225,7 +231,7 @@ try {
     await pe.getByRole("button", { name: "退出本关" }).tap(); await pe.getByRole("button", { name: "退出", exact: true }).tap();
     await pe.waitForTimeout(700);
     check("退出关卡：点“检查”后立刻退出，XP 只加一次（+10），回到地图，没有脚本错误", (await pe.evaluate(() => window.__app.getState().xp)) === 10 && (await pe.locator(".pathview").count()) === 1 && eerrs.length === 0, eerrs.join("|"));
-    await pe.close();
+    await pe.close(); await ctx7.close();
   }
 } finally {
   await browser.close();
