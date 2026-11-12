@@ -1,33 +1,28 @@
 # 给接手这个项目的 AI（先读这个）
 
-更新：2026-11-10（分支 `release/v1-candidate`）。项目：「碎片编程」，免费的手机 PWA，用点选题和写代码题学 Python。正式站：https://nomuhoshi.github.io/newfirst-app/ 仓库：nomuhoshi/newfirst-app（公开）。
+更新：2026-11-12（`docs/00-latest-handoff.md` 是最新交接入口；本文件只讲稳定的东西）。项目：「碎片编程」，免费的手机 PWA，用点选题和写代码题学 Python。正式站：https://nomuhoshi.github.io/newfirst-app/ 仓库：nomuhoshi/newfirst-app（公开）。
 
 ## 先读（按顺序）
-1. `docs/40-release-v1-candidate.md` — **第一版发布候选的整合记录、CSP、隐私说明、正式 Supabase 后台核查表、清理清单、需要老大操作的事**
-2. `docs/14-known-issues.md` — 已知问题、平台限制、上线前 iPhone 验收清单和上线标准
-3. `spec/SPEC.md` — 产品规格和**决策记录表**（最后几行是最新决定）
-4. 账号 / 同步：`docs/15-account-sync-plan.md`（方案）、`docs/30-db3-integration-audit.md`（最终整合审查）、`docs/39-auth-mail-02-acceptance.md`（登录错误提示验收）
-5. `docs/38-smtp-resend-setup.md` — 正式发信（SMTP / Resend）待老大决定
+1. `docs/00-latest-handoff.md` — **最新交接入口：正式版 SHA、当前优先级、A–M 状态表在哪、开放 PR 怎么查、规则**
+2. `docs/50-product-officer-handoff.md` — 四方分工、A–M 修复计划与每项的 设计/开发/自动化/人工/部署 状态表（**以它为准**）
+3. `docs/57-fable-full-audit-2026-11-12.md`（审计与 A 的逐轮记录）、`docs/58-ledger-growth-measurement-and-design.md`（本机账本增长与方案 B）、`docs/56-ios-diagnosis-2026-11-12.md`（iOS 诊断）、`docs/49-open-items.md`、`docs/55-handoff-2100.md`
+4. `docs/14-known-issues.md`（已知问题与平台限制）、`spec/SPEC.md`（产品规格和决策记录表，最后几行是最新决定）
+5. 账号 / 同步（代码在仓库里，正式站云端未开通）：`docs/15-account-sync-plan.md`、`docs/30-db3-integration-audit.md`、`docs/40-release-v1-candidate.md`（含 CSP、隐私说明、正式 Supabase 后台核查表）
 
-## 现在的状态（2026-11-10）
-- **正式站（main）**：仍是 U1–U2 共 11 关，没有账号。main 之后的所有工作都还没上线。
-- **第一版发布候选 `release/v1-candidate`**（从 `fix/touch-targets @ a8d26c1` 开出，产品官拍板）：U1–U5、写代码题判题（真 Pyodide）、邮箱验证码登录、云端同步（多设备 XP 去重、游客进度安全合并、退出 / 删号保护）、触控尺寸 ≥ 44、代码题模块按需加载、PWA 图标、代码块保留缩进、内容安全策略（CSP）、隐私说明页。整合记录见 docs/40。
-- **不进第一版**：U6（PR #51，唯一内容线 `content/u6`）、U7（PR #48，`content/u7`）、U8（`content/u8-part1`，暂存）、设计系统 v3（#47）、新手流程（#35）、体力制（#29，只有规格）。
-- **测试预览**（只连测试 Supabase `tqdwhtrextqlmctkryyg`，不碰正式数据）：预览仓库 nomuhoshi/newfirst-app-preview 的 `v1rc/`（发布候选）、`acc2/`（账号验收）。推 `preview/v1rc` 分支触发构建。
-- **上线门槛**（docs/40 §6）：iPhone 真机、Resend 发信域名、正式 Supabase 后台核查、隐私说明待定项、中国大陆访问和 QQ / 163 收信——都要老大做或决定；最后老大说“合并”才合 main、才部署。
+## 现在的状态（2026-11-12；会过时，以 docs/00-latest-handoff.md 和 docs/50 为准）
+- **正式站（main）**：U1–U5 共 34 关（点选、填空、排序、写代码题，代码题用真 Pyodide 判题）；游客存档 v4（每个页面写自己的账本键，读时合并，`src/storage.js`）；进度文件 / 进度码备份与恢复、14 天备份提醒、iPhone Safari 的“添加到主屏幕”提示、“复制诊断”。账号登录和云同步的代码在仓库里，但正式站云端**未开通**（页面显示“云端暂未开通”）。
+- **当前最高优先级 A：游客存档保障（Apple / Safari）——未关闭。** 关闭条件：最新版本独立复审无阻断；专项自动化与隔离人工测试通过；iPhone 真机备份→安装→恢复通过；Safari 原故障定位修复，或老大明确接受有证据的环境限制。
+- 暂缓（有指令前不做）：D 账号防滥用的实施、E 合并模型统一、账号云同步开放、课程发布（#58 / #59 / #61）。B（账本增长）只做已批准的方案 B；**删除压缩继续禁止**。
+- 开放 PR 与各项状态：看 docs/50 的 A–M 表和 `gh pr list`，不要靠本文件。
 
-## 工作规则（2026-11-10 起）
-- 产品官（GPT）负责审查、决策、优先级和验收标准；程序员负责执行，给 GitHub SHA、CI 和测试证据。
-- 未经老大明确授权：不合并 main、不部署正式站、不改正式 Supabase、不删分支 / PR / 预览目录 / 文档 / 数据。不强推，不在 GitHub 留评论。
-- 新改动只在自己的分支上做。不要把“代码开发完成”写成“可以上线”：交付时分清 代码开发完成 / 测试预览通过 / 正式上线条件满足。
+## 工作流与规则（2026-11-12 起）
+- 分工：产品官（GPT）定优先级和验收标准；GPT1 独立复审；Gemini 做资料核查与文案（不作根因证据）；传话员组织真机 / 隔离人工测试和线上核对；Claude（程序员）实现并给 SHA、CI 与测试证据。
+- 流程：独立分支 → PR → CI 全绿（build / mobile chromium / mobile webkit）→ 独立复审 → 合并 → 验证 main 的运行与 Pages 部署 → 更新交接文档。**小 PR 通过对应检查和独立审查后，按既有授权合并部署，不必每次再问老大**（产品官 2026-11-12 22:29）。
+- 红线：**不删除任何历史数据；不清真实存档，不在真实存档上注入故障；数据库操作只交传话员执行；不强推，不整条分支合入；不删分支 / PR；额度到限就保存交接并停止，不用免费重置。** 不得把“代码开发完成”写成“可以上线”：分清 设计 / 开发 / 自动化 / 人工 / 部署。
 - 不做：排行榜、社交、支付、广告、推送、复杂复习算法。
-- 项目主人只用 iPhone 和 iPad，不要让他在电脑上跑命令。Claude 的云端环境通常连不上 npm 官方源、github.io 和 *.supabase.co：构建和浏览器测试以 GitHub CI 为准。
-
-## 不能随便改的规则
-- 课程难度、XP（答对 +10，通关 +10，复习 +5）、红心（每 30 分钟 +1，最多 5）、连续天数、解锁规则、错题回炉：除非项目主人明确同意并写进 `spec/SPEC.md` 决策记录。
-- 旧测试不能删除或放宽；改行为就要改对应测试并说明理由。
-- 不得用预设输出冒充 Python 真实执行；离线时必须如实提示。
-- 新题目必须用真实 Python 验证（测试里会自动跑：选输出题与真实运行一致、填空题答案正确且错误词块有解释、排序题检查全部排列）。
+- 项目主人只用 iPhone 和 iPad，不要让他在电脑上跑命令。云端沙箱通常连不上 npm 源、github.io 和 supabase：**构建和浏览器测试以 GitHub CI 为准**，本地只跑得了不依赖 vite 的 node 单元测试。
+- 报告要附：任务、PR、SHA、实际执行的测试、失败原因、部署证据、剩余限制、**实取的东京时间**（不要估）。
+- 同一个文件上不要把“已修”说在测试证据前面；有错就在文档里留下更正记录，不改写旧结论。
 
 ## 怎么跑
 ```
@@ -35,18 +30,24 @@ npm install
 npx playwright install chromium     # 测试用
 npm run build                        # 会先把 Pyodide 复制进 public/pyodide（该目录不进 git）
 npm test                             # 需要先 build；按 package.json 的 test:chain 逐条运行（scripts/run-tests.mjs，每条有超时）
-npm run test:mobile -- chromium      # 手机模拟（WebKit / Chromium）：账号、触控尺寸、CSP 等浏览器测试
+npm run test:mobile -- chromium      # 手机模拟（WebKit / Chromium）：账号、触控尺寸、CSP 等浏览器测试（tests/webkit/run.mjs 的 extra 列表决定哪些进 WebKit）
 npm run test:e2e -- chromium         # 端到端关键流程
 npm run dev                          # 本地开发
 ```
-- 第 2 单元内容由 `scripts/make-unit2.py` 生成 `content/unit2.json`（改题目就改脚本再运行）。第 1 单元直接改 `content/unit1.json`。
+- 第 2 单元内容由 `scripts/make-unit2.py` 生成 `content/unit2.json`（改题目就改脚本再运行）。其余单元直接改 `content/unitN.json`。
 - 课程 JSON 被打包进 JS；离线缓存清单由 `scripts/vite-sw-plugin.mjs` + `scripts/sw-template.js` 在构建时生成 `dist/sw.js`。
-- 状态存在 localStorage（版本 3，`src/storage.js`）；账号副本、凭证在 `src/account-store.js`；同步在 `src/sync.js`；`window.__app` 是给自动测试用的钩子。
+- 存档：`src/storage.js`（v4：`suipian.v4.tab.<页面id>` 账本 + `suipian.v4.epoch` 代数 + 基线；清除 = 新一代；自动压缩关闭）；备份：`src/progress-file.js`；体检与提醒：`src/storage-health.js`；账号副本在 `src/account-store.js`，同步在 `src/sync.js`；`window.__app` 是给自动测试用的钩子。
 - CSP 由 `scripts/vite-csp-plugin.mjs` 在构建时插进 index.html：加了内联脚本、外部请求或新的云项目，要同时改它和 `tests/csp.test.mjs`。
 
 ## 项目主人的偏好（也适用于你）
 - 中文沟通，说话直接，不要套话和免责声明；指出问题和风险，给具体建议。
 - 编程新手：靠 AI 写代码。讲解要从基础讲起、不跳步；讲代码时结尾附完整可运行的例子。
 - 英文单词：给美式国际音标和意思（单词解释单词，短语解释短语）。
-- 他把方案交给另一个 AI（GPT）做产品/设计/审查，再把回复贴回来；你负责实现和测试，每一步做完先汇报，不要自行开始下一阶段。
-- 提交说明用中文；提交前确认 `npm test` 全绿。
+- 他把方案交给另一个 AI（GPT）做产品/设计/审查，再把回复贴回来；你负责实现和测试，每一步做完先汇报。
+- 提交说明用中文；提交前确认测试全绿。
+
+## 不能随便改的规则
+- 课程难度、XP（答对 +10，通关 +10，复习 +5）、红心（每 30 分钟 +1，最多 5）、连续天数、解锁规则、错题回炉：除非项目主人明确同意并写进 `spec/SPEC.md` 决策记录。
+- 旧测试不能删除或放宽；改行为就要改对应测试并说明理由。
+- 不得用预设输出冒充 Python 真实执行；离线时必须如实提示。
+- 新题目必须用真实 Python 验证（测试里会自动跑：选输出题与真实运行一致、填空题答案正确且错误词块有解释、排序题检查全部排列）。
