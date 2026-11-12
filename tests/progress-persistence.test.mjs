@@ -196,6 +196,24 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   await ctx.close();
 }
 
+// ---------- G 真实学习：首次有效进度保存成功才建立 14 天起点；保存失败不建立 ----------
+{
+  const dir = newDir(); const ctx = await open(dir), page = await load(ctx); await passOnboarding(page);
+  const b0 = await page.evaluate(() => localStorage.getItem("suipian.meta.backupBase"));
+  check("G1 还没有学习进度：没有 14 天起点", b0 === null, String(b0));
+  await finishLesson(page, "U1L1");
+  const b1 = Number(await page.evaluate(() => localStorage.getItem("suipian.meta.backupBase")));
+  check("G2 真实通关并保存成功后：建立起点（约等于现在）", Math.abs(b1 - Date.now()) < 5 * 60 * 1000, String(b1));
+  await ctx.close();
+  const dir2 = newDir(); const ctx2 = await open(dir2);
+  await ctx2.addInitScript(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).includes("suipian.v4.tab.")) throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
+  const page2 = await load(ctx2); await passOnboarding(page2);
+  await finishLesson(page2, "U1L1");
+  const b2 = await page2.evaluate(() => localStorage.getItem("suipian.meta.backupBase"));
+  check("G3 保存一直失败（账本写不进去）：通关了也不建立起点", b2 === null, String(b2));
+  await ctx2.close();
+}
+
 srv.close(); for (const d of dirs) { try { rmSync(d, { recursive: true, force: true }); } catch { /* 临时目录，删不掉不影响结果 */ } }
 console.log(`\n${BNAME}：通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

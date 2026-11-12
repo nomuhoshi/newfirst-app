@@ -223,4 +223,20 @@ const day = "2026-11-12";
   const A = page(); finish(A, "U1L2"); saveState(A);
   for (const k of Object.keys(mem)) if (k.includes(".base.")) delete mem[k];
   const lr = loadState(); ok("24 镜像在、基线没了：读取失败，不重新迁移，不保存，不写新基线", lr.readFailed === true && saveState(A) === false && !Object.keys(mem).some((k) => k.includes(".base."))); }
+// 25 清除交错穷举（可控同步点，不靠时序）：页面 A 内存里留着旧关卡 O1–O5；A 做新关卡并保存期间，另一个页面的“清除”被注入到
+//    A 的第 K 次写入之前（K = 1…8，覆盖账本键、镜像键等每一个写入点）。无论清除落在哪一刻，清除之前的旧关卡 O 都不能复活。
+{ let allOk = true, detail = [], firedCount = 0;
+  for (let K = 1; K <= 8; K++) {
+    reset(); const A = page(); for (let i = 1; i <= 5; i++) finish(A, "O" + i); saveState(A);
+    const origSet = globalThis.localStorage.setItem; let c = 0, fired = false;
+    globalThis.localStorage.setItem = (k, v) => { if (!fired && ++c === K) { fired = true; const C = clearState(); _asTab(C, "pcK" + K); } return origSet(k, v); };
+    finish(A, "P1"); saveState(A); finish(A, "P2"); saveState(A); saveState(A);
+    globalThis.localStorage.setItem = origSet;
+    const r = seen(); const hasO = r.done.split(",").some((x) => x.startsWith("O"));
+    if (!fired) continue; // 第 K 次写入不存在（保存总共没有这么多次写入），不算
+    firedCount++;
+    if (hasO) { allOk = false; detail.push("K=" + K + " 复活：" + r.done); }
+  }
+  ok("25 清除落在 A 保存期间的每一个写入点：旧关卡 O 都没有复活", allOk && firedCount >= 4, `触发 ${firedCount} 个写入点；` + detail.join(" | ")); }
+
 process.exit(fail ? 1 : 0);

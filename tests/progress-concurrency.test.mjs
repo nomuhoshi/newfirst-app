@@ -156,8 +156,8 @@ for (const round of [1, 2, 3]) {
   await S(p2, () => window.__app.syncFromStorage());
   const old = lessonsOf("O", 20);
   await S(p1, work(), old); await S(p2, () => window.__app.syncFromStorage());
-  // p1 继续做旧关卡并保存，同时 p2 清除
-  const [, ] = await Promise.all([S(p1, work(), lessonsOf("O", 20).concat(lessonsOf("P", 20))), S(p2, () => window.__app.clearProgress())]);
+  // p1 内存里还留着旧关卡 O1–O20（上面已做完）；p1 继续做新关卡 P 并保存，同时 p2 清除。O 只存在于 p1 的旧内存里，所以无论清除落在哪一刻，O 都不应该复活（以前循环里又重做一遍 O，清除先落地时这些 O 是清除之后的真实新进度，结果取决于时机）
+  const [, ] = await Promise.all([S(p1, work(), lessonsOf("P", 20)), S(p2, () => window.__app.clearProgress())]);
   await settle(p1, p2);
   const st = await merged(p1);
   check("清除交错：清除之前的旧关卡（O 系列）没有复活", !Object.keys(st.done).some((k) => k.startsWith("O")), Object.keys(st.done).join(","));
