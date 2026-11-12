@@ -15,6 +15,11 @@ import { DEFAULT_STYLE, KEY_SOUNDS, renderEvent, EVENTS } from "./keysounds.js";
 const prefs = { sound: true, haptics: true, soundStyle: DEFAULT_STYLE };
 export const log = []; // 给自动测试和诊断看：实际请求过哪些音效 / 振动
 const note = (n) => { log.push(n); if (log.length > 200) log.shift(); };
+// 诊断里的“最近错误”只写操作阶段 + 异常类型名，不写异常的 message（message 可能含任意文字）。类型名必须是普通标识符，否则写“未知类型”。
+export function errText(stage, e) {
+  const n = e && typeof e === "object" ? e.name : "";
+  return `${stage}（${typeof n === "string" && /^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(n) ? n : "未知类型"}）`;
+}
 export const stats = { played: 0, dropped: 0, resumed: 0, unlocks: 0, lastError: "", history: [] };
 
 export const reducedMotion = () => {
@@ -44,7 +49,7 @@ function getCtx() {
     master.connect(ctx.destination);
     // 让声音跟随 iPhone 静音键，并和其他音乐混合播放（Safari 16.4+）
     try { if (navigator.audioSession) navigator.audioSession.type = "ambient"; } catch { /* 忽略 */ }
-  } catch (e) { ctx = null; stats.lastError = "创建音频失败：" + (e?.message || e); }
+  } catch (e) { ctx = null; stats.lastError = errText("创建音频失败", e); }
   return ctx;
 }
 
@@ -56,13 +61,13 @@ export function unlock() {
   try {
     if (c.state !== "running") {
       stats.unlocks++;
-      c.resume().then(() => { stats.resumed++; }).catch((e) => { stats.lastError = "resume 失败：" + (e?.message || e); });
+      c.resume().then(() => { stats.resumed++; }).catch((e) => { stats.lastError = errText("resume 失败", e); });
       const src = c.createBufferSource();
       src.buffer = c.createBuffer(1, 1, 22050);
       src.connect(c.destination);
       src.start(0);
     }
-  } catch (e) { stats.lastError = "解锁失败：" + (e?.message || e); }
+  } catch (e) { stats.lastError = errText("解锁失败", e); }
 }
 
 // ---- 声音：当前按键风格（默认 J）的六种变化，由 keysounds.js 合成 ----
@@ -105,8 +110,8 @@ export function play(name, { force = false } = {}) {
     return c.resume().then(() => {
       if (c.state === "running" && performance.now() - asked < (force ? 2000 : 300)) { stats.resumed++; sound(c, name); return true; }
       stats.dropped++; return false;
-    }).catch((e) => { stats.dropped++; stats.lastError = "resume 失败：" + (e?.message || e); return false; });
-  } catch (e) { stats.lastError = "播放失败：" + (e?.message || e); return Promise.resolve(false); }
+    }).catch((e) => { stats.dropped++; stats.lastError = errText("resume 失败", e); return false; });
+  } catch (e) { stats.lastError = errText("播放失败", e); return Promise.resolve(false); }
 }
 
 // “我的”页选音效：用指定风格试听一个声音（必须在点击里调用）。返回 { ok, state }
@@ -118,7 +123,7 @@ export function playStyle(style, event = "select") {
   try {
     sound(c, event, style); // 即使还没 running 也排进去：iOS 上同一个点击里的 resume 通常随后生效
     return { ok: c.state === "running", state: c.state };
-  } catch (e) { stats.lastError = "试听失败：" + (e?.message || e); return { ok: false, state: c.state }; }
+  } catch (e) { stats.lastError = errText("试听失败", e); return { ok: false, state: c.state }; }
 }
 export const currentStyle = () => prefs.soundStyle;
 

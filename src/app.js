@@ -942,7 +942,7 @@ function backupCard() {
       button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
       signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
     ),
-    listUnreadable().length ? h("p", { class: "small muted" }, "本机留着一份读不懂的旧记录。普通备份不含它；需要排查时才点：", button("导出诊断文件", () => { if (!exportProgressFile({ diagnostic: true })) say(BACKUP_REFUSED, true); else say("诊断文件已请求下载（含旧记录原文，只发给开发者）。"); }, "link small", { "data-export-diagnostic": "" })) : null,
+    listUnreadable().length ? h("div", {}, h("p", { class: "small muted" }, "本机留着一份读不懂的旧记录。普通备份不含它；需要排查时才点：", button("导出诊断文件", () => { if (!exportProgressFile({ diagnostic: true })) say(BACKUP_REFUSED, true); else say("诊断文件已请求下载（含旧记录原文，只发给开发者）。"); }, "link small", { "data-export-diagnostic": "" })), h("p", { class: "small muted", "data-diagnostic-warning": "", text: "诊断文件含旧记录原文，可能有私人信息。分享前请检查并脱敏，勿公开上传。" })) : null,
     h("div", { class: "acct-row" },
       button("复制进度码", doCopyCode, "btn3d", { "data-code-copy": "" }),
       signedIn ? null : button("粘贴进度码", showPaste, "btn3d", { "data-code-paste": "" }),
