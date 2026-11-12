@@ -1583,10 +1583,10 @@ async function refreshSwInfo() {
   return swInfo;
 }
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  const hadController = !!navigator.serviceWorker.controller;
+  let hadController = !!navigator.serviceWorker.controller; // 第一次访问时先由第一次安装接管（不是更新）；之后同一页面再收到更新要能正常处理
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     refreshSwInfo();
-    if (!hadController) return; // 第一次安装接管，不是更新
+    if (!hadController) { hadController = true; return; } // 第一次安装接管，不是更新
     // 只有用户在地图 / “我的”页点了“现在更新”，并且此刻不在答题中，才刷新页面；其他情况（别的标签页更新了、答题中）一律不刷新，只提示
     if (updateRequestedByUser && !inLesson()) {
       if (persist()) { location.reload(); return; } // 刷新前再核验一次保存；失败就不刷新
