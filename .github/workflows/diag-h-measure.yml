@@ -1,0 +1,23 @@
+# 诊断（只在 diag/h-measure 分支）：测正式构建里 Python 的请求触发点和下载量。不部署、不进 main。
+name: diag H measure
+on:
+  push:
+    branches: [diag/h-measure]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: 测量
+        run: node scripts/measure-python-load.mjs dist
