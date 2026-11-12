@@ -29,10 +29,12 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - name: step3 诊断循环（只为取证，不是正式测试）
+      - name: step3 诊断循环（只为取证，不是正式测试；单轮最多 300 秒）
         run: |
           pass=0; fail=0
           for i in 1 2 3 4 5 6; do
-            if node tests/step3-diag.test.mjs > /tmp/s3-$i.log 2>&1; then pass=$((pass+1)); else fail=$((fail+1)); echo "##### iter $i FAILED"; grep -A120 'DIAG reload' /tmp/s3-$i.log | head -150; grep -n '❌' /tmp/s3-$i.log | head; fi
+            timeout 300 node tests/step3-diag.test.mjs > /tmp/s3-$i.log 2>&1; rc=$?
+            if [ $rc -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "##### iter $i rc=$rc"; grep -n '❌\|DIAG\|Timeout' /tmp/s3-$i.log | head -20; tail -n 150 /tmp/s3-$i.log; fi
           done
           echo "shard ${{ matrix.shard }}: pass=$pass fail=$fail"
+          [ "$fail" -eq 0 ]

@@ -13,8 +13,12 @@ const PORT = 4331;
 const BASE = `http://localhost:${PORT}/`;
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm", ".wav": "audio/wav", ".txt": "text/plain", ".zip": "application/zip" };
 
+globalThis.__dlog = []; const __t0 = Date.now();
+globalThis.__D = (m) => globalThis.__dlog.push(`${((Date.now() - __t0) / 1000).toFixed(2)} ${m}`);
+setTimeout(() => { console.log("=== DIAG WATCHDOG 240s：整个测试没跑完 ===\n" + globalThis.__dlog.slice(-150).join("\n")); process.exit(3); }, 240000);
 const results = [];
 function check(name, ok, detail = "") {
+  globalThis.__D((ok ? "OK " : "NG ") + name.slice(0, 70));
   results.push({ name, ok: !!ok });
   console.log(`${ok ? "✅" : "❌"} ${name}${detail ? "  — " + detail : ""}`);
 }
@@ -189,7 +193,7 @@ try {
   {
     const pe = await ctx.newPage();
     const eerrs = []; pe.on("pageerror", (e) => eerrs.push(e.message));
-    const T0 = Date.now(); const dlog = []; const D = (m) => dlog.push(`${((Date.now() - T0) / 1000).toFixed(2)} ${m}`);
+    const T0 = Date.now(); const dlog = globalThis.__dlog; const D = (m) => dlog.push(`${((Date.now() - T0) / 1000).toFixed(2)} ${m}`);
     const pend = new Map();
     pe.on("request", (r) => { pend.set(r, Date.now()); D("REQ " + r.method() + " " + r.url().replace(BASE, "/") + " nav=" + r.isNavigationRequest()); });
     pe.on("requestfinished", (r) => { pend.delete(r); D("FIN " + r.url().replace(BASE, "/")); });
