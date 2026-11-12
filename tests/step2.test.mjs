@@ -80,6 +80,8 @@ try {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(BASE);
+  await page.waitForFunction(() => window.__app?.runner, null, { timeout: 30000 });
+  await page.evaluate(() => { const r = window.__app.runner; if (r.state === "idle") r.boot(); }); // Python 现在是第一次要执行时才加载；这里的内容核对直接用 runner，所以先主动加载
   await page.waitForFunction(() => window.__app?.runner?.state === "ready", null, { timeout: 60000 });
 
   // ---------- 内容核对：真实运行 ----------

@@ -191,6 +191,8 @@ try {
     const hasText = async (page) => page.evaluate(() => window.__app.pythonUnavailableText());
     { // 原因未确认：Python 资源加载失败，但网络在线
       const { ctx, page } = await open({ route: (pg) => pg.route(/\/pyodide\//, (r) => r.abort()) });
+      await page.waitForFunction(() => window.__app?.runner, null, { timeout: 15000 });
+      await page.evaluate(() => { const r = window.__app.runner; if (r.state === "idle") r.boot(); }); // Python 现在是第一次要执行时才加载；这里测的是“加载失败时的提示文字”，所以主动触发一次加载
       await page.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 20000 });
       const t = await hasText(page);
       check("Python 加载失败（在线、原因未确认）：写明“原因未确认”并附诊断信息，不断定是网络问题", /原因未确认/.test(t) && /诊断：/.test(t) && /可能是网络、浏览器版本/.test(t) && /iOS 16\.6/.test(t), t.replace(/\n/g, " / ").slice(0, 200));
@@ -199,6 +201,8 @@ try {
     { // iPhone 系统低于 16.4：确定的不兼容，写出具体版本
       const OLD = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
       const { ctx, page } = await open({ ua: OLD, route: (pg) => pg.route(/\/pyodide\//, (r) => r.abort()) });
+      await page.waitForFunction(() => window.__app?.runner, null, { timeout: 15000 });
+      await page.evaluate(() => { const r = window.__app.runner; if (r.state === "idle") r.boot(); }); // Python 现在是第一次要执行时才加载；这里测的是“加载失败时的提示文字”，所以主动触发一次加载
       await page.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 20000 });
       const t = await hasText(page);
       check("iPhone 系统 15.8（低于 16.4）：写出具体版本和所需的 16.4，不说成网络问题", /iOS 15\.8/.test(t) && /16\.4/.test(t) && !/原因未确认/.test(t) && !/Python运行功能需要联网后加载/.test(t), t.slice(0, 90));
@@ -206,6 +210,8 @@ try {
     }
     { // 不能创建 Python 线程
       const { ctx, page } = await open({ init: () => { window.Worker = function () { throw new Error("SecurityError: 模拟"); }; } });
+      await page.waitForFunction(() => window.__app?.runner, null, { timeout: 15000 });
+      await page.evaluate(() => { const r = window.__app.runner; if (r.state === "idle") r.boot(); }); // Python 现在是第一次要执行时才加载；这里测的是“加载失败时的提示文字”，所以主动触发一次加载
       await page.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 5000 });
       const t = await hasText(page);
       check("不能创建 Python 线程：明确说是环境不允许，并建议在浏览器打开", /不允许启动 Python 运行线程/.test(t) && /在浏览器打开/.test(t) && !/Python运行功能需要联网后加载/.test(t), t.slice(0, 80));
