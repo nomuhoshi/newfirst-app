@@ -179,6 +179,7 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   const st0 = await page.evaluate(() => { const x = window.__app.getState(); return { xp: x.xp, runs: x.lessonsCompleted, d: x.doneOn?.U1L1, hearts: x.hearts, prefs: x.prefs }; });
   check("F1 真实通关后 doneOn 记下了完成日期（今天的学习日）", /^\d{4}-\d{2}-\d{2}$/.test(st0.d || ""), JSON.stringify(st0));
   const mk = (day, xp) => encodeCode({ version: DATA_VERSION, xp, lessonsCompleted: 1, streak: 1, lastDay: day, done: { U1L1: true }, doneOn: { U1L1: day } });
+  await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview"); // 结算页没有底部导航，回到地图
   const paste = async (code) => {
     await page.getByRole("button", { name: "我的", exact: true }).click(); await page.waitForSelector("[data-backup]");
     await page.locator("[data-code-paste]").click(); await page.locator("[data-code-in]").fill(code); await page.locator("[data-code-read]").click();
