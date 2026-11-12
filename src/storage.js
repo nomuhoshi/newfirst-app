@@ -105,6 +105,11 @@ function joinEntry(a, b) {
 }
 const cloneEntry = (e) => joinEntry(emptyEntry(), e);
 
+// 当前代数（给提醒记录按代数隔离用）：从没清除过是 "m0"；读取失败返回 null
+export function currentEpoch() { const r = rd(LS(), K_EPOCH); return r.ok ? r.v || M0 : null; }
+export const DEFAULT_EPOCH = M0;
+// 这份内存记录目前属于哪一代（载入 / 保存 / 采用新一代后更新）。提醒起点用它核对“依据的保存”是不是现在这一代的。
+export function stateEpoch(state) { return LEDGERS.get(state)?.epoch ?? null; }
 function getEpoch(S) { const r = rd(S, K_EPOCH); return r.ok ? r.v || M0 : null; }
 // 读取 / 建立某一代的基线。返回 { ok, base, notice, unsaved }。读取异常 ok:false（绝不当成“没有记录”）。
 const validBase = (raw, epoch) => { const b = parse(raw); return b && b.v === 4 && b.epoch === epoch && b.s && typeof b.s === "object" ? b : null; };
@@ -218,7 +223,7 @@ function attach(S, state, epoch, id = PAGE_ID) {
   const e = emptyEntry();
   const r = rd(S, K_TAB + id), rec = r.ok && r.v ? parse(r.v) : null; // 同一标签页刷新：接着写自己上一次的账本
   if (rec && rec.v === 4 && rec.epoch === epoch && rec.entries && rec.entries[id]) joinEntry(e, rec.entries[id]);
-  const L = { id, epoch, e, metaT: 0 };
+  const L = { id, epoch, e, metaT: 0, saved: JSON.stringify(e) }; // saved：最近一次成功写入（或读到）的自己的账本内容，用来判断“有没有还没存下的变化”
   LEDGERS.set(state, L);
   return L;
 }
@@ -316,8 +321,35 @@ function adoptEpoch(S, state, epoch, base) {
   return true;
 }
 
+
+// ---- 无变化不写（方案 B）----
+// 只看“学习与设置”有没有还没存下的变化；lastActive、meta.t、满红心时的 heartsAt 这类自动更新的时间不算变化，否则每次打开都会新建账本键。
+const sameFlat = (a, b) => { a = a && typeof a === "object" ? a : {}; b = b && typeof b === "object" ? b : {}; const ks = new Set([...Object.keys(a), ...Object.keys(b)]); for (const k of ks) if (a[k] !== b[k]) return false; return true; };
+function hasUnsavedChange(state, v0, base, L, pendingE) {
+  if (pendingE) return true; // 自己账本里还有没写进去的累计（addXp / addRun 的记录，或上次写入失败）
+  for (const k of Object.keys(state.done)) if (state.done[k] && !v0.done[k]) return true;
+  for (const [k, d] of Object.entries(state.doneOn || {})) if (typeof d === "string" && ISO.test(d) && (!v0.doneOn[k] || d < v0.doneOn[k])) return true;
+  if (state.lastDay && ISO.test(state.lastDay) && (!v0.lastDay || state.lastDay > v0.lastDay || (state.lastDay === v0.lastDay && num(state.streak) > v0.streak))) return true;
+  if (state.xp > v0.xp || state.lessonsCompleted > v0.runs) return true;
+  if ((state.onboarded && !v0.onboarded) || (state.installTipClosed && !v0.installTipClosed)) return true;
+  const bs = base.s || {}, m = v0.meta || {};
+  const refHearts = Number.isFinite(m.hearts) ? Math.min(HEARTS_MAX, Math.max(0, m.hearts)) : Number.isFinite(bs.hearts) ? bs.hearts : HEARTS_MAX;
+  const refAt = Number.isFinite(m.heartsAt) ? m.heartsAt : bs.heartsAt;
+  if (state.hearts !== refHearts) return true;
+  if (state.hearts < HEARTS_MAX && state.heartsAt !== refAt) return true; // 满红心时 heartsAt 只是“现在”，不算变化
+  const refPrefs = { ...freshState().prefs, ...(bs.prefs || {}), ...(m.prefs && typeof m.prefs === "object" ? m.prefs : {}) };
+  return !sameFlat(state.prefs, refPrefs);
+}
 // 保存：只写自己的键，其余键不动。失败（读取异常 / 视图不完整 / 写入失败 / 空间不足）返回 false，不更新“最后成功保存时间”，内存进度保留，下次保存补上。
+// 结果分三种："saved"（已写入本机）/ "cleared"（保存时发现别的页面已清除学习记录：清除胜出，内存采用新一代的空记录，这次的内容没有保存，也不会复活旧数据）/ "failed"（读写失败 / 空间不足 / 视图不完整，内存保留，下次再试）。
+let lastSaveStatus = "saved";
+export const getLastSaveStatus = () => lastSaveStatus;
 export function saveState(state) {
+  const r = saveStateImpl(state);
+  lastSaveStatus = r === true ? "saved" : r === "cleared" ? "cleared" : "failed";
+  return r === true;
+}
+function saveStateImpl(state) {
   const S = LS();
   try {
     const epoch = getEpoch(S);
@@ -325,12 +357,20 @@ export function saveState(state) {
     const b = ensureBase(S, epoch);
     if (!b.ok || b.unsaved) return false; // 基线没能可靠写入：不写账本、不写镜像，旧数据原样保留，下次保存再试
     let L = LEDGERS.get(state);
-    if (L && L.epoch !== epoch) return adoptEpoch(S, state, epoch, b.base); // 别处清除过：采用新一代
+    if (L && L.epoch !== epoch) return adoptEpoch(S, state, epoch, b.base) ? "cleared" : false; // 别处清除过：采用新一代，这次的内容没有保存
     if (!L) L = attach(S, state, epoch);
     const e = L.e;
     // 记录页面自己的进度：关卡 / 日期 / 连续天数从内存记录取；XP / 次数在 addXp / addRun 里已经记过，这里只补“直接改了总数”的差额（如导入进度文件）
     const v0 = computeView(S, epoch, b.base, L);
     if (!v0) return false;
+    // 没有还没存下的变化：不写账本、不写镜像（既不新建键，也不刷新 lastActive）。失败的保存不更新 L.saved，下次仍算待保存。
+    if (!hasUnsavedChange(state, v0, b.base, L, JSON.stringify(e) !== L.saved)) {
+      // 快速返回前也要再核对一次代数：读取视图期间别的页清除了，就不能报“已保存”——采用新一代，返回清除冲突
+      const ep2 = getEpoch(S);
+      if (ep2 === null) return false;
+      if (ep2 !== epoch) { const nb = ensureBase(S, ep2); return nb.ok && adoptEpoch(S, state, ep2, nb.base) ? "cleared" : false; }
+      return true;
+    }
     for (const k of Object.keys(state.done)) if (state.done[k]) e.done[k] = true;
     for (const [k, d] of Object.entries(state.doneOn || {})) if (typeof d === "string" && ISO.test(d)) e.doneOn[k] = d;
     if (state.lastDay) { e.lastDay = state.lastDay; e.streak = num(state.streak); }
@@ -340,10 +380,11 @@ export function saveState(state) {
     e.meta = { t: state.lastActive, hearts: state.hearts, heartsAt: state.heartsAt, prefs: state.prefs, onboarded: !!state.onboarded, installTipClosed: !!state.installTipClosed };
     L.metaT = e.meta.t;
     if (!wr(S, K_TAB + L.id, JSON.stringify({ v: 4, epoch, entries: { [L.id]: e } }))) return false;
+    L.saved = JSON.stringify(e);
     // 写完再核对一次代数：处理期间发生了清除 → 刚写的是旧代账本（读者会忽略），不写镜像，内存采用新一代，不显示旧进度
     const ep2 = getEpoch(S);
     if (ep2 === null) return false;
-    if (ep2 !== epoch) { const nb = ensureBase(S, ep2); return nb.ok ? adoptEpoch(S, state, ep2, nb.base) : false; }
+    if (ep2 !== epoch) { const nb = ensureBase(S, ep2); return nb.ok && adoptEpoch(S, state, ep2, nb.base) ? "cleared" : false; }
     const v1 = computeView(S, epoch, b.base, L);
     if (!v1) return false;
     applyView(state, v1, L, { adoptMeta: false });
@@ -379,6 +420,10 @@ export function readSnapshot(state) {
     if (L && L.epoch !== epoch) return { ok: false }; // 别处清除过：先让页面采用新一代，再备份
     const v = computeView(S, epoch, b.base, L || null);
     if (!v) return { ok: false };
+    // 扫描期间发生过清除（代数变了）：读到的是新旧混杂的残片，拒绝。
+    // 读取边界（不是严格原子快照）：快照由“逐个读取各账本”拼成，每个账本读到的是它在扫描过程中某一时刻的完整内容；扫描期间别的页新增或更新账本，快照可能包含也可能不包含这些写入。
+    // 这里不对任何字段（含红心、偏好）承诺“只增不减”或前后大小关系；快照只保证：没有读取失败、没有读不懂的账本、结束时代数与开始时相同。
+    if (getEpoch(S) !== epoch) return { ok: false, cleared: true };
     return { ok: true, snap: { ...state, done: { ...v.done }, doneOn: { ...v.doneOn }, xp: v.xp, lessonsCompleted: v.runs, streak: v.streak, lastDay: v.lastDay } };
   } catch { return { ok: false }; }
 }

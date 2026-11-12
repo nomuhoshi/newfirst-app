@@ -214,6 +214,65 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   await ctx2.close();
 }
 
+// ---------- H 无变化不新增账本：真实通关后反复刷新 / 切前台，账本键数不增；真实学习才增加且进度完整 ----------
+{
+  const tabKeys = (pg) => pg.evaluate(() => { const a = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ""; if (k.startsWith("suipian.v4.tab.")) a.push(k); } return a.length; });
+  const dir = newDir(); const ctx = await open(dir); let page = await load(ctx); await passOnboarding(page);
+  await finishLesson(page, "U1L1"); const want = await saved(page);
+  page = await load(ctx); await page.waitForSelector(".pathview"); const k1 = await tabKeys(page);
+  for (let i = 0; i < 4; i++) { await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview"); await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange"))); }
+  const k2 = await tabKeys(page);
+  check("H1 通关后反复刷新 4 次并触发回前台：账本键数不增加", k2 === k1, `${k1} → ${k2}`);
+  const now = await saved(page);
+  check("H2 无变化期间进度完整（XP、关卡、次数不变）", now && now.xp === want.xp && now.lessonsCompleted === want.lessonsCompleted && !!now.done?.U1L1, JSON.stringify(now));
+  await finishLesson(page, "U1L2"); const k3 = await tabKeys(page); const s3 = await saved(page);
+  check("H3 真实学习仍正常保存（新关卡、XP 增加）", !!s3?.done?.U1L2 && s3.xp > want.xp && k3 >= k2, `keys ${k2}→${k3} xp ${want.xp}→${s3?.xp}`);
+  await ctx.close();
+}
+
+// ---------- J 清除后重新学习：提醒起点按代数重新建立；保存失败不建立，恢复后成功保存才建立；旧代记录保留 ----------
+{
+  const dir = newDir(); const ctx = await open(dir); const page = await load(ctx); await passOnboarding(page);
+  const bk = () => page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ""; if (k.startsWith("suipian.meta.backupBase")) o[k] = localStorage.getItem(k); } return o; });
+  await finishLesson(page, "U1L1"); const b1 = await bk();
+  check("J1 第一代：起点写在原来的键", Object.keys(b1).join() === "suipian.meta.backupBase" && Math.abs(Number(b1["suipian.meta.backupBase"]) - Date.now()) < 5 * 60 * 1000, JSON.stringify(b1));
+  await page.evaluate(() => window.__app.clearProgress()); await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview");
+  const b2 = await bk();
+  check("J2 清除后新一代没有起点，旧代的起点保留", Object.keys(b2).join() === "suipian.meta.backupBase", JSON.stringify(b2));
+  // 保存失败：通关了也不建立新代起点
+  await page.evaluate(() => { window.__realSet = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).includes("suipian.v4.tab.")) throw new DOMException("full", "QuotaExceededError"); return window.__realSet.call(this, k, v); }; });
+  await finishLesson(page, "U1L1"); const b3 = await bk();
+  check("J3 新一代保存失败：不建立起点", Object.keys(b3).join() === "suipian.meta.backupBase", JSON.stringify(b3));
+  // 恢复后成功保存：建立新一代起点
+  await page.evaluate(() => { Storage.prototype.setItem = window.__realSet; window.__app.persist(); });
+  const b4 = await bk(); const nk = Object.keys(b4).filter((k) => k !== "suipian.meta.backupBase");
+  check("J4 恢复后成功保存：建立新一代起点（带代数的新键，约等于现在），旧代键不变", nk.length === 1 && Math.abs(Number(b4[nk[0]]) - Date.now()) < 5 * 60 * 1000 && b4["suipian.meta.backupBase"] === b1["suipian.meta.backupBase"], JSON.stringify(b4));
+  await ctx.close();
+}
+
+// ---------- I 导入保存时另一页清除：清除胜出，不报“进度已导入”，不复活旧数据，不自动重试，备份不被修改 ----------
+{
+  const dir = newDir(); const ctx = await open(dir); let page = await load(ctx); await passOnboarding(page);
+  await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview");
+  const code = encodeCode({ version: DATA_VERSION, xp: 190, lessonsCompleted: 3, streak: 2, lastDay: "2026-11-10", done: { U1L1: true, U1L2: true, U1L3: true }, doneOn: {} });
+  await page.getByRole("button", { name: "我的", exact: true }).click(); await page.waitForSelector("[data-backup]");
+  await page.locator("[data-code-paste]").click(); await page.locator("[data-code-in]").fill(code); await page.locator("[data-code-read]").click();
+  await page.waitForSelector("[data-import-confirm]");
+  // 模拟“另一页在这一刻清除”：下一次写账本之前，先把代数换成新的（清除的核心动作），再让这次写入继续
+  await page.evaluate(() => { const real = Storage.prototype.setItem; let armed = true; Storage.prototype.setItem = function (k, v) { if (armed && String(k).includes("suipian.v4.tab.")) { armed = false; real.call(this, "suipian.v4.base.cOTHER", JSON.stringify({ v: 4, epoch: "cOTHER", s: {}, legacyXp: 0, legacyRuns: 0, ignoreLegacy: true })); real.call(this, "suipian.v4.epoch", "cOTHER"); } return real.call(this, k, v); }; });
+  await page.getByRole("button", { name: "确认导入" }).click(); await page.waitForTimeout(400);
+  const msg = await page.locator("[data-backup-msg]").innerText(), toast = await page.locator(".toast").innerText().catch(() => "");
+  check("I1 保存时被清除：提示“其他页面已清除学习记录，本次恢复未完成”", /其他页面已清除学习记录/.test(msg) && /本次恢复未完成/.test(msg), msg);
+  check("I2 不报“进度已导入”，不是“存储已满/无痕”的误报", !/^进度已导入/.test(toast) && !/无痕|已满/.test(msg + toast), toast + "|" + msg);
+  check("I3 没有自动重试按钮", (await page.locator("[data-import-retry]").count()) === 0);
+  const after = await page.evaluate(() => { const x = window.__app.getState(); return { xp: x.xp, done: Object.keys(x.done).length }; });
+  check("I4 清除胜出：内存里没有导入内容", after.xp === 0 && after.done === 0, JSON.stringify(after));
+  await page.reload(); await page.waitForFunction(() => window.__app?.getState);
+  const re = await page.evaluate(() => { const x = window.__app.getState(); return { xp: x.xp, done: Object.keys(x.done).length }; });
+  check("I5 刷新后旧数据没有复活", re.xp === 0 && re.done === 0, JSON.stringify(re));
+  await ctx.close();
+}
+
 srv.close(); for (const d of dirs) { try { rmSync(d, { recursive: true, force: true }); } catch { /* 临时目录，删不掉不影响结果 */ } }
 console.log(`\n${BNAME}：通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
