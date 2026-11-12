@@ -1,6 +1,6 @@
 # 检查与发布（GitHub Pages：Settings → Pages 的 Source 为 GitHub Actions）。
 # - 所有 PR（任何 base）和推送 main：安装 → 构建 → 自动测试。PR 只检查，不部署、不需要部署权限。
-# - 只有推送 main（或在 main 上手动运行）且测试通过后，才发布。
+# - 只有推送 main（或在 main 上手动运行）且测试通过后，才发布；发布的是去掉测试页（access-test.html、lab.html 等）的 dist-pages。
 # - PR 的重复运行可以互相取消；main 的运行和部署永远不会被取消。
 name: Test and deploy
 on:
@@ -29,11 +29,13 @@ jobs:
       - run: npm run build
       - name: 自动测试（不通过就不部署）
         run: npm test
-      - name: 上传发布文件（只有 main 上传）
+      - name: 生成发布内容并自检（测试页 access-test.html / lab.html 等只留在仓库和测试用的 dist，不发布；PR 也跑）
+        run: node scripts/make-pages-artifact.mjs dist dist-pages
+      - name: 上传发布文件（只有 main 上传；上传的是去掉测试页的 dist-pages）
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
-          path: dist
+          path: dist-pages
   mobile:
     # 手机模拟测试：WebKit（Safari 内核）和 Chromium 两个内核都必须通过，PR 必跑，也是部署前提。
     # 是 Playwright 模拟，不等于 iOS 真机 / 微信 / iPad；不测 VoiceOver。
