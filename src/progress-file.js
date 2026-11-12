@@ -76,3 +76,26 @@ export function mergeImport(current, imported) {
 export function summarize(s) {
   return { xp: s.xp, lessons: Object.keys(s.done).length, streak: s.streak, lastDay: s.lastDay };
 }
+
+// ---- 进度码：把进度文件压成一段可复制粘贴的文字（Safari 标签页 ↔ 主屏幕 App ↔ 新标签页之间转移用，不依赖“文件”App）----
+// 格式：SPC1. + base64url(进度文件 JSON，不含旧坏记录原文)。粘贴时忽略空白和换行（微信 / 备忘录常常会插入）。
+export const CODE_PREFIX = "SPC1.";
+const b64 = (bytes) => { let bin = ""; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+export function encodeCode(state, { now = Date.now(), build = "" } = {}) {
+  const json = JSON.stringify(buildExport(state, { now, build, unreadable: [] }));
+  return CODE_PREFIX + b64(new TextEncoder().encode(json));
+}
+// 返回 { ok:true, text } 或 { ok:false, error }；text 交给 parseImport 做全部校验
+export function decodeCode(input) {
+  const raw = typeof input === "string" ? input.replace(/\s+/g, "") : "";
+  if (!raw) return { ok: false, error: "还没有粘贴进度码。" };
+  const i = raw.indexOf(CODE_PREFIX);
+  if (i < 0) return { ok: false, error: "这不是碎片编程的进度码（应以 SPC1. 开头）。" };
+  const body = raw.slice(i + CODE_PREFIX.length).replace(/-/g, "+").replace(/_/g, "/");
+  if (!body || body.length > MAX_FILE_BYTES * 2 || !/^[A-Za-z0-9+/]+$/.test(body)) return { ok: false, error: "进度码不完整或被改动过，请重新复制整段。" };
+  try {
+    const bin = atob(body + "=".repeat((4 - (body.length % 4)) % 4));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return { ok: true, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+  } catch { return { ok: false, error: "进度码不完整或被改动过，请重新复制整段。" }; }
+}
