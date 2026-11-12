@@ -1,4 +1,4 @@
-> **快照**：来自 `docs/course-roadmap-and-cleanup` @ `6cd9d41`，取于 2026-11-13 01:05 JST；该分支上的版本更新更勤，最新见 <https://github.com/nomuhoshi/newfirst-app/blob/docs/course-roadmap-and-cleanup/docs/56-ios-diagnosis-2026-11-12.md>
+> **快照**：来自 `docs/course-roadmap-and-cleanup` @ `2cf00f6`，取于 2026-11-13 01:12 JST；该分支上的版本更新更勤，最新见 <https://github.com/nomuhoshi/newfirst-app/blob/docs/course-roadmap-and-cleanup/docs/56-ios-diagnosis-2026-11-12.md>
 
 # 56 iPhone 两项失败的专项诊断（Fable，2026-11-12 01:1x）
 

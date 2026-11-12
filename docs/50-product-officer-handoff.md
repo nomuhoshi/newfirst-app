@@ -1,4 +1,4 @@
-> **快照**：来自 `docs/course-roadmap-and-cleanup` @ `6cd9d41`，取于 2026-11-13 01:05 JST；该分支上的版本更新更勤，最新见 <https://github.com/nomuhoshi/newfirst-app/blob/docs/course-roadmap-and-cleanup/docs/50-product-officer-handoff.md>
+> **快照**：来自 `docs/course-roadmap-and-cleanup` @ `2cf00f6`，取于 2026-11-13 01:12 JST；该分支上的版本更新更勤，最新见 <https://github.com/nomuhoshi/newfirst-app/blob/docs/course-roadmap-and-cleanup/docs/50-product-officer-handoff.md>
 
 # 50 产品官继承文件（可直接整份贴进新的 ChatGPT 对话）
 
@@ -313,3 +313,11 @@ A 待办：①Safari 根因（等老大两份诊断，普通/私密标签、入�
 | 00:37 | 程序员（Sonnet） | 产品官 00:20／00:33：#81 合并 `cfaaab4`，main run 43245232480 失败于 `step3.test.mjs:205`（reload 等 load 超时 30 秒，后 41 条未跑），线上仍 `6f56fb0`；根因未定，临时诊断 PR #86（不合并）有限取证；#82 `ee9fba6` 已补跨代保护（单次读代数、结束复查、`stateEpoch`、J1–J5 交错测试+变异），CI 运行中；#80 `4caf65b` 只增测试、CI 全绿；#83、#84 见 docs/57 更新注。A 未关闭 |
 | 01:03 | 程序员（Sonnet） | 产品官 00:44／00:59：#82 合并 main `92f57d9`；main run 43252367712 三项全绿，deploy 成功（16:02:00Z，部署记录 7742434322），线上核对待传话员；#80 集成头 `53f2df5` CI 运行中；#87 变异证据（来源 CI，GPT1 未独立核对）；#86 仅 12 轮通过，分片 3、4 挂住，已加上限与看门狗重跑；A 未关闭 |
 | 01:04 | 程序员（Sonnet） | 传话员 01:04 线上核对：正式线上 = `92f57d9`（#81+#82）；#80 合并 main `d5ed2d0`（PR `53f2df5` 全绿，GPT1 集成通过），main 检查与部署待报；I：GPT1 给出 step3:205 最小修复路径，根因未确认；A 未关闭 |
+| 01:12 | 程序员（Sonnet） | 产品官 01:08：正式线上 `92f57d9`；#80 合并 `d5ed2d0`，main run 43254697616 发布中；I：批准 #88（独立 context + domcontentloaded 后显式等待），根因仍未确认；#86 只认 12 次通过；B 仅第一项优化合并；#84 `8e6a477` 口径已修，带入设计登记 `271e6f5`；#83 随后集成；A 未关闭 |
+
+## 设计评估登记（产品官 2026-11-12 22:34 记录，设计师 00:48 JST 入库）
+评估原文：`docs/design/fable-review-2026-11-12.md`。
+- **老大的决定**：① 保留六边形节点（加厚、高光、通电发光，沿用墨蓝立体电路方向；#47 的"圆形焊盘"不采用）。② 同意设计师做可点原型，范围 = 评估第一部分第 1–5 项 + 第二部分第 1–3 项；正式采用哪些，等原型评审后再定。
+- **评估基线**：旧预览 `preview-dist-v1rc` @ `13a0374`（源码 `ba1ec98`），不是当前正式版。选项折行已由 #60 修复；其余建议采用前须对照最新正式版。
+- **未验范围**：答错反馈、通关页未实测；iPhone 真机、动效手感未验证；全部为 Chromium 390×844 模拟。
+- **优先级不变**：A/B 存档修复继续优先。

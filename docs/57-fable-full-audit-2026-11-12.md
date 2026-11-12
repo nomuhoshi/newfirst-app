@@ -1,4 +1,4 @@
-> **快照**：来自 `docs/course-roadmap-and-cleanup` @ `6cd9d41`，取于 2026-11-13 01:05 JST；该分支上的版本更新更勤，最新见 <https://github.com/nomuhoshi/newfirst-app/blob/docs/course-roadmap-and-cleanup/docs/57-fable-full-audit-2026-11-12.md>
+> **快照**：来自 `docs/course-roadmap-and-cleanup` @ `2cf00f6`，取于 2026-11-13 01:12 JST；该分支上的版本更新更勤，最新见 <https://github.com/nomuhoshi/newfirst-app/blob/docs/course-roadmap-and-cleanup/docs/57-fable-full-audit-2026-11-12.md>
 
 # 57 · 全面检测报告（Fable，2026-11-12 04:23 JST）
 
@@ -286,3 +286,11 @@ PR #78：run 43215291684（build/chromium/webkit 全绿）；main run 4321677632
 > - **#80 已合并**：main `d5ed2d08d7814ad1ae38715700d577103d27a2e8`（PR 头 `53f2df5`，PR CI run 43252483855 三项全绿；GPT1 00:56：集成代码通过，#81 清除保护、#82 `stateEpoch` 起点检查、H1–H3 与 J1–J4 均保留）。main 新一轮检查与部署待报；**在部署成功并经传话员核对前，线上仍是 `92f57d9`。**
 > - **I（step3:205）**：GPT1 00:56 定位：退出关卡用例复用前六组的 context（含 SW／缓存状态），`reload()` 默认等完整 `load`；**这是有源码支持的首要假设，未复现、未确认根因**。最小修复路径：该用例改用独立 `browser.newContext()`，刷新改 `waitUntil: "domcontentloaded"` 并显式等待应用就绪与 `.statsbar`，保留 XP=10／红心=4／未完成断言；不捕获超时、不延长超时。诊断 #86 新一轮（`257ea6e`，单轮 300 秒、240 秒看门狗）进行中，旧一轮分片 3、4 曾挂住约 40 分钟，原因未知。
 > - **A 仍未关闭**：Safari 原始丢档诊断与 iPhone 真机验收保留。
+
+> **01:12 更新（2026-11-13 JST，产品官 01:08 实取）**：
+> - **正式线上 `92f57d9`**（#81＋#82；main run 43252367712 全部成功，传话员 01:04 核对 bundle `assets/main-BCSe73IL.js` 含该 SHA）。
+> - **#80 已合并 `d5ed2d0`**：集成审查通过、PR CI 全绿；**main 发布 run 43254697616 运行中，成功并经传话员核对前不登记 `d5ed2d0` 已上线**。
+> - **I（step3:205）**：批准独立小 PR **#88**（`fix/step3-exit-lesson-isolated`，`e851989`）：第七组退出关卡测试改用独立浏览器上下文；保留真实 reload，改等 `domcontentloaded` 后显式等待 `window.__app` 与 `.statsbar`；刷新后 XP／红心／关卡断言一条未改；超时仍失败。**新 main 通过只能证明本轮通过，此前超时归因仍未确认。** #86 旧运行只有 12 次确认通过（分片 1、2 各 6 次），分片 3、4 已取消，**不得写 24 次通过**；新一轮诊断（`257ea6e`→`7ea682d`）出现整体挂住（看门狗 240 秒退出码 3，分片 1、3），首版脚本因 `bash -e` 没打印日志，已修后重跑，不再扩大矩阵。
+> - **B**：仅完成第一项优化（无变化不写账本）的合并；历史占用未回收；删除压缩继续关闭。
+> - **#84**：`8e6a477` 已修正线上／main 口径；本次按文件带入设计登记（`271e6f5`：`docs/design/fable-review-2026-11-12.md` ＋ docs/50 设计评估登记），不整条设计分支合入。#83 随后与最新 main 集成；Chromium SW 专项通过的结论保留，WebKit SW 专项与 iPhone 未验。
+> - **A 仍未关闭**：两项竞争缺陷已上线修复；Safari 原始故障与 iPhone 验收未解决。
