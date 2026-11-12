@@ -66,3 +66,8 @@
 
 ### 7.3 待办（按顺序）
 A 的剩余：定期导出提醒（隔 14 天提示一次）——未做；C main 分支保护——部署稳定后做；F 已随 #65 完成（复制诊断）；之后按 docs/57 §5 继续（D、E、G、H、I、J、K、L）。
+
+### 7.4 10:06 部署结果与 C 受阻
+- **#65、#66 已合并部署**：main `1be695a`（含 `2b8755a` 的 #65 + #66）。部署 run https://github.com/nomuhoshi/newfirst-app/actions/runs/43090937292 ：build / chromium / webkit / deploy 全部成功；Pages 部署 7720471814（2026-11-11T20:09:01Z = 05:09 JST）。正式构建源码提交 `1be695a03d8dad3fa9128fe0aef7b9a2b53b83bf`，构建时间约 19:59 UTC，所以“我的”页底部「应用版本」应显示约「2026-11-11 19:59 UTC」（± 1 分钟）。这边连不上正式站，线上核对由传话员做。
+- **插曲**：#65 合并后 main 第一次 CI 的 webkit 作业因浏览器渲染进程崩溃（`page.reload: Page crashed`，不是断言失败）失败，deploy 被跳过；重跑通过后部署（`2b8755a`，7720249636），随后 #66 合并再部署（`1be695a`）。
+- **C main 分支保护：受阻，需要老大在网页上操作**。从这边调用 GitHub 的分支保护接口被代理拒绝（`Write access to this GitHub API path is not permitted through this proxy`，403），无法替老大设置。操作步骤（约 1 分钟）：GitHub 仓库 nomuhoshi/newfirst-app → Settings → Branches → Add branch ruleset（或 Add classic branch protection rule）→ 分支名 `main` → 勾选 Require a pull request before merging（审批数 0）+ Require status checks to pass，选 `build`、`mobile (chromium)`、`mobile (webkit)` → 勾选 Do not allow bypassing（让管理员也受限）→ Save。设置之前，团队约定自觉：main 只通过 PR 合并（#65、#66 就是这样做的）。
