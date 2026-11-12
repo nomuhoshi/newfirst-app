@@ -62,7 +62,7 @@ try {
   const errors = []; page.on("pageerror", (e) => errors.push(e.message));
   const text = () => page.locator("#app").innerText();
   const seed = (done, extra = {}) => page.evaluate(([d, x]) => { const s = window.__app.getState(); Object.assign(s, { onboarded: true, hearts: 5, done: Object.fromEntries(d.map((k) => [k, true])), prefs: { ...s.prefs, sound: false } }, x); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); }, [done, extra]);
-  const cacheKeys = () => page.evaluate(async () => (await caches.keys()).filter((k) => k !== "suipian_state").sort()); // suipian_state 是 SW 自己记“上一版缓存名”的状态缓存，不是版本缓存
+  const cacheKeys = () => page.evaluate(async () => (await caches.keys()).sort());
   const waitKeys = async (pred, ms = 15000) => { const t = Date.now(); let k = []; while (Date.now() - t < ms) { k = await cacheKeys(); if (pred(k)) return k; await page.waitForTimeout(300); } return k; };
   const U1 = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"];
 
@@ -141,8 +141,8 @@ try {
   const keysB0 = await waitKeys((k) => k.includes("suipian-v2"));
   check("更新：新版装好后不立刻接管——旧缓存仍在，地图上出现“有新版本”提示", keysB0.includes("suipian-v2") && keysA.every((k) => keysB0.includes(k)) && keysB0.includes("suipian-old-decoy") && (await page.locator("[data-update-now]").count()) === 1, keysB0.join());
   await acceptUpdate();
-  const keysB = await waitKeys((k) => k.includes("suipian-v2") && !k.includes("suipian-old-decoy"));
-  check("更新：用户点“现在更新”后新版激活：保留上一版缓存，更早的 suipian- 缓存删除，别的应用的缓存不动", keysB.includes("suipian-v2") && keysA.every((k) => keysB.includes(k)) && !keysB.includes("suipian-old-decoy") && keysB.includes("other-app-cache"), keysB.join());
+  const keysB = await waitKeys((k) => k.includes("suipian-v2"));
+  check("更新：用户点“现在更新”后新版激活：不删除任何历史版本缓存（旧页面可能还要按需加载旧文件），别的应用的缓存不动", keysB.includes("suipian-v2") && keysA.every((k) => keysB.includes(k)) && keysB.includes("suipian-old-decoy") && keysB.includes("other-app-cache"), keysB.join());
   const cachedB = await page.evaluate(async () => { const c = await caches.open("suipian-v2"); return (await c.keys()).map((r) => r.url); });
   check("缓存：用过 Python 之后，Pyodide 文件仍然没有进入缓存", cachedB.length > 5 && !cachedB.some((u) => /pyodide/.test(u)) && !cachedB.some((u) => /sfx/.test(u)));
   // 新版再次断网也能打开（缓存已换成新版）
@@ -160,8 +160,8 @@ try {
   root = makeVersion("v4");
   await page.reload(); await page.waitForSelector(".statsbar");
   await acceptUpdate();
-  const keysD = await waitKeys((k) => k.includes("suipian-v4") && !k.includes(keysA[0]));
-  check("更新：之后发布完整的新版本，仍能正常升级：保留上一版（v2），更早的缓存清理", keysD.includes("suipian-v4") && keysD.includes("suipian-v2") && !keysA.some((k) => keysD.includes(k)) && (await page.evaluate(() => window.__marker)) === "v4", keysD.join());
+  const keysD = await waitKeys((k) => k.includes("suipian-v4"));
+  check("更新：之后发布完整的新版本，仍能正常升级；历史版本缓存都保留", keysD.includes("suipian-v4") && keysD.includes("suipian-v2") && keysA.every((k) => keysD.includes(k)) && (await page.evaluate(() => window.__marker)) === "v4", keysD.join());
 
   // ===== 5. 网络很慢：不要让人干等，先用缓存 =====
   delayMs = 8000;
