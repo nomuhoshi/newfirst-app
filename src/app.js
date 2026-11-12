@@ -437,7 +437,7 @@ function showToast(msg) {
   if (!t) { t = h("div", { class: "toast", role: "alert" }); document.body.append(t); }
   t.textContent = msg;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.remove(), 6000);
+  toastTimer = setTimeout(() => t.remove(), 4000);
 }
 const fmtWait = (ms) => { const m = Math.ceil(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)} 小时 ${m % 60} 分钟` : `${m} 分钟`; };
 
@@ -801,7 +801,7 @@ function a2hsPrompt() {
       button("怎么添加", () => { steps.hidden = !steps.hidden; }, "btn3d", { "data-a2hs-how": "" }),
     ),
     h("div", { class: "acct-row" },
-      button("稍后", () => { try { localStorage.setItem(A2HS_SNOOZE, String(Date.now() + 3 * 24 * 3600 * 1000)); } catch { /* 记不住就只关掉这一次 */ } box.remove(); }, "btn3d ghost", { "data-a2hs-later": "" }),
+      button("稍后", () => { let saved = true; try { localStorage.setItem(A2HS_SNOOZE, String(Date.now() + 3 * 24 * 3600 * 1000)); } catch { saved = false; } box.remove(); if (!saved) showToast("这个浏览器记不住“稍后”，下次打开还会提示。"); }, "btn3d ghost", { "data-a2hs-later": "" }),
       button("不再提示", () => { state.installTipClosed = true; persist(); box.remove(); }, "btn3d ghost", { "data-a2hs-close": "" }),
     ));
   return box;
@@ -818,7 +818,7 @@ function exportReminder() {
         box.replaceChildren(
           h("p", { "data-export-confirm": "", text: "已请求下载。请到“文件”App → 下载里确认有 suipian-progress 开头的文件，确认后点下面的按钮；没找到就再点一次“导出进度”。" }),
           h("div", { class: "acct-row" },
-            button("我已保存好", () => { const okT = markExported(); box.remove(); showToast(okT ? "好的，14 天后再提醒你。" : "提醒时间未更新：这个浏览器记不住确认，下次打开可能还会提醒。"); }, "btn3d", { "data-export-saved": "" }),
+            button("我已保存好", () => { if (!markExported()) { const m = box.querySelector("[data-export-confirm]"); if (m) m.textContent = "提醒时间未更新：这个浏览器记不住确认（可能是无痕模式或存储已满）。文件如果已经保存好，可以先不管；下次打开可能还会提醒。"; return; } box.remove(); showToast("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved": "" }),
             button("再导出一次", () => { exportProgressFile(); }, "btn3d ghost", { "data-export-again": "" }),
           ));
       }, "btn3d", { "data-export-now": "" }),
@@ -842,19 +842,19 @@ function backupCard() {
     if (!exportProgressFile()) { say(BACKUP_REFUSED, true); return; }
     {
       say("已请求下载。请到浏览器的下载位置（iPhone：“文件”App → 下载）确认文件在，并自己保管好。");
-      if (!signedIn) panel.replaceChildren(h("div", { class: "confirm" }, h("p", { text: "确认文件已经保存好了吗？确认后，14 天备份提醒会重新计时。" }), button("我已保存好", () => { const okT = markExported(); panel.replaceChildren(); say(okT ? "好的，14 天后再提醒你。" : "提醒时间未更新：这个浏览器记不住确认。", !okT); }, "btn3d", { "data-export-saved-me": "" })));
+      if (!signedIn) panel.replaceChildren(h("div", { class: "confirm" }, h("p", { text: "确认文件已经保存好了吗？确认后，14 天备份提醒会重新计时。" }), button("我已保存好", () => { if (!markExported()) { say("提醒时间未更新：这个浏览器记不住确认（可能是无痕模式或存储已满）。", true); return; } panel.replaceChildren(); say("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved-me": "" })));
     }
   };
   const file = h("input", { type: "file", accept: "application/json,.json", hidden: "", "data-import-file": "" });
   // 读到一段进度文本（文件或进度码）后：校验 → 给确认 → 确认后才合并。文件和进度码走同一条路
   const knownIds = () => new Set(Object.values(UNITS).flatMap((u) => u.lessons.map((l) => l.id)));
-  const offerImport = (text) => {
+  const offerImport = (text, source = "文件") => {
     const r = parseImport(text, { knownIds: knownIds() });
     if (!r.ok) { say(r.error, true); return; }
     const sm = summarize(r.state);
     say("");
     panel.replaceChildren(h("div", { class: "confirm", role: "alertdialog", "data-import-confirm": "" },
-      h("p", { text: `文件里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（导出于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
+      h("p", { text: `${source}里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（${source === "进度码" ? "生成" : "导出"}于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
       button("确认导入", () => {
         if (blockedByLogin()) return;
         syncFromStorage(state); state = mergeImport(state, r.state); const saved = persist(); renderMe();
@@ -896,7 +896,7 @@ function backupCard() {
     panel.replaceChildren(ta, button("读取进度码", () => {
       const d = decodeCode(ta.value);
       if (!d.ok) { say(d.error, true); return; }
-      offerImport(d.text);
+      offerImport(d.text, "进度码");
     }, "btn3d", { "data-code-read": "" }));
   };
   return h("section", { class: "backup", "data-backup": "" },
