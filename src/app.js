@@ -40,8 +40,8 @@ import { createAccountUi } from "./account-ui.js";
 import { createPreviewInfo } from "./preview-info.js";
 import { cloudTarget } from "./cloud-config.js";
 import { docToState } from "./account-data.js";
-import { buildExport, exportFileName, parseImport, mergeImport, summarize } from "./progress-file.js";
-import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue } from "./storage-health.js";
+import { buildExport, exportFileName, parseImport, mergeImport, summarize, encodeCode, decodeCode } from "./progress-file.js";
+import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad } from "./storage-health.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
@@ -797,12 +797,8 @@ function backupCard() {
     else say("导出失败，请换个浏览器再试。", true);
   };
   const file = h("input", { type: "file", accept: "application/json,.json", hidden: "", "data-import-file": "" });
-  file.addEventListener("change", async () => {
-    const f = file.files && file.files[0]; file.value = "";
-    panel.replaceChildren(); if (!f) return;
-    if (blockedByLogin()) return;
-    let text = "";
-    try { text = await f.text(); } catch { say("读取文件失败。", true); return; }
+  // 读到一段进度文本（文件或进度码）后：校验 → 给确认 → 确认后才合并。文件和进度码走同一条路
+  const offerImport = (text) => {
     const r = parseImport(text);
     if (!r.ok) { say(r.error, true); return; }
     const sm = summarize(r.state);
@@ -815,13 +811,48 @@ function backupCard() {
       }, "btn3d primary"),
       button("取消", () => { panel.replaceChildren(); }, "btn"),
     ));
+  };
+  file.addEventListener("change", async () => {
+    const f = file.files && file.files[0]; file.value = "";
+    panel.replaceChildren(); if (!f) return;
+    if (blockedByLogin()) return;
+    let text = "";
+    try { text = await f.text(); } catch { say("读取文件失败。", true); return; }
+    offerImport(text);
   });
+  // 进度码：一段文字，复制后到别的标签页 / 主屏幕 App 粘贴即可恢复，不用经过“文件”App
+  const doCopyCode = async () => {
+    let code = "";
+    try { syncFromStorage(state); code = encodeCode(state, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" }); } catch { say("生成进度码失败，请改用“导出进度文件”。", true); return; }
+    try {
+      await navigator.clipboard.writeText(code);
+      say("进度码已复制。到另一个标签页或主屏幕 App 的“我的 → 备份学习记录 → 粘贴进度码”里粘贴即可。");
+    } catch {
+      const ta = h("textarea", { class: "code-box", readonly: "", rows: "4", "aria-label": "进度码", "data-code-out": "" }); ta.value = code;
+      panel.replaceChildren(h("p", { class: "small", text: "这个浏览器不让自动复制：长按下面的文字，选“全选”再“拷贝”。" }), ta);
+      ta.focus(); ta.select();
+      say("");
+    }
+  };
+  const showPaste = () => {
+    if (blockedByLogin()) return;
+    const ta = h("textarea", { class: "code-box", rows: "4", placeholder: "把复制的进度码粘贴在这里", "aria-label": "粘贴进度码", "data-code-in": "" });
+    panel.replaceChildren(ta, button("读取进度码", () => {
+      const d = decodeCode(ta.value);
+      if (!d.ok) { say(d.error, true); return; }
+      offerImport(d.text);
+    }, "btn3d", { "data-code-read": "" }));
+  };
   return h("section", { class: "backup", "data-backup": "" },
     h("h3", { text: "备份学习记录" }),
     h("p", { class: "small muted", text: signedIn ? "导出本机学习记录，云端状态以上方为准。已登录时不能导入（要导入请先退出登录）。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
     h("div", { class: "acct-row" },
       button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
       signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
+    ),
+    h("div", { class: "acct-row" },
+      button("复制进度码", doCopyCode, "btn3d", { "data-code-copy": "" }),
+      signedIn ? null : button("粘贴进度码", showPaste, "btn3d", { "data-code-paste": "" }),
     ),
     file, panel, msg);
 }
@@ -1482,5 +1513,5 @@ window.addEventListener("online", () => {
 });
 // 先把界面画出来，再在后台加载 Python：Python 出任何问题都不能让页面一片空白
 if (state.onboarded) renderPath(); else renderOnboarding();
-firstSeenAt(); ensurePersist(); // 记下这份存储的首次使用时间；申请持久存储（失败不影响使用）
+firstSeenAt(); recordLoad(); ensurePersist(); // 记下这份存储的首次使用时间；申请持久存储（失败不影响使用）
 try { runner.boot(); } catch { /* 失败时 runner 已经记录为 loadError，“运行结果”面板会如实提示 */ }
