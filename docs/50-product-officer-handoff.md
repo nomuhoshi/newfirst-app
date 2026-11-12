@@ -303,7 +303,7 @@ A 待办：①Safari 根因（等老大两份诊断，普通/私密标签、入�
 | H Python 延迟加载 | P2 | Claude；Gemini；GPT1 | ✅ 触发点已定（产品官 04:57：首次提交答案、经 showRun→runForOutput；欢迎页/地图/仅进题面不预热）；接受“首次执行前已离线则加载失败”的边界 | ✅ #92 合并 main `4dde3f9`（GPT1 05:35 PASS；同步 main 后头 `6ea0ee7` 增量 PASS；idle 先挂监听再启动，loading 不重复 boot） | ✅ 同步头 CI 全绿；`lazy-python` 在 chromium+webkit 实跑；前后对比（诊断运行 43297742770）：到地图 Python 请求 6→0，第一次检查出结果本机 2537 ms | ⬜ | 🔶 main run 43307065522 全绿，deploy 成功（记录 7749898003，06:17 JST）；线上核对待传话员 | 压缩后传输量 gzip≈6.1 / brotli≈5.2 MB 仅为本地估计；本机用时不代表手机网速；随机练习共用 showRun、未单独跑浏览器用例；iPhone 真机未验 |
 | I 测试可靠性 | P1 | Claude / GPT1 | 🔶 | 🔶 #78/#79 已完成 | 🔶 独立场景独立环境、汇总失败与退出码待做 | — | ✅ 已上线部分 | 随各 PR 推进 |
 | J 模块与课程拆分 | P3 | Claude / GPT1 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | A/B 稳定后 |
-| K 测试页与 CSP 隔离 | P1 | Claude / GPT1 | ✅ 测试页隔离；🔶 CSP 隔离方案见下“06:28 登记” | ✅ 测试页隔离：#90 合并 `6230c51`（首轮 `e935c9f` 被 GPT1 判阻断：“未预缓存”≠“lab 专用”；修正版 `91d0912` 按引用关系只删 lab 独占文件 + 相对引用完整性自检，05:09 PASS；首轮失败与修正证据保留）；⬜ CSP 测试域隔离未做 | ✅ CI 全绿；真实 dist 保留 25、去掉 4 | — | ✅ 传话员 05:58 线上核对：`main-BvUlVj48.js` 含 `6230c51…`；access-test.html、lab.html、access-test-config.js 均 404；首页、sw.js、manifest 200；桌面隔离 Chromium 四项复测通过；WebKit/iPhone 未测 | 测试页隔离子项完成；CSP 隔离单列未完成；自检依赖构建产物里的文件名引用可被静态识别；死样式只列清单不删 |
+| K 测试页与 CSP 隔离 | P1 | Claude / GPT1 | ✅ 测试页隔离；✅ CSP 隔离（#94）已合并部署，线上核对待传话员 | ✅ 测试页隔离：#90 合并 `6230c51`（首轮 `e935c9f` 被 GPT1 判阻断：“未预缓存”≠“lab 专用”；修正版 `91d0912` 按引用关系只删 lab 独占文件 + 相对引用完整性自检，05:09 PASS；首轮失败与修正证据保留）；⬜ CSP 测试域隔离未做 | ✅ CI 全绿；真实 dist 保留 25、去掉 4 | — | ✅ 传话员 05:58 线上核对：`main-BvUlVj48.js` 含 `6230c51…`；access-test.html、lab.html、access-test-config.js 均 404；首页、sw.js、manifest 200；桌面隔离 Chromium 四项复测通过；WebKit/iPhone 未测 | 测试页隔离子项完成；CSP 隔离：#94 合并 `9453683`（头 `206cc1e`，GPT1 初审+增量复核 PASS，产品官 07:08 放行），main run 43317705367 全绿，deploy 成功（记录 7751264303，07:22 JST），线上核对待传话员；自检依赖构建产物里的文件名引用可被静态识别；死样式只列清单不删 |
 | L 分支、候选及交接 | P2 | 传话员盘点；GPT1 核对；Claude 提交 | 🔶 | 🔶 第一批 PR #84（AGENTS、docs/00、白名单 49/50/55/56/57/58） | — | — | ⬜ 待复核后合并 | #42/#43 保持 Draft；不整枝合入 docs、不删分支；证据截图、课程路线、脚本后续批次 |
 | M 版本与分享信息 | P2 | Claude；Gemini 文案；传话员线上核对 | ✅ | ✅ #91 合并 main `2e6a1b4`（GPT1 04:55 代码审查 PASS） | ✅ main run 43297630852 全绿 | — | ✅ 传话员 05:33 核对：`main-0zEEA-Z7.js` 含 `2e6a1b4…`，产品官 05:37 确认；之后线上已更新为 `6230c51` | 两处文字同源，只证明页面内部一致；不写 og:url / og:image |
 | 23:21 | 程序员（Sonnet） | 产品官 22:56：放行顺序 #81 → #80（同步后）；readSnapshot 边界注释更正（#81 `57a7db1`）；提醒跨代已是 #82；L 第一批 PR #84；Gemini 配额结论更正登记 docs/58 §9；G 的 PR #83 待复审。 |
@@ -341,6 +341,11 @@ A 待办：①Safari 根因（等老大两份诊断，普通/私密标签、入�
 - **#94 CI 历史**：第 1 次 `91c1611` 失败（`EXPECT` 声明在 B 段块内，C 段 ReferenceError）；第 2 次 `ac3ace5` 失败（正式产物上故意访问测试域的拦截发生在基线计数之前，被算成应用自身 CSP 违规，GPT1 06:36 预判，实测复现）；第 3 次 `206cc1e` 运行 43315416600 三项全绿（`dist-pages` 专项 Chromium/WebKit 各 29 项 0 失败）。GPT1 06:51 对 `ac3ace5` 代码层初审 PASS；`206cc1e` 的新增差异（EXPECT 作用域、基线位置）待增量复审，未复审前不合并。证据边界：专项里的云请求是 Playwright 本地拦截，不是真实 Auth 验收。
 - **#83**：传话员 04:52 隔离更新验收按“桌面 Chromium、查询串近似更新模拟通过”登记，不登记为真实新包升级或 iPhone 通过。
 - **A** 未关闭；12:00 前不联系老大；其他禁令不变。
+
+### 07:23 登记：#94（K-CSP）合并部署（东京时间）
+- #94 合并 `9453683dc1f21c64883fed77c165c42a2177df97`；main run 43317705367：build / mobile chromium / mobile webkit 全绿；deploy 成功，Pages 部署记录 7751264303（22:22Z = 07:22 JST）。日志：build:ci 先后构建测试专用 dist 与正式 dist-formal；dist-pages 保留 25、去掉 4；`dist-pages` 上 CSP 专项在 build（Chromium）与 mobile（Chromium、WebKit）各 29 项 0 失败。**线上核对待传话员**：bundle 含 `9453683…`；线上 `index.html` 的 CSP 的 connect-src 只有 'self' 和正式项目，不含 fake.supabase.test；应用正常。核对前正式线上仍记 `0914bc6`。
+- 缺陷关闭：#94 第 1 次 CI（`EXPECT` 作用域）与第 2 次（拦截基线位置）失败原因均为测试代码，已在 `ac3ace5`、`206cc1e` 修复，失败记录保留。表述：资源字节一致，正式 CSP 另有独立验证；专项里的云请求为本地拦截，不是真实 Auth 验收。
+- GPT1 07:07 A–M 盘点：已上线主要功能完成 F、H、M；已上线但仍有真机验收或后续 A、B、C、G、I、L；暂缓 E、J；只等老大 A、D、G（及 F/H 的 iPhone 验收）。**A 不能关闭。** 建议 12:00 前剩余优先事项：I 的 CI 失败证据整理（#94 的三次 CI 可作为样本）。
 
 ## 设计评估登记（产品官 2026-11-12 22:34 记录，设计师 00:48 JST 入库）
 评估原文：`docs/design/fable-review-2026-11-12.md`。
