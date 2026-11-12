@@ -1,3 +1,5 @@
+> **快照**：来自 `docs/course-roadmap-and-cleanup` @ `6cd9d41`，取于 2026-11-13 01:05 JST；该分支上的版本更新更勤，最新见 <https://github.com/nomuhoshi/newfirst-app/blob/docs/course-roadmap-and-cleanup/docs/56-ios-diagnosis-2026-11-12.md>
+
 # 56 iPhone 两项失败的专项诊断（Fable，2026-11-12 01:1x）
 
 诊断：Fable（受产品官 5 号指定）；程序员核对后整理。基于正式版 main `f7c5f22` 的同源构建，在本机 Chromium 实测（本机没有 WebKit；真 Safari 只有老大截图作证）。应用代码**未改**；诊断测试在分支 `diag/ios-feedback-progress` `753cf59`（只加 2 个测试文件，未开 PR、未合并、未部署）。
