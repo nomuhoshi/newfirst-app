@@ -33,7 +33,7 @@ jobs:
         run: |
           pass=0; fail=0
           for i in 1 2 3 4 5 6; do
-            timeout 300 node tests/step3-diag.test.mjs > /tmp/s3-$i.log 2>&1; rc=$?
+            rc=0; timeout 300 node tests/step3-diag.test.mjs > /tmp/s3-$i.log 2>&1 || rc=$?
             if [ $rc -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "##### iter $i rc=$rc"; grep -n '❌\|DIAG\|Timeout' /tmp/s3-$i.log | head -20; tail -n 150 /tmp/s3-$i.log; fi
           done
           echo "shard ${{ matrix.shard }}: pass=$pass fail=$fail"
