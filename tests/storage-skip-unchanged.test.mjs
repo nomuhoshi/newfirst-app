@@ -1,11 +1,11 @@
 // 方案 B「无变化不新增账本」：没有未保存变化时 saveState 不写任何键；有变化正常保存；失败后仍待保存。纯 node，假 localStorage。
-const mem = {}; let failWrite = false, writes = 0;
+const mem = {}; let failWrite = false, writes = 0, nGet = 0, beforeGet = null;
 globalThis.localStorage = {
-  getItem: (k) => (k in mem ? mem[k] : null),
+  getItem: (k) => { nGet++; if (beforeGet) { const f = beforeGet; beforeGet = null; f(k); } return k in mem ? mem[k] : null; },
   setItem: (k, v) => { if (failWrite) throw new Error("quota"); writes++; mem[k] = String(v); },
   removeItem: (k) => { delete mem[k]; }, key: (i) => Object.keys(mem)[i] ?? null, get length() { return Object.keys(mem).length; },
 };
-const { loadState, saveState, mergeStored, addXp, addRun, freshState, clearState, regenHearts, loseHeart, _asTab, readSnapshot } = await import("../src/storage.js");
+const { getLastSaveStatus, loadState, saveState, mergeStored, addXp, addRun, freshState, clearState, regenHearts, loseHeart, _asTab, readSnapshot } = await import("../src/storage.js");
 let fail = 0; const ok = (n, c, d = "") => { if (!c) fail++; console.log((c ? "✅ " : "❌ ") + n + (c ? "" : "  — " + d)); };
 const reset = () => { for (const k of Object.keys(mem)) delete mem[k]; failWrite = false; writes = 0; };
 const tabKeys = () => Object.keys(mem).filter((k) => k.includes(".tab."));
@@ -65,7 +65,7 @@ const seen = () => { const s = loadState().state; return { xp: s.xp, runs: s.les
 // 8 清除后：旧页无变化不复活；旧页有变化时按新一代保存
 { reset(); const A = page(), B = page(); finish(A, "U1L1"); saveState(A); mergeStored(B);
   const f = clearState(); ok("8 清除成功", !f.clearFailed);
-  const w = writes; ok("8 旧页无变化保存返回 true 且不写", saveState(B) === true && writes === w);
+  const w = writes; ok("8 旧页无变化保存：发现已被清除，返回清除冲突（非成功）且不写账本", saveState(B) === false && getLastSaveStatus() === "cleared" && writes === w, getLastSaveStatus());
   ok("8 清除后进度仍为空", seen().xp === 0 && seen().done === "");
   ok("8 旧页再保存没有复活旧键", tabKeys().every((k) => { const r = JSON.parse(mem[k]); return r.epoch === JSON.parse(mem["suipian.v4.epoch"] ? JSON.stringify({ epoch: mem["suipian.v4.epoch"] }) : "{}").epoch; }) || tabKeys().length === 0, tabKeys().join(",")); }
 
@@ -77,5 +77,35 @@ const seen = () => { const s = loadState().state; return { xp: s.xp, runs: s.les
   const A = page(); const k0 = tabKeys().length; regenHearts(A); saveState(A);
   ok("10 旧记录升级后仅打开不建账本", tabKeys().length === k0 && seen().xp === 40 && seen().done === "U1L1", tabKeys().length + "/" + k0);
   finish(A, "U1L2"); saveState(A); ok("10 学习后建立账本且保留旧进度", tabKeys().length === k0 + 1 && seen().xp === 100 && seen().done === "U1L1,U1L2", JSON.stringify(seen())); }
+
+// 11 快速返回前的代数窗口：无变化保存期间（任意一次读取之前）另一页清除 → 不能报“已保存”，内存与存储一致
+{ const clearOther = () => { const C = clearState(); _asTab(C, "o" + ++n); };
+  let probe = 0; { reset(); const A = page(); finish(A, "U1L1"); saveState(A); const g0 = nGet; saveState(A); probe = nGet - g0; }
+  let bad = 0, cleared = 0;
+  for (let K = 1; K <= probe; K++) {
+    reset(); const A = page(); finish(A, "U1L1"); saveState(A);
+    const base = nGet; beforeGet = null; let c = 0; const og = localStorage.getItem;
+    localStorage.getItem = (k) => { c++; if (c === K) { localStorage.getItem = og; clearOther(); } return og(k); };
+    const r = saveState(A); localStorage.getItem = og;
+    const view = loadState().state;
+    if (r === true && A.xp !== view.xp) { bad++; console.log(`❌ 11 K=${K}：返回成功，但内存 xp=${A.xp}，存储 xp=${view.xp}`); }
+    if (getLastSaveStatus() === "cleared") { cleared++; if (A.xp !== 0 || view.xp !== 0) { bad++; console.log(`❌ 11 K=${K}：清除胜出后内存或存储仍有旧进度`); } }
+  }
+  ok("11 无变化保存期间在每个读取点注入清除：返回成功时内存与存储一致", bad === 0 && probe >= 3, `probe=${probe} bad=${bad}`);
+  ok("11 其中确有“清除胜出”的情形", cleared >= 1, "cleared=" + cleared); }
+
+// 12 A 保存失败，B 保存新进度，A 恢复后补存：两边进度都在
+{ reset(); const A = page(), B = page(); finish(A, "U1L1"); failWrite = true; ok("12 A 保存失败", saveState(A) === false); failWrite = false;
+  finish(B, "U1L2"); ok("12 B 保存新进度", saveState(B) === true);
+  ok("12 A 恢复后补存成功", saveState(A) === true);
+  const v = seen(); ok("12 两页进度都在（关卡并集、XP 相加）", v.done === "U1L1,U1L2" && v.xp === 120 && v.runs === 2, JSON.stringify(v)); }
+
+// 13 A 保存失败，B 清除，A 重试：清除胜出，旧数据不复活
+{ reset(); const A = page(); const B0 = page(); finish(A, "U1L1"); failWrite = true; ok("13 A 保存失败", saveState(A) === false); failWrite = false;
+  const C = clearState(); _asTab(C, "oB");
+  const r = saveState(A);
+  ok("13 A 重试：返回非成功，状态 cleared", r === false && getLastSaveStatus() === "cleared", getLastSaveStatus());
+  ok("13 清除胜出：A 内存与存储都没有旧数据", A.xp === 0 && Object.keys(A.done).length === 0 && seen().xp === 0 && seen().done === "", JSON.stringify([A.xp, seen()]));
+  ok("13 之后 A 再保存也不复活", saveState(A) === true && seen().xp === 0); }
 
 console.log(fail ? `\n${fail} 项失败` : "\n全部通过"); process.exit(fail ? 1 : 0);

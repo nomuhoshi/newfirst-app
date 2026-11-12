@@ -32,7 +32,7 @@ import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, readSnapshot, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
-} from "./storage.js";
+getLastSaveStatus, } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
 import { createSync } from "./sync.js";
@@ -266,13 +266,19 @@ const sync = safeStorage ? createSync({
 }) : null;
 const restored = sync ? sync.restore(state) : null;
 if (restored) { state = restored.state; notice = null; feel.setPrefs(state.prefs); }
+const CLEARED_MSG_SHORT = "其他页面已清除学习记录，刚才的内容没有保存，本页已按新记录刷新。";
+const CLEARED_MSG_IMPORT = "其他页面已清除学习记录，本次恢复未完成，请重新读取进度码并确认。你的备份文件或进度码没有被修改。";
 function persist() {
   if (sync && sync.account()) {
     const r = sync.persistLocal(state);
     if (!r.ok) showToast("无法保存进度到这台设备（" + (r.message || "存储不可用") + "），关掉页面后进度可能丢失。");
     return !!r.ok;
   }
-  if (!saveState(state)) { showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。"); return false; }
+  if (!saveState(state)) {
+    if (getLastSaveStatus() === "cleared") showToast(CLEARED_MSG_SHORT); // 清除胜出：不是存储故障，不报“无痕模式或存储已满”
+    else showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
+    return false;
+  }
   ensureBackupBase(Object.keys(state.done).length); // 备份提醒的起点：首次成功保存有效进度
   return true;
 }
@@ -860,12 +866,16 @@ function backupCard() {
       h("p", { text: `${source}里有：${sm.lessons} 个已完成关卡，${sm.xp} XP，连续 ${sm.streak} 天${r.exportedAt ? `（${source === "进度码" ? "生成" : "导出"}于 ${r.exportedAt.slice(0, 10)}）` : ""}。导入会把这些合并进当前记录：关卡取并集，XP 取较大的，不会让你现有的进度变少。` }),
       button("确认导入", () => {
         if (blockedByLogin()) return;
-        syncFromStorage(state); state = mergeImport(state, r.state); const saved = persist(); renderMe();
+        syncFromStorage(state); Object.assign(state, mergeImport(state, r.state)); const saved = persist(); renderMe(); // 就地合并：保留这页的账本绑定，保存时才能发现“别页刚清除过”
         if (saved) { showToast("进度已导入。"); return; }
+        if (getLastSaveStatus() === "cleared") { // 清除胜出：不自动重试、不复活旧数据；备份原样保留
+          const m3 = document.querySelector("[data-backup-msg]"); if (m3) { m3.textContent = CLEARED_MSG_IMPORT; m3.classList.add("bad"); }
+          showToast(CLEARED_MSG_IMPORT); return;
+        }
         // 没落盘：不报成功，原存档没有被改动；给重试
         const p2 = document.querySelector(".backup-panel"), m2 = document.querySelector("[data-backup-msg]");
         if (m2) { m2.textContent = "导入的进度现在只显示在这个页面里，还没有保存到本机——请先不要关闭页面（可能是无痕模式或存储已满）。原有的本机记录没有被改动。"; m2.classList.add("bad"); }
-        if (p2) p2.replaceChildren(button("重试保存", () => { if (persist()) { p2.replaceChildren(); if (m2) { m2.textContent = "已保存到本机。"; m2.classList.remove("bad"); } showToast("进度已导入。"); } }, "btn3d", { "data-import-retry": "" }));
+        if (p2) p2.replaceChildren(button("重试保存", () => { if (persist()) { p2.replaceChildren(); if (m2) { m2.textContent = "已保存到本机。"; m2.classList.remove("bad"); } showToast("进度已导入。"); } else if (getLastSaveStatus() === "cleared") { p2.replaceChildren(); if (m2) { m2.textContent = CLEARED_MSG_IMPORT; m2.classList.add("bad"); } } }, "btn3d", { "data-import-retry": "" }));
         showToast("导入的进度现在只显示在这个页面里，还没有保存到本机——请先不要关闭页面。");
       }, "btn3d primary"),
       button("取消", () => { panel.replaceChildren(); }, "btn"),
