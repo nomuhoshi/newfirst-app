@@ -166,6 +166,7 @@ export function createCodeArea(ex, ctx) {
   applyKb();
 
   function pyStatus() {
+    if (runner.state === "idle") runner.boot(); // 进入代码题 = 马上要用 Python，此时才开始加载
     const s = runner.state;
     statusLine.replaceChildren();
     if (s === "ready" || s === "running") { statusLine.textContent = "Python 已就绪"; return; }

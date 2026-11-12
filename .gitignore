@@ -9,3 +9,4 @@ dist-login-sync/
 .pw-browsers/
 .gh-cache/
 tests/e2e/failure-*.png
+dist-pages
