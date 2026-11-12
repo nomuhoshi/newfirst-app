@@ -1,0 +1,20 @@
+import { webkit, devices } from 'playwright'; import fs from 'fs';
+const out='/workspace/research/brilliant/'; const log=[];
+const b=await webkit.launch(); const ctx=await b.newContext({...devices['iPhone 13']}); const p=await ctx.newPage();
+await p.goto('https://brilliant.org/help/',{waitUntil:'domcontentloaded'}); await p.waitForTimeout(3000);
+const links=await p.$$eval('a',as=>as.map(a=>[a.innerText.trim(),a.href]).filter(x=>/help\//.test(x[1])&&x[0]));
+log.push(JSON.stringify(links));
+await p.goto('https://brilliant.org/courses/',{waitUntil:'domcontentloaded'}); await p.waitForTimeout(3000);
+const cl=await p.$$eval('a',as=>as.map(a=>[a.innerText.trim().slice(0,40),a.href]).filter(x=>/courses\/[a-z]/.test(x[1])));
+log.push(JSON.stringify(cl.filter(x=>/python|program|code|cs|think/i.test(x[1]))));
+const py=cl.find(x=>/python/i.test(x[1]))||cl[0];
+await p.goto(py[1],{waitUntil:'domcontentloaded'}); await p.waitForTimeout(3500);
+await p.screenshot({path:out+'wk-iphone-course.png'}); log.push('COURSE '+p.url()+' :: '+(await p.innerText('body')).replace(/\s+/g,' ').slice(0,1500));
+const l=p.locator('a:visible, button:visible').filter({hasText:/start|lesson|begin/i}).first();
+if(await l.isVisible().catch(()=>false)){await l.click({force:true}); await p.waitForTimeout(4000); await p.screenshot({path:out+'wk-iphone-course-start.png'}); log.push('START '+p.url()+' :: '+(await p.innerText('body')).replace(/\s+/g,' ').slice(0,800));}
+await ctx.close();
+const c2=await b.newContext({...devices['iPhone 13'],colorScheme:'dark',reducedMotion:'reduce'}); const q=await c2.newPage();
+await q.goto(py[1],{waitUntil:'domcontentloaded'}); await q.waitForTimeout(3500); await q.screenshot({path:out+'wk-iphone-course-dark.png'});
+const sizes=await q.$$eval('button, a',els=>els.filter(e=>e.offsetParent).map(e=>{const r=e.getBoundingClientRect();return [e.innerText.trim().slice(0,20),Math.round(r.width),Math.round(r.height)]}).slice(0,25));
+log.push('TARGETS '+JSON.stringify(sizes));
+await b.close(); fs.writeFileSync('/workspace/research/b4.log',log.join('\n'));

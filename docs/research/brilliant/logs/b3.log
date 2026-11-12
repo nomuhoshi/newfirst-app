@@ -1,0 +1,54 @@
+cr-iphone cookie: /got it/i
+cr-iphone [0] t=7s https://brilliant.org/welcome/ :: Hi, I’m Koji! I’ll be your personal tutor. Continue
+cr-iphone [1] t=10s https://brilliant.org/welcome/ :: What do you want to learn first? You can make progress in both subjects later on Math Computer Science & Coding Continue
+cr-iphone1/computer science|coding/i
+cr-iphone [2] t=12s https://brilliant.org/welcome/ :: What motivates you to learn? Excelling in school Professional growth Staying sharp Helping my child learn Continue
+cr-iphone [3] t=14s https://brilliant.org/welcome/ :: What motivates you to learn? Excelling in school Professional growth Staying sharp Helping my child learn Continue
+cr-iphone pick: Excelling in school
+cr-iphone [4] t=18s https://brilliant.org/welcome/ :: What would help most right now? Prepare for a test Catch up or keep up in class Get ahead Learn something new Continue
+cr-iphone [5] t=20s https://brilliant.org/welcome/ :: What would help most right now? Prepare for a test Catch up or keep up in class Get ahead Learn something new Continue
+cr-iphone pick: Prepare for a test
+cr-iphone [6] t=24s https://brilliant.org/welcome/ :: I’ll ask questions to map your current knowledge, then build you a structured learning plan. Continue
+cr-iphone [7] t=26s https://brilliant.org/welcome/ :: How do you want me to sound? Turn up your volume if you can’t hear me. Melodic Deep Voice on Continue
+cr-iphone [8] t=28s https://brilliant.org/welcome/ :: How do you want me to sound? Turn up your volume if you can’t hear me. Melodic Deep Voice on Continue
+cr-iphone pick: Melodic
+cr-iphone [9] t=32s https://brilliant.org/welcome/ :: How old are you? Continue
+cr-iphone filled age 30
+cr-iphone [10] t=34s https://brilliant.org/welcome/ :: What level of programming are you currently at? Beginner I want to start from the basics. Novice I’ve seen, but not touched code before. Intermediate I can write simple programs with loops. Advanced I’ve written longer programs. Continue
+cr-iphone10/new to|beginner|just starting|i'm new|basics/i
+cr-iphone [11] t=38s https://brilliant.org/welcome/ :: We have everything you need. Continue
+cr-iphone [12] t=45s https://brilliant.org/welcome/ :: What’s your daily learning goal? 10 min 20 min 30 min 60 min Continue
+cr-iphone [13] t=48s https://brilliant.org/welcome/ :: What’s your daily learning goal? 10 min 20 min 30 min 60 min Continue
+cr-iphone pick: 10 min
+cr-iphone [14] t=51s https://brilliant.org/welcome/ :: How will learning fit into your day? Morning routine Afternoon break Nightly ritual Another time Continue
+cr-iphone [15] t=53s https://brilliant.org/welcome/ :: How will learning fit into your day? Morning routine Afternoon break Nightly ritual Another time Continue
+cr-iphone pick: Morning routine
+cr-iphone [16] t=57s https://brilliant.org/signup/ :: Create a free profile to discover your learning plan OR Sign up By clicking Sign up, I agree to Brilliant’s Terms and Privacy Policy Existing user? Sign in Brilliant | Learn by doing
+cr-iphone >>> SIGNUP/WALL at screen 16
+wk-iphone cookie: /got it/i
+wk-iphone [0] t=7s https://brilliant.org/welcome/ :: Hi, I’m Koji! I’ll be your personal tutor. Continue
+wk-iphone [1] t=10s https://brilliant.org/welcome/ :: What do you want to learn first? You can make progress in both subjects later on Math Computer Science & Coding Continue
+wk-iphone1/computer science|coding/i
+wk-iphone [2] t=12s https://brilliant.org/welcome/ :: What motivates you to learn? Excelling in school Professional growth Staying sharp Helping my child learn Continue
+wk-iphone [3] t=15s https://brilliant.org/welcome/ :: What motivates you to learn? Excelling in school Professional growth Staying sharp Helping my child learn Continue
+wk-iphone pick: Excelling in school
+wk-iphone [4] t=18s https://brilliant.org/welcome/ :: What would help most right now? Prepare for a test Catch up or keep up in class Get ahead Learn something new Continue
+wk-iphone [5] t=20s https://brilliant.org/welcome/ :: What would help most right now? Prepare for a test Catch up or keep up in class Get ahead Learn something new Continue
+wk-iphone pick: Prepare for a test
+wk-iphone [6] t=24s https://brilliant.org/welcome/ :: I’ll ask questions to map your current knowledge, then build you a structured learning plan. Continue
+wk-iphone [7] t=26s https://brilliant.org/welcome/ :: How do you want me to sound? Turn up your volume if you can’t hear me. Melodic Deep Voice on Continue
+wk-iphone [8] t=29s https://brilliant.org/welcome/ :: How do you want me to sound? Turn up your volume if you can’t hear me. Melodic Deep Voice on Continue
+wk-iphone pick: Melodic
+wk-iphone [9] t=32s https://brilliant.org/welcome/ :: How old are you? Continue
+wk-iphone filled age 30
+wk-iphone [10] t=34s https://brilliant.org/welcome/ :: What level of programming are you currently at? Beginner I want to start from the basics. Novice I’ve seen, but not touched code before. Intermediate I can write simple programs with loops. Advanced I’ve written longer programs. Continue
+wk-iphone10/new to|beginner|just starting|i'm new|basics/i
+wk-iphone [11] t=37s https://brilliant.org/welcome/ :: We have everything you need. Continue
+wk-iphone [12] t=40s https://brilliant.org/welcome/ :: What’s your daily learning goal? 10 min 20 min 30 min 60 min Continue
+wk-iphone [13] t=42s https://brilliant.org/welcome/ :: What’s your daily learning goal? 10 min 20 min 30 min 60 min Continue
+wk-iphone pick: 10 min
+wk-iphone [14] t=46s https://brilliant.org/welcome/ :: How will learning fit into your day? Morning routine Afternoon break Nightly ritual Another time Continue
+wk-iphone [15] t=48s https://brilliant.org/welcome/ :: How will learning fit into your day? Morning routine Afternoon break Nightly ritual Another time Continue
+wk-iphone pick: Morning routine
+wk-iphone [16] t=51s https://brilliant.org/signup/ :: Create a free profile to discover your learning plan OR Sign up By clicking Sign up, I agree to Brilliant’s Terms and Privacy Policy Existing user? Sign in Brilliant | Learn by doing
+wk-iphone >>> SIGNUP/WALL at screen 16
