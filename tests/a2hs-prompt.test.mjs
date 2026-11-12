@@ -63,6 +63,11 @@ try {
     await page.evaluate(() => localStorage.setItem("suipian.meta.a2hsSnooze", String(Date.now() - 1000)));
     await page.reload(); await page.waitForSelector(".statsbar");
     check("稍后过期后再次出现", (await count(page)) === 1); await ctx.close(); }
+  { const { ctx, page } = await open({ done: 2 });
+    await page.evaluate(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k) === "suipian.meta.a2hsSnooze") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
+    await page.locator("[data-a2hs-later]").tap();
+    check("“稍后”写入失败：明确提示记不住", /记不住/.test(await page.locator(".toast").innerText()));
+    await ctx.close(); }
   { const { ctx, page } = await open({ done: 1 }); check("只完成 1 关：不出现", (await count(page)) === 0); await ctx.close(); }
   { const { ctx, page } = await open({ standalone: true }); check("主屏幕 App 里：永不显示", (await count(page)) === 0); await ctx.close(); }
   { const { ctx, page } = await open({ ua: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36" }); check("非 iPhone：不显示", (await count(page)) === 0); await ctx.close(); }

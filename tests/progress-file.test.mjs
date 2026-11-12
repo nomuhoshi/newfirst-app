@@ -187,6 +187,19 @@ try {
   await page.getByRole("button", { name: "确认导入" }).tap(); await page.waitForTimeout(300);
   const st2 = await page.evaluate(() => window.__app.getState());
   check("导入较旧的文件：XP 不减少、已有关卡不丢", st2.xp === 500 && st2.done.U2L5 === true && Object.keys(st2.done).length === 9);
+  // 学习后粘贴旧码 / 同一码重复 / 文件与进度码交替：不重复计分、不丢已有进度
+  const snap = () => page.evaluate(() => { const x = window.__app.getState(); return JSON.stringify([x.xp, x.lessonsCompleted, Object.keys(x.done).sort(), x.streak, x.lastDay]); });
+  const pasteCode = async (c) => { await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill(c); await page.locator("[data-code-read]").tap(); await page.waitForSelector("[data-import-confirm]"); await page.getByRole("button", { name: "确认导入" }).tap(); await page.waitForTimeout(250); };
+  const importFile = async (f) => { await page.locator("[data-import-file]").setInputFiles(f); await page.waitForSelector("[data-import-confirm]"); await page.getByRole("button", { name: "确认导入" }).tap(); await page.waitForTimeout(250); };
+  const before = await snap();
+  await pasteCode(codeText); const a1 = await snap();
+  check("学习后粘贴旧码：XP、关卡、次数、连续天数都不减少，也不增加", a1 === before, a1 + " vs " + before);
+  await pasteCode(codeText); const a2 = await snap();
+  check("同一码连续导入两次：结果不变", a2 === before);
+  await importFile(saved); const a3 = await snap();
+  check("再导入旧文件：结果不变", a3 === before);
+  await pasteCode(codeText); const a4 = await snap();
+  check("文件与进度码交替导入：不重复计分、不丢已有进度", a4 === before);
   check("页面没有脚本错误", errors.length === 0, errors.join("; "));
   await ctx.close();
 } finally { await browser.close(); srv.closeAllConnections(); srv.close(); }

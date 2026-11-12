@@ -93,6 +93,22 @@ try {
     await page.reload(); await page.waitForSelector(".statsbar");
     check("刷新后不再出现", (await count(page)) === 0); await ctx.close();
   }
+  { // 确认写入失败：不显示成功，确认区保留
+    const { ctx, page } = await open(15);
+    await Promise.all([page.waitForEvent("download"), page.locator("[data-export-now]").tap()]);
+    await page.evaluate(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k) === "suipian.meta.lastExport") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
+    await page.locator("[data-export-saved]").tap();
+    check("确认写入失败：提示“提醒时间未更新”，确认区还在，不说“14 天后再提醒”", /提醒时间未更新/.test(await page.locator("[data-export-confirm]").innerText()) && (await count(page)) === 1 && !/14 天后再提醒/.test(await page.locator("body").innerText()));
+    check("确认写入失败时没有记录导出时间", (await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport"))) === null);
+    await ctx.close();
+  }
+  { // 稍后写入失败
+    const { ctx, page } = await open(15);
+    await page.evaluate(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k) === "suipian.meta.exportSnooze") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
+    await page.locator("[data-export-later]").tap();
+    check("稍后写入失败：提示记不住", /记不住/.test(await page.locator(".toast").innerText()));
+    await ctx.close();
+  }
   { // 导出过的人再隔 14 天又提醒
     const { ctx, page } = await open(40, { "suipian.meta.lastExport": Date.now() - 15 * DAY });
     check("上次导出已 15 天：提醒", (await count(page)) === 1); await ctx.close();
