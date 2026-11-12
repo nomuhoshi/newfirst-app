@@ -6,6 +6,7 @@ import "./preview-storage.js"; // 必须第一个：测试入口里给 localStor
 import "./style.css";
 import "./app.css";
 import "./game.css";
+import { versionLabel } from "./version-label.js";
 import course from "../content/course.json";
 import unit1 from "../content/unit1.json";
 import unit2 from "../content/unit2.json";
@@ -292,6 +293,7 @@ accountUi = createAccountUi({
     // 登录过的设备一定已经看过开场介绍：退出后回到游客记录不再重放“你好，我是小码”（按设备保存，不同步）
     if (!state.onboarded) { state.onboarded = true; persist(); } feel.setPrefs(state.prefs); currentView === "me" ? renderMe() : renderPath(); },
 });
+const appVersionLabel = () => versionLabel({ sha: typeof __SOURCE_SHA__ !== "undefined" ? __SOURCE_SHA__ : "", build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" });
 previewInfo = createPreviewInfo({
   h, isPreview: typeof __PREVIEW_ID__ !== "undefined" && !!__PREVIEW_ID__,
   sha: typeof __SOURCE_SHA__ !== "undefined" ? __SOURCE_SHA__ : "", previewId: typeof __PREVIEW_ID__ !== "undefined" ? __PREVIEW_ID__ : "",
@@ -598,7 +600,7 @@ function selfTest() {
   const showDiag = (extra = "") => {
     const d = feel.diagnostics();
     diag.textContent = [
-      `应用版本：${typeof __BUILD__ !== "undefined" ? __BUILD__.slice(0, 16).replace("T", " ") + " UTC" : "开发版"}${typeof __PREVIEW_ID__ !== "undefined" && __PREVIEW_ID__ ? `（测试入口 ${__PREVIEW_ID__}）` : ""}`,
+      `应用版本：${appVersionLabel()}${typeof __PREVIEW_ID__ !== "undefined" && __PREVIEW_ID__ ? `（测试入口 ${__PREVIEW_ID__}）` : ""}`,
       `缓存版本：${swInfo.caches.length ? swInfo.caches.join("、").replace(/suipian-/g, "").slice(0, 40) : "无"}`,
       `离线支持：${swInfo.status}`,
       `网络：${navigator.onLine === false ? "离线" : "在线"}`,
@@ -1001,6 +1003,7 @@ function renderMe() {
       h("h3", { text: "添加到主屏幕" }),
       h("p", { text: "iPhone：用 Safari 打开 → 分享按钮 → 「添加到主屏幕」。从主屏幕打开是全屏的，记录也和 Safari 分开保存。" }),
       sync?.account() ? null : clearBtn,
+      h("p", { class: "me-foot muted small", "data-app-version": "", text: `应用版本：${appVersionLabel()}` }),
       h("p", { class: "me-foot" }, h("a", { href: "./privacy.html", target: "_blank", rel: "noopener", "data-privacy-link": "", text: "隐私说明" })),
     ),
     tabBar("me"),
