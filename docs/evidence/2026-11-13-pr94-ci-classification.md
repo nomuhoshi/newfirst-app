@@ -1,12 +1,14 @@
 # #94（K-CSP 两份构建）三次 CI 的分类
 
-归档：Claude；分类：员工GPT1（07:28，07:30 补齐第 1 次原始日志核验）；第 2 次措辞按产品官 07:29 与 GPT1 07:30 统一。本文件只记录分类结论，不含 CI 原始日志（原始日志在对应 Actions 运行页）。
+归档：Claude；分类：员工GPT1（07:28，07:30 补齐第 1 次原始日志核验）；第 2 次措辞按产品官 07:36 最终口径（“故意拦截事件混入正常运行基线”）统一。本文件只记录分类结论，不含 CI 原始日志（原始日志在对应 Actions 运行页）。
 
-| 轮次 | Run ID | 结果 | 分类与原因 |
-|---|---|---|---|
-| 第 1 次（`91c1611`） | `43312158816` | 失败（build、mobile chromium、mobile webkit 三个 job 同因） | **测试代码变量作用域错误**：`tests/csp.test.mjs:108` 引用的 `EXPECT` 声明在 B 段块内，C 段不可见，抛 `ReferenceError: EXPECT is not defined`。修复：`ac3ace5` 移到顶层。 |
-| 第 2 次（`3febbe0`） | `43313801120` | 失败（Chromium / WebKit 均复现） | **预期拦截事件统计边界错误（故意拦截事件混入正常运行基线）**：正式模式下故意访问 `fake.supabase.test` 的 CSP 拦截发生在 `before` 计数之后，被计入应用自然运行违规，使“应用自身运行时没有任何 CSP 拦截”断言误报；日志显示两引擎的正式 CSP 都成功拦截了该请求。与第 1 次的变量作用域错误是两个独立问题；第 1 次三个 job（build / mobile chromium / mobile webkit）失败位置都是 `tests/csp.test.mjs:108:3`，该轮 CSP 专项未能完整执行，不能据此判断正式 CSP 的安全性。修复：`206cc1e` 把基线记录移到任何故意拦截之前。 |
-| 第 3 次 | `43315416600` | 全绿 | build、mobile chromium、mobile webkit 全部成功；PR 上的 deploy job 按条件跳过（符合预期）。 |
+| 轮次 | Run ID | 提交身份 | 结果 | 分类与原因 |
+|---|---|---|---|---|
+| 第 1 次 | `43312158816` | PR 头 `91c1611` | 失败（build、mobile chromium、mobile webkit 三个 job 同因） | **测试代码变量作用域错误**：`tests/csp.test.mjs:108:3` 引用的 `EXPECT` 声明在 B 段块内，C 段不可见，抛 `ReferenceError: EXPECT is not defined`。该轮 CSP 专项未能完整执行，不能据此判断正式 CSP 的安全性。修复：`ac3ace5` 把 `EXPECT` 移到顶层。 |
+| 第 2 次 | `43313801120` | PR 头 `ac3ace5`；CI 实际检出的合并提交 `3febbe0`（GPT1 原始日志） | 失败（Chromium / WebKit 均复现） | **故意拦截事件混入正常运行基线**：旧测试在故意请求 `fake.supabase.test` 之后才采样，该预期被拦截的事件混入自然运行基线，使“应用自身运行时没有任何 CSP 拦截”断言误报；日志显示两引擎的正式 CSP 都成功拦截了该请求。与第 1 次的变量作用域错误是两个独立问题。修复：`206cc1e` 在故意请求之前采样基线，两类事件分别检查。 |
+| 第 3 次 | `43315416600` | PR 头 `206cc1e` | 全绿 | build、mobile chromium、mobile webkit 全部成功；PR 上的 deploy job 按条件跳过（符合预期）。 |
+
+说明：GitHub 上 PR 的 CI 检出的是“PR 头与 main 的合并提交”，所以日志里的提交号可能不等于 PR 头；本表两种身份分开写。
 
 结论：
 - I 整项仍保留“step3 导航超时直接原因未确认”的边界；本案例的教训是：安全测试要区分“应用自然产生的 CSP 违规”与“测试主动制造且预期被拦截的事件”。
