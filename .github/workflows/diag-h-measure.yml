@@ -18,14 +18,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npx playwright install --with-deps chromium || true
       - name: 构建两份：before = origin/main，after = origin/feat/h-lazy-python
         run: |
           git fetch origin main feat/h-lazy-python
           for pair in "before origin/main" "after origin/feat/h-lazy-python"; do
             set -- $pair
             git worktree add "/tmp/$1" "$2"
-            (cd "/tmp/$1" && git log -1 --format="$1 = %H" && npm ci && npm run build)
+            (cd "/tmp/$1" && git log -1 --format="$1 = %H" && npm ci && npx playwright install --with-deps chromium && npm run build)
           done
           cp scripts/measure-python-load.mjs /tmp/measure.mjs
       - name: 测量（before / after）
