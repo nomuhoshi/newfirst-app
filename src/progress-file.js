@@ -38,7 +38,7 @@ export function buildExport(state, { now = Date.now(), build = "", unreadable = 
 }
 
 // 检查导入文件。返回 { ok: true, state, exportedAt } 或 { ok: false, error }
-export function parseImport(text) {
+export function parseImport(text, { knownIds = null } = {}) {
   if (typeof text !== "string" || !text.trim()) return { ok: false, error: "文件是空的。" };
   if (text.length > MAX_FILE_BYTES) return { ok: false, error: "文件太大，不像是从碎片编程导出的进度文件。" };
   let obj;
@@ -55,10 +55,23 @@ export function parseImport(text) {
     if (!ID_RE.test(k) || k === "__proto__") return { ok: false, error: "进度文件里有不合法的关卡编号，没有导入任何内容。" };
     if (v === true) done[k] = true;
   }
+  if (knownIds) { // 当前版本不认识的关卡：不悄悄丢掉，明确说明
+    const unknown = Object.keys(done).filter((k) => !knownIds.has(k));
+    if (unknown.length) return { ok: false, error: `进度里有当前版本不认识的关卡（${unknown.slice(0, 3).join("、")}${unknown.length > 3 ? " 等" : ""}），可能来自更新或更旧的版本，没有导入任何内容。` };
+  }
+  const doneOn = {};
+  if (s.doneOn != null) {
+    if (typeof s.doneOn !== "object" || Array.isArray(s.doneOn)) return { ok: false, error: "进度文件里的完成日期格式不对，没有导入任何内容。" };
+    for (const [k, v] of Object.entries(s.doneOn)) {
+      if (!done[k]) continue; // 没完成的关卡带日期没有意义，忽略
+      if (!realDay(v)) return { ok: false, error: "进度文件里有不合理的完成日期，没有导入任何内容。" };
+      doneOn[k] = v;
+    }
+  }
   return {
     ok: true,
     exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : null,
-    state: { xp: s.xp, streak: s.streak, lastDay: s.lastDay ?? null, done, lessonsCompleted: s.lessonsCompleted ?? 0 },
+    state: { xp: s.xp, streak: s.streak, lastDay: s.lastDay ?? null, done, doneOn, lessonsCompleted: s.lessonsCompleted ?? 0 },
   };
 }
 
@@ -67,6 +80,8 @@ export function parseImport(text) {
 export function mergeImport(current, imported) {
   const done = { ...current.done };
   for (const k of Object.keys(imported.done)) done[k] = true;
+  const doneOn = { ...(current.doneOn || {}) };
+  for (const [k, d] of Object.entries(imported.doneOn || {})) if (done[k] && (!doneOn[k] || d < doneOn[k])) doneOn[k] = d;
   const a = current.lastDay, b = imported.lastDay;
   let streak = current.streak, lastDay = a;
   if (b && (!a || b > a)) { streak = imported.streak; lastDay = b; }
@@ -77,6 +92,7 @@ export function mergeImport(current, imported) {
     xp: Math.max(current.xp, imported.xp),
     lessonsCompleted: Math.max(current.lessonsCompleted || 0, imported.lessonsCompleted || 0),
     done, streak, lastDay,
+    doneOn, // 逐关首次完成日期：同关取较早的有效日期；旧备份没有日期就不编造
     hearts: Math.min(HEARTS_MAX, current.hearts),
   };
 }
@@ -105,7 +121,8 @@ export function decodeCode(input) {
   if (i < 0) return { ok: false, error: "这不是碎片编程的进度码（应以 SPC1. 开头）。" };
   const rest = raw.slice(i + CODE_PREFIX.length), dot = rest.lastIndexOf(".");
   const bodyUrl = dot < 0 ? rest : rest.slice(0, dot), sum = dot < 0 ? "" : rest.slice(dot + 1);
-  if (!sum || !/^[0-9a-f]{8}$/.test(sum) || checksum(bodyUrl) !== sum) return { ok: false, error: "进度码不完整或被改动过（校验不通过），请重新复制整段。" };
+  // 校验位存在就必须对；没有校验位的是 #69 发的早期进度码，兼容读取（仍会走全部格式校验和合并确认）
+  if (sum && (!/^[0-9a-f]{8}$/.test(sum) || checksum(bodyUrl) !== sum)) return { ok: false, error: "进度码不完整或被改动过（校验不通过），请重新复制整段。" };
   const body = bodyUrl.replace(/-/g, "+").replace(/_/g, "/");
   if (!body || body.length > MAX_FILE_BYTES * 2 || !/^[A-Za-z0-9+/]+$/.test(body)) return { ok: false, error: "进度码不完整或被改动过，请重新复制整段。" };
   try {

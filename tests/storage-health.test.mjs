@@ -25,7 +25,10 @@ const rep2 = await m.storageReport(); ok("存储被禁用：报告仍然生成",
 // ---- 14 天导出提醒 ----
 broken = false; for (const k of Object.keys(mem)) delete mem[k];
 const D = 24 * 3600 * 1000, T0 = 1_000_000_000_000;
-m.firstSeenAt(T0);
+ok("还没有起点：不提醒", !m.exportReminderDue({ now: T0 + 99 * D, doneCount: 5 }));
+ok("没有进度时不建立起点", m.ensureBackupBase(0, T0) === 0);
+ok("首次保存有效进度建立起点", m.ensureBackupBase(2, T0) === T0);
+ok("起点只建一次，不被后来的保存覆盖", m.ensureBackupBase(9, T0 + 5 * D) === T0);
 ok("刚开始用：不提醒", !m.exportReminderDue({ now: T0 + 15 * D, doneCount: 2 }));
 ok("满 14 天但课太少：不提醒", !m.exportReminderDue({ now: T0 + 15 * D, doneCount: 2 }));
 ok("不满 14 天：不提醒", !m.exportReminderDue({ now: T0 + 13 * D, doneCount: 5 }));

@@ -29,7 +29,7 @@ async function open(ageDays, extra = {}) {
     if (sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded", "1");
     Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k));
     localStorage.setItem("suipian.progress", raw);
-    localStorage.setItem("suipian.meta.firstSeen", String(first));
+    if (first) localStorage.setItem("suipian.meta.backupBase", String(first));
     for (const [k, v] of Object.entries(extra)) localStorage.setItem(k, String(v));
   }, [FIX, Date.now() - ageDays * DAY, extra]);
   await page.goto(URLBASE); await page.waitForSelector(".statsbar", { timeout: 15000 });
@@ -37,6 +37,13 @@ async function open(ageDays, extra = {}) {
 }
 const count = (page) => page.locator("[data-export-reminder]").count();
 try {
+  { // 升级用户：没有起点，启动时以本次升级为基准，不按安装时间推算
+    const { ctx, page } = await open(0);
+    check("升级用户（有进度、没有备份起点）：不立刻提醒", (await count(page)) === 0);
+    const base = Number(await page.evaluate(() => localStorage.getItem("suipian.meta.backupBase")));
+    check("启动时以本次打开为基准建立起点", Math.abs(base - Date.now()) < 60000);
+    await ctx.close();
+  }
   { // 满 14 天：地图页出现，“我的”页不出现
     const { ctx, page } = await open(15);
     check("满 14 天：地图页出现导出提醒，有“导出进度”和“稍后”", (await count(page)) === 1 && (await page.locator("[data-export-now]").count()) === 1 && (await page.locator("[data-export-later]").count()) === 1);
