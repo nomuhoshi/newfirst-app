@@ -38,9 +38,17 @@
     },
     {
       "id": "U6",
-      "title": "字典与集合",
-      "subtitle": "dict、set",
-      "available": false
+      "title": "类型与报错",
+      "subtitle": "type、int()/str()、读报错",
+      "available": true,
+      "file": "unit6.json"
+    },
+    {
+      "id": "U7",
+      "title": "字典",
+      "subtitle": "dict：键和值、查、改、增删、遍历",
+      "available": true,
+      "file": "unit7.json"
     }
   ]
 }
