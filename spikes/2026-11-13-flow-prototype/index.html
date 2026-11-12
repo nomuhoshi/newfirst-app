@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>碎片编程 · 可点流程原型</title>
+<style>
+/* 设计原型（只做界面和交互，不连业务代码）。色值沿用 main 的 src/game.css（墨蓝 / 暖白 / 铜橙），只新增六边形用的几个变量。
+   基线：nomuhoshi/newfirst-app main 92f57d9。 */
+:root {
+  --bg:#F7F5F0; --card:#FFFFFF; --card2:#EFEBE2; --line:#DDD8CC; --fg:#172B3A; --muted:#5B6B76;
+  --primary:#234E70; --copper:#B75532; --on-copper:#FFFFFF; --copper-text:#A24A29;
+  --ok:#176B59; --ok-bg:#E3F1EC; --bad:#A43C32; --bad-bg:#F8E4E0; --locked:#E4E0D6;
+  --code-bg:#172B3A; --code-fg:#EAF0F3; --code-dim:#8FA3B0; --tk-str:#F3BA87; --tk-fn:#8ED7B8; --tk-op:#D5DEE4;
+  --trace:#C5CDD2; --trace-on:#C8834A;
+  --hex-top:#3B6C90; --hex-bot:#234E70; --hex-side:#163550; --hex-hi:rgba(255,255,255,.55);
+  --hex-lock-top:#EDE9DF; --hex-lock-bot:#DCD7CA; --hex-lock-side:#C9C3B4;
+  --hex-cur-top:#FFFDF8; --hex-cur-bot:#F5E6D8; --hex-cur-side:#B75532;
+  --glow:rgba(183,85,50,.55);
+}
+:root[data-theme=dark] {
+  --bg:#101E28; --card:#1A2D39; --card2:#223747; --line:#2C4352; --fg:#EAF0F3; --muted:#9FB1BC;
+  --primary:#A9CCE0; --copper:#F3BA87; --on-copper:#102431; --copper-text:#F3BA87;
+  --ok:#8ED7B8; --ok-bg:#17382F; --bad:#FFB3A3; --bad-bg:#3F2421; --locked:#243845;
+  --code-bg:#0B1820; --code-fg:#EAF0F3; --code-dim:#7C93A1;
+  --trace:#2F4A5B; --trace-on:#D08C52;
+  --hex-top:#4F83A8; --hex-bot:#2D5879; --hex-side:#14293A; --hex-hi:rgba(255,255,255,.4);
+  --hex-lock-top:#2A4252; --hex-lock-bot:#223747; --hex-lock-side:#16293A;
+  --hex-cur-top:#22394A; --hex-cur-bot:#182C3B; --hex-cur-side:#F3BA87;
+  --glow:rgba(243,186,135,.6);
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:17px/1.5 "PingFang SC","Noto Sans CJK SC",system-ui,sans-serif; }
+button { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; }
+svg { display:block; }
+.app { position:relative; max-width:430px; height:100dvh; margin:0 auto; overflow:hidden; background:var(--bg); display:flex; flex-direction:column; }
+.screen { flex:1; min-height:0; display:flex; flex-direction:column; position:relative; }
+.scroll { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+
+/* 按钮：沿用 main——不用厚底座，按下下移 1px。主操作 = 铜橙 */
+.btn { min-height:52px; border-radius:12px; font-weight:700; font-size:17px; padding:0 20px; border:1.5px solid var(--line); background:var(--card); display:flex; align-items:center; justify-content:center; gap:8px; width:100%; transition:transform .08s; }
+.btn:active:not(:disabled) { transform:translateY(1px); }
+.btn.primary { background:var(--copper); color:var(--on-copper); border-color:var(--copper); }
+.btn:disabled { background:var(--card2); color:var(--muted); border-color:var(--line); opacity:.75; cursor:default; }
+.link { min-height:44px; color:var(--copper-text); font-weight:700; font-size:15px; padding:0 12px; }
+.icon-btn { width:44px; height:44px; display:grid; place-items:center; border-radius:12px; }
+.t13 { font-size:13px; font-weight:600; }
+.muted { color:var(--muted); }
+
+/* ---------- 欢迎 ---------- */
+.welcome { padding:0 24px calc(24px + env(safe-area-inset-bottom)); align-items:center; text-align:center; }
+.welcome .mid { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; }
+.welcome h1 { margin:0; font-size:28px; line-height:1.25; font-weight:800; }
+.welcome p { margin:0; font-size:17px; color:var(--muted); }
+.welcome .btn { max-width:420px; }
+
+/* ---------- 地图 ---------- */
+.hud { display:flex; gap:8px; padding:calc(22px + env(safe-area-inset-top)) 16px 8px; }
+.chip { flex:1 1 0; min-width:0; height:36px; border-radius:18px; background:var(--card); border:1.5px solid var(--line); display:flex; align-items:center; justify-content:center; gap:5px; font-size:13px; font-weight:700; white-space:nowrap; }
+.chip svg { flex:none; }
+.chip.heart svg { color:var(--bad); } .chip.flame svg { color:var(--copper-text); } .chip.bolt svg { color:var(--primary); }
+.hero { margin:8px 16px 0; padding:16px; border-radius:16px; background:var(--card); border:1.5px solid var(--line); }
+.hero .eyebrow { font-size:13px; font-weight:600; color:var(--muted); }
+.hero h2 { margin:2px 0 0; font-size:28px; line-height:1.25; font-weight:800; }
+.hero .sub { margin:2px 0 14px; font-size:15px; color:var(--muted); }
+.hero .note { margin:10px 0 0; font-size:13px; color:var(--muted); line-height:1.4; }
+.rows { margin:8px 16px 0; }
+.row { width:100%; min-height:44px; display:flex; align-items:center; gap:10px; padding:0 4px; font-size:15px; color:var(--muted); text-align:left; }
+.row b { color:var(--fg); font-weight:700; } .row .sp { flex:1; }
+.unit { margin:18px 16px 0; font-size:13px; font-weight:700; color:var(--muted); display:flex; gap:8px; align-items:center; letter-spacing:.3px; }
+.unit::after { content:""; flex:1; height:1px; background:var(--line); }
+.path { position:relative; margin:0 auto; width:390px; max-width:100%; }
+.path svg.trace { position:absolute; inset:0; pointer-events:none; }
+.node { position:absolute; width:76px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; }
+.node .lab { background:var(--bg); padding:0 6px; border-radius:6px; font-size:13px; font-weight:700; line-height:1.3; white-space:nowrap; }
+.node.locked .lab { color:var(--muted); font-weight:600; }
+.node.done .lab { color:var(--muted); }
+.node .hexwrap { position:relative; width:64px; height:78px; display:grid; place-items:center; }
+.node .glow { position:absolute; left:-12px; top:-8px; width:88px; height:94px; opacity:.5; filter:blur(9px); pointer-events:none; }
+.node .glow polygon { fill:var(--glow); }
+html:not(.rm) .node.current .glow { animation:breathe 2.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity:.18; } }
+.node .tag-now { position:absolute; top:-20px; left:50%; transform:translateX(-50%); font-size:12px; font-weight:800; padding:1px 10px; border-radius:10px; background:var(--copper); color:var(--on-copper); white-space:nowrap; }
+.tabbar { flex:none; display:flex; border-top:1.5px solid var(--line); background:var(--bg); padding-bottom:env(safe-area-inset-bottom); }
+.tab { flex:1; height:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:13px; font-weight:600; color:var(--muted); }
+.tab.on { color:var(--fg); }
+.tab.on .pill { background:color-mix(in srgb, var(--copper) 16%, transparent); }
+.tab .pill { width:56px; height:28px; border-radius:14px; display:grid; place-items:center; }
+
+/* ---------- 课内 ---------- */
+.lessonbar { display:flex; align-items:center; gap:8px; padding:calc(6px + env(safe-area-inset-top)) 12px 6px 8px; }
+.progress { flex:1; height:12px; border-radius:6px; background:var(--card2); overflow:hidden; position:relative; }
+.fill { height:100%; min-width:12px; border-radius:6px; background:var(--copper); position:relative; overflow:hidden; transition:width .3s ease-out; }
+html.rm .fill { transition:none; }
+.fill.sweep::after { content:""; position:absolute; top:0; bottom:0; width:40%; left:-40%; background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent); animation:sweep .3s ease-out .3s 1 both; }
+@keyframes sweep { to { left:110%; } }
+html.rm .fill.sweep::after { display:none; }
+.hearts { display:flex; align-items:center; gap:4px; font-weight:800; font-size:17px; color:var(--bad); min-width:44px; justify-content:flex-end; }
+html:not(.rm) .hearts.lost svg { animation:heartlost .28s ease-out; }
+@keyframes heartlost { 30% { transform:scale(1.25); } 100% { transform:scale(1); } }
+.q { padding:12px 20px 16px; }
+.q h3 { margin:6px 0 14px; font-size:22px; line-height:1.35; font-weight:800; }
+.again { display:inline-block; font-size:13px; font-weight:700; color:var(--copper-text); background:color-mix(in srgb,var(--copper) 14%,transparent); padding:2px 10px; border-radius:10px; margin-bottom:4px; }
+.code { background:var(--code-bg); color:var(--code-fg); border-radius:14px; padding:14px 16px; font:16px/1.7 ui-monospace,"SF Mono",Menlo,monospace; display:flex; gap:12px; margin-bottom:14px; font-variant-ligatures:none; overflow-x:auto; }
+.code .ln { color:var(--code-dim); text-align:right; user-select:none; }
+.code pre { margin:0; font:inherit; }
+.tk-fn { color:var(--tk-fn); } .tk-str { color:var(--tk-str); } .tk-op { color:var(--tk-op); }
+.choices { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+.choice { position:relative; min-height:60px; text-align:left; border:1.5px solid var(--line); background:var(--card); border-radius:12px; padding:12px 14px; display:flex; align-items:center; gap:12px; transition:border-color .08s, background-color .08s; }
+.choice .abc { flex:none; width:30px; height:30px; border-radius:8px; border:1.5px solid var(--line); display:grid; place-items:center; font-size:14px; font-weight:700; color:var(--muted); }
+.choice .opt { flex:1; min-width:0; overflow-x:auto; overscroll-behavior-x:contain; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.choice .opt::-webkit-scrollbar { display:none; }
+.choice pre { margin:0; font:16px/1.5 ui-monospace,"SF Mono",Menlo,monospace; white-space:pre; width:max-content; min-width:100%; font-variant-ligatures:none; }
+.choice .fade { display:none; position:absolute; right:8px; top:6px; bottom:6px; width:34px; border-radius:0 10px 10px 0; background:linear-gradient(90deg,transparent,var(--card) 80%); pointer-events:none; align-items:center; justify-content:flex-end; color:var(--muted); font-size:14px; font-weight:800; padding-right:4px; }
+.choice.more .fade { display:flex; }
+.choice.sel { border-color:var(--copper); border-width:2.5px; padding:11.5px 13.5px; background:color-mix(in srgb,var(--copper) 11%,var(--card)); }
+.choice.sel .abc { border-color:var(--copper); color:var(--copper-text); }
+.choice.right { border-color:var(--ok); border-width:2.5px; padding:11.5px 13.5px; background:var(--ok-bg); }
+.choice.wrong { border-color:var(--bad); border-width:2.5px; padding:11.5px 13.5px; background:var(--bad-bg); }
+.choice.dim { opacity:.6; }
+html:not(.rm) .choice.wrong { animation:shake .22s ease-in-out 1; }
+@keyframes shake { 20% { transform:translateX(-5px); } 45% { transform:translateX(5px); } 70% { transform:translateX(-3px); } 100% { transform:none; } }
+.hintcard { margin:0 20px 10px; padding:10px 14px; border-radius:12px; background:var(--card2); font-size:15px; }
+.lessonfoot { flex:none; display:flex; gap:10px; align-items:center; padding:10px 16px calc(12px + env(safe-area-inset-bottom)); border-top:1.5px solid var(--line); background:var(--bg); }
+.mascot { flex:none; width:52px; height:52px; border-radius:12px; display:grid; place-items:center; border:1.5px solid var(--line); background:var(--card); }
+.feedbar { flex:none; max-height:50%; overflow-y:auto; padding:14px 16px calc(14px + env(safe-area-inset-bottom)); border-top:2.5px solid var(--fbc); background:var(--fbbg); --fbc:var(--ok); --fbbg:var(--ok-bg); }
+.feedbar.bad { --fbc:var(--bad); --fbbg:var(--bad-bg); }
+html:not(.rm) .feedbar { animation:fbin .16s ease-out; }
+@keyframes fbin { from { opacity:0; transform:translateY(8px); } }
+.fb-head { display:flex; align-items:center; gap:8px; font-size:22px; font-weight:800; color:var(--fbc); flex-wrap:wrap; }
+.fb-ico { width:32px; height:32px; border-radius:50%; background:var(--fbc); color:var(--bg); display:grid; place-items:center; flex:none; }
+html:not(.rm) .feedbar:not(.bad) .fb-ico { animation:pop .24s cubic-bezier(.3,1.6,.5,1); }
+@keyframes pop { from { transform:scale(0); } 60% { transform:scale(1.15); } to { transform:scale(1); } }
+.fb-xp { font-size:15px; font-weight:800; padding:2px 10px; border-radius:12px; background:var(--ok); color:var(--bg); }
+html:not(.rm) .fb-xp { animation:xp .18s ease-out .12s backwards; }
+@keyframes xp { from { opacity:0; transform:translateY(4px) scale(.9); } }
+.fb-streak { font-size:13px; font-weight:800; padding:2px 10px; border-radius:12px; border:1.5px solid var(--fbc); }
+.feedbar p { margin:8px 0 0; font-size:15px; line-height:1.5; }
+.feedbar code { background:var(--card); padding:2px 6px; border-radius:6px; font:15px ui-monospace,Menlo,monospace; white-space:pre-wrap; }
+.feedbar .heartline { display:flex; align-items:center; gap:6px; color:var(--bad); font-weight:600; }
+.feedbar .btn { margin-top:12px; }
+
+/* ---------- 通关占位 ---------- */
+.done-page { align-items:center; justify-content:center; text-align:center; gap:14px; padding:24px; }
+.done-page h2 { margin:0; font-size:28px; font-weight:800; }
+
+/* ---------- 评审面板与标注 ---------- */
+.rv-handle { position:fixed; left:50%; top:0; transform:translateX(-50%); z-index:50; height:18px; padding:0 14px; border-radius:0 0 10px 10px; background:var(--fg); color:var(--bg); opacity:.5; font-size:11px; font-weight:800; letter-spacing:2px; line-height:18px; }
+.rv-scrim { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.45); display:none; }
+.rv-scrim.on { display:block; }
+.rv { position:absolute; left:0; right:0; bottom:0; max-width:430px; margin:0 auto; max-height:86dvh; overflow-y:auto; background:var(--bg); border-radius:20px 20px 0 0; padding:16px 16px calc(20px + env(safe-area-inset-bottom)); border:1.5px solid var(--line); }
+.rv h4 { margin:16px 0 8px; font-size:13px; color:var(--muted); letter-spacing:.5px; }
+.rv h4:first-child { margin-top:0; }
+.seg { display:flex; flex-wrap:wrap; gap:8px; }
+.seg button { min-height:44px; padding:0 14px; border-radius:12px; border:1.5px solid var(--line); background:var(--card); font-size:15px; font-weight:600; }
+.seg button.on { border-color:var(--copper); background:color-mix(in srgb,var(--copper) 14%,var(--card)); color:var(--copper-text); }
+.legend { font-size:13px; line-height:1.45; }
+.legend .it { display:flex; gap:8px; padding:6px 0; border-top:1px solid var(--line); }
+.legend .id { flex:none; width:30px; font-weight:800; }
+.st { flex:none; font-size:11px; font-weight:800; padding:1px 7px; border-radius:8px; height:20px; align-self:flex-start; }
+.st.proposal { background:var(--copper); color:var(--on-copper); }
+.st.exists { background:var(--card2); color:var(--fg); border:1px solid var(--line); }
+.st.fixed { background:var(--ok); color:var(--bg); }
+[data-tag] { position:relative; }
+html.show-tags [data-tag]::after { content:attr(data-note); position:absolute; top:-9px; right:-2px; z-index:20; font:800 11px/16px system-ui; padding:0 7px; border-radius:8px; pointer-events:none; white-space:nowrap; background:var(--copper); color:var(--on-copper); box-shadow:0 0 0 2px var(--bg); }
+html.show-tags [data-tag=exists]::after { background:var(--card2); color:var(--fg); box-shadow:0 0 0 2px var(--bg), inset 0 0 0 1px var(--line); }
+html.show-tags [data-tag=fixed]::after { background:var(--ok); color:var(--bg); }
+.toast { position:fixed; left:50%; bottom:90px; transform:translateX(-50%); z-index:70; background:var(--fg); color:var(--bg); font-size:14px; font-weight:600; padding:8px 14px; border-radius:10px; opacity:0; pointer-events:none; transition:opacity .15s; max-width:86vw; text-align:center; }
+.toast.on { opacity:.95; }
+@media (min-width:431px) { body { background:#0a0f14; } :root[data-theme=light] body { background:#cfcabd; } .app { box-shadow:0 0 0 1px var(--line); } }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<button class="rv-handle" id="rvOpen" aria-label="打开评审面板">评审</button>
+<div class="rv-scrim" id="rvScrim"><div class="rv" id="rv" role="dialog" aria-label="评审面板"></div></div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+"use strict";
+/* ===== 评审条目：状态 = 当前仍存在 / 已修复 / 本次提案（对照 main 92f57d9） ===== */
+const ITEMS = [
+  { id:"W1", st:"proposal", t:"欢迎页压成一屏", d:"现状 3 屏、点 3 次才到地图；这里 1 屏 1 个主按钮。" },
+  { id:"W2", st:"proposal", t:"欢迎页文案", d:"「在手机上学习 Python」「每天几分钟，点选闯关」。不写「全程点选」「每关约 2 分钟」。名字仍叫小码（改名碎碎已批、未落地）。" },
+  { id:"M1", st:"proposal", t:"地图「下一步」主卡", d:"新用户「开始学习」，老用户关名 +「继续学习」。关内位置 main 不保存（退出后从第 1 题重来），所以继续 = 当前关第 1 题；关内恢复未模拟。" },
+  { id:"M2", st:"proposal", t:"随机练习 / 登录降级成一行", d:"现状：随机练习是吸顶整宽灰块，登录是虚线整宽卡。" },
+  { id:"M3", st:"exists", t:"六边形路径（保留）", d:"沿用老大 11-04 方向；本次提案只加厚度、高光、当前关通电发光。" },
+  { id:"M4", st:"proposal", t:"顶栏带单位", d:"「连续 0 天」「0 XP」「红心 5/5」。现状只有图标 + 数字，说明要长按/悬停才有。" },
+  { id:"M5", st:"proposal", t:"单元标题降亮度和面积", d:"现状整块实色单元卡；这里改成一行小字分隔线。" },
+  { id:"Q1", st:"fixed", t:"选项竖排整宽、代码不折行", d:"main 的 #60：.choices.code 单列 + 横向滚动，原型沿用，不算新成果。" },
+  { id:"Q2", st:"proposal", t:"长代码选项的提示", d:"沿用 #60 的横向滚动，新增右侧渐变 + ›，提示还有内容（「长代码选项」可跳转查看）。" },
+  { id:"Q3", st:"proposal", t:"铜橙 = 主要操作", d:"现状深色主按钮是浅蓝底（对比度 9.4，不低，但像禁用态且和整屏无主次）。原型主按钮、选中态、进度条都用铜橙：浅色白字 4.82:1，深色深字 9.24:1。" },
+  { id:"F1", st:"proposal", t:"答对：对勾弹出 + 进度条高光", d:"✓ 0→1.15→1（240ms）；进度条到位后一道高光扫过（300ms）。不拖延「继续」（立刻可点）。" },
+  { id:"F2", st:"exists", t:"XP 只在实际获得时出现", d:"main 现规则：每次答对 +10（复习 +5），含错题重做；答错不出现。原型按同一常量显示。重做是否再得 XP 以 app.js 1125 行的 addXp 为准，需程序员确认。" },
+  { id:"F3", st:"proposal", t:"连对提示不遮挡", d:"连对 ≥3 时在反馈头里加一枚「连对 N」小标，行内，不浮层。" },
+  { id:"F4", st:"proposal", t:"答错措辞「差一点，再看看」", d:"现状标题「不对哦」。" },
+  { id:"F5", st:"exists", t:"答错讲原因 + 正确答案 + 红心", d:"main 已有：错因（why）、「正确答案」、「红心 -1（剩 N 颗），这题稍后再做一次」。原型保留，不算新成果。" },
+  { id:"F6", st:"proposal", t:"答错只留一种主要动效", d:"选中卡抖 2 次（±5px，220ms）；碎碎只换静态表情，不弹跳。现状卡抖 3px 160ms，碎碎无反应。" },
+  { id:"F7", st:"proposal", t:"继续按钮统一铜橙", d:"现状答错时「继续」是红色危险按钮；这里改铜橙，反馈色只用在面板描边和标题。" },
+  { id:"R1", st:"exists", t:"减少动态效果", d:"main 已有 prefers-reduced-motion。原型：开启后取消位移、缩放、飞行、发光呼吸、高光扫过，只保留颜色变化。" },
+];
+const $ = (s, r=document) => r.querySelector(s);
+const ITEM = Object.fromEntries(ITEMS.map(i => [i.id, i]));
+const TAGTXT = { proposal:"本次提案", exists:"仍存在", fixed:"已修复" };
+const tagAttr = id => ` data-tag="${ITEM[id].st}" data-note="${id} ${TAGTXT[ITEM[id].st]}"`;
+
+/* ===== 图标 ===== */
+const I = {
+  heart:(s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.350l-1.450-1.320C5.400 15.360 2 12.280 2 8.500 2 5.420 4.420 3 7.500 3c1.740 0 3.410.81 4.500 2.090C13.090 3.810 14.760 3 16.500 3 19.580 3 22 5.420 22 8.500c0 3.780-3.400 6.860-8.550 11.540L12 21.350z"/></svg>`,
+  bolt:(s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>`,
+  flame:(s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"/></svg>`,
+  check:(s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.500 4.500 4.500L19 7.500"/></svg>`,
+  cross:(s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>`,
+  lock:(s=20)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`,
+  play:(s=22)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.500v13l11-6.500z"/></svg>`,
+  close:(s=24)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>`,
+  chev:(s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg>`,
+  home:(s=22)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 11 12 4l8 7v9H4z"/><path d="M10 20v-6h4v6"/></svg>`,
+  user:(s=22)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>`,
+};
+function mascot(size=52, mood="happy") {
+  const mouth = mood==="care" ? `<path d="M40 66h20" stroke="#172B3A" stroke-width="5" stroke-linecap="round"/>` : `<path d="M38 62q12 12 24 0" fill="none" stroke="#172B3A" stroke-width="5" stroke-linecap="round"/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true"><path d="M16 14a8 8 0 0 1 8-8h46l20 20v56a8 8 0 0 1-8 8H24a8 8 0 0 1-8-8z" fill="#FFF8EC" stroke="#172B3A" stroke-width="4"/><path d="M70 6v14a6 6 0 0 0 6 6h14z" fill="#B75532"/><path d="M33 40q-6 8 0 16M67 40q6 8 0 16" fill="none" stroke="#172B3A" stroke-width="5" stroke-linecap="round"/>${mouth}</svg>`;
+}
+/* 六边形节点：厚度（下沉一层深色）+ 渐变面 + 左上高光边 + 当前关通电发光 */
+function hex(kind) {
+  const P = "32,2 62,19 62,53 32,70 2,53 2,19", P2 = "32,8 62,25 62,59 32,76 2,59 2,25";
+  const id = "g"+Math.random().toString(36).slice(2,7);
+  const icon = kind==="done" ? `<g transform="translate(20 18)" style="color:#fff">${I.check(24)}</g>` : kind==="locked" ? `<g transform="translate(20 18)" style="color:var(--muted)">${I.lock(24)}</g>` : `<g transform="translate(20 18)" style="color:var(--copper-text)">${I.play(24)}</g>`;
+  const [top,bot,side] = kind==="done" ? ["--hex-top","--hex-bot","--hex-side"] : kind==="locked" ? ["--hex-lock-top","--hex-lock-bot","--hex-lock-side"] : ["--hex-cur-top","--hex-cur-bot","--hex-cur-side"];
+  return `<svg width="64" height="78" viewBox="0 0 64 78" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(${top})"/><stop offset="1" style="stop-color:var(${bot})"/></linearGradient></defs>
+  <polygon points="${P2}" style="fill:var(${side})"/>
+  <polygon points="${P}" fill="url(#${id})" style="stroke:var(${side});stroke-width:${kind==="current"?3:1.5};stroke-linejoin:round"/>
+  <polyline points="3,52 3,20 32,3.500 61,20" fill="none" style="stroke:var(--hex-hi)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="${kind==="locked"?.5:1}"/>
+  ${icon}</svg>`;
+}
+
+/* ===== 题目（取自 content/unit1.json 的 U1L1，原文） ===== */
+const Q = {
+  q1: { prompt:"点单屏运行这段程序，屏幕上会显示什么？", code:'print("欢迎光临！")', tip:"print(...) 会把括号里的内容显示到屏幕上。文字要放在英文引号 \" \" 里。",
+    opts:[{t:"欢迎光临！",ok:true,why:"print(...) 会把括号里的内容显示到屏幕上。"},{t:'"欢迎光临！"',why:"引号只是告诉 Python「这是一段文字」，引号本身不会显示。"},{t:'print("欢迎光临！")',why:"print、括号和引号是写给 Python 看的，屏幕上只显示引号里的文字。"}] },
+  q2: { prompt:"点单屏运行这段程序，屏幕上会显示什么？", code:'print("营业时间")\nprint(10)\nprint(22)', tip:"数字可以直接写，不用加引号。程序从上往下，一行一行执行。",
+    opts:[{t:"营业时间\n10\n22",ok:true,why:"每个 print 单独显示一行，从上往下依次执行。"},{t:"营业时间 10 22",why:"每个 print 都会单独占一行，不会挤在同一行。"},{t:"10\n22\n营业时间",why:"程序从上往下执行，第一行的 print 先显示。"}] },
+  ql: { prompt:"哪一行能让屏幕显示：今日推荐：珍珠奶茶（加珍珠，少冰半糖）？", code:null, tip:"Python 3 里 print 后面要有括号，文字要放在英文引号里。",
+    opts:[{t:'print("今日推荐：珍珠奶茶（加珍珠，少冰半糖）")',ok:true,why:"括号和引号都齐了。"},{t:'print(今日推荐：珍珠奶茶（加珍珠，少冰半糖）)',why:"文字没加引号，Python 会把它当成代码去执行，程序会出错。"},{t:'print "今日推荐：珍珠奶茶（加珍珠，少冰半糖）"',why:"Python 3 里 print 后面必须有括号。"}] },
+};
+const XP_CORRECT = 10; /* 与 src/app.js 的 XP_CORRECT 一致 */
+const LESSONS = ["让屏幕说话","记住顾客","顾客改单","算价格","加一杯","结账小票"];
+
+/* ===== 状态 ===== */
+const S = { screen:"welcome", user:"new", welcomeGo:"map", queue:[], total:2, solved:0, hearts:5, xp:0, streak:0, sel:null, fb:null, retry:false, hint:false, forceStreak:false, theme:"auto", motion:"auto", tags:false, cur:null, cleared:0 };
+const root = document.documentElement;
+function applyEnv() {
+  const dark = S.theme==="dark" || (S.theme==="auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  root.dataset.theme = dark ? "dark" : "light";
+  const rm = S.motion==="on" || (S.motion==="auto" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  root.classList.toggle("rm", rm); root.classList.toggle("show-tags", S.tags);
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyEnv);
+matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", applyEnv);
+let tt; function toast(m){ const e=$("#toast"); e.textContent=m; e.classList.add("on"); clearTimeout(tt); tt=setTimeout(()=>e.classList.remove("on"),1800); }
+
+/* ===== 渲染 ===== */
+const app = $("#app");
+function go(screen) { S.screen = screen; render(); }
+function render() {
+  applyEnv();
+  const f = { welcome, map, lesson, done }[S.screen]; app.innerHTML = ""; f();
+}
+function el(html) { const t=document.createElement("template"); t.innerHTML=html.trim(); return t.content.firstChild; }
+
+function welcome() {
+  const s = el(`<div class="screen welcome"><div class="mid">
+    <div${tagAttr("W1")} style="display:flex;flex-direction:column;align-items:center;gap:20px">${mascot(104)}
+    <div style="display:flex;flex-direction:column;gap:8px"><h1${tagAttr("W2")}>在手机上学习 Python</h1><p>每天几分钟，点选闯关</p></div></div></div>
+    <button class="btn primary" id="start"${tagAttr("Q3")}>开始学习</button>
+    <button class="link" id="login">已有账号？登录</button></div>`);
+  s.querySelector("#start").onclick = () => { if (S.welcomeGo==="task") startLesson(); else go("map"); };
+  s.querySelector("#login").onclick = () => toast("原型不含登录");
+  app.append(s);
+}
+
+function map() {
+  const old = S.user==="old", curIdx = old ? 2 : 0;
+  const hud = `<div class="hud"${tagAttr("M4")}>
+    <div class="chip flame">${I.flame(16)}连续 ${old?3:0} 天</div><div class="chip bolt">${I.bolt(16)}${old?120:S.xp} XP</div><div class="chip heart">${I.heart(16)}红心 ${S.hearts}/5</div></div>`;
+  const hero = old
+    ? `<div class="hero"${tagAttr("M1")}><div class="eyebrow">继续学习 · 第 1 单元 第 3 关</div><h2>${LESSONS[2]}</h2><div class="sub">已通关 2 / 6 关</div><button class="btn primary" id="go">继续学习</button><p class="note">将从本关第 1 题开始（关内答题位置不保存）。</p></div>`
+    : `<div class="hero"${tagAttr("M1")}><div class="eyebrow">从第 1 关开始</div><h2>${LESSONS[0]}</h2><div class="sub">print 输出</div><button class="btn primary" id="go">开始学习</button></div>`;
+  const rows = `<div class="rows"${tagAttr("M2")}>
+    <button class="row" id="prac"><span style="color:var(--muted)">${I.lock(18)}</span><b>随机练习</b><span>${old?"无奖励，自由练习":"完成第一关后开放"}</span><span class="sp"></span></button>
+    <button class="row" id="log"><b>登录 / 注册</b><span>换设备也能接着学</span><span class="sp"></span>${I.chev(16)}</button></div>`;
+  const xs = [195,130,195,260,195,130], dy = 124, y0 = 50, H = y0 + dy*5 + 130;
+  const pts = xs.map((x,i)=>[x, y0+i*dy+36]);
+  const seg = (a,b)=>{ const m=(a[1]+b[1])/2; return `C ${a[0]} ${m}, ${b[0]} ${m}, ${b[0]} ${b[1]}`; };
+  let full = `M ${pts[0][0]} ${pts[0][1]}`, lit = full;
+  for (let i=1;i<pts.length;i++){ full += " "+seg(pts[i-1],pts[i]); if (i<=curIdx) lit += " "+seg(pts[i-1],pts[i]); }
+  const nodes = LESSONS.map((n,i)=>{ const k = i<curIdx?"done":i===curIdx?"current":"locked";
+    return `<button class="node ${k}" data-i="${i}" style="left:${(xs[i]/390*100).toFixed(2)}%;top:${y0+i*dy}px" aria-label="${n}（${k==="done"?"已通关":k==="current"?"当前关":"未解锁"}）"><div class="hexwrap">${k==="current"?`<svg class="glow" viewBox="0 0 88 94"><polygon points="44,6 82,26 82,68 44,88 6,68 6,26"/></svg>`:""}${hex(k)}${k==="current"?`<span class="tag-now">${old?"当前":"从这里"}</span>`:""}</div><span class="lab">${n}</span></button>`; }).join("");
+  const s = el(`<div class="screen"><div class="scroll">${hud}${hero}${rows}
+    <div class="unit"${tagAttr("M5")}>第 1 单元 · 奶茶店点单屏</div>
+    <div class="path" style="height:${H}px"${tagAttr("M3")}><svg class="trace" viewBox="0 0 390 ${H}" preserveAspectRatio="xMidYMin meet" aria-hidden="true">
+      <path d="${full}" fill="none" stroke="var(--trace)" stroke-width="4" stroke-dasharray="2 9" stroke-linecap="round"/>
+      ${curIdx>0?`<path d="${lit}" fill="none" stroke="var(--trace-on)" stroke-width="4" stroke-linecap="round"/>`:""}
+      ${pts.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="0"/>`).join("")}</svg>${nodes}</div></div>
+    <nav class="tabbar"><button class="tab on"><span class="pill">${I.home()}</span>学习</button><button class="tab" id="me"><span class="pill">${I.user()}</span>我的</button></nav></div>`);
+  s.querySelector("#go").onclick = () => startLesson();
+  s.querySelector("#prac").onclick = () => toast(old?"原型不含随机练习":"完成第一关后开放");
+  s.querySelector("#log").onclick = () => toast("原型不含登录");
+  s.querySelector("#me").onclick = () => toast("原型不含「我的」");
+  s.querySelectorAll(".node").forEach(n=>n.onclick=()=>{ const i=+n.dataset.i; if (i===curIdx) startLesson(); else toast(i<curIdx?"已通关（原型不含回顾）":"未解锁"); });
+  app.append(s);
+  if (!$(".scroll", app).dataset.once) $(".scroll", app).scrollTop = 0;
+}
+
+function startLesson(which) {
+  S.queue = which ? [which] : ["q1","q2"]; S.total = S.queue.length; S.solved = 0; S.hearts = 5; S.streak = S.forceStreak ? 2 : 0; S.sel=null; S.fb=null; S.retry=false; S.hint=false; S.cleared=0; S.demo = !!which;
+  go("lesson");
+}
+function lesson() {
+  const key = S.fb ? S.fb.key : S.queue[0]; if (!key) return go("done");
+  const q = Q[key], pct = Math.round(S.solved / S.total * 100); const prev = S.prevPct!=null && S.prevPct!==pct ? S.prevPct : pct; S.prevPct = null;
+  const fb = S.fb;
+  const opts = q.opts.map((o,i)=>{
+    let cls = "choice"; if (fb) { if (o.ok) cls += " right"; else if (i===fb.picked) cls += " wrong"; else cls += " dim"; } else if (i===S.sel) cls += " sel";
+    return `<button class="${cls}" data-i="${i}" ${fb?"disabled":""} aria-label="选项 ${"ABC"[i]}：${o.t.replace(/\n/g," 换行 ")}"><span class="abc">${"ABC"[i]}</span><span class="opt"><pre>${esc(o.t)}</pre></span><span class="fade" aria-hidden="true">›</span></button>`; }).join("");
+  const code = q.code ? `<div class="code"><div class="ln">${q.code.split("\n").map((_,i)=>i+1).join("\n").replace(/\n/g,"<br>")}</div><pre>${hl(q.code)}</pre></div>` : "";
+  const mood = fb && !fb.ok ? "care" : "happy";
+  const foot = fb ? feedbar() : `<div class="lessonfoot"><button class="mascot" id="hint" aria-label="让小码给个提示">${mascot(40, mood)}</button><button class="btn primary" id="check" ${S.sel==null?"disabled":""}${tagAttr("Q3")}>检查</button></div>`;
+  const s = el(`<div class="screen"><header class="lessonbar"><button class="icon-btn" id="x" aria-label="退出本关">${I.close()}</button>
+    <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div class="fill ${S.sweepNow?"sweep":""}" style="width:${Math.max(4,prev)}%"${tagAttr("F1")}></div></div>
+    <span class="hearts ${S.lostNow?"lost":""}" aria-label="红心 ${S.hearts}">${I.heart(22)}${S.hearts}</span></header>
+    <div class="scroll"><div class="q">${S.retry?`<span class="again">刚才答错的那题，再来一次</span>`:""}<h3>${q.prompt}</h3>${code}
+    <div class="choices"${tagAttr(key==="ql"?"Q2":"Q1")}>${opts}</div></div></div>${S.hint&&!fb?`<div class="hintcard">${q.tip}</div>`:""}${foot}</div>`);
+  S.sweepNow = false; S.lostNow = false;
+  app.append(s);
+  if (prev!==pct) requestAnimationFrame(()=>requestAnimationFrame(()=>{ const f=$(".fill",s); if(f) f.style.width=Math.max(4,pct)+"%"; }));
+  s.querySelectorAll(".choice").forEach(b=>b.onclick=()=>{ if (S.fb) return; S.sel=+b.dataset.i; lesson_re(); });
+  // 长代码选项：内容比盒子宽时显示右侧渐变提示，滚到头就隐藏
+  s.querySelectorAll(".choice").forEach(b=>{ const o=b.querySelector(".opt"); const upd=()=>b.classList.toggle("more", o.scrollWidth>o.clientWidth+2 && o.scrollLeft+o.clientWidth<o.scrollWidth-2); upd(); o.addEventListener("scroll",upd,{passive:true}); requestAnimationFrame(upd); });
+  $("#x",s).onclick = () => go("map");
+  const h=$("#hint",s); if (h) h.onclick=()=>{ S.hint=!S.hint; lesson_re(); };
+  const c=$("#check",s); if (c) c.onclick=()=>check(key);
+  const cont=$("#cont",s); if (cont) cont.onclick=next;
+}
+function lesson_re(){ const sc=$(".scroll",app)?.scrollTop||0; app.innerHTML=""; lesson(); const n=$(".scroll",app); if(n) n.scrollTop=sc; }
+function check(key) {
+  const q=Q[key], o=q.opts[S.sel], ok=!!o.ok;
+  S.prevPct = Math.round(S.solved / S.total * 100);
+  if (ok) { S.solved++; S.xp += XP_CORRECT; S.streak++; S.sweepNow = true; }
+  else { S.hearts--; S.streak = 0; S.queue.push(key); S.lostNow = true; }
+  S.queue.shift();
+  S.fb = { key, ok, picked:S.sel, why:o.why, xp: ok?XP_CORRECT:0, streak:S.streak, correct:q.opts.find(x=>x.ok).t };
+  lesson_re();
+}
+function feedbar() {
+  const f=S.fb, last = S.queue.length===0;
+  return `<div class="feedbar ${f.ok?"":"bad"}" role="status"${tagAttr(f.ok?"F1":"F4")}>
+    <div class="fb-head"><span class="fb-ico">${f.ok?I.check(18):I.cross(18)}</span>${f.ok?"答对了！":"差一点，再看看"}${f.ok?`<span class="fb-xp"${tagAttr("F2")}>+${f.xp} XP</span>`:""}${f.ok&&f.streak>=3?`<span class="fb-streak"${tagAttr("F3")}>连对 ${f.streak}</span>`:""}</div>
+    <p>${f.why}</p>
+    ${f.ok?"":`<p${tagAttr("F5")}>正确答案：<code>${esc(f.correct)}</code></p><p class="heartline">${I.heart(16)}红心 -1（剩 ${S.hearts} 颗）。这题稍后再做一次。</p>`}
+    <button class="btn primary" id="cont"${tagAttr("F7")}>${last?"完成本关":"继续"}</button></div>`;
+}
+function next() {
+  const wasWrong = S.fb && !S.fb.ok; S.fb=null; S.sel=null; S.hint=false;
+  S.retry = !!S.queue.length && S.queue[0]==="q1" && S.queue.length===1 && S.solved>=1 && !S.demo;
+  if (!S.queue.length) return go("done");
+  lesson_re();
+}
+function done() {
+  app.append(el(`<div class="screen done-page"><div>${mascot(96)}</div><h2>本关完成（占位）</h2><p class="muted" style="margin:0">通关页这一轮不在范围内，原型只放占位。</p><button class="btn primary" id="back" style="max-width:320px">回到地图</button></div>`));
+  $("#back").onclick=()=>go("map");
+}
+const esc = s => s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const hl = c => esc(c).replace(/^(print)(\()(.*)(\))$/gm, (m,a,b,s,d)=>`<span class="tk-fn">${a}</span><span class="tk-op">${b}</span>${/^\d+$/.test(s)?`<span class="tk-str">${s}</span>`:s.replace(/^("[^"]*")$/,'<span class="tk-str">$1</span>')}<span class="tk-op">${d}</span>`);
+
+/* ===== 评审面板 ===== */
+function jump(name) {
+  closeRv();
+  if (name==="welcome") { S.hearts=5; return go("welcome"); }
+  if (name==="map-new") { S.user="new"; S.hearts=5; return go("map"); }
+  if (name==="map-old") { S.user="old"; S.hearts=5; return go("map"); }
+  if (name==="q1") return startLesson();
+  if (name==="long") return startLesson("ql");
+  if (name==="wrong") { startLesson(); S.sel=1; check("q1"); return; }
+  if (name==="right") { startLesson(); S.sel=0; check("q1"); return; }
+  if (name==="retry") { S.queue=["q1"]; S.total=2; S.solved=1; S.hearts=4; S.retry=true; S.demo=false; S.fb=null; S.sel=null; return go("lesson"); }
+  if (name==="done") return go("done");
+}
+function seg(title, key, vals) { return `<h4>${title}</h4><div class="seg" data-k="${key}">${vals.map(([v,l])=>`<button data-v="${v}" class="${String(S[key])===String(v)?"on":""}">${l}</button>`).join("")}</div>`; }
+function rv() {
+  const legend = ITEMS.map(i=>`<div class="it"><span class="id">${i.id}</span><span class="st ${i.st}">${TAGTXT[i.st]}</span><span><b>${i.t}</b><br>${i.d}</span></div>`).join("");
+  $("#rv").innerHTML = `<h4>跳到某一步</h4><div class="seg" id="jumps">${[["welcome","欢迎"],["map-new","地图·新用户"],["map-old","地图·老用户"],["q1","首题"],["wrong","答错"],["retry","重做那题"],["right","答对"],["long","长代码选项"],["done","通关占位"]].map(([k,l])=>`<button data-j="${k}">${l}</button>`).join("")}</div>
+  ${seg("主题","theme",[["auto","跟随系统"],["light","浅色"],["dark","深色"]])}
+  ${seg("减少动态效果","motion",[["auto","跟随系统"],["on","开"],["off","关"]])}
+  ${seg("标注（每项：本次提案 / 仍存在 / 已修复）","tags",[[true,"显示"],[false,"隐藏"]])}
+  ${seg("欢迎页按钮去向","welcomeGo",[["map","先到地图（按派单流程）"],["task","直达首题（W1 的更短方案）"]])}
+  ${seg("模拟连对（下次答对显示「连对 3」）","forceStreak",[[true,"开"],[false,"关"]])}
+  <h4>条目与状态（对照 main 92f57d9）</h4><div class="legend">${legend}</div>`;
+  $("#rv").querySelectorAll("[data-j]").forEach(b=>b.onclick=()=>jump(b.dataset.j));
+  $("#rv").querySelectorAll(".seg[data-k]").forEach(g=>g.querySelectorAll("button").forEach(b=>b.onclick=()=>{ const k=g.dataset.k, v=b.dataset.v; S[k] = (v==="true"?true:v==="false"?false:v); applyEnv(); rv(); render(); }));
+}
+function openRv(){ rv(); $("#rvScrim").classList.add("on"); } function closeRv(){ $("#rvScrim").classList.remove("on"); }
+$("#rvOpen").onclick = openRv; $("#rvScrim").onclick = e => { if (e.target.id==="rvScrim") closeRv(); };
+
+/* 地址参数：?s=welcome|map-new|map-old|q1|wrong|retry|right|long|done  &theme=dark  &motion=on  &tags=1  （截图和评审直达用） */
+{ const p = new URLSearchParams(location.search);
+  if (p.get("theme")) S.theme = p.get("theme"); if (p.get("motion")) S.motion = p.get("motion"); if (p.get("tags")) S.tags = true;
+  if (p.get("streak")) S.forceStreak = true; if (p.get("go")==="task") S.welcomeGo = "task";
+  render(); if (p.get("s")) jump(p.get("s")); }
+window.ITEMS = ITEMS;
+</script>
+</body>
+</html>
