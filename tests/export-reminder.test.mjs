@@ -82,13 +82,13 @@ try {
     const [dl] = await Promise.all([page.waitForEvent("download"), page.locator("[data-export-now]").tap()]);
     check("点“导出进度”：下载进度文件", /^suipian-progress-\d{4}-\d{2}-\d{2}\.json$/.test(dl.suggestedFilename()));
     check("下载后先让用户确认文件在不在，不宣称已备份成功", (await page.locator("[data-export-confirm]").count()) === 1 && !/已备份|备份成功/.test(await page.locator("[data-export-reminder]").innerText()));
-    check("确认之前不记导出时间（不重置 14 天）", (await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport"))) === null);
+    check("确认之前不记导出时间（不重置 14 天）", (await page.evaluate(() => localStorage.getItem("suipian.meta.confirmedExport"))) === null);
     await page.reload(); await page.waitForSelector(".statsbar");
     check("没确认就刷新：提醒仍然在", (await count(page)) === 1);
     await page.locator("[data-export-now]").tap().catch(() => {});
     await page.locator("[data-export-saved]").tap();
     check("点“我已保存好”：提示消失", (await count(page)) === 0);
-    const last = Number(await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport")));
+    const last = Number(await page.evaluate(() => localStorage.getItem("suipian.meta.confirmedExport")));
     check("此时才记录导出时间（重新计时）", Math.abs(last - Date.now()) < 60000);
     await page.reload(); await page.waitForSelector(".statsbar");
     check("刷新后不再出现", (await count(page)) === 0); await ctx.close();
@@ -96,10 +96,27 @@ try {
   { // 确认写入失败：不显示成功，确认区保留
     const { ctx, page } = await open(15);
     await Promise.all([page.waitForEvent("download"), page.locator("[data-export-now]").tap()]);
-    await page.evaluate(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k) === "suipian.meta.lastExport") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
+    await page.evaluate(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k) === "suipian.meta.confirmedExport") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
     await page.locator("[data-export-saved]").tap();
     check("确认写入失败：提示“提醒时间未更新”，确认区还在，不说“14 天后再提醒”", /提醒时间未更新/.test(await page.locator("[data-export-confirm]").innerText()) && (await count(page)) === 1 && !/14 天后再提醒/.test(await page.locator("body").innerText()));
-    check("确认写入失败时没有记录导出时间", (await page.evaluate(() => localStorage.getItem("suipian.meta.lastExport"))) === null);
+    check("确认写入失败时没有记录导出时间", (await page.evaluate(() => localStorage.getItem("suipian.meta.confirmedExport"))) === null);
+    await ctx.close();
+  }
+  { // 旧版（#68 57793a2）点下载就写的 lastExport 没经用户确认：新版不信任它
+    const { ctx, page } = await open(20, { "suipian.meta.lastExport": Date.now() - 1 * DAY });
+    check("只有旧版 lastExport、没有用户确认：到期仍然提醒", (await count(page)) === 1);
+    check("旧键没有被当成确认时间", (await page.evaluate(() => localStorage.getItem("suipian.meta.confirmedExport"))) === null);
+    await ctx.close();
+  }
+  { // “我的”页的确认：写入失败保留确认区
+    const { ctx, page } = await open(15);
+    await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.waitForSelector("[data-backup]");
+    await Promise.all([page.waitForEvent("download"), page.locator("[data-export]").tap()]);
+    await page.waitForSelector("[data-export-saved-me]");
+    await page.evaluate(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k) === "suipian.meta.confirmedExport") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
+    await page.locator("[data-export-saved-me]").tap();
+    check("“我的”页确认写入失败：提示未更新、确认按钮还在、不说 14 天后再提醒", /提醒时间未更新/.test(await page.locator("[data-backup-msg]").innerText()) && (await page.locator("[data-export-saved-me]").count()) === 1 && !/14 天后再提醒/.test(await page.locator("[data-backup-msg]").innerText()));
+    await page.evaluate(() => { Storage.prototype.setItem = Storage.prototype.setItem; });
     await ctx.close();
   }
   { // 稍后写入失败
@@ -110,11 +127,11 @@ try {
     await ctx.close();
   }
   { // 导出过的人再隔 14 天又提醒
-    const { ctx, page } = await open(40, { "suipian.meta.lastExport": Date.now() - 15 * DAY });
+    const { ctx, page } = await open(40, { "suipian.meta.confirmedExport": Date.now() - 15 * DAY });
     check("上次导出已 15 天：提醒", (await count(page)) === 1); await ctx.close();
   }
   { // 刚用不久但导出过：不提醒
-    const { ctx, page } = await open(40, { "suipian.meta.lastExport": Date.now() - 2 * DAY });
+    const { ctx, page } = await open(40, { "suipian.meta.confirmedExport": Date.now() - 2 * DAY });
     check("上次导出仅 2 天：不提醒", (await count(page)) === 0); await ctx.close();
   }
 } finally { await browser.close(); srv.closeAllConnections(); srv.close(); }

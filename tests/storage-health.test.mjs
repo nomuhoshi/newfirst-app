@@ -52,4 +52,10 @@ mem["suipian.meta.loads"] = "{坏的"; ok("打开记录损坏：不抛错，重�
 const pr = await m.browserProbe(); ok("探针：Cookie / localStorage / sessionStorage / IndexedDB 四行", pr.length === 4 && /localStorage 写入：正常/.test(pr[1]) && /IndexedDB/.test(pr[3]), pr.join("|"));
 const rep3 = await m.storageReport(); ok("体检报告包含打开次数和探针", rep3.some((x) => /打开次数：1/.test(x)) && rep3.some((x) => /Cookie/.test(x)), rep3.join("|"));
 broken = true; ok("存储被禁用：打开记录不抛错", m.recordLoad() === null && m.loadHistory() === null);
+// ---- 旧版 lastExport 不当确认凭据 ----
+broken = false; for (const k of Object.keys(mem)) delete mem[k];
+mem["suipian.meta.backupBase"] = String(T0); mem["suipian.meta.lastExport"] = String(T0 + 14 * D); // 旧版点下载就写的时间
+ok("旧版 lastExport 不当确认：到期仍提醒", m.exportReminderDue({ now: T0 + 15 * D, doneCount: 5 }) && m.lastExportAt() === 0);
+m.markExported(T0 + 15 * D);
+ok("用户确认后写入 confirmedExport 并重新计时", m.lastExportAt() === T0 + 15 * D && !m.exportReminderDue({ now: T0 + 20 * D, doneCount: 5 }));
 process.exit(fail ? 1 : 0);
