@@ -105,6 +105,11 @@ function joinEntry(a, b) {
 }
 const cloneEntry = (e) => joinEntry(emptyEntry(), e);
 
+// 当前代数（给提醒记录按代数隔离用）：从没清除过是 "m0"；读取失败返回 null
+export function currentEpoch() { const r = rd(LS(), K_EPOCH); return r.ok ? r.v || M0 : null; }
+export const DEFAULT_EPOCH = M0;
+// 这份内存记录目前属于哪一代（载入 / 保存 / 采用新一代后更新）。提醒起点用它核对“依据的保存”是不是现在这一代的。
+export function stateEpoch(state) { return LEDGERS.get(state)?.epoch ?? null; }
 function getEpoch(S) { const r = rd(S, K_EPOCH); return r.ok ? r.v || M0 : null; }
 // 读取 / 建立某一代的基线。返回 { ok, base, notice, unsaved }。读取异常 ok:false（绝不当成“没有记录”）。
 const validBase = (raw, epoch) => { const b = parse(raw); return b && b.v === 4 && b.epoch === epoch && b.s && typeof b.s === "object" ? b : null; };

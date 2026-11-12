@@ -230,6 +230,26 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   await ctx.close();
 }
 
+// ---------- J 清除后重新学习：提醒起点按代数重新建立；保存失败不建立，恢复后成功保存才建立；旧代记录保留 ----------
+{
+  const dir = newDir(); const ctx = await open(dir); const page = await load(ctx); await passOnboarding(page);
+  const bk = () => page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ""; if (k.startsWith("suipian.meta.backupBase")) o[k] = localStorage.getItem(k); } return o; });
+  await finishLesson(page, "U1L1"); const b1 = await bk();
+  check("J1 第一代：起点写在原来的键", Object.keys(b1).join() === "suipian.meta.backupBase" && Math.abs(Number(b1["suipian.meta.backupBase"]) - Date.now()) < 5 * 60 * 1000, JSON.stringify(b1));
+  await page.evaluate(() => window.__app.clearProgress()); await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview");
+  const b2 = await bk();
+  check("J2 清除后新一代没有起点，旧代的起点保留", Object.keys(b2).join() === "suipian.meta.backupBase", JSON.stringify(b2));
+  // 保存失败：通关了也不建立新代起点
+  await page.evaluate(() => { window.__realSet = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k).includes("suipian.v4.tab.")) throw new DOMException("full", "QuotaExceededError"); return window.__realSet.call(this, k, v); }; });
+  await finishLesson(page, "U1L1"); const b3 = await bk();
+  check("J3 新一代保存失败：不建立起点", Object.keys(b3).join() === "suipian.meta.backupBase", JSON.stringify(b3));
+  // 恢复后成功保存：建立新一代起点
+  await page.evaluate(() => { Storage.prototype.setItem = window.__realSet; window.__app.persist(); });
+  const b4 = await bk(); const nk = Object.keys(b4).filter((k) => k !== "suipian.meta.backupBase");
+  check("J4 恢复后成功保存：建立新一代起点（带代数的新键，约等于现在），旧代键不变", nk.length === 1 && Math.abs(Number(b4[nk[0]]) - Date.now()) < 5 * 60 * 1000 && b4["suipian.meta.backupBase"] === b1["suipian.meta.backupBase"], JSON.stringify(b4));
+  await ctx.close();
+}
+
 // ---------- I 导入保存时另一页清除：清除胜出，不报“进度已导入”，不复活旧数据，不自动重试，备份不被修改 ----------
 {
   const dir = newDir(); const ctx = await open(dir); let page = await load(ctx); await passOnboarding(page);

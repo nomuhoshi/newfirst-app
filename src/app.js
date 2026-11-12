@@ -32,7 +32,7 @@ import * as feel from "./feel.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, readSnapshot, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
-getLastSaveStatus, } from "./storage.js";
+getLastSaveStatus, stateEpoch, } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
 import { createSync } from "./sync.js";
@@ -41,7 +41,7 @@ import { createPreviewInfo } from "./preview-info.js";
 import { cloudTarget } from "./cloud-config.js";
 import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize, encodeCode, decodeCode } from "./progress-file.js";
-import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad, ensureBackupBase } from "./storage-health.js";
+import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad, ensureBackupBase, getLastReminderStatus } from "./storage-health.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
@@ -279,7 +279,7 @@ function persist() {
     else showToast("无法保存进度（可能是无痕模式或存储已满），关掉页面后进度会丢失。");
     return false;
   }
-  ensureBackupBase(Object.keys(state.done).length); // 备份提醒的起点：首次成功保存有效进度
+  ensureBackupBase(Object.keys(state.done).length, Date.now(), stateEpoch(state)); // 备份提醒的起点：首次成功保存有效进度，且这次保存属于现在这一代
   return true;
 }
 function clearProgress() { const prefs = state.prefs; const f = clearState(); if (f.clearFailed) { showToast("清除失败（存储不可用），学习记录没有清除。"); return false; } state = f; state.prefs = prefs; state.onboarded = true; persist(); return true; }
@@ -827,11 +827,11 @@ function exportReminder() {
         box.replaceChildren(
           h("p", { "data-export-confirm": "", text: "已请求下载。请到“文件”App → 下载里确认有 suipian-progress 开头的文件，确认后点下面的按钮；没找到就再点一次“导出进度”。" }),
           h("div", { class: "acct-row" },
-            button("我已保存好", () => { if (!markExported()) { const m = box.querySelector("[data-export-confirm]"); if (m) m.textContent = "提醒时间未更新：这个浏览器记不住确认（可能是无痕模式或存储已满）。文件如果已经保存好，可以先不管；下次打开可能还会提醒。"; return; } box.remove(); showToast("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved": "" }),
+            button("我已保存好", () => { if (!markExported()) { const m = box.querySelector("[data-export-confirm]"); if (m) m.textContent = getLastReminderStatus() === "epoch" ? "其他页面刚清除了学习记录，这次确认没有记到新的学习记录上（新记录会重新计时）。" : "提醒时间未更新：这个浏览器记不住确认（可能是无痕模式或存储已满）。文件如果已经保存好，可以先不管；下次打开可能还会提醒。"; return; } box.remove(); showToast("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved": "" }),
             button("再导出一次", () => { exportProgressFile(); }, "btn3d ghost", { "data-export-again": "" }),
           ));
       }, "btn3d", { "data-export-now": "" }),
-      button("稍后", () => { if (!snoozeExport()) showToast("这个浏览器记不住“稍后”，下次打开还会提醒。"); box.remove(); }, "btn3d ghost", { "data-export-later": "" }),
+      button("稍后", () => { if (!snoozeExport()) showToast(getLastReminderStatus() === "epoch" ? "其他页面刚清除了学习记录，“稍后”没有记到新的学习记录上。" : "这个浏览器记不住“稍后”，下次打开还会提醒。"); box.remove(); }, "btn3d ghost", { "data-export-later": "" }),
     ));
   return box;
 }
@@ -851,7 +851,7 @@ function backupCard() {
     if (!exportProgressFile()) { say(BACKUP_REFUSED, true); return; }
     {
       say("已请求下载。请到浏览器的下载位置（iPhone：“文件”App → 下载）确认文件在，并自己保管好。");
-      if (!signedIn) panel.replaceChildren(h("div", { class: "confirm" }, h("p", { text: "确认文件已经保存好了吗？确认后，14 天备份提醒会重新计时。" }), button("我已保存好", () => { if (!markExported()) { say("提醒时间未更新：这个浏览器记不住确认（可能是无痕模式或存储已满）。", true); return; } panel.replaceChildren(); say("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved-me": "" })));
+      if (!signedIn) panel.replaceChildren(h("div", { class: "confirm" }, h("p", { text: "确认文件已经保存好了吗？确认后，14 天备份提醒会重新计时。" }), button("我已保存好", () => { if (!markExported()) { say(getLastReminderStatus() === "epoch" ? "其他页面刚清除了学习记录，这次确认没有记到新的学习记录上（新记录会重新计时）。" : "提醒时间未更新：这个浏览器记不住确认（可能是无痕模式或存储已满）。", true); return; } panel.replaceChildren(); say("好的，14 天后再提醒你。"); }, "btn3d", { "data-export-saved-me": "" })));
     }
   };
   const file = h("input", { type: "file", accept: "application/json,.json", hidden: "", "data-import-file": "" });
@@ -1583,5 +1583,5 @@ window.addEventListener("online", () => {
 });
 // 先把界面画出来，再在后台加载 Python：Python 出任何问题都不能让页面一片空白
 if (state.onboarded) renderPath(); else renderOnboarding();
-firstSeenAt(); recordLoad(); ensureBackupBase(Object.keys(state.done).length); ensurePersist(); // 记下这份存储的首次使用时间；申请持久存储（失败不影响使用）
+firstSeenAt(); recordLoad(); ensureBackupBase(Object.keys(state.done).length, Date.now(), stateEpoch(state)); ensurePersist(); // 记下这份存储的首次使用时间；申请持久存储（失败不影响使用）
 try { runner.boot(); } catch { /* 失败时 runner 已经记录为 loadError，“运行结果”面板会如实提示 */ }
