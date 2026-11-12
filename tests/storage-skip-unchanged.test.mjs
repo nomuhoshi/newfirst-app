@@ -108,4 +108,30 @@ const seen = () => { const s = loadState().state; return { xp: s.xp, runs: s.les
   ok("13 清除胜出：A 内存与存储都没有旧数据", A.xp === 0 && Object.keys(A.done).length === 0 && seen().xp === 0 && seen().done === "", JSON.stringify([A.xp, seen()]));
   ok("13 之后 A 再保存也不复活", saveState(A) === true && seen().xp === 0); }
 
+// 14 只有 doneOn 变早（别的都没变）：必须保存
+{ reset(); const A = page(); finish(A, "U1L1"); saveState(A);
+  const w = writes; A.doneOn = { ...A.doneOn, U1L1: "2026-11-10" }; ok("14 仅 doneOn 变早：写入", saveState(A) === true && writes > w);
+  ok("14 存储里的日期是更早那天", loadState().state.doneOn.U1L1 === "2026-11-10", JSON.stringify(loadState().state.doneOn));
+  const w2 = writes; saveState(A); ok("14 再保存无变化：不写", writes === w2); }
+
+// 15 红心数量不变、只有 heartsAt 变化（非满红心）：必须保存；满红心时不算（见 2）
+{ reset(); const A = page(); A.onboarded = true; loseHeart(A); saveState(A); const h = A.hearts;
+  const w = writes; A.heartsAt -= 5 * 60 * 1000; ok("15 非满红心仅 heartsAt 变化：写入", saveState(A) === true && writes > w && A.hearts === h, `${writes - w} ${A.hearts}/${h}`);
+  ok("15 存储里的 heartsAt 与页面一致", loadState().state.heartsAt === A.heartsAt, loadState().state.heartsAt + " vs " + A.heartsAt);
+  const w2 = writes; saveState(A); ok("15 再保存无变化：不写", writes === w2); }
+
+// 16 双标签同时保存：A 无变化保存的读取过程中 B 写入新进度；两边进度都在，A 不回写旧值
+{ let probe = 0; { reset(); const A = page(); finish(A, "U1L1"); saveState(A); const g0 = nGet; saveState(A); probe = nGet - g0; }
+  let bad = 0;
+  for (let K = 1; K <= probe; K++) {
+    reset(); const A = page(), B = page(); finish(A, "U1L1"); saveState(A); mergeStored(B);
+    const og = localStorage.getItem; let c = 0;
+    localStorage.getItem = (k) => { c++; if (c === K) { localStorage.getItem = og; finish(B, "U1L2"); saveState(B); } return og(k); };
+    const r = saveState(A); localStorage.getItem = og;
+    const v = seen();
+    if (r !== true || v.done !== "U1L1,U1L2" || v.xp !== 120) { bad++; console.log(`❌ 16 K=${K}：r=${r} ${JSON.stringify(v)}`); }
+    saveState(A); const v2 = seen(); if (v2.done !== "U1L1,U1L2" || v2.xp !== 120) { bad++; console.log(`❌ 16 K=${K} 之后 A 再保存改变了存储：${JSON.stringify(v2)}`); }
+  }
+  ok("16 无变化保存的每个读取点上，另一页同时保存：进度并集、XP 不重复", bad === 0 && probe >= 3, `probe=${probe} bad=${bad}`); }
+
 console.log(fail ? `\n${fail} 项失败` : "\n全部通过"); process.exit(fail ? 1 : 0);
