@@ -69,14 +69,14 @@ const clearFromOtherPage = () => { const C = clearState(); _asTab(C, "other" + +
   const r = readSnapshot(A); localStorage.getItem = og;
   ok("S1 扫描期间发生清除：拒绝生成备份", r.ok === false, JSON.stringify(r).slice(0, 120)); }
 
-// S2 扫描中别的页新增 / 更新账本：不拒绝，快照是“读取边界内”的一致下界——不超过最终存储，也不少于扫描开始前已有的
+// S2 扫描中别的页新增 / 更新账本：不拒绝。快照可能包含也可能不包含这些写入（读取边界，不是原子快照）；这里只拿 XP 这个单调累加的字段检查：夹在扫描前与扫描后的值之间。不对红心、偏好作任何大小关系承诺
 { reset(); const A = page(); addXp(A, 50, "U1L1", true); A.done.U1L1 = true; saveState(A);
   const before = stored();
   const B = page(); addXp(B, 20, "U1L2", true); B.done.U1L2 = true;
   let c = 0; const og = localStorage.getItem; localStorage.getItem = (k) => { c++; if (c === 4) { localStorage.getItem = og; saveState(B); } return og(k); };
   const r = readSnapshot(A); localStorage.getItem = og; const after = stored();
   ok("S2 扫描中别页写入：快照成功", r.ok === true);
-  ok("S2 快照不少于扫描前、不多于扫描后（有限边界，不是严格原子快照）", r.snap.xp >= before.xp && r.snap.xp <= after.xp, JSON.stringify([before, r.snap.xp, after])); }
+  ok("S2 XP 夹在扫描前与扫描后之间（只检查 XP；不是严格原子快照，红心 / 偏好不作承诺）", r.snap.xp >= before.xp && r.snap.xp <= after.xp, JSON.stringify([before, r.snap.xp, after])); }
 
 // S3 无并发：快照完整
 { reset(); const A = page(); addXp(A, 50, "U1L1", true); A.done.U1L1 = true; saveState(A); const r = readSnapshot(A);

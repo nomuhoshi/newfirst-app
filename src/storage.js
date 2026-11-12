@@ -388,7 +388,8 @@ export function readSnapshot(state) {
     const v = computeView(S, epoch, b.base, L || null);
     if (!v) return { ok: false };
     // 扫描期间发生过清除（代数变了）：读到的是新旧混杂的残片，拒绝。
-    // 边界：这不是严格原子快照。扫描期间别的页新增或更新账本，快照可能包含也可能不包含这些写入；每个账本只增不减，所以快照是“扫描开始前已有进度”的上界以下、“扫描结束后最终进度”的下界以上。
+    // 读取边界（不是严格原子快照）：快照由“逐个读取各账本”拼成，每个账本读到的是它在扫描过程中某一时刻的完整内容；扫描期间别的页新增或更新账本，快照可能包含也可能不包含这些写入。
+    // 这里不对任何字段（含红心、偏好）承诺“只增不减”或前后大小关系；快照只保证：没有读取失败、没有读不懂的账本、结束时代数与开始时相同。
     if (getEpoch(S) !== epoch) return { ok: false, cleared: true };
     return { ok: true, snap: { ...state, done: { ...v.done }, doneOn: { ...v.doneOn }, xp: v.xp, lessonsCompleted: v.runs, streak: v.streak, lastDay: v.lastDay } };
   } catch { return { ok: false }; }
