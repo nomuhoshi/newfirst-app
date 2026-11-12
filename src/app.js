@@ -815,14 +815,10 @@ let updateReady = false, updateDismissed = false, updateRequestedByUser = false,
 function inLesson() { return !!(currentRun || currentPractice); }
 function updateNotice() {
   if (!updateReady || updateDismissed || inLesson()) return null;
-  const msg = h("p", { class: "small", role: "status", "data-update-msg": "" });
   return h("div", { class: "notice update-notice", role: "status", "data-update": "" },
-    h("p", { text: "有新版本可用。点“现在更新”会先检查进度是否保存成功，再刷新页面。" }),
-    msg,
+    h("p", { text: "有新版本可用。更新会刷新页面，你的学习进度已经保存。" }),
     button("现在更新", () => {
       const w = swReg?.waiting; if (!w) { updateReady = false; renderCurrentSafe(); return; }
-      // 更新会刷新页面：先核验进度确实写进了本机；没保存成功就不更新、不刷新，也不说“已保存”
-      if (!persist()) { msg.textContent = "现在没能把进度保存到本机，所以暂不更新（否则刷新会丢掉还没保存的进度）。请先导出进度文件或复制进度码，或稍后再试。"; msg.classList.add("bad"); return; }
       updateRequestedByUser = true; w.postMessage({ type: "skipWaiting" });
     }, "btn3d primary", { "data-update-now": "" }),
     button("稍后", () => { updateDismissed = true; renderCurrentSafe(); }, "btn", { "data-update-later": "" }));
@@ -1583,15 +1579,12 @@ async function refreshSwInfo() {
   return swInfo;
 }
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  let hadController = !!navigator.serviceWorker.controller; // 第一次访问时先由第一次安装接管（不是更新）；之后同一页面再收到更新要能正常处理
+  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     refreshSwInfo();
-    if (!hadController) { hadController = true; return; } // 第一次安装接管，不是更新
+    if (!hadController) return; // 第一次安装接管，不是更新
     // 只有用户在地图 / “我的”页点了“现在更新”，并且此刻不在答题中，才刷新页面；其他情况（别的标签页更新了、答题中）一律不刷新，只提示
-    if (updateRequestedByUser && !inLesson()) {
-      if (persist()) { location.reload(); return; } // 刷新前再核验一次保存；失败就不刷新
-      showToast("新版本已就绪，但进度没能保存到本机，所以没有刷新页面。保存成功后再刷新即可使用最新内容。"); return;
-    }
+    if (updateRequestedByUser && !inLesson()) { location.reload(); return; }
     showToast("已更新到新版本。当前这一关不受影响，退出这一关后刷新页面即可使用最新内容。");
   });
   const watchUpdate = (reg) => {

@@ -6,13 +6,13 @@
 // 2. 不缓存 Pyodide（几十 MB 的 Python 运行环境）：它走普通网络请求，离线时由页面显示“Python运行功能需要联网后加载”。
 //    也不缓存 sfx/ 下的测试音频。绝不用预先写好的输出冒充 Python 真实执行。
 // 3. 联网时优先取新版：先请求网络，成功就更新缓存；失败（离线、服务器错误）或网络超过 4 秒没响应，才读缓存。
-// 4. 缓存名带版本号。新版装好后不立刻接管：先等着（waiting），页面在地图 / “我的”页提示“有新版本”，用户点了、且进度保存核验通过后才更新（页面发 skipWaiting 消息）；
-//    这样正在答题的页面不会被中途换版本。**激活时不删除任何历史版本缓存**：正在答题的旧页面（包括从旧版本一路留下来、跨了好几个版本的页面）还可能按需加载旧版的文件，
-//    本缓存没有时 fetch 会到其他版本缓存里找。历史缓存的清理另行设计（需要先能确认没有页面还在用旧版），目前会随版本累积，见 docs/57。
-//    升级生命周期：旧版本的 sw.js 只在新版激活后才被替换；新版 install 时运行的是新脚本（没有 skipWaiting），所以从旧 main 升级时新版同样先等待。
+// 4. 缓存名带版本号。新版装好后不立刻接管：先等着（waiting），页面在地图 / “我的”页提示“有新版本”，用户点了才更新（页面发 skipWaiting 消息）；
+//    这样正在答题的页面不会被中途换版本。新版激活时保留“上一版”的缓存（正在答题的旧页面还可能按需加载旧版的文件），再更早的 suipian- 缓存才删除。
+//    注意：从旧机制（装好即接管）升级到本机制的那一次，仍按旧机制接管一次；这一次无法避免。
 const VERSION = "__VERSION__";
 const PREFIX = "__PREFIX__";
 const CACHE = PREFIX + VERSION;
+const STATE_CACHE = "suipian_state";
 const PRECACHE = __PRECACHE__;
 const SLOW_MS = 4000;          // 网络超过这个时间没响应，就先用缓存
 const SLOW_AFTER_MS = 800;     // 刚发现网络很慢之后的一小段时间里，后面的请求只等这么久（页面的 JS、CSS 是一个接一个请求的，不然会累加）
@@ -40,6 +40,12 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
+    // 记在 suipian_state（名字不以 suipian- 开头，不会被当成版本缓存）里的是“上一个激活版本”的缓存名：保留它，其余旧版本缓存删除
+    const st = await caches.open(STATE_CACHE);
+    const prevRes = await st.match("active");
+    const prev = prevRes ? await prevRes.text() : null;
+    for (const key of await caches.keys()) if (key.startsWith(PREFIX) && key !== CACHE && key !== prev) await caches.delete(key);
+    await st.put("active", new Response(CACHE));
     await self.clients.claim();
   })());
 });
