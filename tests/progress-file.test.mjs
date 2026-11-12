@@ -6,7 +6,7 @@ import { readFileSync, existsSync, statSync, writeFileSync, mkdtempSync } from "
 import { join, extname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { chromium } from "playwright";
-import { buildExport, parseImport, mergeImport, exportFileName, summarize, FILE_FORMAT } from "../src/progress-file.js";
+import { buildExport, parseImport, mergeImport, exportFileName, summarize, FILE_FORMAT, encodeCode, decodeCode } from "../src/progress-file.js";
 import { DATA_VERSION } from "../src/storage.js";
 import { fileURLToPath } from "node:url";
 
@@ -50,6 +50,17 @@ const base = JSON.parse(FIX);
   check("摘要", summarize(imp).lessons === 3 && summarize(imp).xp === 190);
 }
 
+{ // 进度码
+  const code = encodeCode(base, { now: Date.UTC(2026, 10, 4, 12, 0, 0), build: "b1" });
+  const d = decodeCode(code), r = d.ok ? parseImport(d.text) : null;
+  check("进度码：以 SPC1. 开头，只有安全字符", code.startsWith("SPC1.") && /^SPC1\.[A-Za-z0-9_-]+$/.test(code));
+  check("进度码：编码再解码，进度原样（关卡、XP、连续天数）", r && r.ok && r.state.xp === 190 && r.state.streak === 4 && Object.keys(r.state.done).length === 8);
+  const chopped = code.match(/.{1,17}/g).join("\n  ");
+  check("进度码：粘贴时夹着换行和空格也能读", decodeCode(chopped).ok && parseImport(decodeCode(chopped).text).ok);
+  check("进度码：前面带别的文字（聊天软件常加前缀）也能读", decodeCode("我的进度码：" + code).ok);
+  check("进度码：空 / 不是进度码 / 被截断都拒绝或读不出进度", !decodeCode("").ok && !decodeCode("hello").ok && (() => { const t = decodeCode(code.slice(0, 30)); return !t.ok || !parseImport(t.text).ok; })());
+}
+
 // ===== 浏览器：我的页 =====
 const DIST = resolve(fileURLToPath(new URL("../dist", import.meta.url)));
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/json", ".wasm": "application/wasm" };
@@ -62,7 +73,7 @@ const srv = createServer((req, resp) => {
 await new Promise((res) => srv.listen(0, res)); const URLBASE = `http://localhost:${srv.address().port}/`;
 const browser = await chromium.launch();
 try {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block", acceptDownloads: true });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block", acceptDownloads: true, permissions: ["clipboard-read", "clipboard-write"] });
   const page = await ctx.newPage();
   const errors = []; page.on("pageerror", (e) => errors.push(String(e.message)));
   await page.addInitScript((raw) => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", raw); localStorage.setItem("suipian.progress.unreadable.1700000000000", "{旧的坏记录"); } }, FIX);
@@ -90,6 +101,26 @@ try {
   const st = await page.evaluate(() => window.__app.getState());
   const ls = JSON.parse(await page.evaluate(() => localStorage.getItem("suipian.progress")));
   check("导入：关卡、XP、连续天数恢复，并存进本机", Object.keys(st.done).length === 8 && st.xp === 190 && st.streak === 4 && ls.xp === 190 && Object.keys(ls.done).length === 8);
+
+  // 进度码：复制 → 清空 → 粘贴 → 确认
+  await page.locator("[data-code-copy]").tap();
+  await page.waitForFunction(() => /进度码已复制/.test(document.querySelector("[data-backup-msg]")?.textContent || ""));
+  const codeText = await page.evaluate(() => navigator.clipboard.readText());
+  check("复制进度码：剪贴板里是 SPC1. 开头的一段文字", /^SPC1\.[A-Za-z0-9_-]+$/.test(codeText));
+  await page.evaluate(() => { window.__app.clearProgress(); });
+  await page.reload(); await page.waitForSelector(".statsbar");
+  await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-backup]");
+  check("清空后进度为 0", (await page.evaluate(() => window.__app.getState().xp)) === 0);
+  await page.locator("[data-code-paste]").tap();
+  await page.locator("[data-code-in]").fill("请看这个：\n" + codeText.match(/.{1,25}/g).join("\n"));
+  await page.locator("[data-code-read]").tap();
+  await page.waitForSelector("[data-import-confirm]");
+  check("粘贴进度码：先确认，确认前不改记录", /8 个已完成关卡.*190 XP/.test(await page.locator("[data-import-confirm]").innerText()) && (await page.evaluate(() => window.__app.getState().xp)) === 0);
+  await page.getByRole("button", { name: "确认导入" }).tap();
+  await page.waitForFunction(() => window.__app.getState().xp === 190);
+  check("粘贴进度码：进度恢复", Object.keys(await page.evaluate(() => window.__app.getState().done)).length === 8);
+  await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill("乱写的"); await page.locator("[data-code-read]").tap();
+  check("粘贴错误的进度码：说明原因", /不是碎片编程的进度码/.test(await page.locator("[data-backup-msg]").innerText()));
 
   // 坏文件：给出原因，不改记录
   const badPath = join(dir, "bad.json"); writeFileSync(badPath, '{"hello":1}');

@@ -45,8 +45,34 @@ export async function storageReport() {
   const c = localCounts();
   lines.push(c ? `本机存储：${c.keys} 个键（学习记录相关 ${c.v4} 个），约 ${(c.bytes * 2 / 1024).toFixed(0)} KB` : "本机存储：读取失败");
   lines.push(`持久存储：${persistText}`);
+  const lh = loadHistory();
+  lines.push(lh === null ? "打开记录：读取失败" : `本标签页所在存储里的打开次数：${lh.length}${lh.length >= 8 ? "（只保留最近 8 次）" : ""}${lh.length ? `；最近：${lh.slice(-3).map((x) => new Date(x).toLocaleString()).join(" / ")}` : ""}`);
+  lines.push(...await browserProbe());
   try {
     if (navigator.storage?.estimate) { const e = await navigator.storage.estimate(); lines.push(`浏览器存储额度：已用 ${mb(e.usage || 0)} / 共 ${mb(e.quota || 0)}`); }
   } catch { /* 忽略 */ }
   return lines;
+}
+
+// ---- 打开记录与浏览器存储探针（Safari 进度丢失定位用）----
+// 每次打开记一次时间（最多留 8 条）。老大下次点“复制诊断”就能看出：关掉再打开后“打开次数”是 1 还是在累加——
+// 1 = 这个标签页的本机存储没有保留（无痕 / 每个标签独立 / 被清）；累加 = 存储在，问题在别处。
+const META_LOADS = "suipian.meta.loads";
+export function recordLoad(now = Date.now()) {
+  try {
+    let arr = []; try { const a = JSON.parse(localStorage.getItem(META_LOADS) || "[]"); if (Array.isArray(a)) arr = a.filter((x) => Number.isFinite(x)); } catch { /* 坏了就重新记 */ }
+    arr.push(now); arr = arr.slice(-8);
+    localStorage.setItem(META_LOADS, JSON.stringify(arr));
+    return arr;
+  } catch { return null; }
+}
+export function loadHistory() { try { const a = JSON.parse(localStorage.getItem(META_LOADS) || "[]"); return Array.isArray(a) ? a.filter((x) => Number.isFinite(x)) : []; } catch { return null; } }
+export async function browserProbe() {
+  const out = [];
+  const t = (f) => { try { return f(); } catch (e) { return "出错：" + (e && e.name || "未知"); } };
+  out.push(`Cookie：${t(() => (navigator.cookieEnabled ? "允许" : "被阻止"))}`);
+  out.push(`localStorage 写入：${t(() => { const k = "suipian.meta.probe"; localStorage.setItem(k, "1"); const ok = localStorage.getItem(k) === "1"; localStorage.removeItem(k); return ok ? "正常" : "写入后读不回"; })}`);
+  out.push(`sessionStorage：${t(() => { sessionStorage.setItem("suipian.probe", "1"); const ok = sessionStorage.getItem("suipian.probe") === "1"; sessionStorage.removeItem("suipian.probe"); return ok ? "正常" : "读不回"; })}`);
+  out.push(`IndexedDB：${await new Promise((res) => { try { if (!globalThis.indexedDB) return res("不支持"); const r = indexedDB.open("suipian-probe"); r.onsuccess = () => { try { r.result.close(); indexedDB.deleteDatabase("suipian-probe"); } catch { /* 忽略 */ } res("可用"); }; r.onerror = () => res("被拒绝（" + (r.error && r.error.name || "未知") + "）"); r.onblocked = () => res("被阻塞"); setTimeout(() => res("无响应"), 1500); } catch (e) { res("出错：" + (e && e.name || "未知")); } })}`);
+  return out;
 }

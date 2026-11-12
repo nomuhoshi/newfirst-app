@@ -144,3 +144,4 @@ html, body { position: fixed; inset: 0; overflow: hidden; overscroll-behavior: n
 .overlay.full .sheet-body { padding: 0; flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; }
 .overlay.full .code-view { flex: 1 1 auto; }
 .ios-browser .overlay.full #keyboard { padding-bottom: 76px; }
+.code-box { width: 100%; box-sizing: border-box; font: 13px/1.4 ui-monospace, Menlo, monospace; padding: 8px; border: 1px solid var(--line, #ccc); border-radius: 8px; background: transparent; color: inherit; }
