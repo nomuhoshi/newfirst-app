@@ -43,6 +43,7 @@ svg { display:block; }
 .btn:active:not(:disabled) { transform:translateY(1px); }
 .btn.primary { background:var(--copper); color:var(--on-copper); border-color:var(--copper); }
 .btn:disabled { background:var(--card2); color:var(--muted); border-color:var(--line); opacity:.75; cursor:default; }
+html.rm .btn:active:not(:disabled) { transform:none; outline:3px solid var(--copper); outline-offset:-3px; }
 .link { min-height:44px; color:var(--copper-text); font-weight:700; font-size:15px; padding:0 12px; }
 .icon-btn { width:44px; height:44px; display:grid; place-items:center; border-radius:12px; }
 .t13 { font-size:13px; font-weight:600; }
@@ -71,7 +72,8 @@ svg { display:block; }
 .unit { margin:18px 16px 0; font-size:13px; font-weight:700; color:var(--muted); display:flex; gap:8px; align-items:center; letter-spacing:.3px; }
 .unit::after { content:""; flex:1; height:1px; background:var(--line); }
 .path { position:relative; margin:0 auto; width:390px; max-width:100%; }
-.path svg.trace { position:absolute; inset:0; pointer-events:none; }
+.path svg.trace { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+.path svg.trace path { vector-effect:non-scaling-stroke; }
 .node { position:absolute; width:76px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; }
 .node .lab { background:var(--bg); padding:0 6px; border-radius:6px; font-size:13px; font-weight:700; line-height:1.3; white-space:nowrap; }
 .node.locked .lab { color:var(--muted); font-weight:600; }
@@ -97,8 +99,6 @@ html.rm .fill { transition:none; }
 @keyframes sweep { to { left:110%; } }
 html.rm .fill.sweep::after { display:none; }
 .hearts { display:flex; align-items:center; gap:4px; font-weight:800; font-size:17px; color:var(--bad); min-width:44px; justify-content:flex-end; }
-html:not(.rm) .hearts.lost svg { animation:heartlost .28s ease-out; }
-@keyframes heartlost { 30% { transform:scale(1.25); } 100% { transform:scale(1); } }
 .q { padding:12px 20px 16px; }
 .q h3 { margin:6px 0 14px; font-size:22px; line-height:1.35; font-weight:800; }
 .again { display:inline-block; font-size:13px; font-weight:700; color:var(--copper-text); background:color-mix(in srgb,var(--copper) 14%,transparent); padding:2px 10px; border-radius:10px; margin-bottom:4px; }
@@ -181,7 +181,7 @@ html.show-tags [data-tag=fixed]::after { background:var(--ok); color:var(--bg); 
 /* ===== 评审条目：状态 = 当前仍存在 / 已修复 / 本次提案（对照 main 92f57d9） ===== */
 const ITEMS = [
   { id:"W1", st:"proposal", t:"欢迎页压成一屏", d:"现状 3 屏、点 3 次才到地图；这里 1 屏 1 个主按钮。" },
-  { id:"W2", st:"proposal", t:"欢迎页文案", d:"「在手机上学习 Python」「每天几分钟，点选闯关」。不写「全程点选」「每关约 2 分钟」。名字仍叫小码（改名碎碎已批、未落地）。" },
+  { id:"W2", st:"proposal", t:"欢迎页文案", d:"「在手机上学习 Python」「每天几分钟，点选闯关」。不写「全程点选」「每关约 2 分钟」。角色名统一为「碎碎」（改名已批；正式版源码里仍是「小码」，落地时要一起改）。" },
   { id:"M1", st:"proposal", t:"地图「下一步」主卡", d:"新用户「开始学习」，老用户关名 +「继续学习」。关内位置 main 不保存（退出后从第 1 题重来），所以继续 = 当前关第 1 题；关内恢复未模拟。" },
   { id:"M2", st:"proposal", t:"随机练习 / 登录降级成一行", d:"现状：随机练习是吸顶整宽灰块，登录是虚线整宽卡。" },
   { id:"M3", st:"exists", t:"六边形路径（保留）", d:"沿用老大 11-04 方向；本次提案只加厚度、高光、当前关通电发光。" },
@@ -190,14 +190,14 @@ const ITEMS = [
   { id:"Q1", st:"fixed", t:"选项竖排整宽、代码不折行", d:"main 的 #60：.choices.code 单列 + 横向滚动，原型沿用，不算新成果。" },
   { id:"Q2", st:"proposal", t:"长代码选项的提示", d:"沿用 #60 的横向滚动，新增右侧渐变 + ›，提示还有内容（「长代码选项」可跳转查看）。" },
   { id:"Q3", st:"proposal", t:"铜橙 = 主要操作", d:"现状深色主按钮是浅蓝底（对比度 9.4，不低，但像禁用态且和整屏无主次）。原型主按钮、选中态、进度条都用铜橙：浅色白字 4.82:1，深色深字 9.24:1。" },
-  { id:"F1", st:"proposal", t:"答对：对勾弹出 + 进度条高光", d:"✓ 0→1.15→1（240ms）；进度条到位后一道高光扫过（300ms）。不拖延「继续」（立刻可点）。" },
-  { id:"F2", st:"exists", t:"XP 只在实际获得时出现", d:"main 现规则：每次答对 +10（复习 +5），含错题重做；答错不出现。原型按同一常量显示。重做是否再得 XP 以 app.js 1125 行的 addXp 为准，需程序员确认。" },
+  { id:"F1", st:"proposal", t:"答对：对勾弹出 + 进度条高光", d:"✓ 0→1.15→1（240ms）；进度条到位后一道高光扫过（300ms）。「继续」时序保留正式版：120ms 揭示结果、280ms 开放继续（减少动态下立即），本轮不改这项行为。" },
+  { id:"F2", st:"exists", t:"XP 只在实际获得时出现", d:"main 现规则：每次答对 +10（复习 +5），含错题重做；答错不出现。原型按同一常量显示。产品官已核对 app.js / storage.js：addXp 不按题去重，错题先答错未得分、随后答对正常 +10，无悬项。" },
   { id:"F3", st:"proposal", t:"连对提示不遮挡", d:"连对 ≥3 时在反馈头里加一枚「连对 N」小标，行内，不浮层。" },
   { id:"F4", st:"proposal", t:"答错措辞「差一点，再看看」", d:"现状标题「不对哦」。" },
   { id:"F5", st:"exists", t:"答错讲原因 + 正确答案 + 红心", d:"main 已有：错因（why）、「正确答案」、「红心 -1（剩 N 颗），这题稍后再做一次」。原型保留，不算新成果。" },
-  { id:"F6", st:"proposal", t:"答错只留一种主要动效", d:"选中卡抖 2 次（±5px，220ms）；碎碎只换静态表情，不弹跳。现状卡抖 3px 160ms，碎碎无反应。" },
+  { id:"F6", st:"proposal", t:"答错只留一种主要动效", d:"只留选中卡抖 2 次（±5px，220ms）；碎碎只换静态表情；红心直接更新数值，不再缩放（正式版现有红心缩放动画）。现状卡抖 3px 160ms。" },
   { id:"F7", st:"proposal", t:"继续按钮统一铜橙", d:"现状答错时「继续」是红色危险按钮；这里改铜橙，反馈色只用在面板描边和标题。" },
-  { id:"R1", st:"exists", t:"减少动态效果", d:"main 已有 prefers-reduced-motion。原型：开启后取消位移、缩放、飞行、发光呼吸、高光扫过，只保留颜色变化。" },
+  { id:"R1", st:"exists", t:"减少动态效果", d:"main 已有 prefers-reduced-motion。原型：开启后取消位移、缩放、飞行、发光呼吸、高光扫过、按钮按下的 1px 下移（按下改用描边表示），只保留颜色变化。" },
 ];
 const $ = (s, r=document) => r.querySelector(s);
 const ITEM = Object.fromEntries(ITEMS.map(i => [i.id, i]));
@@ -248,7 +248,7 @@ const XP_CORRECT = 10; /* 与 src/app.js 的 XP_CORRECT 一致 */
 const LESSONS = ["让屏幕说话","记住顾客","顾客改单","算价格","加一杯","结账小票"];
 
 /* ===== 状态 ===== */
-const S = { screen:"welcome", user:"new", welcomeGo:"map", queue:[], total:2, solved:0, hearts:5, xp:0, streak:0, sel:null, fb:null, retry:false, hint:false, forceStreak:false, theme:"auto", motion:"auto", tags:false, cur:null, cleared:0 };
+const S = { screen:"welcome", user:"new", welcomeGo:"task", queue:[], total:2, solved:0, hearts:5, xp:0, streak:0, sel:null, fb:null, retry:false, hint:false, forceStreak:false, theme:"auto", motion:"auto", tags:false, cur:null, cleared:0, ver:0, checking:false };
 const root = document.documentElement;
 function applyEnv() {
   const dark = S.theme==="dark" || (S.theme==="auto" && matchMedia("(prefers-color-scheme: dark)").matches);
@@ -262,7 +262,7 @@ let tt; function toast(m){ const e=$("#toast"); e.textContent=m; e.classList.add
 
 /* ===== 渲染 ===== */
 const app = $("#app");
-function go(screen) { S.screen = screen; render(); }
+function go(screen) { S.ver++; S.checking = false; S.screen = screen; render(); }
 function render() {
   applyEnv();
   const f = { welcome, map, lesson, done }[S.screen]; app.innerHTML = ""; f();
@@ -285,13 +285,13 @@ function map() {
   const hud = `<div class="hud"${tagAttr("M4")}>
     <div class="chip flame">${I.flame(16)}连续 ${old?3:0} 天</div><div class="chip bolt">${I.bolt(16)}${old?120:S.xp} XP</div><div class="chip heart">${I.heart(16)}红心 ${S.hearts}/5</div></div>`;
   const hero = old
-    ? `<div class="hero"${tagAttr("M1")}><div class="eyebrow">继续学习 · 第 1 单元 第 3 关</div><h2>${LESSONS[2]}</h2><div class="sub">已通关 2 / 6 关</div><button class="btn primary" id="go">继续学习</button><p class="note">将从本关第 1 题开始（关内答题位置不保存）。</p></div>`
+    ? `<div class="hero"${tagAttr("M1")}><div class="eyebrow">继续学习 · 第 1 单元 第 3 关</div><h2>${LESSONS[2]}</h2><div class="sub">已通关 2 / 6 关</div><button class="btn primary" id="go">继续学习</button><p class="note">从本关第 1 题重新开始。</p></div>`
     : `<div class="hero"${tagAttr("M1")}><div class="eyebrow">从第 1 关开始</div><h2>${LESSONS[0]}</h2><div class="sub">print 输出</div><button class="btn primary" id="go">开始学习</button></div>`;
   const rows = `<div class="rows"${tagAttr("M2")}>
-    <button class="row" id="prac"><span style="color:var(--muted)">${I.lock(18)}</span><b>随机练习</b><span>${old?"无奖励，自由练习":"完成第一关后开放"}</span><span class="sp"></span></button>
+    <button class="row" id="prac">${old?"":`<span style="color:var(--muted)">${I.lock(18)}</span>`}<b>随机练习</b><span>${old?"无奖励，自由练习":"完成第一关后开放"}</span><span class="sp"></span></button>
     <button class="row" id="log"><b>登录 / 注册</b><span>换设备也能接着学</span><span class="sp"></span>${I.chev(16)}</button></div>`;
   const xs = [195,130,195,260,195,130], dy = 124, y0 = 50, H = y0 + dy*5 + 130;
-  const pts = xs.map((x,i)=>[x, y0+i*dy+36]);
+  const pts = xs.map((x,i)=>[x, y0+i*dy+38]);
   const seg = (a,b)=>{ const m=(a[1]+b[1])/2; return `C ${a[0]} ${m}, ${b[0]} ${m}, ${b[0]} ${b[1]}`; };
   let full = `M ${pts[0][0]} ${pts[0][1]}`, lit = full;
   for (let i=1;i<pts.length;i++){ full += " "+seg(pts[i-1],pts[i]); if (i<=curIdx) lit += " "+seg(pts[i-1],pts[i]); }
@@ -299,7 +299,7 @@ function map() {
     return `<button class="node ${k}" data-i="${i}" style="left:${(xs[i]/390*100).toFixed(2)}%;top:${y0+i*dy}px" aria-label="${n}（${k==="done"?"已通关":k==="current"?"当前关":"未解锁"}）"><div class="hexwrap">${k==="current"?`<svg class="glow" viewBox="0 0 88 94"><polygon points="44,6 82,26 82,68 44,88 6,68 6,26"/></svg>`:""}${hex(k)}${k==="current"?`<span class="tag-now">${old?"当前":"从这里"}</span>`:""}</div><span class="lab">${n}</span></button>`; }).join("");
   const s = el(`<div class="screen"><div class="scroll">${hud}${hero}${rows}
     <div class="unit"${tagAttr("M5")}>第 1 单元 · 奶茶店点单屏</div>
-    <div class="path" style="height:${H}px"${tagAttr("M3")}><svg class="trace" viewBox="0 0 390 ${H}" preserveAspectRatio="xMidYMin meet" aria-hidden="true">
+    <div class="path" style="height:${H}px"${tagAttr("M3")}><svg class="trace" viewBox="0 0 390 ${H}" preserveAspectRatio="none" aria-hidden="true">
       <path d="${full}" fill="none" stroke="var(--trace)" stroke-width="4" stroke-dasharray="2 9" stroke-linecap="round"/>
       ${curIdx>0?`<path d="${lit}" fill="none" stroke="var(--trace-on)" stroke-width="4" stroke-linecap="round"/>`:""}
       ${pts.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="0"/>`).join("")}</svg>${nodes}</div></div>
@@ -320,13 +320,13 @@ function startLesson(which) {
 function lesson() {
   const key = S.fb ? S.fb.key : S.queue[0]; if (!key) return go("done");
   const q = Q[key], pct = Math.round(S.solved / S.total * 100); const prev = S.prevPct!=null && S.prevPct!==pct ? S.prevPct : pct; S.prevPct = null;
-  const fb = S.fb;
+  const fb = S.checking ? null : S.fb;
   const opts = q.opts.map((o,i)=>{
     let cls = "choice"; if (fb) { if (o.ok) cls += " right"; else if (i===fb.picked) cls += " wrong"; else cls += " dim"; } else if (i===S.sel) cls += " sel";
     return `<button class="${cls}" data-i="${i}" ${fb?"disabled":""} aria-label="选项 ${"ABC"[i]}：${o.t.replace(/\n/g," 换行 ")}"><span class="abc">${"ABC"[i]}</span><span class="opt"><pre>${esc(o.t)}</pre></span><span class="fade" aria-hidden="true">›</span></button>`; }).join("");
   const code = q.code ? `<div class="code"><div class="ln">${q.code.split("\n").map((_,i)=>i+1).join("\n").replace(/\n/g,"<br>")}</div><pre>${hl(q.code)}</pre></div>` : "";
   const mood = fb && !fb.ok ? "care" : "happy";
-  const foot = fb ? feedbar() : `<div class="lessonfoot"><button class="mascot" id="hint" aria-label="让小码给个提示">${mascot(40, mood)}</button><button class="btn primary" id="check" ${S.sel==null?"disabled":""}${tagAttr("Q3")}>检查</button></div>`;
+  const foot = fb ? feedbar() : `<div class="lessonfoot"><button class="mascot" id="hint" aria-label="让碎碎给个提示">${mascot(40, mood)}</button><button class="btn primary" id="check" ${S.sel==null||S.checking?"disabled":""}${tagAttr("Q3")}>${S.checking?"检查中":"检查"}</button></div>`;
   const s = el(`<div class="screen"><header class="lessonbar"><button class="icon-btn" id="x" aria-label="退出本关">${I.close()}</button>
     <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div class="fill ${S.sweepNow?"sweep":""}" style="width:${Math.max(4,prev)}%"${tagAttr("F1")}></div></div>
     <span class="hearts ${S.lostNow?"lost":""}" aria-label="红心 ${S.hearts}">${I.heart(22)}${S.hearts}</span></header>
@@ -335,7 +335,7 @@ function lesson() {
   S.sweepNow = false; S.lostNow = false;
   app.append(s);
   if (prev!==pct) requestAnimationFrame(()=>requestAnimationFrame(()=>{ const f=$(".fill",s); if(f) f.style.width=Math.max(4,pct)+"%"; }));
-  s.querySelectorAll(".choice").forEach(b=>b.onclick=()=>{ if (S.fb) return; S.sel=+b.dataset.i; lesson_re(); });
+  s.querySelectorAll(".choice").forEach(b=>b.onclick=()=>{ if (S.fb||S.checking) return; S.sel=+b.dataset.i; lesson_re(); });
   // 长代码选项：内容比盒子宽时显示右侧渐变提示，滚到头就隐藏
   s.querySelectorAll(".choice").forEach(b=>{ const o=b.querySelector(".opt"); const upd=()=>b.classList.toggle("more", o.scrollWidth>o.clientWidth+2 && o.scrollLeft+o.clientWidth<o.scrollWidth-2); upd(); o.addEventListener("scroll",upd,{passive:true}); requestAnimationFrame(upd); });
   $("#x",s).onclick = () => go("map");
@@ -351,7 +351,12 @@ function check(key) {
   else { S.hearts--; S.streak = 0; S.queue.push(key); S.lostNow = true; }
   S.queue.shift();
   S.fb = { key, ok, picked:S.sel, why:o.why, xp: ok?XP_CORRECT:0, streak:S.streak, correct:q.opts.find(x=>x.ok).t };
-  lesson_re();
+  /* 时序对照正式版 app.js：点「检查」→ 120ms 揭示结果 → 280ms 开放「继续」；减少动态效果下立即 */
+  const rmNow = root.classList.contains("rm"), ver = ++S.ver;
+  if (rmNow || S.instant) { S.fb.ready = true; return lesson_re(); }
+  S.checking = true; lesson_re();
+  setTimeout(()=>{ if (S.ver!==ver) return; S.checking = false; lesson_re(); }, 120);
+  setTimeout(()=>{ if (S.ver!==ver || !S.fb) return; S.fb.ready = true; const c=$("#cont",app); if (c) c.disabled = false; }, 280);
 }
 function feedbar() {
   const f=S.fb, last = S.queue.length===0;
@@ -359,10 +364,10 @@ function feedbar() {
     <div class="fb-head"><span class="fb-ico">${f.ok?I.check(18):I.cross(18)}</span>${f.ok?"答对了！":"差一点，再看看"}${f.ok?`<span class="fb-xp"${tagAttr("F2")}>+${f.xp} XP</span>`:""}${f.ok&&f.streak>=3?`<span class="fb-streak"${tagAttr("F3")}>连对 ${f.streak}</span>`:""}</div>
     <p>${f.why}</p>
     ${f.ok?"":`<p${tagAttr("F5")}>正确答案：<code>${esc(f.correct)}</code></p><p class="heartline">${I.heart(16)}红心 -1（剩 ${S.hearts} 颗）。这题稍后再做一次。</p>`}
-    <button class="btn primary" id="cont"${tagAttr("F7")}>${last?"完成本关":"继续"}</button></div>`;
+    <button class="btn primary" id="cont" ${f.ready?"":"disabled"}${tagAttr("F7")}>${last?"完成本关":"继续"}</button></div>`;
 }
 function next() {
-  const wasWrong = S.fb && !S.fb.ok; S.fb=null; S.sel=null; S.hint=false;
+  S.ver++; S.checking=false; const wasWrong = S.fb && !S.fb.ok; S.fb=null; S.sel=null; S.hint=false;
   S.retry = !!S.queue.length && S.queue[0]==="q1" && S.queue.length===1 && S.solved>=1 && !S.demo;
   if (!S.queue.length) return go("done");
   lesson_re();
@@ -382,8 +387,8 @@ function jump(name) {
   if (name==="map-old") { S.user="old"; S.hearts=5; return go("map"); }
   if (name==="q1") return startLesson();
   if (name==="long") return startLesson("ql");
-  if (name==="wrong") { startLesson(); S.sel=1; check("q1"); return; }
-  if (name==="right") { startLesson(); S.sel=0; check("q1"); return; }
+  if (name==="wrong") { startLesson(); S.sel=1; S.instant=true; check("q1"); S.instant=false; return; }
+  if (name==="right") { startLesson(); S.sel=0; S.instant=true; check("q1"); S.instant=false; return; }
   if (name==="retry") { S.queue=["q1"]; S.total=2; S.solved=1; S.hearts=4; S.retry=true; S.demo=false; S.fb=null; S.sel=null; return go("lesson"); }
   if (name==="done") return go("done");
 }
@@ -394,7 +399,7 @@ function rv() {
   ${seg("主题","theme",[["auto","跟随系统"],["light","浅色"],["dark","深色"]])}
   ${seg("减少动态效果","motion",[["auto","跟随系统"],["on","开"],["off","关"]])}
   ${seg("标注（每项：本次提案 / 仍存在 / 已修复）","tags",[[true,"显示"],[false,"隐藏"]])}
-  ${seg("欢迎页按钮去向","welcomeGo",[["map","先到地图（按派单流程）"],["task","直达首题（W1 的更短方案）"]])}
+  ${seg("欢迎页按钮去向","welcomeGo",[["task","直达首题（产品官 01:12 已定，默认）"],["map","先到地图（对照）"]])}
   ${seg("模拟连对（下次答对显示「连对 3」）","forceStreak",[[true,"开"],[false,"关"]])}
   <h4>条目与状态（对照 main 92f57d9）</h4><div class="legend">${legend}</div>`;
   $("#rv").querySelectorAll("[data-j]").forEach(b=>b.onclick=()=>jump(b.dataset.j));
@@ -406,7 +411,7 @@ $("#rvOpen").onclick = openRv; $("#rvScrim").onclick = e => { if (e.target.id===
 /* 地址参数：?s=welcome|map-new|map-old|q1|wrong|retry|right|long|done  &theme=dark  &motion=on  &tags=1  （截图和评审直达用） */
 { const p = new URLSearchParams(location.search);
   if (p.get("theme")) S.theme = p.get("theme"); if (p.get("motion")) S.motion = p.get("motion"); if (p.get("tags")) S.tags = true;
-  if (p.get("streak")) S.forceStreak = true; if (p.get("go")==="task") S.welcomeGo = "task";
+  if (p.get("streak")) S.forceStreak = true; if (p.get("go")==="map") S.welcomeGo = "map";
   render(); if (p.get("s")) jump(p.get("s")); }
 window.ITEMS = ITEMS;
 </script>
