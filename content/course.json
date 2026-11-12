@@ -25,8 +25,9 @@
     {
       "id": "U4",
       "title": "循环",
-      "subtitle": "for、range",
-      "available": false
+      "subtitle": "for、range、累加",
+      "available": true,
+      "file": "unit4.json"
     },
     {
       "id": "U5",
