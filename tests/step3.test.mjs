@@ -101,8 +101,10 @@ try {
   await page.goto(BASE + "?from=home-screen");
   await page.waitForSelector(".statsbar", { timeout: 15000 });
   check("离线：带查询参数的地址（从主屏幕打开）也能打开", /文字与长度/.test(await text()));
-  await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="help"]').tap();
-  check("离线：“我的”页能打开", /我的学习/.test(await text()) && /离线支持：已启用/.test(await page.locator('[aria-label="诊断信息"]').innerText()));
+  await page.getByRole("button", { name: "我的" }).tap();
+  const meOpen = /我的学习/.test(await text());
+  await page.locator('[data-me-menu="help"]').tap(); await page.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
+  check("离线：“我的”页能打开", meOpen && /离线支持：已启用/.test(await page.locator('[aria-label="诊断信息"]').innerText()));
   await page.getByRole("button", { name: "学习", exact: true }).tap();
   // 开始 U1 复习，确认第 1 单元内容离线可用
   await page.locator('[data-lesson="U1L1"]').tap(); await page.locator(".overlay .btn3d.primary").tap();
