@@ -46,7 +46,7 @@ check("选回「跟随系统」：去掉 data-theme，重新跟着系统", (awai
 // 双标签（游客）：标签 B 一直开着，标签 A 选了新外观 → B 收到 storage 事件后，页面外观和“我的”页的按钮状态都要跟着变
 const page2 = await ctx.newPage(); page2.on("pageerror", (e) => errors.push(e.message));
 await page2.goto(srv.base); await page2.waitForFunction(() => window.__app?.getState); await page2.waitForSelector(".pathview");
-await page2.getByRole("button", { name: "我的" }).tap(); await page2.waitForSelector("[data-theme-row]");
+await page2.getByRole("button", { name: "我的" }).tap(); await page2.locator('[data-me-menu="settings"]').tap(); await page2.waitForSelector("[data-theme-row]");
 const attr2 = () => page2.evaluate(() => document.documentElement.getAttribute("data-theme"));
 await page.locator('[data-theme-opt="dark"]').tap();
 await page2.waitForFunction(() => document.documentElement.getAttribute("data-theme") === "dark", null, { timeout: 5000 }).catch(() => {});
@@ -61,7 +61,7 @@ await page.close(); // 先关掉写缓存正常的标签：它会收到同源 st
 const page3 = await ctx.newPage(); page3.on("pageerror", (e) => errors.push(e.message));
 await page3.addInitScript(() => { const s = Storage.prototype.setItem, r = Storage.prototype.removeItem; Storage.prototype.setItem = function (k, v) { if (k === "suipian-theme") throw new Error("QuotaExceededError"); return s.call(this, k, v); }; Storage.prototype.removeItem = function (k) { if (k === "suipian-theme") throw new Error("denied"); return r.call(this, k); }; });
 await page3.goto(srv.base); await page3.waitForFunction(() => window.__app?.getState); await page3.waitForSelector(".pathview");
-await page3.getByRole("button", { name: "我的" }).tap(); await page3.waitForSelector("[data-theme-row]");
+await page3.getByRole("button", { name: "我的" }).tap(); await page3.locator('[data-me-menu="settings"]').tap(); await page3.waitForSelector("[data-theme-row]");
 const attr3 = () => page3.evaluate(() => document.documentElement.getAttribute("data-theme"));
 await page3.locator('[data-theme-opt="dark"]').tap();
 {
