@@ -1087,9 +1087,6 @@ function renderMe() {
         statCard(null, `${doneCount}/${allLessons().length}`, "已完成关卡"),
         statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
-      isIOS && !standalone ? h("section", { class: "notice", role: "note", "data-safari-tip": "" },
-        h("b", { text: "你正在 Safari 里学习" }),
-        h("p", { class: "small", text: "Safari 可能清理长期不打开的网站数据，无痕浏览里关掉标签就清空。把本页「添加到主屏幕」后记录更稳（主屏幕 App 的记录和 Safari 分开保存）。也建议隔一阵用下面的“导出进度文件”备份一次。" })) : null,
       h("nav", { class: "me-menu", "aria-label": "我的" },
         ...ME_SECTIONS.map((s) => button(h("span", { class: "menu-main" }, h("b", { text: s.label }), h("small", { text: subs[s.id] })), () => openMeSection(s.id), "menu-row", { "data-me-menu": s.id }))),
     );
