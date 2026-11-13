@@ -21,7 +21,7 @@ export function freshState() {
     lessonsCompleted: 0,  // 完成关卡的总次数（含复习）
     installTipClosed: false,
     lastActive: 0,
-    prefs: { sound: true, haptics: true, soundStyle: "J" }, // 音效、振动开关；soundStyle：按键音效风格 A–J，默认 J（旧 v3 记录没有这些项，加载时补上默认值）
+    prefs: { sound: true, haptics: true, soundStyle: "J", theme: "system" }, // 音效、振动开关；soundStyle：按键音效风格 A–J，默认 J；theme：外观 system|light|dark（旧记录没有这些项，加载时补上默认值）
   };
 }
 
@@ -144,6 +144,7 @@ function ensureBase(S, epoch) {
         if (data.doneOn && typeof data.doneOn === "object") for (const [k, v] of Object.entries(data.doneOn)) if (typeof v === "string" && ISO.test(v)) doneOn[k] = v;
         const prefs = { ...freshState().prefs, ...(data.prefs && typeof data.prefs === "object" ? data.prefs : {}) };
         if (!/^[A-J]$/.test(prefs.soundStyle)) prefs.soundStyle = "J";
+        if (!["system", "light", "dark"].includes(prefs.theme)) prefs.theme = "system";
         delete prefs.keySound;
         const KNOWN = new Set(["version", "done", "doneOn", "xp", "lessonsCompleted", "streak", "lastDay", "onboarded", "installTipClosed", "hearts", "heartsAt", "prefs", "lastActive", "v4mirror", "mirrorXp", "mirrorRuns", "mirrorFp"]);
         const extra = {}; for (const [k, v] of Object.entries(data)) if (!KNOWN.has(k)) extra[k] = v;

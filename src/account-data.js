@@ -11,7 +11,7 @@
 //   done     { 关卡编号: 第一次完成的日期（未知则是空字符串） }
 //   days     完成过关卡的全部日期（YYYY-MM-DD，升序，不重复，不截断）
 //   hearts   { n: 红心数, msToNext: 距离下一颗恢复还差多少毫秒（满了是 0） }  —— 只存“相对时间”，不依赖设备时钟
-//   prefs    { sound, haptics, soundStyle }
+//   prefs    { sound, haptics, soundStyle, theme }   （theme：system | light | dark；旧记录没有，读到时补 system；老版本应用读写时会丢掉它，不影响其余内容）
 //   imported { 游客编号: 指纹 }  —— 已经导入过的游客记录及导入时的内容指纹（旧数据为 true），防止重复导入，并能发现导入后游客又学了新内容
 import { HEARTS_MAX, HEART_REGEN_MS, regenHearts } from "./storage.js";
 
@@ -48,13 +48,20 @@ export function runEndingAtLast(days) {
   return n;
 }
 
+// 设置项的统一整理：缺的补默认值、不认识的丢掉（读、写、对比都走这里，键的顺序固定，JSON 对比才稳定）
+const THEMES = ["system", "light", "dark"];
+export function normPrefs(p) {
+  const q = p && typeof p === "object" ? p : {};
+  return { sound: q.sound !== false, haptics: q.haptics !== false, soundStyle: /^[A-J]$/.test(q.soundStyle) ? q.soundStyle : "J", theme: THEMES.includes(q.theme) ? q.theme : "system" };
+}
+
 // ---------- 创建 / 检查 ----------
 export function emptyDoc({ gen = 1, lineage = newId() } = {}) {
   return {
     schema: SCHEMA, gen, lineage,
     xp: {}, runs: {}, done: {}, days: [],
     hearts: { n: HEARTS_MAX, msToNext: 0 },
-    prefs: { sound: true, haptics: true, soundStyle: "J" },
+    prefs: normPrefs(null),
     imported: {},
   };
 }
@@ -76,11 +83,7 @@ export function normalizeDoc(raw) {
     d.hearts = { n, msToNext: n >= HEARTS_MAX ? 0 : Math.min(HEART_REGEN_MS, natural(raw.hearts.msToNext)) };
   }
   if (raw.prefs && typeof raw.prefs === "object") {
-    d.prefs = {
-      sound: raw.prefs.sound !== false,
-      haptics: raw.prefs.haptics !== false,
-      soundStyle: /^[A-J]$/.test(raw.prefs.soundStyle) ? raw.prefs.soundStyle : "J",
-    };
+    d.prefs = normPrefs(raw.prefs);
   }
   if (raw.imported && typeof raw.imported === "object") for (const [k, v] of Object.entries(raw.imported)) if (isId(k) && v) d.imported[k] = typeof v === "string" && FP_RE.test(v) ? v : true;
   return { ok: true, doc: d };
@@ -218,8 +221,7 @@ export function guestToDoc(state, { deviceId, guestId, gen = 1, lineage = newId(
   const h = { hearts: Math.min(HEARTS_MAX, natural(state.hearts ?? HEARTS_MAX)), heartsAt: Number.isFinite(state.heartsAt) ? state.heartsAt : now };
   const msLeft = regenHearts(h, now);
   doc.hearts = { n: h.hearts, msToNext: h.hearts >= HEARTS_MAX ? 0 : Math.round(msLeft) };
-  const p = state.prefs && typeof state.prefs === "object" ? state.prefs : {};
-  doc.prefs = { sound: p.sound !== false, haptics: p.haptics !== false, soundStyle: /^[A-J]$/.test(p.soundStyle) ? p.soundStyle : "J" };
+  doc.prefs = normPrefs(state.prefs);
   doc.imported[guestId] = guestFingerprint(state);
   return { ok: true, doc };
 }
@@ -276,8 +278,7 @@ export function syncStateIntoDoc(doc, state, { deviceId, today, now = Date.now()
   // 否则下次从文档还原时会把恢复倒计时拨回到旧值（等于重置计时）。
   if (hearts.n !== out.hearts.n) changed.hearts = true;
   out.hearts = hearts;
-  const p = state.prefs ?? {};
-  const prefs = { sound: p.sound !== false, haptics: p.haptics !== false, soundStyle: /^[A-J]$/.test(p.soundStyle) ? p.soundStyle : "J" };
+  const prefs = normPrefs(state.prefs);
   if (JSON.stringify(prefs) !== JSON.stringify(out.prefs)) { out.prefs = prefs; changed.prefs = true; }
   return { doc: out, changed };
 }

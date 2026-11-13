@@ -12,6 +12,8 @@ import { loadState, clearState, listUnreadable, freshState, DATA_VERSION } from 
 const fx = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 const LOCAL_RAW = fx("local-v3-progress.json");
 const CLOUD = JSON.parse(fx("cloud-doc-schema1.json"));
+// 样本是加「外观」设置之前的旧文档：读进来会补上 theme:"system"，其余原样（旧文档不会被改坏）
+const CLOUD_N = { ...CLOUD, prefs: { ...CLOUD.prefs, theme: "system" } };
 const RELEASED = JSON.parse(fx("released-lessons.json"));
 const content = (f) => JSON.parse(readFileSync(new URL(`../content/${f}`, import.meta.url), "utf8"));
 
@@ -109,12 +111,12 @@ const KEY = "suipian.progress";
 // ================= C. 云端账号文档（schema 1）样本 =================
 {
   const n = D.normalizeDoc(CLOUD);
-  check("C1 云端 schema 1 样本通过校验，经过清洗后与原样本完全一致（没有丢字段、没有改数值）", () => n.ok && canon(n.doc) === canon(CLOUD));
+  check("C1 云端 schema 1 样本通过校验，经过清洗后与原样本完全一致，只多补一个默认的外观设置 theme:system（没有丢字段、没有改数值）", () => n.ok && canon(n.doc) === canon(CLOUD_N));
   const s = D.docToState(n.doc, null, 1_800_000_000_000);
   check("C2 转成本机状态：XP 是各设备相加（190）、总完成 11 次、8 关全部完成", () => s.xp === 190 && s.lessonsCompleted === 11 && Object.keys(s.done).length === 8);
   check("C3 连续天数 4、最后学习日 2026-11-02、偏好保留", () => s.streak === 4 && s.lastDay === "2026-11-02" && s.prefs.soundStyle === "C" && s.prefs.haptics === false);
   const m = D.mergeDocs(CLOUD, CLOUD);
-  check("C4 同一份文档自己和自己合并：结果不变（合并是幂等的）", () => m.outcome === "merged" && canon(m.doc) === canon(CLOUD));
+  check("C4 同一份文档自己和自己合并：结果不变（合并是幂等的）", () => m.outcome === "merged" && canon(m.doc) === canon(CLOUD_N));
   const more = JSON.parse(JSON.stringify(CLOUD)); more.xp.devA = 150; more.done.U2L3 = "2026-11-03"; more.days.push("2026-11-03");
   const m2 = D.mergeDocs(more, CLOUD), m3 = D.mergeDocs(CLOUD, more);
   check("C5 一边学得更多：合并后 XP 取每台设备较大值再相加（220），新完成的关卡保留；谁先谁后结果一样", () => D.sumXp(m2.doc) === 220 && m2.doc.done.U2L3 === "2026-11-03" && canon(m2.doc) === canon(m3.doc));

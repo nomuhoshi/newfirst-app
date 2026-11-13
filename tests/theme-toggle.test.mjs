@@ -1,5 +1,6 @@
 // 外观切换（「我的」页：跟随系统 / 浅色 / 深色）。系统外观用 emulateMedia 模拟：
-// 选「深色」时系统是浅色也要变深；选「浅色」时系统是深色也要变浅；选「跟随系统」跟着系统；刷新后选择还在；不进账号同步的 prefs。
+// 选「深色」时系统是浅色也要变深；选「浅色」时系统是深色也要变浅；选「跟随系统」跟着系统；刷新后选择还在；
+// 选择存在 prefs.theme（登录后随账号同步），云端文档的 prefs 里带 theme；老文档没有 theme 时补 system。
 // 运行：npm run build && node tests/theme-toggle.test.mjs   （MOBILE_BROWSER=webkit 换内核）
 import { chromium, webkit } from "playwright";
 import { startDistServer } from "./helpers/dist-server.mjs";
@@ -36,8 +37,9 @@ await page.reload(); await page.waitForFunction(() => window.__app?.getState);
 check("刷新后选择还在（仍是深色）", (await attr()) === "dark" && (await bg()) === DARK);
 await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-theme-row]");
 check("刷新后按钮状态也对（「深色」被选中）", (await page.locator('[data-theme-opt="dark"]').getAttribute("aria-pressed")) === "true");
-check("外观不进学习记录和账号同步的设置", await page.evaluate(() => { const p = window.__app.getState().prefs; return !("theme" in p) && Object.keys(p).every((k) => ["sound", "haptics", "soundStyle"].includes(k)); }));
+check("选择存在学习记录的 prefs.theme 里（会随账号同步），其余设置不变", await page.evaluate(() => { const p = window.__app.getState().prefs; return p.theme === "dark" && p.sound === true && p.haptics === true && p.soundStyle === "J"; }));
 await page.locator('[data-theme-opt="system"]').tap();
+check("选回「跟随系统」后 prefs.theme 回到 system", await page.evaluate(() => window.__app.getState().prefs.theme === "system"));
 check("选回「跟随系统」：去掉 data-theme，重新跟着系统", (await attr()) === null && (await bg()) === LIGHT);
 check("全程没有脚本错误", errors.length === 0, errors.join("|"));
 await browser.close(); await srv.close();

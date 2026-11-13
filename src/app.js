@@ -320,7 +320,7 @@ function codeBlock(code, cls = "") {
 const loaded = loadState();
 let state = loaded.state;
 let notice = loaded.notice;
-feel.setPrefs(state.prefs);
+feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme);
 if (notice && !loaded.readFailed) saveState(state); // 读取失败时不存空记录（会盖掉真实进度）；迁移或修复后的记录立即存一次，下次不再重复提示
 // ---------- 账号与云端 ----------
 // 登录后，学习进度写进“这个账号在本机的副本”（再在后台同步到云端），不再写游客记录；退出登录后回到游客记录。
@@ -346,10 +346,10 @@ const sync = safeStorage ? createSync({
   storage: safeStorage, api: cloudApi, projectId: hostOf(CLOUD.url) || "cloud-off", legacyProject: PROD_HOST,
   onStatus: () => { accountUi?.refreshStatus(); previewInfo?.refresh(); },
   onNotice: (kind) => { if (kind !== "replaced") return; pendingReplaced = true; if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); },
-  onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
+  onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
 }) : null;
 const restored = sync ? sync.restore(state) : null;
-if (restored) { state = restored.state; notice = null; feel.setPrefs(state.prefs); }
+if (restored) { state = restored.state; notice = null; feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); }
 const CLEARED_MSG_SHORT = "其他页面已清除学习记录，刚才的内容没有保存，本页已按新记录刷新。";
 const CLEARED_MSG_IMPORT = "其他页面已清除学习记录，本次恢复未完成，请重新读取进度码并确认。你的备份文件或进度码没有被修改。";
 function persist() {
@@ -371,10 +371,10 @@ accountUi = createAccountUi({
   h, button, sheet, icon, showToast, sync, api: cloudApi, getState: () => state,
   rerender: () => (currentView === "me" ? renderMe() : renderPath()),
   // 登录成功：换成账号里的进度；退出 / 删除：回到这台设备的游客记录
-  onSwitchedIn: (r) => { state = r.state; feel.setPrefs(state.prefs); notice = null; currentView === "me" ? renderMe() : renderPath(); },
+  onSwitchedIn: (r) => { state = r.state; feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); notice = null; currentView === "me" ? renderMe() : renderPath(); },
   onSwitchedOut: () => { const l = loadState(); state = l.state; notice = l.notice;
     // 登录过的设备一定已经看过开场介绍：退出后回到游客记录不再重放“你好，我是小码”（按设备保存，不同步）
-    if (!state.onboarded) { state.onboarded = true; persist(); } feel.setPrefs(state.prefs); currentView === "me" ? renderMe() : renderPath(); },
+    if (!state.onboarded) { state.onboarded = true; persist(); } feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); currentView === "me" ? renderMe() : renderPath(); },
 });
 const appVersionLabel = () => versionLabel({ sha: typeof __SOURCE_SHA__ !== "undefined" ? __SOURCE_SHA__ : "", build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" });
 previewInfo = createPreviewInfo({
@@ -676,18 +676,17 @@ function toggleRow(label, sub, key, { disabled = false } = {}) {
   return h("div", { class: "toggle-row" }, h("div", {}, h("b", { text: label }), h("small", { text: sub })), sw);
 }
 
-// 外观：跟随系统 / 浅色 / 深色（只存这台设备，不进账号同步）
+// 外观：跟随系统 / 浅色 / 深色（存在 prefs.theme，登录后随账号同步）
 function themeRow() {
   const opts = [["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]];
-  const cur = theme.getTheme();
-  const note = h("small", { class: "theme-note", text: "跟随手机系统，或固定为浅色 / 深色；只对这台设备生效。" });
+  const cur = ["light", "dark"].includes(state.prefs.theme) ? state.prefs.theme : "system";
+  const note = h("small", { class: "theme-note", text: "跟随手机系统，或固定为浅色 / 深色；登录后会随账号同步。" });
   const wrap = h("div", { class: "seg", role: "group", "aria-label": "外观" },
     ...opts.map(([v, label]) => {
       const b = h("button", { type: "button", class: "seg-btn" + (v === cur ? " sel" : ""), "aria-pressed": String(v === cur), "data-theme-opt": v, text: label });
       b.addEventListener("click", () => {
-        const saved = theme.setTheme(v);
+        state.prefs.theme = v; persist(); theme.useTheme(v);
         wrap.querySelectorAll(".seg-btn").forEach((x) => { const on = x.dataset.themeOpt === v; x.classList.toggle("sel", on); x.setAttribute("aria-pressed", String(on)); });
-        note.textContent = saved ? "跟随手机系统，或固定为浅色 / 深色；只对这台设备生效。" : "这次已切换，但这台设备不允许保存设置，下次打开会回到「跟随系统」。";
       });
       return b;
     }));
