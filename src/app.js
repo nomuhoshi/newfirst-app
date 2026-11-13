@@ -841,7 +841,8 @@ function hapticLab() {
 function keyLab() {
   const status = h("p", { class: "muted small keylab-status", role: "status" });
   const cur = () => KEY_SOUNDS.some((k) => k.id === state.prefs.soundStyle) ? state.prefs.soundStyle : DEFAULT_STYLE;
-  const showSel = () => { const k = KEY_SOUNDS.find((x) => x.id === cur()); status.textContent = `当前按键音效：${k.id} ${k.name}${k.id === DEFAULT_STYLE ? "（默认）" : ""}`; };
+  const val = h("span", { class: "fold-val" });
+  const showSel = () => { const k = KEY_SOUNDS.find((x) => x.id === cur()); status.textContent = `当前按键音效：${k.id} ${k.name}${k.id === DEFAULT_STYLE ? "（默认）" : ""}`; val.textContent = `${k.id} ${k.name}`; };
   const btns = KEY_SOUNDS.map((k) => {
     const on0 = cur() === k.id;
     const b = h("button", { type: "button", class: "keybtn" + (on0 ? " sel" : ""), "data-keysound": k.id, "aria-pressed": String(on0) },
@@ -857,8 +858,8 @@ function keyLab() {
     return b;
   });
   showSel();
-  return h("div", { class: "keylab" },
-    h("h3", { text: "按键音效" }),
+  return h("details", { class: "keylab me-fold", "data-keylab": "" },
+    h("summary", {}, h("span", { text: "按键音效" }), val),
     h("p", { class: "muted small", text: "十个原创的矮轴键盘风格，默认 J。点一下试听并选用，答题时的点选、放入、撤销、答对、答错、过关都用同一个风格。" }),
     h("div", { class: "keygrid" }, btns),
     status,
@@ -1078,7 +1079,6 @@ function renderMe() {
         statCard(null, `${doneCount}/${allLessons().length}`, "已完成关卡"),
         statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
-      h("h3", { class: "me-sec", text: "账号" }),
       accountUi?.accountCard(),
       previewInfo?.card(),
       h("h3", { class: "me-sec", text: "设置" }),

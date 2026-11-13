@@ -672,6 +672,7 @@ try {
     await pk2.reload(); await pk2.waitForSelector(".statsbar");
     check("按键音效：旧记录没有这一项时默认 J，进度保留，旧试听字段被丢弃", await pk2.evaluate(() => { const s = window.__app.getState(); return s.prefs.soundStyle === "J" && s.xp === 77 && !("keySound" in s.prefs); }));
     await pk2.getByRole("button", { name: "我的" }).tap();
+    await pk2.evaluate(() => { const d = document.querySelector("details.keylab"); if (d) d.open = true; });
     check("按键音效：A–J 十个按钮，J 高亮并标“默认”，状态写明当前是 J", (await pk2.locator("[data-keysound]").count()) === 10 && (await pk2.evaluate(() => [...document.querySelectorAll("[data-keysound]")].map((b) => b.dataset.keysound).join(""))) === "ABCDEFGHIJ" && (await pk2.locator('[data-keysound="J"]').getAttribute("aria-pressed")) === "true" && (await pk2.locator(".keybtn.sel").count()) === 1 && /当前按键音效：J 极简 Tap（默认）/.test(await pk2.locator(".keylab-status").innerText()));
     // 实测每个风格的六种声音
     const meas = await pk2.evaluate(async (evs) => { const k = await window.__app.keysounds(); const out = {}; for (const { id } of k.KEY_SOUNDS) { out[id] = {}; for (const e of evs) out[id][e] = await k.measureKey(id, e); } return out; }, EVS);

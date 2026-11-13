@@ -184,13 +184,16 @@ body { background: var(--g-bg); color: var(--g-fg); }
 /* 「我的」页分块：账号 / 设置 / 数据与备份 / 帮助；排查工具默认折叠 */
 .view.me .me-sec { margin: 26px 0 6px; font-size: 13px; letter-spacing: .5px; color: var(--g-muted); }
 .view.me .me-sub { margin: 16px 0 4px; font-size: 15px; }
-.me-tools { margin: 22px 0 8px; border: 1.5px solid var(--g-line); border-radius: 12px; background: var(--g-card); }
-.me-tools > summary { min-height: 44px; display: flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 700; color: var(--g-muted); cursor: pointer; list-style: none; }
-.me-tools > summary::-webkit-details-marker { display: none; }
-.me-tools > summary::after { content: "展开"; margin-left: auto; font-weight: 600; font-size: 13px; }
-.me-tools[open] > summary::after { content: "收起"; }
-.me-tools > :not(summary) { margin-left: 12px; margin-right: 12px; }
-.me-tools[open] { padding-bottom: 12px; }
+.me-tools, .me-fold { margin: 22px 0 8px; border: 1.5px solid var(--g-line); border-radius: 12px; background: var(--g-card); }
+.me-fold { margin: 8px 0; }
+.me-tools > summary, .me-fold > summary { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 15px; font-weight: 700; cursor: pointer; list-style: none; }
+.me-tools > summary { font-size: 14px; color: var(--g-muted); }
+.me-tools > summary::-webkit-details-marker, .me-fold > summary::-webkit-details-marker { display: none; }
+.me-tools > summary::after, .me-fold > summary::after { content: "展开"; margin-left: auto; font-weight: 600; font-size: 13px; color: var(--g-muted); }
+.me-tools[open] > summary::after, .me-fold[open] > summary::after { content: "收起"; }
+.me-fold .fold-val { font-weight: 600; font-size: 13px; color: var(--g-muted); }
+.me-tools > :not(summary), .me-fold > :not(summary) { margin-left: 12px; margin-right: 12px; }
+.me-tools[open], .me-fold[open] { padding-bottom: 12px; }
 /* 外观选择：三选一，每个按钮高度 ≥ 44 */
 .theme-row { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
 .theme-row b { display: block; font-size: 15px; }
