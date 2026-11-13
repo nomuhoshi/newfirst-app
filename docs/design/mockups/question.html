@@ -1,0 +1,40 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>普通题 · 编程实验室</title><link rel="stylesheet" href="base.css"><style>
+.chip.c-tube{gap:6px;padding:0 10px;height:32px}
+.body{flex:1;overflow:hidden;padding:4px 20px 0}
+.wrap{max-width:600px;margin:0 auto}
+.concept{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border-radius:var(--r-m);background:var(--surface-2);color:var(--muted);font:600 13px/1.4 var(--font)}
+.concept svg{width:18px;height:18px;flex:none;color:var(--copper-text)}
+.concept .chev{margin-left:auto;width:18px;height:18px;color:var(--muted)}
+.q{margin:20px 0 14px}
+.code{margin-bottom:24px;padding:18px 16px;font-size:17px}
+.code .run{position:absolute;right:10px;top:10px;font:600 13px/1 var(--font);color:var(--code-muted)}
+.opts{display:flex;flex-direction:column;gap:12px}
+.opt{display:flex;align-items:center;gap:14px;min-height:64px;padding:12px 16px 12px 12px}
+.opt .key{width:32px;height:32px;border-radius:var(--r-s);border:1.5px solid var(--line-strong);display:grid;place-items:center;font:800 13px/1 var(--font);color:var(--muted);flex:none}
+.opt .v{font:400 17px/1.4 var(--mono);white-space:nowrap}
+.opt .v.zh{font-family:var(--font);font-weight:600}
+.opt.sel{border:2px solid var(--copper);background:var(--copper-soft);box-shadow:0 2px 0 var(--copper)}
+.opt.sel .key{background:var(--copper);border-color:var(--copper);color:#fff}
+.foot{flex:none;display:flex;align-items:center;gap:12px;padding:12px 20px 34px;border-top:1.5px solid var(--line);background:var(--bg)}
+.foot .wrapf{max-width:600px;margin:0 auto;display:flex;gap:12px;width:100%;align-items:center}
+.hintbtn{width:52px;height:52px;flex:none;border-radius:var(--r-m);background:var(--surface);border:1.5px solid var(--line-strong);box-shadow:0 4px 0 var(--line);display:grid;place-items:center;color:var(--copper-text)}
+.hintbtn svg{width:24px;height:24px}
+</style></head><body>
+<div class="screen">
+ <div class="ios"><span>9:41</span><i></i></div>
+ <div class="lessonbar"><span class="icon-btn" aria-label="退出"><svg width="22" height="22"><use href="#i-x"/></svg></span>
+  <div class="progress"><b style="width:38%"></b></div><span class="chip c-tube" data-tubes="4"></span></div>
+ <main class="body"><div class="wrap">
+  <div class="concept"><svg><use href="#i-bulb"/></svg>知识点：print 输出<svg class="chev"><use href="#i-down"/></svg></div>
+  <h1 class="t-title q">运行这段程序，点单屏上会显示什么？</h1>
+  <div class="code"><span class="ln">1</span><span class="f">print</span>(<span class="s">"欢迎光临！"</span>)</div>
+  <div class="opts">
+   <div class="card opt sel"><span class="key">A</span><span class="v zh">欢迎光临！</span></div>
+   <div class="card opt"><span class="key">B</span><span class="v">"欢迎光临！"</span></div>
+   <div class="card opt"><span class="key">C</span><span class="v">print("欢迎光临！")</span></div>
+  </div>
+ <p class="t-cap muted" style="text-align:center;margin-top:20px">选好后点「检查」· 想不出来可以先看提示，不扣体力</p>
+ </div></main>
+ <footer class="foot"><div class="wrapf"><span class="hintbtn" aria-label="提示"><svg><use href="#i-bulb"/></svg></span><button class="btn btn-primary">检查</button></div></footer>
+</div><script src="common.js"></script></body></html>

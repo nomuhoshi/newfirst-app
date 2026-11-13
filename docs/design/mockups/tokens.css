@@ -1,0 +1,33 @@
+/* 碎片编程 设计系统 v3「编程实验室」— 设计 token（效果稿与实现共用同一套名字） */
+:root{
+  --bg:#F5F1E8; --bg-dot:rgba(28,43,75,.075);
+  --surface:#FFFCF6; --surface-2:#EEE8DC; --line:#E0D7C6; --line-strong:#CFC3AD;
+  --ink:#18233B; --muted:#5B6477;
+  --navy:#1C2B4B; --navy-2:#263A63; --on-navy:#F3EEE4; --on-navy-muted:#AEB8CC;
+  --copper:#B4561F; --copper-lip:#7E3A12; --copper-text:#A24C1A; --copper-soft:#F6E4D6;
+  --glow:#F2A33A; --filament:#FFD27A;
+  --ok:#1E7F54; --ok-lip:#145A3B; --ok-soft:#E1F2E8; --ok-text:#1A6E49;
+  --err:#C23B39; --err-lip:#862523; --err-soft:#FBE6E3; --err-text:#AE3331;
+  --trace-on:#C8834A; --trace-off:#D6CCB8;
+  --code-bg:#141D31; --code-fg:#E7EAF1; --code-muted:#6E7891; --tk-str:#F2C27A; --tk-fn:#8CC0FF; --tk-kw:#F09A6A;
+  --kb-bg:#D8D2C6; --kb-key:#FFFCF6; --kb-key-2:#BFB7A8; --kb-ink:#18233B;
+  --shadow-card:0 2px 0 var(--line);
+  --scrim:rgba(13,19,34,.45);
+  --r-s:8px; --r-m:16px; --r-full:999px;
+  --font:"PingFang SC","Noto Sans CJK SC","Noto Sans SC",system-ui,sans-serif;
+  --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,monospace;
+}
+.dark{
+  --bg:#0D1322; --bg-dot:rgba(255,255,255,.045);
+  --surface:#151E33; --surface-2:#1D2944; --line:#2A3956; --line-strong:#3A4C70;
+  --ink:#ECEFF5; --muted:#98A3BA;
+  --navy:#18233D; --navy-2:#22314F; --on-navy:#ECEFF5; --on-navy-muted:#98A3BA;
+  --copper:#BC5823; --copper-lip:#7A3510; --copper-text:#E8935A; --copper-soft:rgba(232,147,90,.14);
+  --ok:#1E7F54; --ok-lip:#0F4A30; --ok-soft:rgba(64,190,130,.13); --ok-text:#5FD19B;
+  --err:#C23B39; --err-lip:#7A1E1D; --err-soft:rgba(240,100,96,.13); --err-text:#F08A86;
+  --trace-on:#D08C52; --trace-off:#2A3956;
+  --code-bg:#0A1020; --code-fg:#E7EAF1;
+  --kb-bg:#1A2233; --kb-key:#2C3750; --kb-key-2:#222B40; --kb-ink:#ECEFF5;
+  --shadow-card:0 2px 0 rgba(0,0,0,.35);
+  --scrim:rgba(0,0,0,.6);
+}
