@@ -1,0 +1,92 @@
+######## job 131313135905
+  if [ $rc -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "##### iter $i rc=$rc"; grep -n '❌\|DIAG\|Timeout' /tmp/s3-$i.log | head -20; tail -n 150 /tmp/s3-$i.log; fi
+done
+echo "shard 3: pass=$pass fail=$fail"
+##### iter 4 rc=3
+29:=== DIAG WATCHDOG 240s：整个测试没跑完 ===
+84:32.25 RELOAD FAILED page.reload: Timeout 30000ms exceeded.
+✅ 离线：联网打开一次后 Service Worker 接管页面，缓存名带版本号（suipian-<版本>）  — suipian-2026-11-12T16:10:41.776Z
+✅ 离线：缓存了应用外壳（首页、JS、CSS、Python 工作线程脚本、图标、manifest）  —  index.html assets/code-task-BkF6sDyn.css assets/code-task-C0jPjeS-.js assets/errors-DE9dolOj.css assets/main-dODIYzHS.css assets
+✅ 离线：没有缓存大型 Pyodide、测试音频和技术验证页  —  index.html assets/code-task-BkF6sDyn.css assets/code-task-C0jPjeS-.js assets/errors-DE9dolOj.css assets/main-dODIYzHS.css assets/main-R5P3TxKS.js assets/keyboard
+✅ 离线：课程内容（course / unit1 / unit2 / words）已经打包进缓存的 JS
+✅ 离线：“我的”页诊断里能看到应用版本、缓存版本和离线支持状态
+✅ 离线：断网后刷新不白屏，地图显示两个单元
+✅ 离线：带查询参数的地址（从主屏幕打开）也能打开
+✅ 离线：“我的”页能打开
+✅ 离线：能打开第 1 单元的关卡（复习）
+✅ 离线：能打开第 2 单元的关卡
+✅ 离线：运行结果面板准确提示“Python运行功能需要联网后加载”，并保留“重试”按钮  — Python 运行环境没有加载成功，原因未确认（可能是网络、浏览器版本，或应用内置浏览�
+诊断：Failed to fetch dynamically imported module: http://localhost:4331/pyodide/pyodide.mjs；在线：是
+✅ 离线：不用预设输出冒充 Python 真实执行（面板里没有这道题的输出文字）  — Python 运行环境没有加载成功，原因未确认（可能是网络、浏览器版本，或应用内置浏览器的限制）�
+诊断：Failed to fetch dynamically imported module: http://localhost:4331/pyodide/pyodide.mjs；在线：是
+✅ 离线：Python 不可用时选择题照常判分、加 XP
+✅ 恢复网络后点“重试”：Python 加载成功，显示真实运行结果
+✅ 更新：恢复网络后刷新，拿到的是新版本的页面和脚本（联网优先）  — v2
+✅ 更新：新版本激活后，旧的 suipian- 缓存被自动删除，别的应用的缓存不动  — other-app-cache,suipian-v2
+✅ 缓存：用过 Python 之后，Pyodide 文件仍然没有进入缓存
+✅ 更新：换成新版本后再断网，打开的是新版本的缓存
+✅ 更新：新版本缺文件时安装失败，不会留下缺文件的半个缓存，旧缓存继续可用  — other-app-cache,suipian-v2
+✅ 更新：之后发布完整的新版本，仍能正常升级并清理 v2 缓存  — other-app-cache,suipian-v4
+✅ 离线：网络很慢（每个响应要 8 秒）时先等 4 秒再改用缓存，页面照常打开（脚本和样式不会各等 4 秒累加）  — 4857ms
+✅ 离线：整个过程没有脚本错误
+✅ 减少动态效果：按钮按下时不位移，只有即时描边高亮  — {"transform":"none","outline":"solid","w":"3px"}
+✅ 没有开启减少动态效果：按钮按下仍下移 1px，没有描边  — {"transform":"matrix(1, 0, 0, 1, 0, 1)","outline":"none","w":"3px"}
+✅ 退出关卡：确认框明确写“本关答题位置不会保存”，并说明 XP 和红心保留
+✅ 退出关卡：已得 XP（+10）和已扣红心（-1）保留，关卡没有被记为完成，连续天数和完成次数不变  — {"mid":{"q":3,"mistakes":1,"xp":10,"hearts":4},"after":{"xp":10,"hearts":4,"done":{},"lc":0,"streak":0
+=== DIAG WATCHDOG 240s：整个测试没跑完 ===
+0.31 OK 离线：联网打开一次后 Service Worker 接管页面，缓存名带版本号（suipian-<版本>）
+0.32 OK 离线：缓存了应用外壳（首页、JS、CSS、Python 工作线程脚本、图标、manifest）
+0.32 OK 离线：没有缓存大型 Pyodide、测试音频和技术验证页
+0.34 OK 离线：课程内容（course / unit1 / unit2 / words）已经打包进缓存的 JS
+0.67 OK 离线：“我的”页诊断里能看到应用版本、缓存版本和离线支持状态
+0.88 OK 离线：断网后刷新不白屏，地图显示两个单元
+1.02 OK 离线：带查询参数的地址（从主屏幕打开）也能打开
+1.13 OK 离线：“我的”页能打开
+1.32 OK 离线：能打开第 1 单元的关卡（复习）
+1.83 OK 离线：能打开第 2 单元的关卡
+2.25 OK 离线：运行结果面板准确提示“Python运行功能需要联网后加载”，并保留“重试”按钮
+2.25 OK 离线：不用预设输出冒充 Python 真实执行（面板里没有这道题的输出文字）
+2.25 OK 离线：Python 不可用时选择题照常判分、加 XP
+4.02 OK 恢复网络后点“重试”：Python 加载成功，显示真实运行结果
+4.51 OK 更新：恢复网络后刷新，拿到的是新版本的页面和脚本（联网优先）
+4.51 OK 更新：新版本激活后，旧的 suipian- 缓存被自动删除，别的应用的缓存不动
+4.52 OK 缓存：用过 Python 之后，Pyodide 文件仍然没有进入缓存
+4.60 OK 更新：换成新版本后再断网，打开的是新版本的缓存
+7.19 OK 更新：新版本缺文件时安装失败，不会留下缺文件的半个缓存，旧缓存继续可用
+10.15 OK 更新：之后发布完整的新版本，仍能正常升级并清理 v2 缓存
+15.02 OK 离线：网络很慢（每个响应要 8 秒）时先等 4 秒再改用缓存，页面照常打开（脚本和样式不会各等 4 秒累加）
+15.02 OK 离线：整个过程没有脚本错误
+15.48 OK 减少动态效果：按钮按下时不位移，只有即时描边高亮
+15.93 OK 没有开启减少动态效果：按钮按下仍下移 1px，没有描边
+0.00 REQ GET / nav=true
+0.01 NAV http://localhost:4331/
+0.01 FIN /
+0.02 REQ GET /assets/main-R5P3TxKS.js nav=false
+0.02 REQ GET /assets/errors-BKwIAuf4.js nav=false
+0.02 REQ GET /assets/errors-DE9dolOj.css nav=false
+0.02 REQ GET /assets/main-dODIYzHS.css nav=false
+0.02 FIN /assets/errors-DE9dolOj.css
+0.03 FIN /assets/errors-BKwIAuf4.js
+0.03 FIN /assets/main-dODIYzHS.css
+0.03 FIN /assets/main-R5P3TxKS.js
+0.06 SW created http://localhost:4331/sw.js
+0.09 REQ GET /assets/py-worker-BvH1HjKL.js nav=false
+0.09 EVENT dcl
+0.09 EVENT load
+0.12 FIN /assets/py-worker-BvH1HjKL.js
+0.12 REQ GET /pyodide/pyodide.mjs nav=false
+0.13 FIN /pyodide/pyodide.mjs
+0.14 REQ GET /pyodide/pyodide-lock.json nav=false
+0.14 REQ GET /pyodide/python_stdlib.zip nav=false
+0.14 REQ GET /pyodide/pyodide.asm.wasm nav=false
+0.14 REQ GET /pyodide/pyodide.asm.mjs nav=false
+0.15 FIN /pyodide/pyodide-lock.json
+0.15 FIN /pyodide/python_stdlib.zip
+0.19 FIN /pyodide/pyodide.asm.mjs
+18.08 OK 退出关卡：确认框明确写“本关答题位置不会保存”，并说明 XP 和红心保留
+2.17 FIN /pyodide/pyodide.asm.wasm
+18.22 OK 退出关卡：已得 XP（+10）和已扣红心（-1）保留，关卡没有被记为完成，连续天数和完成次数不变
+2.25 BEFORE reload sw={"ctrl":true,"active":"activated","waiting":"installed","rs":"complete"}
+2.25 REQ GET / nav=true
+32.25 RELOAD FAILED page.reload: Timeout 30000ms exceeded.
+shard 3: pass=5 fail=1
