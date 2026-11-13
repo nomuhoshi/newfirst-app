@@ -570,7 +570,7 @@ function statsBar() {
 function tabBar(active) {
   return h("nav", { class: "tabbar" },
     button(h("span", {}, icon("home", { size: 24 }), h("small", { text: "学习" })), renderPath, "tab" + (active === "path" ? " on" : ""), { "aria-label": "学习" }),
-    button(h("span", {}, icon("user", { size: 24 }), h("small", { text: "我的" })), renderMe, "tab" + (active === "me" ? " on" : ""), { "aria-label": "我的" }),
+    button(h("span", {}, icon("user", { size: 24 }), h("small", { text: "我的" })), () => { meSection = null; renderMe(); }, "tab" + (active === "me" ? " on" : ""), { "aria-label": "我的" }),
   );
 }
 
@@ -1051,27 +1051,35 @@ function backupCard() {
     file, panel, msg);
 }
 
+// ---------- 我的 ----------
+// 「我的」页只有四个入口：账号、设置、数据与备份、帮助；点进去才看到各自的内容。点底部的「我的」回到入口页。
+let meSection = null;
+const ME_SECTIONS = [
+  { id: "account", label: "账号" },
+  { id: "settings", label: "设置" },
+  { id: "data", label: "数据与备份" },
+  { id: "help", label: "帮助" },
+];
+function openMeSection(id) { meSection = id; renderMe(); }
 function renderMe() {
   currentView = "me";
   currentRun = null;
+  if (meSection && !ME_SECTIONS.some((s) => s.id === meSection)) meSection = null;
   const replacedMsg = replacedFor("me");
-  let confirmBox = null;
-  const clearBtn = button("清除学习记录", () => {
-    if (confirmBox) return;
-    confirmBox = h("div", { class: "confirm", role: "alertdialog" },
-      h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
-      button("确定清除", () => { if (clearProgress()) { renderMe(); showToast("学习记录已清除。"); } }, "btn danger"),
-      button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
-    );
-    clearBtn.after(confirmBox);
-  }, "link small");
-  const wait = regenHearts(state);
-  const doneCount = allLessons().filter((l) => state.done[l.id]).length;
-  const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? icon(ic, { size: 20 }) : null, value), h("span", { text: label }));
-  appEl.replaceChildren(
-    statsBar(),
-    h("main", { class: "view me" }, updateNotice(),
-      replacedMsg ? h("p", { class: "notice", role: "status", "data-replaced-notice": "", text: replacedMsg }) : null,
+  const top = [updateNotice(), replacedMsg ? h("p", { class: "notice", role: "status", "data-replaced-notice": "", text: replacedMsg }) : null];
+  const page = (...kids) => appEl.replaceChildren(statsBar(), h("main", { class: "view me" }, ...top, ...kids), tabBar("me"));
+  if (!meSection) {
+    const wait = regenHearts(state);
+    const doneCount = allLessons().filter((l) => state.done[l.id]).length;
+    const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? icon(ic, { size: 20 }) : null, value), h("span", { text: label }));
+    const themeLabel = { light: "浅色", dark: "深色" }[state.prefs.theme] || "跟随系统";
+    const subs = {
+      account: sync?.account() ? "已登录，进度会同步到云端" : "登录后，换手机或 iPad 也能接着学",
+      settings: `外观：${themeLabel} · 音效${state.prefs.sound ? "开" : "关"}`,
+      data: "导出、导入学习记录，清除记录",
+      help: "规则、添加到主屏幕、隐私说明",
+    };
+    return page(
       h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: sync?.account() ? "记录已关联账号，会同步到云端" : "没登录时，记录只保存在这台设备上" }))),
       h("div", { class: "me-grid" },
         statCard("flame", String(currentStreak(state)), "连续天数"),
@@ -1079,22 +1087,38 @@ function renderMe() {
         statCard(null, `${doneCount}/${allLessons().length}`, "已完成关卡"),
         statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
-      accountUi?.accountCard(),
-      previewInfo?.card(),
-      h("h3", { class: "me-sec", text: "设置" }),
-      themeRow(),
+      isIOS && !standalone ? h("section", { class: "notice", role: "note", "data-safari-tip": "" },
+        h("b", { text: "你正在 Safari 里学习" }),
+        h("p", { class: "small", text: "Safari 可能清理长期不打开的网站数据，无痕浏览里关掉标签就清空。把本页「添加到主屏幕」后记录更稳（主屏幕 App 的记录和 Safari 分开保存）。也建议隔一阵用下面的“导出进度文件”备份一次。" })) : null,
+      h("nav", { class: "me-menu", "aria-label": "我的" },
+        ...ME_SECTIONS.map((s) => button(h("span", { class: "menu-main" }, h("b", { text: s.label }), h("small", { text: subs[s.id] })), () => openMeSection(s.id), "menu-row", { "data-me-menu": s.id }))),
+    );
+  }
+  const label = ME_SECTIONS.find((s) => s.id === meSection).label;
+  const head = h("div", { class: "me-subhead" }, button("‹ 返回", () => { meSection = null; renderMe(); }, "link", { "data-me-back": "" }), h("h1", { text: label }));
+  if (meSection === "account") return page(head, accountUi?.accountCard(), previewInfo?.card());
+  if (meSection === "settings") return page(head,
+    themeRow(),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
       feel.hapticsSupported()
         ? toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，可以到最底下「排查问题」里自测", "haptics")
         : h("div", { class: "toggle-row no-haptics", "data-no-haptics": "" }, h("div", {}, h("b", { text: "振动" }), h("small", { text: "此设备暂不支持网页触感反馈。" }))),
-      keyLab(),
-      h("h3", { class: "me-sec", text: "数据与备份" }),
-      backupCard(),
-      sync?.account() ? null : clearBtn,
-      h("h3", { class: "me-sec", text: "帮助" }),
-      isIOS && !standalone ? h("section", { class: "notice", role: "note", "data-safari-tip": "" },
-        h("b", { text: "你正在 Safari 里学习" }),
-        h("p", { class: "small", text: "Safari 可能清理长期不打开的网站数据，无痕浏览里关掉标签就清空。把本页「添加到主屏幕」后记录更稳（主屏幕 App 的记录和 Safari 分开保存）。也建议隔一阵用下面的“导出进度文件”备份一次。" })) : null,
+    keyLab(),
+  );
+  if (meSection === "data") {
+    let confirmBox = null;
+    const clearBtn = button("清除学习记录", () => {
+      if (confirmBox) return;
+      confirmBox = h("div", { class: "confirm", role: "alertdialog" },
+        h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
+        button("确定清除", () => { if (clearProgress()) { renderMe(); showToast("学习记录已清除。"); } }, "btn danger"),
+        button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
+      );
+      clearBtn.after(confirmBox);
+    }, "link small");
+    return page(head, backupCard(), sync?.account() ? null : clearBtn);
+  }
+  return page(head,
       h("h4", { class: "me-sub", text: "规则" }),
       h("ul", { class: "rules" },
         h("li", { text: `答对一题 +${XP_CORRECT} XP，完成一关再 +${XP_FINISH} XP；复习每题 +${XP_REVIEW} XP。` }),
@@ -1112,8 +1136,6 @@ function renderMe() {
       ),
       h("p", { class: "me-foot muted small", "data-app-version": "", text: `应用版本：${appVersionLabel()}` }),
       h("p", { class: "me-foot" }, h("a", { href: "./privacy.html", target: "_blank", rel: "noopener", "data-privacy-link": "", text: "隐私说明" })),
-    ),
-    tabBar("me"),
   );
 }
 

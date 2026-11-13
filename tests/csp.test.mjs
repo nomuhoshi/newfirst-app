@@ -127,7 +127,7 @@ try {
 
   // 隐私说明：从“我的”页能打开；页面本身不需要脚本
   await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
-  await page.getByRole("button", { name: "我的" }).tap();
+  await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="help"]').tap();
   const link = page.locator(".me-foot [data-privacy-link]");
   check("C “我的”页底部有“隐私说明”链接，点按区域至少 44 高", (await link.count()) === 1 && ((await link.boundingBox())?.height ?? 0) >= 44);
   const p2 = await ctx.newPage();

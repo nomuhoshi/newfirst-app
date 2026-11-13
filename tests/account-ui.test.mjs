@@ -67,7 +67,7 @@ async function device(name, { guest = null, viewport = { width: 390, height: 844
   await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   return { name, ctx, page, errors, shot: (n) => shot(page, `acct-${name}-${n}`) };
 }
-const toMe = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.waitForSelector("[data-account]"); };
+const toMe = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="account"]').tap(); await d.page.waitForSelector("[data-account]"); };
 async function loginUi(d, email, { choice = null } = {}) {
   await toMe(d);
   await d.page.locator("[data-open-login]").tap();
@@ -92,7 +92,7 @@ try {
     await ctx.addInitScript(() => { try { localStorage.setItem("suipian.cloudConfig", JSON.stringify({ url: "", anonKey: "" })); } catch {} }); // 本机测试才生效：模拟“没配置”
     const page = await ctx.newPage(); await page.goto(BASE, { waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.__app && window.__app.sync);
     await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
-    await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-account]");
+    await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="account"]').tap(); await page.waitForSelector("[data-account]");
     check("没有云端配置：显示“云端暂未开通”，没有登录按钮", /云端暂未开通/.test(await page.locator("[data-account]").innerText()) && (await page.locator("[data-open-login]").count()) === 0);
     await ctx.close();
   }

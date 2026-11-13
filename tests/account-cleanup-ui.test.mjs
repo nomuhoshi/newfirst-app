@@ -67,7 +67,7 @@ async function device(name, { guest = null, viewport = { width: 390, height: 844
   await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   return { name, ctx, page, errors, shot: (n) => shot(page, `acct-${name}-${n}`) };
 }
-const toMe = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.waitForSelector("[data-account]"); };
+const toMe = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="account"]').tap(); await d.page.waitForSelector("[data-account]"); };
 async function loginUi(d, email, { choice = null } = {}) {
   await toMe(d);
   await d.page.locator("[data-open-login]").tap();

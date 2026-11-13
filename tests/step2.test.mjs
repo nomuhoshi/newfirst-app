@@ -280,7 +280,12 @@ try {
 
   // 我的
   await page.getByRole("button", { name: "我的" }).tap();
-  check("我的：显示 XP、连续天数、完成关卡、红心和规则", /经验值/.test(await text()) && /已完成关卡/.test(await text()) && /每 30 分钟恢复/.test(await text()));
+  check("我的：入口页显示 XP、连续天数、完成关卡、红心，并且只有账号、设置、数据与备份、帮助四个入口", /经验值/.test(await text()) && /已完成关卡/.test(await text()) && (await page.locator("[data-me-menu]").allInnerTexts()).map((t) => t.split("\n")[0]).join("|") === "账号|设置|数据与备份|帮助");
+  await page.locator('[data-me-menu="help"]').tap();
+  check("我的 → 帮助：有规则", /每 30 分钟恢复/.test(await text()));
+  await page.locator("[data-me-back]").tap();
+  check("帮助页点「返回」回到入口页", (await page.locator("[data-me-menu]").count()) === 4);
+  await page.locator('[data-me-menu="data"]').tap();
   await tapBtn("清除学习记录"); await tapBtn("取消");
   check("清除记录：取消不变", (await st()).xp > 0);
   await tapBtn("清除学习记录"); await tapBtn("确定清除");
@@ -364,13 +369,13 @@ try {
   await page.getByRole("button", { name: "退出本关" }).tap(); await tapBtn("退出");
 
   // 设置：音效 / 振动开关保存在本机，刷新后仍在，且不影响学习进度
-  await page.getByRole("button", { name: "我的" }).tap();
+  await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="settings"]').tap();
   check("我的：有音效和振动开关", (await page.locator(".switch").count()) === 2);
   await page.locator('[data-pref="sound"]').tap();
   check("音效开关：关闭后保存在记录里", (await st()).prefs.sound === false && (await page.locator('[data-pref="sound"]').getAttribute("aria-checked")) === "false");
   const xpBefore = (await st()).xp;
   await page.reload(); await page.waitForSelector(".statsbar");
-  await page.getByRole("button", { name: "我的" }).tap();
+  await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="settings"]').tap();
   check("刷新后：音效开关保持关闭，XP 不变", (await st()).prefs.sound === false && (await st()).xp === xpBefore && (await page.locator('[data-pref="sound"]').getAttribute("aria-checked")) === "false");
   await page.evaluate(() => window.__app.feel.log.length = 0);
   await page.evaluate(() => { const s = window.__app.getState(); s.prefs.sound = true; window.__app.setState(s); window.__app.persist(); });
@@ -535,7 +540,7 @@ try {
   check("音频解锁：120ms 后的结果音在 running 状态下播放（至少两个音）", (await pi.evaluate(() => window.__ac.osc)) - o1 >= 2);
   // 试听按钮
   await pi.locator("[data-continue]").tap(); await pi.getByRole("button", { name: "退出本关" }).tap(); await pi.getByRole("button", { name: "退出", exact: true }).tap();
-  await pi.getByRole("button", { name: "我的" }).tap();
+  await pi.getByRole("button", { name: "我的" }).tap(); await pi.locator('[data-me-menu="help"]').tap();
   const o2 = await pi.evaluate(() => window.__ac.osc);
   await pi.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
   await pi.locator('[data-selftest="sound"]').tap(); await pi.waitForTimeout(150);
@@ -549,7 +554,7 @@ try {
   await pi.locator(".choice").first().tap(); await pi.waitForTimeout(100);
   check("音效开关关闭后：点选不再出声", (await pi.evaluate(() => window.__ac.osc)) === o3);
   await pi.getByRole("button", { name: "退出本关" }).tap(); await pi.getByRole("button", { name: "退出", exact: true }).tap();
-  await pi.getByRole("button", { name: "我的" }).tap();
+  await pi.getByRole("button", { name: "我的" }).tap(); await pi.locator('[data-me-menu="help"]').tap();
   await pi.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
   await pi.locator('[data-selftest="sound"]').tap(); await pi.waitForTimeout(150);
   check("音效开关关闭后：试听按钮仍然能播放（用来区分“关了”和“坏了”）", (await pi.evaluate(() => window.__ac.osc)) - o3 >= 2);
@@ -569,7 +574,7 @@ try {
   await pk.addInitScript(() => { window.__vib = []; navigator.vibrate = (n) => { window.__vib.push(n); return true; }; });
   await pk.goto(BASE); await pk.waitForSelector(".statsbar, .onboard");
   await pk.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
-  await pk.getByRole("button", { name: "我的" }).tap();
+  await pk.getByRole("button", { name: "我的" }).tap(); await pk.locator('[data-me-menu="help"]').tap();
   await pk.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
   await pk.locator('[data-selftest="haptic"]').tap();
   check("试振动按钮：有接口时请求一次 12ms，并显示结果", JSON.stringify(await pk.evaluate(() => window.__vib)) === "[12]" && /已请求 12ms 振动/.test(await pk.locator('[aria-label="诊断信息"]').innerText()));
@@ -579,7 +584,7 @@ try {
   await pm.addInitScript(() => { Object.defineProperty(navigator, "vibrate", { value: undefined, configurable: true }); });
   await pm.goto(BASE); await pm.waitForSelector(".statsbar, .onboard");
   await pm.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
-  await pm.getByRole("button", { name: "我的" }).tap();
+  await pm.getByRole("button", { name: "我的" }).tap(); await pm.locator('[data-me-menu="settings"]').tap();
   // 第五轮 GPT 决定（取代第三轮的“始终显示”）：没有 navigator.vibrate 时用功能检测隐藏无效的振动开关和测试，只显示说明
   check("振动功能检测：没有接口时不显示振动开关、“试振动”按钮和振动测试，显示“此设备暂不支持网页触感反馈。”，诊断仍说明没有接口", (await pm.locator('[data-pref="haptics"]').count()) === 0 && (await pm.locator('[data-selftest="haptic"]').count()) === 0 && (await pm.locator("[data-haptic]").count()) === 0 && (await pm.locator("[data-no-haptics]").count()) === 1 && /此设备暂不支持网页触感反馈。/.test(await pm.locator("#app").innerText()) && /网页振动接口：没有/.test(await pm.locator('[aria-label="诊断信息"]').innerText()));
   check("振动功能检测：没有接口时音效开关仍在，答题照常（“检查”不报错）", (await pm.locator('[data-pref="sound"]').count()) === 1 && await pm.evaluate(() => { try { window.__app.feel.haptic(); return true; } catch { return false; } }));
@@ -596,7 +601,7 @@ try {
     await pl.addInitScript(fakeAudio);
     await pl.goto(BASE); await pl.waitForSelector(".statsbar, .onboard");
     await pl.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
-    await pl.getByRole("button", { name: "我的" }).tap();
+    await pl.getByRole("button", { name: "我的" }).tap(); await pl.locator('[data-me-menu="help"]').tap();
     await pl.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
     check("音频测试：“我的”页有 A / B / C 三个测试按钮和结果区", (await pl.locator("[data-audiotest]").count()) === 3 && (await pl.locator('[aria-label="音频测试结果"]').count()) === 1);
     const sync = await pl.evaluate(() => {
@@ -641,7 +646,7 @@ try {
     check("正式关卡：检查后 120ms 的结果音在 running 状态下播放", (await pf.evaluate(() => window.__ac.osc)) - f1 >= 2);
     // 回到“我的”：正式音效试听、诊断
     await pf.locator("[data-continue]").tap(); await pf.getByRole("button", { name: "退出本关" }).tap(); await pf.getByRole("button", { name: "退出", exact: true }).tap();
-    await pf.getByRole("button", { name: "我的" }).tap();
+    await pf.getByRole("button", { name: "我的" }).tap(); await pf.locator('[data-me-menu="help"]').tap();
     await pf.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
     check("我的：有 6 个正式音效试听按钮", (await pf.locator("[data-sound]").count()) === 6);
     const f2 = await pf.evaluate(() => window.__ac.osc);
@@ -671,7 +676,7 @@ try {
     await pk2.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.xp = 77; delete s.prefs.soundStyle; s.prefs.keySound = "B"; s.prefs.sound = true; Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); });
     await pk2.reload(); await pk2.waitForSelector(".statsbar");
     check("按键音效：旧记录没有这一项时默认 J，进度保留，旧试听字段被丢弃", await pk2.evaluate(() => { const s = window.__app.getState(); return s.prefs.soundStyle === "J" && s.xp === 77 && !("keySound" in s.prefs); }));
-    await pk2.getByRole("button", { name: "我的" }).tap();
+    await pk2.getByRole("button", { name: "我的" }).tap(); await pk2.locator('[data-me-menu="settings"]').tap();
     await pk2.evaluate(() => { const d = document.querySelector("details.keylab"); if (d) d.open = true; });
     check("按键音效：A–J 十个按钮，J 高亮并标“默认”，状态写明当前是 J", (await pk2.locator("[data-keysound]").count()) === 10 && (await pk2.evaluate(() => [...document.querySelectorAll("[data-keysound]")].map((b) => b.dataset.keysound).join(""))) === "ABCDEFGHIJ" && (await pk2.locator('[data-keysound="J"]').getAttribute("aria-pressed")) === "true" && (await pk2.locator(".keybtn.sel").count()) === 1 && /当前按键音效：J 极简 Tap（默认）/.test(await pk2.locator(".keylab-status").innerText()));
     // 实测每个风格的六种声音
@@ -698,7 +703,7 @@ try {
     check("按键音效：连续快速触发 80 次“过关”，同时发声不超过 3 个", burst <= 3, `max=${burst}`);
     await pk2.locator('[data-keysound="A"]').tap();
     await pk2.reload(); await pk2.waitForSelector(".statsbar");
-    await pk2.getByRole("button", { name: "我的" }).tap();
+    await pk2.getByRole("button", { name: "我的" }).tap(); await pk2.locator('[data-me-menu="settings"]').tap();
     check("按键音效：刷新后选择仍在（A 是最后一次点的）", (await pk2.evaluate(() => window.__app.getState().prefs.soundStyle)) === "A" && (await pk2.locator('[data-keysound="A"]').getAttribute("aria-pressed")) === "true" && (await pk2.evaluate(() => window.__app.feel.currentStyle())) === "A");
     // 坏数据：不认识的风格回到 J
     await pk2.evaluate(() => { const s = JSON.parse(localStorage.getItem("suipian.progress")); s.prefs.soundStyle = "Z"; delete s.v4mirror; /* 取出的是 v4 写的镜像：去掉镜像标记，模拟原始旧存档 */ Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟“带着这份旧存档第一次打开 v4”：v4 键先清掉，旧键才会被迁移读取 */ localStorage.setItem("suipian.progress", JSON.stringify(s)); });

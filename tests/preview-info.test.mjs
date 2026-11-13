@@ -118,7 +118,7 @@ try {
     if (onboarded) await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
     return { srv, ctx, page, errors, reqHosts };
   }
-  const toMe = async (page) => { await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-account]"); };
+  const toMe = async (page) => { await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="account"]').tap(); await page.waitForSelector("[data-account]"); };
 
   {
     const t = await open(out("good"));

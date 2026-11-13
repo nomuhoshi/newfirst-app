@@ -80,7 +80,7 @@ try {
   check("离线：课程内容（course / unit1 / unit2 / words）已经打包进缓存的 JS", ["奶茶店点单屏", "文字与长度", "保存饮品名", "菜单标签", "/leŋθ/"].every((w) => mainText.includes(w)));
   check("离线：“我的”页诊断里能看到应用版本、缓存版本和离线支持状态", await (async () => {
     await seed(U1); await page.reload(); await page.waitForSelector(".statsbar");
-    await page.getByRole("button", { name: "我的" }).tap();
+    await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="help"]').tap();
     await page.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
     const d = await page.locator('[aria-label="诊断信息"]').innerText();
     return /应用版本：\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC/.test(d) && /缓存版本：\d{4}-\d{2}-\d{2}T/.test(d) && /离线支持：已启用/.test(d);
@@ -101,7 +101,7 @@ try {
   await page.goto(BASE + "?from=home-screen");
   await page.waitForSelector(".statsbar", { timeout: 15000 });
   check("离线：带查询参数的地址（从主屏幕打开）也能打开", /文字与长度/.test(await text()));
-  await page.getByRole("button", { name: "我的" }).tap();
+  await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="help"]').tap();
   check("离线：“我的”页能打开", /我的学习/.test(await text()) && /离线支持：已启用/.test(await page.locator('[aria-label="诊断信息"]').innerText()));
   await page.getByRole("button", { name: "学习", exact: true }).tap();
   // 开始 U1 复习，确认第 1 单元内容离线可用

@@ -181,7 +181,18 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
 .toggle-row b { display: block; font-size: 15px; }
 .toggle-row small { display: block; font-size: 12px; color: var(--g-muted); line-height: 1.5; margin-top: 2px; }
-/* 「我的」页分块：账号 / 设置 / 数据与备份 / 帮助；排查工具默认折叠 */
+/* 「我的」页入口：账号 / 设置 / 数据与备份 / 帮助 四个按钮，点进去是各自的页面 */
+.me-menu { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; box-sizing: border-box; width: 100%; min-height: 64px; padding: 12px 14px; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; color: var(--g-fg); text-align: left; }
+.menu-row::after { content: "›"; font-size: 26px; line-height: 1; color: var(--g-muted); }
+.menu-row .menu-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.menu-row b { font-size: 17px; }
+.menu-row small { font-size: 13px; color: var(--g-muted); line-height: 1.4; }
+.menu-row:active { transform: translateY(1px); }
+.me-subhead { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; }
+.me-subhead h1 { margin: 0; font-size: 22px; }
+.me-subhead .link { text-decoration: none; min-height: 44px; min-width: 44px; padding: 0 8px 0 0; font-weight: 700; font-size: 16px; }
+/* 「我的」页分块：排查工具默认折叠 */
 .view.me .me-sec { margin: 26px 0 6px; font-size: 13px; letter-spacing: .5px; color: var(--g-muted); }
 .view.me .me-sub { margin: 16px 0 4px; font-size: 15px; }
 .me-tools, .me-fold { margin: 22px 0 8px; border: 1.5px solid var(--g-line); border-radius: 12px; background: var(--g-card); }
@@ -346,6 +357,7 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
   /* 不位移，按下时只有即时的描边 / 亮度变化 */
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .keybtn:active { outline: 3px solid var(--g-primary); outline-offset: -3px; }
   .node:active .hexnode { transform: none; }
+  .menu-row:active { transform: none; outline: 3px solid var(--g-primary); outline-offset: -3px; }
   .node:active { filter: brightness(1.12); }
 }
 /* 输出面板底色一直是深色，所以提示文字用浅色（原来用的灰色在深底上看不清）；比正常输出略暗一点用来区分 */

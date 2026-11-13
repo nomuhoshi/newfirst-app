@@ -21,7 +21,7 @@ const bg = () => page.evaluate(() => getComputedStyle(document.documentElement).
 const attr = () => page.evaluate(() => document.documentElement.getAttribute("data-theme"));
 const bar = () => page.evaluate(() => document.querySelector('meta[name="theme-color"]').getAttribute("content"));
 const LIGHT = "#F7F5F0", DARK = "#101E28";
-await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-theme-row]");
+await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="settings"]').tap(); await page.waitForSelector("[data-theme-row]");
 
 check("我的页有「外观」三个选项：跟随系统、浅色、深色", (await page.locator("[data-theme-opt]").allInnerTexts()).join("|") === "跟随系统|浅色|深色");
 check("每个选项的点按区域不小于 44px", await page.evaluate(() => [...document.querySelectorAll("[data-theme-opt]")].every((b) => b.getBoundingClientRect().height >= 44)));
@@ -36,7 +36,7 @@ await page.locator('[data-theme-opt="dark"]').tap();
 check("选「深色」：系统是浅色也显示深色", (await attr()) === "dark" && (await bg()) === DARK && (await bar()) === DARK);
 await page.reload(); await page.waitForFunction(() => window.__app?.getState);
 check("刷新后选择还在（仍是深色）", (await attr()) === "dark" && (await bg()) === DARK);
-await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-theme-row]");
+await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="settings"]').tap(); await page.waitForSelector("[data-theme-row]");
 check("刷新后按钮状态也对（「深色」被选中）", (await page.locator('[data-theme-opt="dark"]').getAttribute("aria-pressed")) === "true");
 check("选择存在学习记录的 prefs.theme 里（会随账号同步），其余设置不变", await page.evaluate(() => { const p = window.__app.getState().prefs; return p.theme === "dark" && p.sound === true && p.haptics === true && p.soundStyle === "J"; }));
 await page.locator('[data-theme-opt="system"]').tap();

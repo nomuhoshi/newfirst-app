@@ -106,7 +106,7 @@ try {
   const errors = []; page.on("pageerror", (e) => errors.push(String(e.message)));
   await page.addInitScript((raw) => { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); /* 模拟带着旧存档第一次打开 v4 */ localStorage.setItem("suipian.progress", raw); localStorage.setItem("suipian.progress.unreadable.1700000000000", "{旧的坏记录"); } }, FIX);
   await page.goto(URLBASE); await page.waitForSelector(".statsbar", { timeout: 15000 });
-  await page.getByRole("button", { name: "我的" }).tap();
+  await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="data"]').tap();
   await page.waitForSelector("[data-backup]");
   check("我的页有“备份学习记录”：导出和导入两个按钮", (await page.locator("[data-export]").count()) === 1 && (await page.locator("[data-import]").count()) === 1);
   const [dl] = await Promise.all([page.waitForEvent("download"), page.locator("[data-export]").tap()]);
@@ -124,7 +124,7 @@ try {
   // 清掉进度（模拟清了浏览器数据）后导入
   await page.evaluate(() => { window.__app.clearProgress(); /* v4 的 XP 与关卡只增不减，改用真实清除来模拟“清了浏览器数据” */ });
   await page.reload(); await page.waitForSelector(".statsbar");
-  await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-backup]");
+  await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="data"]').tap(); await page.waitForSelector("[data-backup]");
   await page.locator("[data-import-file]").setInputFiles(saved);
   await page.waitForSelector("[data-import-confirm]");
   check("导入：先给确认，写明文件里有几关、多少 XP", /8 个已完成关卡.*190 XP/.test(await page.locator("[data-import-confirm]").innerText()));
@@ -142,7 +142,7 @@ try {
   check("复制进度码：剪贴板里是 SPC1. 开头的一段文字", /^SPC1\.[A-Za-z0-9_.-]+$/.test(codeText));
   await page.evaluate(() => { window.__app.clearProgress(); });
   await page.reload(); await page.waitForSelector(".statsbar");
-  await page.getByRole("button", { name: "我的" }).tap(); await page.waitForSelector("[data-backup]");
+  await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="data"]').tap(); await page.waitForSelector("[data-backup]");
   check("清空后进度为 0", (await page.evaluate(() => window.__app.getState().xp)) === 0);
   await page.locator("[data-code-paste]").tap();
   await page.locator("[data-code-in]").fill("请看这个：\n" + codeText.match(/.{1,25}/g).join("\n"));
@@ -192,7 +192,7 @@ try {
   check("失败→恢复→重试→再粘贴同一码：XP、次数、关卡、红心、偏好都不变", (await sn()) === afterRetry);
   await page.reload(); await page.waitForSelector(".statsbar");
   check("刷新重开后进度仍在，与重试后一致", (await sn()) === afterRetry);
-  await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.waitForSelector("[data-backup]");
+  await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.locator('[data-me-menu="data"]').tap(); await page.waitForSelector("[data-backup]");
 
   // 坏文件：给出原因，不改记录
   const badPath = join(dir, "bad.json"); writeFileSync(badPath, '{"hello":1}');
