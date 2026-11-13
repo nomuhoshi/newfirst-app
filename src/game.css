@@ -431,7 +431,7 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 .login-sheet .sheet { max-height: calc(var(--app-h, 100dvh) - 8px); overflow: auto; scroll-padding-bottom: 84px; } /* scrollIntoView 时给吸底按钮留位置 */
 
 /* 备份学习记录 */
-.backup { margin: 12px 0; }
+.backup { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 12px 14px; margin: 12px 0; } /* 和账号卡片同一种卡片 */
 .backup h3 { margin-bottom: 4px; }
 .backup .acct-row { margin-top: 8px; }
 .backup-msg { min-height: 1.4em; margin: 8px 0 0; }
