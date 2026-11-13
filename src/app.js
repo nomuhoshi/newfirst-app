@@ -30,6 +30,7 @@ function loadCodeTask() {
 }
 import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
+import * as theme from "./theme.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, readSnapshot, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
@@ -675,6 +676,24 @@ function toggleRow(label, sub, key, { disabled = false } = {}) {
   return h("div", { class: "toggle-row" }, h("div", {}, h("b", { text: label }), h("small", { text: sub })), sw);
 }
 
+// 外观：跟随系统 / 浅色 / 深色（只存这台设备，不进账号同步）
+function themeRow() {
+  const opts = [["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]];
+  const cur = theme.getTheme();
+  const note = h("small", { class: "theme-note", text: "跟随手机系统，或固定为浅色 / 深色；只对这台设备生效。" });
+  const wrap = h("div", { class: "seg", role: "group", "aria-label": "外观" },
+    ...opts.map(([v, label]) => {
+      const b = h("button", { type: "button", class: "seg-btn" + (v === cur ? " sel" : ""), "aria-pressed": String(v === cur), "data-theme-opt": v, text: label });
+      b.addEventListener("click", () => {
+        const saved = theme.setTheme(v);
+        wrap.querySelectorAll(".seg-btn").forEach((x) => { const on = x.dataset.themeOpt === v; x.classList.toggle("sel", on); x.setAttribute("aria-pressed", String(on)); });
+        note.textContent = saved ? "跟随手机系统，或固定为浅色 / 深色；只对这台设备生效。" : "这次已切换，但这台设备不允许保存设置，下次打开会回到「跟随系统」。";
+      });
+      return b;
+    }));
+  return h("div", { class: "theme-row", "data-theme-row": "" }, h("b", { text: "外观" }), note, wrap);
+}
+
 // 声音与振动自测：真机上点试听，并显示诊断信息，方便确认声音和振动到底有没有
 function selfTest() {
   const diag = h("pre", { class: "diag", "aria-label": "诊断信息" });
@@ -1066,6 +1085,8 @@ function renderMe() {
         h("b", { text: "你正在 Safari 里学习" }),
         h("p", { class: "small", text: "Safari 可能清理长期不打开的网站数据，无痕浏览里关掉标签就清空。把本页「添加到主屏幕」后记录更稳（主屏幕 App 的记录和 Safari 分开保存）。也建议隔一阵用下面的“导出进度文件”备份一次。" })) : null,
       backupCard(),
+      h("h3", { text: "外观" }),
+      themeRow(),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
       feel.hapticsSupported()

@@ -14,7 +14,8 @@
 .lead { color: var(--muted); }
 .meta { font-size: 13px !important; color: var(--muted); }
 .notice { background: #fff4d6; color: #5c4400; padding: 8px 10px; border-radius: 8px; font-size: 14px !important; }
-@media (prefers-color-scheme: dark) { .notice { background: #3a3220; color: #f3dfa6; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .notice { background: #3a3220; color: #f3dfa6; } }
+:root[data-theme="dark"] .notice { background: #3a3220; color: #f3dfa6; }
 .pre-line { white-space: pre-line; }
 .muted { color: var(--muted); }
 
