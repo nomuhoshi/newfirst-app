@@ -1702,7 +1702,9 @@ if (vv) {
 // 回到前台 / 从后退缓存恢复 / 别的标签页改了存储：先把存储里更新的进度读进来，再写，避免旧标签页把新进度盖掉
 function refreshFromStorage() {
   if (sync && sync.account()) return;
-  const changed = syncFromStorage(state);
+  const themeBefore = state.prefs.theme;
+  const changed = syncFromStorage(state) || state.prefs.theme !== themeBefore; // 别的标签页只改了外观时，syncFromStorage 不算“有变化”，这里单独算
+  theme.useTheme(state.prefs.theme); // 别的标签页选了新外观：这一页也要跟着变（只更新内存里的 prefs 不够，页面外观要重新套用）
   if (changed && currentView === "path" && appEl.querySelector(".statsbar")) renderPath();
   else if (changed && currentView === "me" && appEl.querySelector(".statsbar")) renderMe();
 }
