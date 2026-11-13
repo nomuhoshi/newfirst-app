@@ -31,7 +31,7 @@ const release = () => { console.log = origLog; console.error = origErr; console.
   check("A 空 / 空白 / null / undefined / 非字符串令牌：一律按旧行为，不放 gotrue_meta_security", R3.calls.length === 10 && R3.calls.every((c) => c.raw === JSON.stringify({ email: "a@b.co", create_user: true })), R3.calls.map((c) => c.raw).join(" | "));
   const R4 = recorder(); await mkApi(R4.fetchFn).sendCode("a@b.co", "  " + TOKEN_A + "\n");
   check("A 令牌两端空白被去掉，其余原样（不改写内容）", R4.calls[0].body.gotrue_meta_security.captcha_token === TOKEN_A);
-  const same = R.calls[0].headers; check("A 令牌不进请求头（只在请求体里）", !JSON.stringify(same).includes(TOKEN_A), JSON.stringify(same));
+  const same = R.calls[0].headers; check("A 令牌不进请求头、也不进 URL（只在请求体里）", !JSON.stringify(same).includes(TOKEN_A) && !String(R.calls[0].url).includes(TOKEN_A), JSON.stringify(same) + R.calls[0].url);
   const bareFetch = recorder(); const noCfg = createApi({ url: "", anonKey: "", fetchFn: bareFetch.fetchFn });
   const nr = await noCfg.sendCode("a@b.co", TOKEN_A);
   check("A 云端未配置：直接返回 config，fetch 零次，返回值不含令牌", nr.kind === "config" && bareFetch.calls.length === 0 && !JSON.stringify(nr).includes(TOKEN_A));
@@ -109,6 +109,13 @@ const sess = (userId = "u1", email = "a@example.com") => ({ accessToken: "at", r
   const r = await sy.sendCode("t@example.com", TOKEN_A);
   await new Promise((ok) => setTimeout(ok, 50));
   check("F sync 收到超时：原样返回，api 只调用 1 次，没有安排任何自动重发", r.kind === "network" && r.timedOut === true && calls.length === 1 && timers.length === 0, JSON.stringify({ calls, timers }));
+}
+{ // G 静态：没有新的发送入口绕过 sync 层的隔离 / 冷却（api.sendCode 只在 sync.js 里被调用；界面只调 sync.sendCode）
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const dir = new URL("../src/", import.meta.url);
+  const hits = readdirSync(dir).filter((f) => f.endsWith(".js")).flatMap((f) => [...readFileSync(new URL(f, dir), "utf8").matchAll(/[\w.]*\bsendCode\s*\(/g)].map((m) => `${f}:${m[0]}`));
+  const bad = hits.filter((h) => !/^(sync\.js:(api\.sendCode\(|sendCode\()|account-ui\.js:sync\.sendCode\(|cloud-api\.js:sendCode\()/.test(h));
+  check("G 静态：src 里调用 sendCode 的地方只有 account-ui→sync.sendCode、sync→api.sendCode（没有绕过 sync 层的新入口）", hits.length > 0 && bad.length === 0, bad.join(", ") || hits.join(", "));
 }
 const pass = results.filter(Boolean).length;
 console.log(`\n共 ${results.length} 项，失败 ${results.length - pass} 项`);
