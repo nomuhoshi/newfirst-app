@@ -18,8 +18,9 @@
   --bg: var(--g-bg); --fg: var(--g-fg); --muted: var(--g-muted); --line: var(--g-line);
   --key: var(--g-card); --fn: #ECE8DE; --accent: var(--g-primary); --err: var(--g-bad); --out-bg: var(--g-card);
 }
+/* 深色：默认跟随系统；<html data-theme="dark|light"> 是「我的」页里手动选的外观，优先于系统 */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --g-bg: #101E28; --g-card: #1A2D39; --g-line: #2C4352; --g-fg: #EAF0F3; --g-muted: #9FB1BC;
     --g-primary: #A9CCE0; --g-on-primary: #102431;
     --g-copper: #F3BA87; --g-on-copper: #102431;
@@ -35,6 +36,23 @@
     --fn: #243845;
   }
 }
+:root[data-theme="dark"] {
+  --g-bg: #101E28; --g-card: #1A2D39; --g-line: #2C4352; --g-fg: #EAF0F3; --g-muted: #9FB1BC;
+  --g-primary: #A9CCE0; --g-on-primary: #102431;
+  --g-copper: #F3BA87; --g-on-copper: #102431;
+  --g-ok: #8ED7B8; --g-on-ok: #0E2A22; --g-ok-bg: #17382F;
+  --g-bad: #FFB3A3; --g-bad-bg: #3F2421;
+  --g-locked: #243845;
+  --g-trace: #2F4A5B;
+  --g-copper-text: #F3BA87;
+  --g-side: #0D1B24; --g-hi: rgba(255,255,255,.14); --g-shadow: rgba(0,0,0,.5);
+  --g-flow: #6CD0FF; --g-flow-glow: rgba(77,190,255,.9);
+  --g-code-bg: #0B1820; --g-code-fg: #EAF0F3; --g-code-dim: #7C93A1;
+  --g-chip: #1F3646; --g-chip-fg: #F3BA87;
+  --fn: #243845;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 body { background: var(--g-bg); color: var(--g-fg); }
 #app { background: var(--g-bg); }
 .ico { flex-shrink: 0; vertical-align: middle; }
@@ -163,6 +181,13 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
 .toggle-row b { display: block; font-size: 15px; }
 .toggle-row small { display: block; font-size: 12px; color: var(--g-muted); line-height: 1.5; margin-top: 2px; }
+/* 外观选择：三选一，每个按钮高度 ≥ 44 */
+.theme-row { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
+.theme-row b { display: block; font-size: 15px; }
+.theme-row small { display: block; font-size: 12px; color: var(--g-muted); line-height: 1.5; margin: 2px 0 8px; }
+.seg { display: flex; gap: 6px; }
+.seg-btn { flex: 1; min-height: 44px; border: 1.5px solid var(--g-line); border-radius: 10px; background: var(--g-bg); color: var(--g-fg); font-weight: 700; font-size: 14px; }
+.seg-btn.sel { background: var(--g-primary); color: var(--g-on-primary); border-color: var(--g-primary); }
 .switch { position: relative; flex-shrink: 0; width: 52px; height: 32px; border-radius: 16px; border: 1.5px solid var(--g-line); background: var(--g-locked); padding: 0; transition: background-color .15s; }
 .switch .knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 12px; background: var(--g-card); border: 1.5px solid var(--g-muted); transition: transform .15s; }
 .switch.on { background: var(--g-primary); border-color: var(--g-primary); }

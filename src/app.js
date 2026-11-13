@@ -30,6 +30,7 @@ function loadCodeTask() {
 }
 import { describeError } from "./errors.js";
 import * as feel from "./feel.js";
+import * as theme from "./theme.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
   loadState, saveState, readSnapshot, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
@@ -319,7 +320,7 @@ function codeBlock(code, cls = "") {
 const loaded = loadState();
 let state = loaded.state;
 let notice = loaded.notice;
-feel.setPrefs(state.prefs);
+feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme);
 if (notice && !loaded.readFailed) saveState(state); // 读取失败时不存空记录（会盖掉真实进度）；迁移或修复后的记录立即存一次，下次不再重复提示
 // ---------- 账号与云端 ----------
 // 登录后，学习进度写进“这个账号在本机的副本”（再在后台同步到云端），不再写游客记录；退出登录后回到游客记录。
@@ -345,10 +346,10 @@ const sync = safeStorage ? createSync({
   storage: safeStorage, api: cloudApi, projectId: hostOf(CLOUD.url) || "cloud-off", legacyProject: PROD_HOST,
   onStatus: () => { accountUi?.refreshStatus(); previewInfo?.refresh(); },
   onNotice: (kind) => { if (kind !== "replaced") return; pendingReplaced = true; if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); },
-  onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
+  onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
 }) : null;
 const restored = sync ? sync.restore(state) : null;
-if (restored) { state = restored.state; notice = null; feel.setPrefs(state.prefs); }
+if (restored) { state = restored.state; notice = null; feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); }
 const CLEARED_MSG_SHORT = "其他页面已清除学习记录，刚才的内容没有保存，本页已按新记录刷新。";
 const CLEARED_MSG_IMPORT = "其他页面已清除学习记录，本次恢复未完成，请重新读取进度码并确认。你的备份文件或进度码没有被修改。";
 function persist() {
@@ -370,10 +371,10 @@ accountUi = createAccountUi({
   h, button, sheet, icon, showToast, sync, api: cloudApi, getState: () => state,
   rerender: () => (currentView === "me" ? renderMe() : renderPath()),
   // 登录成功：换成账号里的进度；退出 / 删除：回到这台设备的游客记录
-  onSwitchedIn: (r) => { state = r.state; feel.setPrefs(state.prefs); notice = null; currentView === "me" ? renderMe() : renderPath(); },
+  onSwitchedIn: (r) => { state = r.state; feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); notice = null; currentView === "me" ? renderMe() : renderPath(); },
   onSwitchedOut: () => { const l = loadState(); state = l.state; notice = l.notice;
     // 登录过的设备一定已经看过开场介绍：退出后回到游客记录不再重放“你好，我是小码”（按设备保存，不同步）
-    if (!state.onboarded) { state.onboarded = true; persist(); } feel.setPrefs(state.prefs); currentView === "me" ? renderMe() : renderPath(); },
+    if (!state.onboarded) { state.onboarded = true; persist(); } feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); currentView === "me" ? renderMe() : renderPath(); },
 });
 const appVersionLabel = () => versionLabel({ sha: typeof __SOURCE_SHA__ !== "undefined" ? __SOURCE_SHA__ : "", build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" });
 previewInfo = createPreviewInfo({
@@ -673,6 +674,23 @@ function toggleRow(label, sub, key, { disabled = false } = {}) {
     if (key === "haptics" && state.prefs.haptics) feel.haptic();
   });
   return h("div", { class: "toggle-row" }, h("div", {}, h("b", { text: label }), h("small", { text: sub })), sw);
+}
+
+// 外观：跟随系统 / 浅色 / 深色（存在 prefs.theme，登录后随账号同步）
+function themeRow() {
+  const opts = [["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]];
+  const cur = ["light", "dark"].includes(state.prefs.theme) ? state.prefs.theme : "system";
+  const note = h("small", { class: "theme-note", text: "跟随手机系统，或固定为浅色 / 深色；登录后会随账号同步。" });
+  const wrap = h("div", { class: "seg", role: "group", "aria-label": "外观" },
+    ...opts.map(([v, label]) => {
+      const b = h("button", { type: "button", class: "seg-btn" + (v === cur ? " sel" : ""), "aria-pressed": String(v === cur), "data-theme-opt": v, text: label });
+      b.addEventListener("click", () => {
+        state.prefs.theme = v; persist(); theme.useTheme(v);
+        wrap.querySelectorAll(".seg-btn").forEach((x) => { const on = x.dataset.themeOpt === v; x.classList.toggle("sel", on); x.setAttribute("aria-pressed", String(on)); });
+      });
+      return b;
+    }));
+  return h("div", { class: "theme-row", "data-theme-row": "" }, h("b", { text: "外观" }), note, wrap);
 }
 
 // 声音与振动自测：真机上点试听，并显示诊断信息，方便确认声音和振动到底有没有
@@ -1066,6 +1084,8 @@ function renderMe() {
         h("b", { text: "你正在 Safari 里学习" }),
         h("p", { class: "small", text: "Safari 可能清理长期不打开的网站数据，无痕浏览里关掉标签就清空。把本页「添加到主屏幕」后记录更稳（主屏幕 App 的记录和 Safari 分开保存）。也建议隔一阵用下面的“导出进度文件”备份一次。" })) : null,
       backupCard(),
+      h("h3", { text: "外观" }),
+      themeRow(),
       h("h3", { text: "声音与振动" }),
       toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
       feel.hapticsSupported()
