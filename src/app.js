@@ -1096,7 +1096,7 @@ function renderMe() {
   if (meSection === "account") return page(head, accountUi?.accountCard(), previewInfo?.card());
   if (meSection === "settings") return page(head,
     themeRow(),
-      toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
+      toggleRow("音效", "点选、答对、答错、过关的短提示音；手机静音键开着也会响，不想听就关掉这里", "sound"),
       feel.hapticsSupported()
         ? toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，可以到最底下「排查问题」里自测", "haptics")
         : h("div", { class: "toggle-row no-haptics", "data-no-haptics": "" }, h("div", {}, h("b", { text: "振动" }), h("small", { text: "此设备暂不支持网页触感反馈。" }))),

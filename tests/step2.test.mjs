@@ -527,6 +527,7 @@ try {
   const pi = await ctx.newPage();
   const ierrs = []; pi.on("pageerror", (e) => ierrs.push(e.message));
   await pi.addInitScript(fakeAudio);
+  await pi.addInitScript(() => { Object.defineProperty(navigator, "audioSession", { value: { type: "auto" }, configurable: true }); });
   await pi.goto(BASE); await pi.waitForSelector(".statsbar, .onboard");
   await pi.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.hearts = 5; window.__app.persist(); window.__app.renderPath(); });
   await pi.locator(".node.current").tap();
@@ -534,6 +535,7 @@ try {
   await pi.locator(".overlay .btn3d.primary").tap(); await pi.getByRole("button", { name: "继续", exact: true }).tap(); await pi.waitForSelector("[data-check]");
   const o0 = await pi.evaluate(() => window.__ac.osc);
   await pi.locator(".choice").first().tap();
+  check("音频会话：设为 playback（不跟随 iPhone 静音键）", (await pi.evaluate(() => navigator.audioSession.type)) === "playback");
   check("音频解锁：点选题目时真的合成了声音（振荡器被创建）", (await pi.evaluate(() => window.__ac.osc)) > o0);
   const o1 = await pi.evaluate(() => window.__ac.osc);
   await pi.locator("[data-check]").tap(); await pi.waitForSelector(".feedbar"); await pi.waitForTimeout(100);
