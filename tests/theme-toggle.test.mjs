@@ -63,7 +63,12 @@ await page3.goto(srv.base); await page3.waitForFunction(() => window.__app?.getS
 await page3.getByRole("button", { name: "我的" }).tap(); await page3.waitForSelector("[data-theme-row]");
 const attr3 = () => page3.evaluate(() => document.documentElement.getAttribute("data-theme"));
 await page3.locator('[data-theme-opt="dark"]').tap();
-check("缓存写失败：选「深色」照样变深色，选择已存进 prefs.theme", (await attr3()) === "dark" && (await page3.evaluate(() => window.__app.getState().prefs.theme)) === "dark" && (await page3.evaluate(() => localStorage.getItem("suipian-theme"))) === null);
+{
+  const a = await attr3(), pt = await page3.evaluate(() => window.__app.getState().prefs.theme), cv = await page3.evaluate(() => localStorage.getItem("suipian-theme"));
+  check("缓存写失败：选「深色」照样变深色", a === "dark", `data-theme=${a}`);
+  check("缓存写失败：选择已存进 prefs.theme", pt === "dark", `prefs.theme=${pt}`);
+  check("缓存写失败：缓存里确实没有写进去（前提成立）", cv === null, `suipian-theme=${cv}`);
+}
 await page3.emulateMedia({ colorScheme: "dark" }); await page3.waitForTimeout(300); await page3.emulateMedia({ colorScheme: "light" }); await page3.waitForTimeout(300);
 check("缓存写失败：系统外观来回变化后，手动选的「深色」仍然在（不被当成“跟随系统”）", (await attr3()) === "dark", `data-theme=${await attr3()}`);
 await page3.reload(); await page3.waitForFunction(() => window.__app?.getState);
