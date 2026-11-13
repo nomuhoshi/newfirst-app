@@ -109,6 +109,47 @@ function icon(name, { size = 22, fill = false, cls = "" } = {}) {
   svg("path", { d: ICONS[name] }));
 }
 
+// ---------- 立体图标：真空管（生命）、芯片（经验值）。颜色全部来自样式表里的 --ic-* 令牌（浅色 / 深色 / 手动切换都适用） ----------
+// 渐变放在一份共享 <defs> 里（挂在 #app 之外，页面重绘不会丢）；每个图标本身是一个 aria-hidden 的 svg，不写行内样式。
+function svgFromString(str) { const t = document.createElement("template"); t.innerHTML = str.trim(); return t.content.firstChild; }
+function iconDefs() {
+  return svgFromString(`<svg class="ic-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+    <linearGradient id="ic-glass" x1="0" y1="0" x2="1" y2="1"><stop class="ic-gl-a" offset="0"/><stop class="ic-gl-b" offset="1"/></linearGradient>
+    <linearGradient id="ic-base" x1="0" y1="0" x2="0" y2="1"><stop class="ic-bs-a" offset="0"/><stop class="ic-bs-b" offset="1"/></linearGradient>
+    <radialGradient id="ic-glow"><stop class="ic-gw-a" offset="0"/><stop class="ic-gw-b" offset="1"/></radialGradient>
+    <linearGradient id="ic-chip" x1="0" y1="0" x2="1" y2="1"><stop class="ic-cp-a" offset="0"/><stop class="ic-cp-b" offset="1"/></linearGradient>
+  </defs></svg>`);
+}
+document.body.append(iconDefs());
+// 真空管：lit = 灯丝亮（还有体力 / 红心），否则熄灭变灰
+function tubeIcon(lit, size = 24, cls = "") {
+  const env = "M12.5 34V15a10.5 10.5 0 0 1 21 0v19z";
+  return svgFromString(`<svg class="ico tube ${lit ? "lit" : "off"} ${cls}" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true" focusable="false">
+    <ellipse class="t-shadow" cx="24" cy="44.5" rx="12" ry="2"/>
+    <path class="t-side" d="M14.5 36V17a10.5 10.5 0 0 1 21 0v19z"/>
+    <path class="t-env" d="${env}"/>
+    ${lit ? `<path class="t-glass" d="${env}"/><circle class="t-glow" cx="24" cy="23" r="14"/>` : ""}
+    <rect class="t-plate" x="19.5" y="12" width="9" height="15" rx="1.8"/>
+    <path class="t-fil" d="M20.5 31V22.5l3.5 3.2 3.5-3.2V31"/>
+    <path class="t-hi" d="M16.5 31V16.5a6 6 0 0 1 3.6-5.4"/>
+    <rect class="t-base-d" x="11.5" y="34" width="25" height="3.5" rx="1.3"/>
+    <rect class="t-base" x="11.5" y="32" width="25" height="6.5" rx="2.2"/>
+    <path class="t-base-hi" d="M14 33.7h20"/>
+    <path class="t-pin" d="M18 39v4.5M24 39v4.5M30 39v4.5"/></svg>`);
+}
+// 芯片：经验值
+function chipIcon(size = 24, cls = "") {
+  return svgFromString(`<svg class="ico chip ${cls}" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true" focusable="false">
+    <ellipse class="t-shadow" cx="24" cy="44" rx="14" ry="2.2"/>
+    <path class="c-pin" d="M6.5 17h5M6.5 23h5M6.5 29h5M36.5 17h5M36.5 23h5M36.5 29h5"/>
+    <rect class="c-side" x="11" y="13.5" width="26" height="26" rx="5.5"/>
+    <rect class="c-body" x="11" y="9" width="26" height="26" rx="5.5"/>
+    <rect class="c-die" x="16.5" y="14.5" width="15" height="15" rx="3"/>
+    <path class="c-trace" d="M20 19h3.5v3H28M20 25h4v-2.2"/>
+    <circle class="c-dot" cx="20" cy="19" r="1"/><circle class="c-dot" cx="28" cy="22" r="1"/><circle class="c-dot" cx="24" cy="22.8" r="1"/>
+    <path class="c-hi" d="M13.8 15.5Q13.8 12.2 17.5 12.2H25"/></svg>`);
+}
+
 // ---------- 电路背景：种子固定的复杂电路图（电源总线束、芯片、逻辑门、阻容元件、过孔、测试点）+ 亮蓝色发光光点沿走线流动 ----------
 // 纯装饰：不拦截点击和滚动；切到后台时暂停动画；减少动态效果时光点停住（仍保留发光），线条静止。
 // 电路按“当前窗口的实际大小”生成（手机竖屏、iPad 小窗口、横屏都能看到），窗口变化时重新生成。
@@ -555,7 +596,7 @@ function renderOnboarding(i = 0) {
 // ---------- 顶部状态栏 ----------
 function heartStat(extraCls = "") {
   return h("span", { class: "stat hearts " + extraCls, title: "红心", "aria-label": `红心 ${state.hearts}` },
-    icon("heart", { size: 20, fill: state.hearts > 0 }), String(state.hearts));
+    tubeIcon(state.hearts > 0, 26), String(state.hearts));
 }
 function statsBar() {
   const wait = regenHearts(state);
@@ -563,7 +604,7 @@ function statsBar() {
   hearts.title = wait ? `下一颗红心：${fmtWait(wait)}后` : "红心已满";
   return h("header", { class: "statsbar" },
     h("span", { class: "stat streak", "aria-label": `连续 ${currentStreak(state)} 天` }, icon("flame", { size: 20 }), String(currentStreak(state))),
-    h("span", { class: "stat xp", "aria-label": `经验值 ${state.xp}` }, icon("bolt", { size: 20 }), String(state.xp)),
+    h("span", { class: "stat xp", "aria-label": `经验值 ${state.xp}` }, chipIcon(26), String(state.xp)),
     hearts,
   );
 }
@@ -1071,7 +1112,7 @@ function renderMe() {
   if (!meSection) {
     const wait = regenHearts(state);
     const doneCount = allLessons().filter((l) => state.done[l.id]).length;
-    const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? icon(ic, { size: 20 }) : null, value), h("span", { text: label }));
+    const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? (typeof ic === "function" ? ic() : icon(ic, { size: 20 })) : null, value), h("span", { text: label }));
     const themeLabel = { light: "浅色", dark: "深色" }[state.prefs.theme] || "跟随系统";
     const subs = {
       account: sync?.account() ? "已登录，进度会同步到云端" : "登录后，换手机或 iPad 也能接着学",
@@ -1083,9 +1124,9 @@ function renderMe() {
       h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: sync?.account() ? "记录已关联账号，会同步到云端" : "没登录时，记录只保存在这台设备上" }))),
       h("div", { class: "me-grid" },
         statCard("flame", String(currentStreak(state)), "连续天数"),
-        statCard("bolt", String(state.xp), "经验值 XP"),
+        statCard(() => chipIcon(26), String(state.xp), "经验值 XP"),
         statCard(null, `${doneCount}/${allLessons().length}`, "已完成关卡"),
-        statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
+        statCard(() => tubeIcon(state.hearts > 0, 26), `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
       h("nav", { class: "me-menu", "aria-label": "我的" },
         ...ME_SECTIONS.map((s) => button(h("span", { class: "menu-main" }, h("b", { text: s.label }), h("small", { text: subs[s.id] })), () => openMeSection(s.id), "menu-row", { "data-me-menu": s.id }))),
@@ -1298,7 +1339,7 @@ function renderExercise(run) {
       h("div", { class: "fb-head" }, icon(ok ? "check" : "cross", { size: 26, cls: "fb-ico" }), h("b", { text: ok ? "答对了！" : "不对哦" }), ok ? h("span", { class: "fb-xp", text: `+${run.review ? XP_REVIEW : XP_CORRECT} XP` }) : null),
       reason ? h("p", { text: reason }) : null,
       !ok && !isCode ? h("p", { class: "fb-answer" }, "正确答案：", h("code", { text: correctAnswerText(ex) })) : null,
-      !ok && !run.review ? h("p", { class: "fb-heart" }, icon("heart", { size: 16 }), `红心 -1（剩 ${state.hearts} 颗）。这道题稍后再做一次。`) : null,
+      !ok && !run.review ? h("p", { class: "fb-heart" }, tubeIcon(state.hearts > 0, 22), `红心 -1（剩 ${state.hearts} 颗）。这道题稍后再做一次。`) : null,
       contBtn,
     );
 
@@ -1495,7 +1536,7 @@ function renderFinish(run) {
       h("h1", { text: run.mistakes === 0 ? "完美！" : "完成！" }),
       h("p", { class: "muted", text: firstTime ? `「${l.title}」通关` : `复习「${l.title}」完成` }),
       h("div", { class: "finish-stats" },
-        h("div", { class: "fs" }, h("small", { text: "本关 XP" }), h("b", {}, icon("bolt", { size: 20 }), `+${run.xp}`)),
+        h("div", { class: "fs" }, h("small", { text: "本关 XP" }), h("b", {}, chipIcon(24), `+${run.xp}`)),
         h("div", { class: "fs" }, h("small", { text: "正确率" }), h("b", { text: `${accuracy}%` })),
         h("div", { class: "fs" }, h("small", { text: "连续天数" }), h("b", {}, icon("flame", { size: 20 }), String(currentStreak(state)))),
       ),
