@@ -548,6 +548,7 @@ try {
   check("试听按钮：点击后播放答对音（两个音），诊断里显示 AudioContext 状态和播放次数", (await pi.evaluate(() => window.__ac.osc)) - o2 >= 2 && /AudioContext：running/.test(diagTxt) && /已播放 [1-9]/.test(diagTxt) && /已播放答对音/.test(diagTxt), diagTxt.replace(/\n/g, " | "));
   check("诊断：显示版本、运行方式、振动接口、最近错误", /版本：/.test(diagTxt) && /运行方式：/.test(diagTxt) && /网页振动接口：/.test(diagTxt) && /最近错误：/.test(diagTxt));
   // 关闭音效后：普通点选没有声音，试听仍然能响
+  await pi.locator("[data-me-back]").tap(); await pi.locator('[data-me-menu="settings"]').tap();
   await pi.locator('[data-pref="sound"]').tap();
   const o3 = await pi.evaluate(() => window.__ac.osc);
   await pi.getByRole("button", { name: "学习", exact: true }).tap(); await pi.locator(".node.current").tap(); await pi.locator(".overlay .btn3d.primary").tap(); await pi.getByRole("button", { name: "继续", exact: true }).tap(); await pi.waitForSelector("[data-check]");
@@ -578,6 +579,7 @@ try {
   await pk.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
   await pk.locator('[data-selftest="haptic"]').tap();
   check("试振动按钮：有接口时请求一次 12ms，并显示结果", JSON.stringify(await pk.evaluate(() => window.__vib)) === "[12]" && /已请求 12ms 振动/.test(await pk.locator('[aria-label="诊断信息"]').innerText()));
+  await pk.locator("[data-me-back]").tap(); await pk.locator('[data-me-menu="settings"]').tap();
   check("振动开关：始终可以点（不再因为接口检测而被禁用）", await pk.locator('[data-pref="haptics"]').isEnabled());
   await pk.close();
   const pm = await ctx.newPage();
