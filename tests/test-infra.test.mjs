@@ -68,8 +68,9 @@ const alive = (marker) => spawnSync("pgrep", ["-f", marker], { encoding: "utf8" 
     r = runner(which, eng, [env2, sig, ok2]);
     check(`D ${tag}：退出码 2 / 被信号杀掉 → 都记“环境失败”，退出码非 0，不误报通过`, r.code === 2 && (r.out.match(/⚠️ 环境失败/g) || []).length === 2 && /通过 1，失败 0，超时 0，环境失败 2/.test(r.out) && new RegExp(`== ${eng}: 环境失败`).test(r.out), r.out);
   }
-  // 存活探测：kill(pid,0) 成功且不是僵尸（Z）。被 SIGKILL 的孤儿进程在容器里可能短暂是僵尸、等 init 回收，这不算“还活着”。
-  const pidAlive = (pid) => { try { process.kill(pid, 0); } catch { return false; } try { const st = readFileSync(`/proc/${pid}/stat`, "utf8"); return st.slice(st.lastIndexOf(")") + 2, st.lastIndexOf(")") + 3) !== "Z"; } catch { return true; } };
+  // 进程状态：gone（不存在）/ zombie（已终止、等 init 回收；被 SIGKILL 的孤儿在容器里会短暂如此）/ alive。zombie 算“已终止、不再运行”，但如实记录。
+  const pidState = (pid) => { try { process.kill(pid, 0); } catch { return "gone"; } try { const st = readFileSync(`/proc/${pid}/stat`, "utf8"); return st.slice(st.lastIndexOf(")") + 2, st.lastIndexOf(")") + 3) === "Z" ? "zombie" : "alive"; } catch { return "alive"; } };
+  const pidAlive = (pid) => pidState(pid) === "alive";
   const waitFor = async (fn, ms = 10000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await new Promise((ok) => setTimeout(ok, 50)); } return null; };
   const readPid = (f) => { try { const n = Number(readFileSync(f, "utf8").trim()); return n > 0 ? n : null; } catch { return null; } };
   // 孙进程：自己启动后把自己的 PID 写进就绪文件，再常驻；这样“清理前它确实活着”有证据（PID + 存活探测），清理后再确认它消失
@@ -87,18 +88,20 @@ const alive = (marker) => spawnSync("pgrep", ["-f", marker], { encoding: "utf8" 
     await new Promise((ok) => setTimeout(ok, 300));
     check("D 脚本卡住并派生孙进程 → 3 秒上限到点杀掉，退出码 124，汇总点名“超时”，后面的脚本照跑", code === 124 && (Date.now() - t0) / 1000 < 40 && /超时（3 秒）：hang\.mjs/.test(out) && /⏱ 超时\s+rc=124\s.*hang\.mjs/.test(out) && /AFTER_RAN/.test(out) && /通过 2，失败 0，超时 1，环境失败 0/.test(out) && /== webkit: 超时/.test(out), `${code} ${out}`);
     check(`D 清理前证据：超时点到来之前孙进程已就绪（PID ${pid}）且确实存活`, aliveBefore, `pid=${pid} hasMarker=${alive(marker)}`);
-    check(`D 清理后：同一个孙进程（PID ${pid}）已被杀掉，不残留`, !!pid && !pidAlive(pid) && !alive(marker), `pid=${pid}`);
+    console.log(`  ↳ 超时用例：PID ${pid} 清理后状态 = ${pid ? pidState(pid) : "?"}`);
+    check(`D 清理后：同一个孙进程（PID ${pid}）已终止、不再运行`, !!pid && !pidAlive(pid) && !alive(marker), `pid=${pid}`);
     if (pid && pidAlive(pid)) try { process.kill(pid, "SIGKILL"); } catch { /* 已退出 */ }
   }
   { // 正常退出但留下后台进程：脚本等孙进程就绪（PID 写入）后才退出，保证“清理前它活着”
     const marker = "RUNLEFT" + process.pid, pidFile = join(dir, "left.pid");
-    const leave = mk("leave.mjs", `${grandchild(pidFile, marker)}.unref(); import { existsSync, readFileSync } from "node:fs"; const t0 = Date.now(); while (!existsSync(${JSON.stringify(pidFile)}) && Date.now() - t0 < 10000) await new Promise((r) => setTimeout(r, 20)); console.log("LEFT_OK pid=" + readFileSync(${JSON.stringify(pidFile)}, "utf8"));`);
+    const leave = mk("leave.mjs", `${grandchild(pidFile, marker)}.unref(); import { existsSync, readFileSync } from "node:fs"; const t0 = Date.now(); while (!existsSync(${JSON.stringify(pidFile)}) && Date.now() - t0 < 10000) await new Promise((r) => setTimeout(r, 20)); const gpid = Number(readFileSync(${JSON.stringify(pidFile)}, "utf8")); let aliveNow = false; try { process.kill(gpid, 0); aliveNow = true; } catch {} console.log("LEFT_OK pid=" + gpid + " aliveBeforeExit=" + aliveNow);`);
     const r = runner("tests/e2e/run.mjs", "webkit", [leave]);
     const pid = readPid(pidFile);
-    const said = Number((r.out.match(/LEFT_OK pid=(\d+)/) || [])[1]);
+    const said = Number((r.out.match(/LEFT_OK pid=(\d+)/) || [])[1]), aliveBeforeExit = /aliveBeforeExit=true/.test(r.out); // leave.mjs 退出前自己对孙进程做了 kill(pid,0) 存活探测
     await new Promise((ok) => setTimeout(ok, 300));
-    check(`D 清理前证据：脚本退出前孙进程已写出自己的 PID（${said}），说明它确实活着`, r.code === 0 && !!said && said === pid, `code=${r.code} said=${said} pid=${pid} ${r.out}`);
-    check("D 脚本正常退出（退出码 0）但留下后台进程 → 运行器照样清掉这个 PID，不残留", !!pid && !pidAlive(pid) && !alive(marker), `pid=${pid}`);
+    check(`D 清理前证据：脚本退出前对孙进程（PID ${said}）做了实际存活探测，结果为存活`, r.code === 0 && !!said && said === pid && aliveBeforeExit, `code=${r.code} said=${said} pid=${pid} ${r.out}`);
+    console.log(`  ↳ 正常退出用例：PID ${pid} 清理后状态 = ${pidState(pid)}`);
+    check("D 脚本正常退出（退出码 0）但留下后台进程 → 运行器照样清掉这个 PID（已终止、不再运行），不残留", !!pid && !pidAlive(pid) && !alive(marker), `pid=${pid} state=${pid ? pidState(pid) : "?"}`);
     if (pid && pidAlive(pid)) try { process.kill(pid, "SIGKILL"); } catch { /* 已退出 */ }
   }
   { // 启动失败（解释器不存在）：直接调执行器
