@@ -62,8 +62,11 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
 
   return {
     configured,
-    async sendCode(email) {
-      const r = await req("/auth/v1/otp", { method: "POST", body: { email, create_user: true } });
+    // captchaToken（可选）：人机验证令牌，只对“这一次”请求有效——不缓存、不保存、不写进日志或诊断；
+    // 非空字符串才放进 gotrue_meta_security.captcha_token，其余（不传 / 空 / 非字符串）= 旧行为，请求体和以前完全一样。
+    async sendCode(email, captchaToken) {
+      const token = typeof captchaToken === "string" ? captchaToken.trim() : "";
+      const r = await req("/auth/v1/otp", { method: "POST", body: { email, create_user: true, ...(token ? { gotrue_meta_security: { captcha_token: token } } : {}) } });
       return r.ok ? { ok: true } : r;
     },
     async verifyCode(email, code) {
