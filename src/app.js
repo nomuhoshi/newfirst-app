@@ -904,12 +904,12 @@ function a2hsPrompt() {
   const steps = h("ol", { class: "small", hidden: "", "data-a2hs-steps": "" },
     h("li", { text: "先点上面的「复制进度码」备份当前进度（添加到主屏幕不会自动搬进度）" }),
     h("li", { text: "点 Safari 的分享按钮（方框加向上箭头）→「添加到主屏幕」→「添加」" }),
-    h("li", { text: "从主屏幕图标打开碎片编程，进入“我的 → 备份学习记录 → 粘贴进度码”，粘贴后确认导入，进度就带过去了" }));
+    h("li", { text: "从主屏幕图标打开碎片编程，进入“我的 → 数据与备份 → 粘贴进度码”，粘贴后确认导入，进度就带过去了" }));
   const box = h("div", { class: "notice a2hs-prompt", role: "note", "data-a2hs": "" },
-    h("p", { text: "添加到主屏幕，打开更方便。请先复制进度码；从主屏幕图标打开后，在“我的 → 备份学习记录”粘贴恢复。安装后请核对进度，仍建议保留备份。" }),
+    h("p", { text: "添加到主屏幕，打开更方便。请先复制进度码；从主屏幕图标打开后，在“我的 → 数据与备份”粘贴恢复。安装后请核对进度，仍建议保留备份。" }),
     steps, msg,
     h("div", { class: "acct-row" },
-      button("复制进度码", async () => { const r = await copyProgressCode(); msg.textContent = r === "ok" ? "进度码已复制，请先粘贴到备忘录或发给自己保存；再按步骤添加到主屏幕。" : r === "snapshot" ? BACKUP_REFUSED : "这个浏览器不让自动复制：请到“我的 → 备份学习记录 → 复制进度码”，在那里可以手动选中复制。"; }, "btn3d", { "data-a2hs-code": "" }),
+      button("复制进度码", async () => { const r = await copyProgressCode(); msg.textContent = r === "ok" ? "进度码已复制，请先粘贴到备忘录或发给自己保存；再按步骤添加到主屏幕。" : r === "snapshot" ? BACKUP_REFUSED : "这个浏览器不让自动复制：请到“我的 → 数据与备份 → 复制进度码”，在那里可以手动选中复制。"; }, "btn3d", { "data-a2hs-code": "" }),
       button("怎么添加", () => { steps.hidden = !steps.hidden; }, "btn3d", { "data-a2hs-how": "" }),
     ),
     h("div", { class: "acct-row" },
@@ -1019,7 +1019,7 @@ function backupCard() {
     try { const snap = snapshotForBackup(); if (!snap) { say(BACKUP_REFUSED, true); return; } code = encodeCode(snap, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" }); } catch { say("生成进度码失败，请改用“导出进度文件”。", true); return; }
     try {
       await navigator.clipboard.writeText(code);
-      say("进度码已复制。到另一个标签页或主屏幕 App 的“我的 → 备份学习记录 → 粘贴进度码”里粘贴即可。");
+      say("进度码已复制。到另一个标签页或主屏幕 App 的“我的 → 数据与备份 → 粘贴进度码”里粘贴即可。");
     } catch {
       const ta = h("textarea", { class: "code-box", readonly: "", rows: "4", "aria-label": "进度码", "data-code-out": "" }); ta.value = code;
       panel.replaceChildren(h("p", { class: "small", text: "这个浏览器不让自动复制：长按下面的文字，选“全选”再“拷贝”。" }), ta);
@@ -1038,7 +1038,7 @@ function backupCard() {
   };
   return h("section", { class: "backup", "data-backup": "" },
     h("h3", { text: "备份学习记录" }),
-    h("p", { class: "small muted", text: signedIn ? "导出本机学习记录，云端状态以上方为准。已登录时不能导入（要导入请先退出登录）。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
+    h("p", { class: "small muted", text: signedIn ? "导出本机学习记录，云端状态以“账号”页为准。已登录时不能导入（要导入请先退出登录）。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
     h("div", { class: "acct-row" },
       button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
       signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
