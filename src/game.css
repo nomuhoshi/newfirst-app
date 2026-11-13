@@ -64,6 +64,8 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .ic-bs-a { stop-color: var(--ic-base1); } .ic-bs-b { stop-color: var(--ic-base2); }
 .ic-gw-a { stop-color: var(--ic-glow); stop-opacity: .95; } .ic-gw-b { stop-color: var(--ic-glow); stop-opacity: 0; }
 .ic-cp-a { stop-color: var(--ic-c1); } .ic-cp-b { stop-color: var(--ic-c2); }
+/* 顶栏里的图标比旧图标大，但版面上占的高度要和旧的一样（横屏小窗口很挤），所以上下用负外边距 */
+.stat svg.tube, .stat svg.chip { margin-block: -4px; }
 /* 真空管 */
 .tube { overflow: visible; }
 .t-shadow { fill: var(--g-shadow); }
