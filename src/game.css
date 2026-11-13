@@ -65,7 +65,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .ic-gw-a { stop-color: var(--ic-glow); stop-opacity: .95; } .ic-gw-b { stop-color: var(--ic-glow); stop-opacity: 0; }
 .ic-cp-a { stop-color: var(--ic-c1); } .ic-cp-b { stop-color: var(--ic-c2); }
 /* 顶栏里的图标比旧图标大，但版面上占的高度要和旧的一样（横屏小窗口很挤），所以上下用负外边距 */
-.stat svg.tube, .stat svg.chip { margin-block: -4px; }
+.stat svg.tube, .stat svg.xpchip { margin-block: -4px; }
 /* 真空管 */
 .tube { overflow: visible; }
 .t-shadow { fill: var(--g-shadow); }
@@ -82,7 +82,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .t-base-hi { fill: none; stroke: var(--ic-hi); stroke-opacity: .35; stroke-width: 1.2; stroke-linecap: round; }
 .t-pin { fill: none; stroke: var(--ic-pin); stroke-width: 2.2; stroke-linecap: round; }
 /* 芯片 */
-.chip { overflow: visible; }
+.xpchip { overflow: visible; }
 .c-pin { fill: none; stroke: var(--ic-pin); stroke-width: 3; stroke-linecap: round; }
 .c-side { fill: var(--ic-cside); }
 .c-body { fill: url(#ic-chip); stroke: var(--ic-cside); stroke-width: 1.2; }

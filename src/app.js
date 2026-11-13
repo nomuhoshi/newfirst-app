@@ -139,7 +139,7 @@ function tubeIcon(lit, size = 24, cls = "") {
 }
 // 芯片：经验值
 function chipIcon(size = 24, cls = "") {
-  return svgFromString(`<svg class="ico chip ${cls}" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true" focusable="false">
+  return svgFromString(`<svg class="ico xpchip ${cls}" viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true" focusable="false">
     <ellipse class="t-shadow" cx="24" cy="44" rx="14" ry="2.2"/>
     <path class="c-pin" d="M6.5 17h5M6.5 23h5M6.5 29h5M36.5 17h5M36.5 23h5M36.5 29h5"/>
     <rect class="c-side" x="11" y="13.5" width="26" height="26" rx="5.5"/>
