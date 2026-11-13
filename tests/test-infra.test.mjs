@@ -2,9 +2,12 @@
 //   A 进程内静态服务器：随机端口、能托管文件、拦路径穿越、close() 后端口真的释放、两个同时跑互不冲突；
 //   B 不再有测试用 `npx vite preview` 起服务器（它的 kill() 杀不掉里面真正的 vite，进程和端口会一直残留）；
 //   C 运行器 scripts/run-tests.mjs：全过 → 0；失败 → 立即停；超时 → 杀掉整个进程组（含孙进程）并点名“卡住”；KEEP_GOING 跑完汇总。
+//   D mobile / e2e 外层运行器（tests/webkit/run.mjs、tests/e2e/run.mjs，执行器 scripts/script-runner.mjs），用合成脚本：
+//     全过 → 0；有失败 → 非 0 且后面的脚本照跑；脚本卡住并派生孙进程 → 超时(124)、杀净、后面的脚本照跑；启动失败 / 被信号杀 / 退出码 2 → 环境失败，绝不误报通过；
+//     脚本正常退出但留下后台进程 → 也被清掉；两个运行器的脚本列表里每个文件都存在。
 // 运行：node tests/test-infra.test.mjs
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import net from "node:net";
@@ -41,11 +44,59 @@ const alive = (marker) => spawnSync("pgrep", ["-f", marker], { encoding: "utf8" 
   r = run(`node -e "process.exit(3)" && node -e "console.log('AFTER_FAIL')"`, { KEEP_GOING: "1" });
   check("C 运行器：KEEP_GOING=1 → 失败后继续跑完，最后仍然退出码 1", r.code === 1 && /AFTER_FAIL/.test(r.out), r.out);
   const marker = "HANGMARK" + process.pid;
-  r = run(`node -e "console.log('BEFORE')" && node -e "require('child_process').spawn('sleep',['1000','${marker}'],{stdio:'ignore'}); setTimeout(()=>{},1e9)" && node -e "console.log('SHOULD_NOT_RUN')"`, { TEST_STEP_TIMEOUT: "2" });
+  r = run(`node -e "console.log('BEFORE')" && node -e "require('child_process').spawn(process.execPath,['-e','setTimeout(()=>{},1e9)','${marker}'],{stdio:'ignore'}); setTimeout(()=>{},1e9)" && node -e "console.log('SHOULD_NOT_RUN')"`, { TEST_STEP_TIMEOUT: "2" });
   check("C 运行器：某条命令卡住 → 超时后几秒内结束，退出码 1，点名“卡住：…”，后面的不跑", r.code === 1 && r.secs < 25 && /超时（2 秒）/.test(r.out) && /卡住：node -e/.test(r.out) && !/SHOULD_NOT_RUN/.test(r.out) && /BEFORE/.test(r.out), `${r.secs}s ${r.out}`);
   await new Promise((ok) => setTimeout(ok, 500));
   check("C 运行器：超时会杀整个进程组，卡住的命令派生出来的孙进程也不残留", !alive(marker), "仍有进程 " + marker);
   if (alive(marker)) spawnSync("pkill", ["-f", marker]);
+}
+{ // D
+  const ROOT = fileURLToPath(new URL("..", import.meta.url));
+  const dir = mkdtempSync(join(tmpdir(), "runner-"));
+  const mk = (name, body) => { const f = join(dir, name); writeFileSync(f, body); return f; };
+  const ok1 = mk("ok1.mjs", `console.log("OK1 engine=" + process.env.MOBILE_BROWSER + " judge=" + process.env.JUDGE_BROWSERS)`), ok2 = mk("ok2.mjs", `console.log("OK2")`);
+  const bad = mk("bad.mjs", `console.log("BAD_RAN"); process.exit(3)`), env2 = mk("env2.mjs", `process.exit(2)`), sig = mk("sig.mjs", `process.kill(process.pid, "SIGKILL")`);
+  const after = mk("after.mjs", `console.log("AFTER_RAN")`);
+  const runner = (which, engine, scripts, env = {}) => { const t0 = Date.now(); const r = spawnSync("node", [which, engine], { cwd: ROOT, env: { ...process.env, TEST_RUNNER_SCRIPTS: JSON.stringify(scripts), ...env }, encoding: "utf8", timeout: 90000 }); return { code: r.status, out: (r.stdout || "") + (r.stderr || ""), secs: (Date.now() - t0) / 1000 }; };
+  const RUNNERS = [["tests/webkit/run.mjs", "webkit"], ["tests/e2e/run.mjs", "chromium"]];
+  for (const [which, eng] of RUNNERS) {
+    const tag = `${which} (${eng})`;
+    let r = runner(which, eng, [ok1, ok2]);
+    check(`D ${tag}：全部成功 → 退出码 0，逐脚本汇总 2 行通过，引擎参数照旧传给脚本`, r.code === 0 && /共 2 个脚本：通过 2，失败 0，超时 0，环境失败 0/.test(r.out) && (r.out.match(/✅ 通过/g) || []).length === 2 && new RegExp(`OK1 engine=${eng} judge=${eng}`).test(r.out), r.out);
+    r = runner(which, eng, [ok1, bad, after]);
+    check(`D ${tag}：中间一个失败 → 退出码非 0（=3），汇总点名失败脚本，前后的脚本照跑`, r.code === 3 && /BAD_RAN/.test(r.out) && /AFTER_RAN/.test(r.out) && /OK1/.test(r.out) && /❌ 失败\s+rc=3\s.*bad\.mjs/.test(r.out) && /通过 2，失败 1，超时 0，环境失败 0/.test(r.out) && new RegExp(`== ${eng}: 失败`).test(r.out), r.out);
+    r = runner(which, eng, [env2, sig, ok2]);
+    check(`D ${tag}：退出码 2 / 被信号杀掉 → 都记“环境失败”，退出码非 0，不误报通过`, r.code === 2 && (r.out.match(/⚠️ 环境失败/g) || []).length === 2 && /通过 1，失败 0，超时 0，环境失败 2/.test(r.out) && new RegExp(`== ${eng}: 环境失败`).test(r.out), r.out);
+  }
+  { // 卡住 + 派生孙进程
+    const marker = "RUNHANG" + process.pid;
+    const hang = mk("hang.mjs", `import { spawn } from "node:child_process"; console.log("HANG_START"); spawn(process.execPath, ["-e", "setTimeout(()=>{},1e9)", "${marker}"], { stdio: "ignore" }); setTimeout(() => {}, 1e9);`);
+    const r = runner("tests/webkit/run.mjs", "webkit", [ok1, hang, after], { TEST_STEP_TIMEOUT: "2" });
+    check("D 脚本卡住并派生孙进程 → 2 秒上限到点杀掉，退出码 124，汇总点名“超时”，后面的脚本照跑", r.code === 124 && r.secs < 30 && /超时（2 秒）：hang\.mjs/.test(r.out) && /⏱ 超时\s+rc=124\s.*hang\.mjs/.test(r.out) && /AFTER_RAN/.test(r.out) && /通过 2，失败 0，超时 1，环境失败 0/.test(r.out) && /== webkit: 超时/.test(r.out), `${r.secs}s ${r.out}`);
+    await new Promise((ok) => setTimeout(ok, 500));
+    check("D 超时会杀整个进程组：卡住脚本派生的孙进程不残留", !alive(marker), "仍有进程 " + marker);
+    if (alive(marker)) spawnSync("pkill", ["-f", marker]);
+  }
+  { // 正常退出但留下后台进程
+    const marker = "RUNLEFT" + process.pid;
+    const leave = mk("leave.mjs", `import { spawn } from "node:child_process"; spawn(process.execPath, ["-e", "setTimeout(()=>{},1e9)", "${marker}"], { stdio: "ignore" }).unref(); console.log("LEFT_OK")`);
+    const r = runner("tests/e2e/run.mjs", "webkit", [leave]);
+    await new Promise((ok) => setTimeout(ok, 500));
+    check("D 脚本正常退出（退出码 0）但留下后台进程 → 运行器照样清掉，不残留", r.code === 0 && /LEFT_OK/.test(r.out) && !alive(marker), `code=${r.code} alive=${alive(marker)}`);
+    if (alive(marker)) spawnSync("pkill", ["-f", marker]);
+  }
+  { // 启动失败（解释器不存在）：直接调执行器
+    const { runScript } = await import("../scripts/script-runner.mjs");
+    const row = await runScript({ file: ok2, engine: "webkit" }, { execPath: "/nonexistent/node-binary", limitMs: 5000 });
+    check("D 脚本启动失败（解释器不存在）→ 记“环境失败”，退出码 2，不是通过", row.kind === "env" && row.code === 2, JSON.stringify(row));
+  }
+  { // 脚本列表完整：两个运行器引用的测试文件都存在，且没有重复
+    for (const f of ["tests/webkit/run.mjs", "tests/e2e/run.mjs"]) {
+      const names = [...readFileSync(join(ROOT, f), "utf8").matchAll(/["'](\.{1,2}\/[\w./-]+\.test\.mjs)["']/g)].map((m) => m[1]);
+      const missing = names.filter((n) => !existsSync(join(ROOT, f, "..", n)));
+      check(`D ${f} 引用 ${names.length} 个测试脚本，全部存在、没有重复`, names.length > 0 && missing.length === 0 && new Set(names).size === names.length, missing.join(", "));
+    }
+  }
 }
 const pass = results.filter(Boolean).length;
 console.log(`\n共 ${results.length} 项，失败 ${results.length - pass} 项`);
