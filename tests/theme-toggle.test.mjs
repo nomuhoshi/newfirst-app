@@ -56,6 +56,7 @@ await page.locator('[data-theme-opt="system"]').tap();
 await page2.waitForFunction(() => document.documentElement.getAttribute("data-theme") === null, null, { timeout: 5000 }).catch(() => {});
 check("双标签：A 选回「跟随系统」→ B 也回到跟随系统", (await attr2()) === null, `B data-theme=${await attr2()}`);
 await page2.close();
+await page.close(); // 先关掉写缓存正常的标签：它会收到同源 storage 事件并把 suipian-theme 写成 dark，污染下面“缓存写不进去”的前提
 // 外观缓存（localStorage 里的 suipian-theme）写不进去（无痕 / 配额）：手动选择照样生效，之后系统外观变化也不能把它覆盖掉
 const page3 = await ctx.newPage(); page3.on("pageerror", (e) => errors.push(e.message));
 await page3.addInitScript(() => { const s = Storage.prototype.setItem, r = Storage.prototype.removeItem; Storage.prototype.setItem = function (k, v) { if (k === "suipian-theme") throw new Error("QuotaExceededError"); return s.call(this, k, v); }; Storage.prototype.removeItem = function (k) { if (k === "suipian-theme") throw new Error("denied"); return r.call(this, k); }; });
