@@ -537,6 +537,7 @@ try {
   await pi.locator("[data-continue]").tap(); await pi.getByRole("button", { name: "退出本关" }).tap(); await pi.getByRole("button", { name: "退出", exact: true }).tap();
   await pi.getByRole("button", { name: "我的" }).tap();
   const o2 = await pi.evaluate(() => window.__ac.osc);
+  await pi.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
   await pi.locator('[data-selftest="sound"]').tap(); await pi.waitForTimeout(150);
   const diagTxt = await pi.locator('[aria-label="诊断信息"]').innerText();
   check("试听按钮：点击后播放答对音（两个音），诊断里显示 AudioContext 状态和播放次数", (await pi.evaluate(() => window.__ac.osc)) - o2 >= 2 && /AudioContext：running/.test(diagTxt) && /已播放 [1-9]/.test(diagTxt) && /已播放答对音/.test(diagTxt), diagTxt.replace(/\n/g, " | "));
@@ -549,6 +550,7 @@ try {
   check("音效开关关闭后：点选不再出声", (await pi.evaluate(() => window.__ac.osc)) === o3);
   await pi.getByRole("button", { name: "退出本关" }).tap(); await pi.getByRole("button", { name: "退出", exact: true }).tap();
   await pi.getByRole("button", { name: "我的" }).tap();
+  await pi.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
   await pi.locator('[data-selftest="sound"]').tap(); await pi.waitForTimeout(150);
   check("音效开关关闭后：试听按钮仍然能播放（用来区分“关了”和“坏了”）", (await pi.evaluate(() => window.__ac.osc)) - o3 >= 2);
   check("音频：整个过程没有脚本错误", ierrs.length === 0, ierrs.join("|"));
@@ -568,6 +570,7 @@ try {
   await pk.goto(BASE); await pk.waitForSelector(".statsbar, .onboard");
   await pk.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   await pk.getByRole("button", { name: "我的" }).tap();
+  await pk.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
   await pk.locator('[data-selftest="haptic"]').tap();
   check("试振动按钮：有接口时请求一次 12ms，并显示结果", JSON.stringify(await pk.evaluate(() => window.__vib)) === "[12]" && /已请求 12ms 振动/.test(await pk.locator('[aria-label="诊断信息"]').innerText()));
   check("振动开关：始终可以点（不再因为接口检测而被禁用）", await pk.locator('[data-pref="haptics"]').isEnabled());
@@ -594,6 +597,7 @@ try {
     await pl.goto(BASE); await pl.waitForSelector(".statsbar, .onboard");
     await pl.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
     await pl.getByRole("button", { name: "我的" }).tap();
+    await pl.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
     check("音频测试：“我的”页有 A / B / C 三个测试按钮和结果区", (await pl.locator("[data-audiotest]").count()) === 3 && (await pl.locator('[aria-label="音频测试结果"]').count()) === 1);
     const sync = await pl.evaluate(() => {
       const b = document.querySelector('[data-audiotest="webaudio"]'); const o0 = window.__ac.osc; const c0 = window.__ac.created;
@@ -638,6 +642,7 @@ try {
     // 回到“我的”：正式音效试听、诊断
     await pf.locator("[data-continue]").tap(); await pf.getByRole("button", { name: "退出本关" }).tap(); await pf.getByRole("button", { name: "退出", exact: true }).tap();
     await pf.getByRole("button", { name: "我的" }).tap();
+    await pf.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
     check("我的：有 6 个正式音效试听按钮", (await pf.locator("[data-sound]").count()) === 6);
     const f2 = await pf.evaluate(() => window.__ac.osc);
     await pf.locator('[data-sound="correct"]').tap(); await pf.waitForTimeout(100);
