@@ -114,7 +114,7 @@ const savedMerged = merged;
   await p1.locator(".finish .btn3d.primary").click().catch(() => {}); // 回到地图（按钮文字不同则忽略）
   const p2 = await load(ctx); const before = await merged(p2);
   check("清除前：第二个页面看到 U1L1 已完成", before.done.U1L1 === true && before.xp > 0, JSON.stringify(before));
-  await p2.getByRole("button", { name: "我的" }).click(); await p2.getByRole("button", { name: "清除学习记录" }).click(); await p2.getByRole("button", { name: "确定清除" }).click();
+  await p2.getByRole("button", { name: "我的" }).click(); await p2.locator('[data-me-menu="data"]').click(); await p2.getByRole("button", { name: "清除学习记录" }).click(); await p2.getByRole("button", { name: "确定清除" }).click();
   await p2.waitForFunction(() => Object.keys(window.__app.getState().done).length === 0);
   const afterClear = await merged(p2); check("真实按钮清除后：本页进度为空", afterClear.xp === 0 && Object.keys(afterClear.done).length === 0, JSON.stringify(afterClear));
   // 旧页面（p1 内存里还是清除前的进度）：保存 / 回前台 / 再合并，都不复活

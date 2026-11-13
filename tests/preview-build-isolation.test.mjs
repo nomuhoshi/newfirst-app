@@ -139,7 +139,7 @@ try {
     await page.goto(cloudOffStatic.origin + "/", { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => window.__app && window.__app.sync);
     await page.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
-    await page.getByRole("button", { name: "我的" }).click();
+    await page.getByRole("button", { name: "我的" }).click(); await page.locator('[data-me-menu="account"]').click();
     await page.waitForSelector("[data-account]");
     const me = await page.locator("[data-account]").innerText();
     check("云端关闭产物：我的页显示“云端暂未开通”，没有登录按钮", /云端暂未开通/.test(me) && (await page.locator("[data-open-login]").count()) === 0, me);

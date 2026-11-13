@@ -47,8 +47,9 @@ function getCtx() {
     master = ctx.createGain();
     master.gain.value = 0.9;
     master.connect(ctx.destination);
-    // 让声音跟随 iPhone 静音键，并和其他音乐混合播放（Safari 16.4+）
-    try { if (navigator.audioSession) navigator.audioSession.type = "ambient"; } catch { /* 忽略 */ }
+    // 老大决定（2026-11-13）：不跟随 iPhone 静音键——很多人不知道自己开了静音，会以为没有声音。
+    // "playback"：静音键开着也会响（Safari 16.4+）；想关声音的人用「我的 → 设置 → 音效」。
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch { /* 忽略 */ }
   } catch (e) { ctx = null; stats.lastError = errText("创建音频失败", e); }
   return ctx;
 }

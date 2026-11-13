@@ -71,8 +71,9 @@ async function device(name, { guest = null, viewport = { width: 390, height: 844
   await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   return { name, ctx, page, errors, shot: (n) => shot(page, `acct-${name}-${n}`) };
 }
+const toData = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="data"]').tap(); await d.page.waitForSelector("[data-backup]"); };
 const toPathTab = async (d) => { await d.page.getByRole("button", { name: "学习" }).tap().catch(async () => { await d.page.evaluate(() => window.__app.renderPath()); }); await d.page.waitForSelector(".pathview"); };
-const toMe = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.waitForSelector("[data-account]"); };
+const toMe = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="account"]').tap(); await d.page.waitForSelector("[data-account]"); };
 async function loginUi(d, email, { choice = null } = {}) {
   await toMe(d);
   await d.page.locator("[data-open-login]").tap();
@@ -128,14 +129,14 @@ try {
   check("还没有被替换时：地图上没有提示", (await A.page.locator(".notice", { hasText: "被替换" }).count()) === 0);
 
   // 备份区文案：只有真的“已同步”才写“进度已同步到云端”；登录了但还没上传时不能提前宣称已上云；已登录不显示“导入”
-  await toMe(A);
+  await toData(A);
   const backupSynced = await A.page.locator("[data-backup] p.small").first().innerText();
-  check("已同步时：备份区只写“云端状态以上方为准”，不自己宣称已上云，也没有“导入”按钮", /云端状态以上方为准/.test(backupSynced) && !/已同步到云端|已在云端/.test(backupSynced) && (await A.page.locator("[data-import]").count()) === 0 && (await A.page.locator("[data-export]").count()) === 1, backupSynced);
+  check("已同步时：备份区只写“云端状态以“账号”页为准”，不自己宣称已上云，也没有“导入”按钮", /云端状态以“账号”页为准/.test(backupSynced) && !/已同步到云端|已在云端/.test(backupSynced) && (await A.page.locator("[data-import]").count()) === 0 && (await A.page.locator("[data-export]").count()) === 1, backupSynced);
   await A.ctx.setOffline(true); A.ctx.__off = true;
   await earn(A, "U1L4", 30);
-  await toPathTab(A); await toMe(A);
+  await toPathTab(A); await toData(A);
   const backupPending = await A.page.locator("[data-backup] p.small").first().innerText();
-  check("登录了但还有进度没上传（离线）：备份区文案不变，仍不宣称已上云（同步状态只看上方）", /云端状态以上方为准/.test(backupPending) && !/已同步到云端|已在云端/.test(backupPending), backupPending);
+  check("登录了但还有进度没上传（离线）：备份区文案不变，仍不宣称已上云（同步状态只看上方）", /云端状态以“账号”页为准/.test(backupPending) && !/已同步到云端|已在云端/.test(backupPending), backupPending);
   A.ctx.__off = false; await A.ctx.setOffline(false);
   await syncNow(A);
   await toPathTab(A);
@@ -198,6 +199,7 @@ try {
   check("“我的”页离开再进入：不再提示", (await A.page.locator("[data-replaced-notice]").count()) === 0);
 
   // 已登录时不能导入：隐藏按钮之外，读取文件和“确认导入”时都要拦住
+  await toPathTab(A); await toData(A);
   const [dl] = await Promise.all([A.page.waitForEvent("download"), A.page.locator("[data-export]").tap()]);
   const saved = join(mkdtempSync(join(tmpdir(), "sp-")), dl.suggestedFilename()); await dl.saveAs(saved);
   await A.page.locator("[data-import-file]").setInputFiles(saved);
@@ -205,7 +207,7 @@ try {
   check("已登录：选了文件也不会出现导入确认框，提示要先退出登录", (await A.page.locator("[data-import-confirm]").count()) === 0 && /先退出登录/.test(await A.page.locator("[data-backup-msg]").innerText()));
   // 已经打开的确认框：模拟另一个标签页刚登录（确认框是登录前打开的），点“确认导入”也要被拦住，进度不变
   await A.page.evaluate(() => { const s = window.__app.sync; window.__realAccount = s.account; s.account = () => null; });
-  await toPathTab(A); await toMe(A);
+  await toPathTab(A); await toData(A);
   await A.page.locator("[data-import-file]").setInputFiles(saved);
   await A.page.waitForSelector("[data-import-confirm]");
   await A.page.evaluate(() => { window.__app.sync.account = window.__realAccount; });

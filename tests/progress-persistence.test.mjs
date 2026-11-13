@@ -138,7 +138,7 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   check("C1 旧标签页回到前台后：本机记录仍是通关后的进度（没有被旧状态覆盖）", same(want, afterVisible), JSON.stringify({ want: pick(want), got: pick(afterVisible) }));
   check("C2 旧标签页回到前台后：页面显示的也是新进度（U1L1 已完成）", (await tab1.locator('[data-lesson="U1L1"].done').count()) === 1);
   // 旧标签页继续操作（切换音效开关也会整份保存）
-  await tab1.getByRole("button", { name: "我的" }).click(); await tab1.waitForTimeout(200);
+  await tab1.getByRole("button", { name: "我的" }).click(); await tab1.locator('[data-me-menu="settings"]').click(); await tab1.waitForTimeout(200);
   await tab1.locator('[data-pref="sound"]').scrollIntoViewIfNeeded(); await tab1.locator('[data-pref="sound"]').click(); await tab1.waitForTimeout(200);
   const afterPref = await saved(tab1);
   check("C3 旧标签页里改一个设置后：通关进度仍在", !!afterPref?.done?.U1L1 && afterPref.xp >= want.xp, JSON.stringify(pick(afterPref)));
@@ -181,7 +181,7 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   const mk = (day, xp) => encodeCode({ version: DATA_VERSION, xp, lessonsCompleted: 1, streak: 1, lastDay: day, done: { U1L1: true }, doneOn: { U1L1: day } });
   await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview"); // 结算页没有底部导航，回到地图
   const paste = async (code) => {
-    await page.getByRole("button", { name: "我的", exact: true }).click(); await page.waitForSelector("[data-backup]");
+    await page.getByRole("button", { name: "我的", exact: true }).click(); await page.locator('[data-me-menu="data"]').click(); await page.waitForSelector("[data-backup]");
     await page.locator("[data-code-paste]").click(); await page.locator("[data-code-in]").fill(code); await page.locator("[data-code-read]").click();
     await page.waitForSelector("[data-import-confirm]"); await page.getByRole("button", { name: "确认导入" }).click(); await page.waitForTimeout(300);
     return page.evaluate(() => { const x = window.__app.getState(); return { xp: x.xp, runs: x.lessonsCompleted, d: x.doneOn?.U1L1, hearts: x.hearts, prefs: x.prefs, done: Object.keys(x.done) }; });
@@ -255,7 +255,7 @@ const same = (a, b) => JSON.stringify(pick(a)) === JSON.stringify(pick(b));
   const dir = newDir(); const ctx = await open(dir); let page = await load(ctx); await passOnboarding(page);
   await page.reload(); await page.waitForFunction(() => window.__app?.getState); await page.waitForSelector(".pathview");
   const code = encodeCode({ version: DATA_VERSION, xp: 190, lessonsCompleted: 3, streak: 2, lastDay: "2026-11-10", done: { U1L1: true, U1L2: true, U1L3: true }, doneOn: {} });
-  await page.getByRole("button", { name: "我的", exact: true }).click(); await page.waitForSelector("[data-backup]");
+  await page.getByRole("button", { name: "我的", exact: true }).click(); await page.locator('[data-me-menu="data"]').click(); await page.waitForSelector("[data-backup]");
   await page.locator("[data-code-paste]").click(); await page.locator("[data-code-in]").fill(code); await page.locator("[data-code-read]").click();
   await page.waitForSelector("[data-import-confirm]");
   // 模拟“另一页在这一刻清除”：下一次写账本之前，先把代数换成新的（清除的核心动作），再让这次写入继续

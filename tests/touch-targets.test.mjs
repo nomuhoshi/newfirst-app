@@ -91,10 +91,16 @@ for (const [w, h] of [[390, 450], [390, 844]]) {
 // “我的”页：开关热区、音效试听、清除学习记录
 {
   const d = await open(390, 844, false, afterL1);
+  const smallOf = (H) => [...document.querySelectorAll("button, a[href]")].filter((e) => e.offsetParent !== null && !e.disabled && !e.classList.contains("switch")).map((e) => ({ c: e.className, t: (e.textContent || "").trim().slice(0, 12), h: e.getBoundingClientRect().height })).filter((x) => x.h < H - 0.5);
   await d.page.getByRole("button", { name: "我的" }).tap();
-  await d.page.waitForSelector(".switch");
-  const small = await d.page.evaluate((H) => [...document.querySelectorAll("button, a[href]")].filter((e) => e.offsetParent !== null && !e.disabled && !e.classList.contains("switch")).map((e) => ({ c: e.className, t: (e.textContent || "").trim().slice(0, 12), h: e.getBoundingClientRect().height })).filter((x) => x.h < H - 0.5), H);
-  check("“我的”页：按钮 / 链接（开关除外）高度都 ≥ 44", small.length === 0, JSON.stringify(small));
+  const allSmall = [];
+  allSmall.push(...(await d.page.evaluate(smallOf, H)).map((x) => ({ page: "入口", ...x })));
+  for (const sec of ["account", "settings", "data", "help"]) {
+    await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator(`[data-me-menu="${sec}"]`).tap(); await d.page.waitForTimeout(100);
+    allSmall.push(...(await d.page.evaluate(smallOf, H)).map((x) => ({ page: sec, ...x })));
+  }
+  check("“我的”页：入口页和四个子页的按钮 / 链接（开关除外）高度都 ≥ 44", allSmall.length === 0, JSON.stringify(allSmall));
+  await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="settings"]').tap(); await d.page.waitForSelector(".switch");
   // 开关：外观 52×32，但热区（含伪元素）≥ 44 高：在开关外 6px 处点中的元素应当是开关本身
   const hit = await d.page.evaluate(() => [...document.querySelectorAll(".switch")].map((sw) => { sw.scrollIntoView({ block: "center" }); const r = sw.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top - 5); return !!e && (e === sw || sw.contains(e)); }));
   check("“我的”页：开关外观不变，但上下各 5px 内也点得中（热区 ≥ 44）", hit.length >= 1 && hit.every(Boolean), JSON.stringify(hit));

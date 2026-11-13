@@ -13,7 +13,7 @@ export function statusText(s) {
   if (st === "offline") return "现在离线：进度已存在这台设备，联网后自动同步";
   if (st === "need-login") return "登录已过期，需要重新登录才能同步（进度还在这台设备上）";
   // Y9a：多设备冲突目前没有“选一份留下”的界面（Y9b 需要新的业务逻辑）。至少说清：同步已暂停、本机进度还在、下一步做什么。
-  if (st === "conflict") return "这个账号在别处被覆盖过，同步已暂停。你在这台设备上的进度还在，可以继续学习。请先在下面的“备份学习记录”里导出进度文件，再联系我们处理。";
+  if (st === "conflict") return "这个账号在别处被覆盖过，同步已暂停。你在这台设备上的进度还在，可以继续学习。请先到“我的 → 数据与备份”，在“备份学习记录”里导出进度文件，再联系我们处理。";
   if (st === "pending-local-cleanup") return "账号已在云端删除，但这台设备还没清理完。请不要继续用这个登录。";
   if (st === "error") { const e = syncErrorText(s.message, s.detail); return e.text + (e.diag ? e.diag : ""); }
   return "已登录，正在准备同步…";

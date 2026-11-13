@@ -570,7 +570,7 @@ function statsBar() {
 function tabBar(active) {
   return h("nav", { class: "tabbar" },
     button(h("span", {}, icon("home", { size: 24 }), h("small", { text: "学习" })), renderPath, "tab" + (active === "path" ? " on" : ""), { "aria-label": "学习" }),
-    button(h("span", {}, icon("user", { size: 24 }), h("small", { text: "我的" })), renderMe, "tab" + (active === "me" ? " on" : ""), { "aria-label": "我的" }),
+    button(h("span", {}, icon("user", { size: 24 }), h("small", { text: "我的" })), () => { meSection = null; renderMe(); }, "tab" + (active === "me" ? " on" : ""), { "aria-label": "我的" }),
   );
 }
 
@@ -841,7 +841,8 @@ function hapticLab() {
 function keyLab() {
   const status = h("p", { class: "muted small keylab-status", role: "status" });
   const cur = () => KEY_SOUNDS.some((k) => k.id === state.prefs.soundStyle) ? state.prefs.soundStyle : DEFAULT_STYLE;
-  const showSel = () => { const k = KEY_SOUNDS.find((x) => x.id === cur()); status.textContent = `当前按键音效：${k.id} ${k.name}${k.id === DEFAULT_STYLE ? "（默认）" : ""}`; };
+  const val = h("span", { class: "fold-val" });
+  const showSel = () => { const k = KEY_SOUNDS.find((x) => x.id === cur()); status.textContent = `当前按键音效：${k.id} ${k.name}${k.id === DEFAULT_STYLE ? "（默认）" : ""}`; val.textContent = `${k.id} ${k.name}`; };
   const btns = KEY_SOUNDS.map((k) => {
     const on0 = cur() === k.id;
     const b = h("button", { type: "button", class: "keybtn" + (on0 ? " sel" : ""), "data-keysound": k.id, "aria-pressed": String(on0) },
@@ -857,8 +858,8 @@ function keyLab() {
     return b;
   });
   showSel();
-  return h("div", { class: "keylab" },
-    h("h3", { text: "按键音效" }),
+  return h("details", { class: "keylab me-fold", "data-keylab": "" },
+    h("summary", {}, h("span", { text: "按键音效" }), val),
     h("p", { class: "muted small", text: "十个原创的矮轴键盘风格，默认 J。点一下试听并选用，答题时的点选、放入、撤销、答对、答错、过关都用同一个风格。" }),
     h("div", { class: "keygrid" }, btns),
     status,
@@ -903,12 +904,12 @@ function a2hsPrompt() {
   const steps = h("ol", { class: "small", hidden: "", "data-a2hs-steps": "" },
     h("li", { text: "先点上面的「复制进度码」备份当前进度（添加到主屏幕不会自动搬进度）" }),
     h("li", { text: "点 Safari 的分享按钮（方框加向上箭头）→「添加到主屏幕」→「添加」" }),
-    h("li", { text: "从主屏幕图标打开碎片编程，进入“我的 → 备份学习记录 → 粘贴进度码”，粘贴后确认导入，进度就带过去了" }));
+    h("li", { text: "从主屏幕图标打开碎片编程，进入“我的 → 数据与备份 → 粘贴进度码”，粘贴后确认导入，进度就带过去了" }));
   const box = h("div", { class: "notice a2hs-prompt", role: "note", "data-a2hs": "" },
-    h("p", { text: "添加到主屏幕，打开更方便。请先复制进度码；从主屏幕图标打开后，在“我的 → 备份学习记录”粘贴恢复。安装后请核对进度，仍建议保留备份。" }),
+    h("p", { text: "添加到主屏幕，打开更方便。请先复制进度码；从主屏幕图标打开后，在“我的 → 数据与备份”粘贴恢复。安装后请核对进度，仍建议保留备份。" }),
     steps, msg,
     h("div", { class: "acct-row" },
-      button("复制进度码", async () => { const r = await copyProgressCode(); msg.textContent = r === "ok" ? "进度码已复制，请先粘贴到备忘录或发给自己保存；再按步骤添加到主屏幕。" : r === "snapshot" ? BACKUP_REFUSED : "这个浏览器不让自动复制：请到“我的 → 备份学习记录 → 复制进度码”，在那里可以手动选中复制。"; }, "btn3d", { "data-a2hs-code": "" }),
+      button("复制进度码", async () => { const r = await copyProgressCode(); msg.textContent = r === "ok" ? "进度码已复制，请先粘贴到备忘录或发给自己保存；再按步骤添加到主屏幕。" : r === "snapshot" ? BACKUP_REFUSED : "这个浏览器不让自动复制：请到“我的 → 数据与备份 → 复制进度码”，在那里可以手动选中复制。"; }, "btn3d", { "data-a2hs-code": "" }),
       button("怎么添加", () => { steps.hidden = !steps.hidden; }, "btn3d", { "data-a2hs-how": "" }),
     ),
     h("div", { class: "acct-row" },
@@ -1018,7 +1019,7 @@ function backupCard() {
     try { const snap = snapshotForBackup(); if (!snap) { say(BACKUP_REFUSED, true); return; } code = encodeCode(snap, { build: typeof __BUILD__ !== "undefined" ? __BUILD__ : "" }); } catch { say("生成进度码失败，请改用“导出进度文件”。", true); return; }
     try {
       await navigator.clipboard.writeText(code);
-      say("进度码已复制。到另一个标签页或主屏幕 App 的“我的 → 备份学习记录 → 粘贴进度码”里粘贴即可。");
+      say("进度码已复制。到另一个标签页或主屏幕 App 的“我的 → 数据与备份 → 粘贴进度码”里粘贴即可。");
     } catch {
       const ta = h("textarea", { class: "code-box", readonly: "", rows: "4", "aria-label": "进度码", "data-code-out": "" }); ta.value = code;
       panel.replaceChildren(h("p", { class: "small", text: "这个浏览器不让自动复制：长按下面的文字，选“全选”再“拷贝”。" }), ta);
@@ -1037,7 +1038,7 @@ function backupCard() {
   };
   return h("section", { class: "backup", "data-backup": "" },
     h("h3", { text: "备份学习记录" }),
-    h("p", { class: "small muted", text: signedIn ? "导出本机学习记录，云端状态以上方为准。已登录时不能导入（要导入请先退出登录）。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
+    h("p", { class: "small muted", text: signedIn ? "导出本机学习记录，云端状态以“账号”页为准。已登录时不能导入（要导入请先退出登录）。" : "记录只在这台设备上。导出一份文件自己留着，换手机或清了浏览器数据后可以导回来。" }),
     h("div", { class: "acct-row" },
       button("导出进度文件", doExport, "btn3d", { "data-export": "" }),
       signedIn ? null : button("导入进度文件", () => file.click(), "btn3d", { "data-import": "" }),
@@ -1050,27 +1051,35 @@ function backupCard() {
     file, panel, msg);
 }
 
+// ---------- 我的 ----------
+// 「我的」页只有四个入口：账号、设置、数据与备份、帮助；点进去才看到各自的内容。点底部的「我的」回到入口页。
+let meSection = null;
+const ME_SECTIONS = [
+  { id: "account", label: "账号" },
+  { id: "settings", label: "设置" },
+  { id: "data", label: "数据与备份" },
+  { id: "help", label: "帮助" },
+];
+function openMeSection(id) { meSection = id; renderMe(); }
 function renderMe() {
   currentView = "me";
   currentRun = null;
+  if (meSection && !ME_SECTIONS.some((s) => s.id === meSection)) meSection = null;
   const replacedMsg = replacedFor("me");
-  let confirmBox = null;
-  const clearBtn = button("清除学习记录", () => {
-    if (confirmBox) return;
-    confirmBox = h("div", { class: "confirm", role: "alertdialog" },
-      h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
-      button("确定清除", () => { if (clearProgress()) { renderMe(); showToast("学习记录已清除。"); } }, "btn danger"),
-      button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
-    );
-    clearBtn.after(confirmBox);
-  }, "link small");
-  const wait = regenHearts(state);
-  const doneCount = allLessons().filter((l) => state.done[l.id]).length;
-  const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? icon(ic, { size: 20 }) : null, value), h("span", { text: label }));
-  appEl.replaceChildren(
-    statsBar(),
-    h("main", { class: "view me" }, updateNotice(),
-      replacedMsg ? h("p", { class: "notice", role: "status", "data-replaced-notice": "", text: replacedMsg }) : null,
+  const top = [updateNotice(), replacedMsg ? h("p", { class: "notice", role: "status", "data-replaced-notice": "", text: replacedMsg }) : null];
+  const page = (...kids) => appEl.replaceChildren(statsBar(), h("main", { class: "view me" }, ...top, ...kids), tabBar("me"));
+  if (!meSection) {
+    const wait = regenHearts(state);
+    const doneCount = allLessons().filter((l) => state.done[l.id]).length;
+    const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? icon(ic, { size: 20 }) : null, value), h("span", { text: label }));
+    const themeLabel = { light: "浅色", dark: "深色" }[state.prefs.theme] || "跟随系统";
+    const subs = {
+      account: sync?.account() ? "已登录，进度会同步到云端" : "登录后，换手机或 iPad 也能接着学",
+      settings: `外观：${themeLabel} · 音效${state.prefs.sound ? "开" : "关"}`,
+      data: "导出、导入学习记录，清除记录",
+      help: "规则、添加到主屏幕、隐私说明",
+    };
+    return page(
       h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: sync?.account() ? "记录已关联账号，会同步到云端" : "没登录时，记录只保存在这台设备上" }))),
       h("div", { class: "me-grid" },
         statCard("flame", String(currentStreak(state)), "连续天数"),
@@ -1078,37 +1087,52 @@ function renderMe() {
         statCard(null, `${doneCount}/${allLessons().length}`, "已完成关卡"),
         statCard("heart", `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
       ),
-      accountUi?.accountCard(),
-      previewInfo?.card(),
-      isIOS && !standalone ? h("section", { class: "notice", role: "note", "data-safari-tip": "" },
-        h("b", { text: "你正在 Safari 里学习" }),
-        h("p", { class: "small", text: "Safari 可能清理长期不打开的网站数据，无痕浏览里关掉标签就清空。把本页「添加到主屏幕」后记录更稳（主屏幕 App 的记录和 Safari 分开保存）。也建议隔一阵用下面的“导出进度文件”备份一次。" })) : null,
-      backupCard(),
-      h("h3", { text: "外观" }),
-      themeRow(),
-      h("h3", { text: "声音与振动" }),
-      toggleRow("音效", "点选、答对、答错、过关的短提示音；跟随手机静音键", "sound"),
+      h("nav", { class: "me-menu", "aria-label": "我的" },
+        ...ME_SECTIONS.map((s) => button(h("span", { class: "menu-main" }, h("b", { text: s.label }), h("small", { text: subs[s.id] })), () => openMeSection(s.id), "menu-row", { "data-me-menu": s.id }))),
+    );
+  }
+  const label = ME_SECTIONS.find((s) => s.id === meSection).label;
+  const head = h("div", { class: "me-subhead" }, button("‹ 返回", () => { meSection = null; renderMe(); }, "link", { "data-me-back": "" }), h("h1", { text: label }));
+  if (meSection === "account") return page(head, accountUi?.accountCard(), previewInfo?.card());
+  if (meSection === "settings") return page(head,
+    themeRow(),
+      toggleRow("音效", "点选、答对、答错、过关的短提示音；手机静音键开着也会响，不想听就关掉这里", "sound"),
       feel.hapticsSupported()
-        ? toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，下面可以自测", "haptics")
+        ? toggleRow("振动", "点“检查”和结算页“继续”时请求一次短振；有没有振动取决于你的手机和浏览器，可以到最底下「排查问题」里自测", "haptics")
         : h("div", { class: "toggle-row no-haptics", "data-no-haptics": "" }, h("div", {}, h("b", { text: "振动" }), h("small", { text: "此设备暂不支持网页触感反馈。" }))),
-      keyLab(),
-      selfTest(),
-      audioLab(),
-      feel.hapticsSupported() || /[?&]haptic-lab\b/.test(location.search) ? hapticLab() : null, // 没有振动接口的设备不显示无效的振动测试（开发者可加 ?haptic-lab 打开）
-      h("h3", { text: "规则" }),
+    keyLab(),
+  );
+  if (meSection === "data") {
+    let confirmBox = null;
+    const clearBtn = button("清除学习记录", () => {
+      if (confirmBox) return;
+      confirmBox = h("div", { class: "confirm", role: "alertdialog" },
+        h("p", { text: "确定要清除这台设备上的全部学习记录吗？XP、连续天数和关卡进度都会清空。" }),
+        button("确定清除", () => { if (clearProgress()) { renderMe(); showToast("学习记录已清除。"); } }, "btn danger"),
+        button("取消", () => { confirmBox.remove(); confirmBox = null; }, "btn"),
+      );
+      clearBtn.after(confirmBox);
+    }, "link small");
+    return page(head, backupCard(), sync?.account() ? null : clearBtn);
+  }
+  return page(head,
+      h("h4", { class: "me-sub", text: "规则" }),
       h("ul", { class: "rules" },
         h("li", { text: `答对一题 +${XP_CORRECT} XP，完成一关再 +${XP_FINISH} XP；复习每题 +${XP_REVIEW} XP。` }),
         h("li", { text: "答错扣 1 颗红心，这道题会放到本关最后再做一次。" }),
         h("li", { text: "红心每 30 分钟恢复 1 颗；复习关不扣红心，完成后恢复 1 颗。" }),
         h("li", { text: "每天完成至少一关，连续天数 +1；断一天就从头算。" }),
       ),
-      h("h3", { text: "添加到主屏幕" }),
+      h("h4", { class: "me-sub", text: "添加到主屏幕" }),
       h("p", { text: "iPhone：用 Safari 打开 → 分享按钮 → 「添加到主屏幕」。从主屏幕打开是全屏的，记录也和 Safari 分开保存。" }),
-      sync?.account() ? null : clearBtn,
+      h("details", { class: "me-tools", "data-me-tools": "" },
+        h("summary", { text: "排查问题（声音或振动异常时再打开）" }),
+      selfTest(),
+      audioLab(),
+      feel.hapticsSupported() || /[?&]haptic-lab\b/.test(location.search) ? hapticLab() : null, // 没有振动接口的设备不显示无效的振动测试（开发者可加 ?haptic-lab 打开）
+      ),
       h("p", { class: "me-foot muted small", "data-app-version": "", text: `应用版本：${appVersionLabel()}` }),
       h("p", { class: "me-foot" }, h("a", { href: "./privacy.html", target: "_blank", rel: "noopener", "data-privacy-link": "", text: "隐私说明" })),
-    ),
-    tabBar("me"),
   );
 }
 

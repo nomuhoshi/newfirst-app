@@ -49,7 +49,7 @@ try {
     check("满 14 天：地图页出现导出提醒，有“导出进度”和“稍后”", (await count(page)) === 1 && (await page.locator("[data-export-now]").count()) === 1 && (await page.locator("[data-export-later]").count()) === 1);
     check("提醒不承诺永久不丢", !/永久|一定不会丢|不会丢失/.test(await page.locator("[data-export-reminder]").innerText()));
     check("提醒是页面里的一条提示：没有弹窗遮罩", (await page.locator(".overlay").count()) === 0);
-    await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.waitForSelector("[data-backup]");
+    await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.locator('[data-me-menu="data"]').tap(); await page.waitForSelector("[data-backup]");
     check("“我的”页不出现提醒", (await count(page)) === 0);
     await page.getByRole("button", { name: "学习", exact: true }).tap(); await page.waitForSelector(".statsbar");
     check("回到地图页又出现", (await count(page)) === 1);
@@ -110,7 +110,7 @@ try {
   }
   { // “我的”页的确认：写入失败保留确认区
     const { ctx, page } = await open(15);
-    await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.waitForSelector("[data-backup]");
+    await page.getByRole("button", { name: "我的", exact: true }).tap(); await page.locator('[data-me-menu="data"]').tap(); await page.waitForSelector("[data-backup]");
     await Promise.all([page.waitForEvent("download"), page.locator("[data-export]").tap()]);
     await page.waitForSelector("[data-export-saved-me]");
     await page.evaluate(() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (String(k) === "suipian.meta.confirmedExport") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });

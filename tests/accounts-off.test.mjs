@@ -58,7 +58,7 @@ const raw = (page) => page.evaluate((keys) => Object.fromEntries(keys.map((k) =>
   check("A1 开场介绍每一屏都没有“登录 / 注册 / 验证码”字样", onboardText.every((t) => !LOGIN_TEXT.test(t)), onboardText.find((t) => LOGIN_TEXT.test(t))?.slice(0, 120));
   await page.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; window.__app.persist(); }); await page.reload(); await page.waitForSelector(".pathview");
   check("A2 地图页：没有登录入口", (await page.locator("[data-login], [data-open-login]").count()) === 0 && !/登录 \/ 注册/.test(await page.locator(".pathview").innerText()));
-  await page.getByRole("button", { name: "我的" }).click(); await page.waitForTimeout(300);
+  await page.getByRole("button", { name: "我的" }).click(); await page.locator('[data-me-menu="account"]').click(); await page.waitForTimeout(300);
   const me = await page.locator("#app").innerText();
   check("A3 我的页：显示“云端暂未开通”，没有登录 / 注册按钮", /云端暂未开通/.test(me) && (await page.locator("[data-open-login], [data-login]").count()) === 0, me.slice(0, 200));
   check("A4 页面里找不到验证码输入框和“发送验证码”按钮", (await page.locator('input[type="email"], [data-send], [data-verify]').count()) === 0);

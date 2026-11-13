@@ -74,7 +74,7 @@ async function device({ xp = 50, otp, verify, progress, getProgress, online = tr
   await page.waitForFunction(() => window.__app && window.__app.getState && window.__app.sync);
   await page.evaluate(() => { const st = window.__app.getState(); st.onboarded = true; window.__app.persist(); window.__app.renderPath(); });
   if (nav === "login") {
-    await page.getByRole("button", { name: "我的" }).tap();
+    await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="account"]').tap();
     await page.waitForSelector("[data-account]");
     await page.locator("[data-open-login]").tap();
     await page.locator("[data-email]").fill("t@example.com");
@@ -307,7 +307,7 @@ async function patchedAccount(d, { status, xp }) {
     a.sync.status = () => ({ status: st, message: "CANARY_RAW_SERVER_TEXT", detail: null });
     a.sync.logout = async () => ({ ok: true });
   }, [status, xp]);
-  await d.page.getByRole("button", { name: "我的" }).tap();
+  await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="account"]').tap();
   await d.page.waitForSelector("[data-account] [data-logout]");
 }
 await scenario("退出登录：提示里说清账号的 XP 在云端", { nav: "none" }, async (d) => {
@@ -327,11 +327,14 @@ await scenario("多设备冲突不再是死路", { nav: "none" }, async (d) => {
   await patchedAccount(d, { status: "conflict", xp: 80 });
   const st = await T(d.page, "[data-sync-status]");
   check("Y9a：说明同步已暂停、本机进度还在、去哪里导出", /同步已暂停/.test(st) && /进度还在/.test(st) && /导出进度文件/.test(st) && !/需要选择保留哪一份/.test(st) && !st.includes(CAN), st);
-  check("Y9a：「立即同步」禁用（避免反复撞冲突），「导出进度文件」可点", (await d.page.locator("[data-sync-now]").isDisabled()) && (await d.page.locator("[data-export]").isVisible()) && !(await d.page.locator("[data-export]").isDisabled()));
+  check("Y9a：「立即同步」禁用（避免反复撞冲突），「导出进度文件」可点", (await d.page.locator("[data-sync-now]").isDisabled()));
+  await d.page.locator("[data-me-back]").tap(); await d.page.locator('[data-me-menu="data"]').tap();
+  check("Y9a：「导出进度文件」可点", (await d.page.locator("[data-export]").isVisible()) && !(await d.page.locator("[data-export]").isDisabled()));
   const dl = d.page.waitForEvent("download", { timeout: 5000 }).catch(() => null);
   await d.page.locator("[data-export]").tap();
   const file = await dl;
   check("Y9a：点「导出进度文件」真的能下载到文件", !!file);
+  await d.page.locator("[data-me-back]").tap(); await d.page.locator('[data-me-menu="account"]').tap();
   check("Y9a：页面上没有服务器原文；退出 / 切换账号按钮仍可点", (await noRaw(d.page)) && !(await d.page.locator("[data-logout]").isDisabled()) && !(await d.page.locator("[data-switch]").isDisabled()));
   const bad = await layoutOk(d.page); check("Y9a：320px 布局无溢出", bad.length === 0, bad.join("; "));
 });
@@ -392,7 +395,7 @@ await scenario("冲突期间不会写云端：禁用的「立即同步」点不�
 // ---------- 已发布产物的核对（只在 DIST_DIR / FAKE_URL 给定时运行）----------
 if (EXPECT_SHA) {
   await scenario("预览产物：页面显示的源码提交、云项目，且只访问测试项目", { nav: "none", otp: (r) => json(r, 500, { error_code: "unexpected_failure", msg: CAN }) }, async (d) => {
-    await d.page.getByRole("button", { name: "我的" }).tap();
+    await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="account"]').tap();
     await d.page.waitForSelector("[data-account]");
     const txt = await body(d);
     check(`“我的”页显示源码提交 ${EXPECT_SHA.slice(0, 7)}`, txt.includes(EXPECT_SHA), txt.slice(0, 200));
