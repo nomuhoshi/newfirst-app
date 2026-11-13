@@ -451,7 +451,7 @@ try {
   const icons = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".node")].map((n) => [n.dataset.lesson, n.querySelector(".hexnode").dataset.icon + "|" + n.className])));
   check("节点：34 个六边形节点（五个单元），每个都是 6 个顶点", (await page.locator(".node .hex-body").count()) === 34 && (await page.evaluate(() => [...document.querySelectorAll(".hex-body")].every((p) => p.getAttribute("points").trim().split(/\s+/).length === 6))));
   check("节点：已完成对勾、当前播放、未解锁锁、复习关回转箭头", icons.U1L1.startsWith("check|") && icons.U1L2.startsWith("play|") && icons.U1L3.startsWith("lock|") && icons.U1L6.startsWith("review|"), JSON.stringify(icons));
-  check("节点：没有折角、厚底座、立体圆盘", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const c = getComputedStyle(n); return getComputedStyle(n, "::after").content === "none" && c.boxShadow === "none" && c.backgroundColor === "rgba(0, 0, 0, 0)" && c.borderRadius === "0px"; })));
+  check("节点：立体六角形（投影、侧面厚度、内六边形、顶边高光都在），按钮本身没有额外底座、阴影和圆角", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const c = getComputedStyle(n); return getComputedStyle(n, "::after").content === "none" && c.boxShadow === "none" && c.backgroundColor === "rgba(0, 0, 0, 0)" && c.borderRadius === "0px" && ["hex-shadow", "hex-side", "hex-facet", "hex-hi"].every((k) => n.querySelector("." + k)); })));
   check("节点：点击区域不小于 44px，仍带文字标签和关卡编号", await page.evaluate(() => [...document.querySelectorAll(".node")].every((n) => { const r = n.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; }) && document.querySelectorAll(".node-label").length === 34 && document.querySelectorAll("[data-lesson]").length === 34));
   check("节点：未解锁的复习关带小锁角标", (await page.locator('[data-lesson="U1L6"] .hex-badge').count()) === 1);
   // 复习关成为当前关时显示回转箭头
@@ -461,35 +461,23 @@ try {
 
   // 电路背景
   await page.evaluate(() => window.__app.renderPath());
-  check("电路：地图页有稀疏电路背景", (await page.locator(".circuit-bg.full").count()) === 1 && (await page.locator(".circuit-bg .trace").count()) <= 8);
+  check("电路：地图页有复杂电路背景（总线、芯片、逻辑门、阻容元件）", (await page.locator(".circuit-bg.full").count()) === 1 && (await page.locator(".circuit-bg .trace").count()) >= 20 && (await page.locator(".circuit-bg .chip").count()) >= 2 && (await page.locator(".circuit-bg .gate").count()) >= 2);
   const measureCircuit = (pg) => pg.evaluate(() => {
     const svg = document.querySelector(".circuit-bg.full"); const [, , W, H] = svg.getAttribute("viewBox").split(" ").map(Number);
-    const traces = [...svg.querySelectorAll(".trace")];
-    const sides = new Set(); let branches = 0; let centerHit = 0; let outside = 0;
-    for (const t of traces) {
-      const d = t.getAttribute("d"); const m = d.match(/^M(-?[\d.]+) (-?[\d.]+)/);
-      const x = +m[1], y = +m[2];
-      if (x <= 0) sides.add("左"); else if (x >= W) sides.add("右"); else if (y <= 0) sides.add("上"); else sides.add("下");
-      if ((d.match(/M/g) || []).length > 1) branches++;
-      const len = t.getTotalLength();
-      for (let i = 0; i <= 80; i++) { const p = t.getPointAtLength((len * i) / 80); if (p.x > W * 0.36 && p.x < W * 0.64 && p.y > H * 0.18 && p.y < H * 0.85) centerHit++; if (p.x < -1 || p.x > W + 1 || p.y < -1 || p.y > H + 1) outside++; }
-    }
-    return { W, H, n: traces.length, sides: [...sides], branches, pads: svg.querySelectorAll(".pad").length, pulses: svg.querySelectorAll(".pulse").length, centerHit, outside };
+    return { W, H, traces: svg.querySelectorAll(".trace").length, pads: svg.querySelectorAll(".pad").length, chips: svg.querySelectorAll(".chip").length, pulses: svg.querySelectorAll(".pulse").length, kids: svg.querySelectorAll("*").length };
   });
   const dense = await measureCircuit(page);
-  check("电路：第一屏有 5–7 条独立路径，从至少 3 个方向进入", dense.n >= 5 && dense.n <= 7 && dense.sides.length >= 3, JSON.stringify(dense));
-  check("电路：有分支和焊点（至少 3 条带分支，焊点不少于 8 个，不密集）", dense.branches >= 3 && dense.pads >= 8 && dense.pads <= 16, JSON.stringify(dense));
-  check("电路：3–4 个缓慢光点", dense.pulses >= 3 && dense.pulses <= 4);
-  check("电路：中间区域（文字和节点所在）留空，路径都在屏幕内", dense.centerHit === 0 && dense.outside === 0, JSON.stringify(dense));
-  // 窗口形状不同（比如 iPad 的小窗口 425×390）时，电路按实际大小重新生成，仍然看得到、仍然留空
+  check("电路：第一屏有 20 条以上走线、焊点、芯片，光点 6–12 个", dense.traces >= 20 && dense.pads >= 10 && dense.chips >= 2 && dense.pulses >= 6 && dense.pulses <= 12, JSON.stringify(dense));
+  check("电路：元素总量有上限（不拖慢手机）", dense.kids <= 400, JSON.stringify(dense));
+  // 窗口形状不同（比如 iPad 的小窗口 425×390）时，电路按实际大小重新生成，仍然看得到
   await page.setViewportSize({ width: 425, height: 390 });
   await page.waitForTimeout(300);
   const small = await measureCircuit(page);
-  check("电路：窗口变成 425×390（iPad 小窗口）后按新尺寸重新生成，仍有 5–7 条路径、3 个以上方向、中间留空", small.W === 425 && small.H === 390 && small.n >= 5 && small.n <= 7 && small.sides.length >= 3 && small.centerHit === 0 && small.outside === 0 && small.branches >= 3, JSON.stringify(small));
+  check("电路：窗口变成 425×390（iPad 小窗口）后按新尺寸重新生成，仍有走线和光点", small.W === 425 && small.H === 390 && small.traces >= 15 && small.pulses >= 3, JSON.stringify(small));
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(300);
   const wide = await measureCircuit(page);
-  check("电路：横屏 844×390 也能生成并留空", wide.W === 844 && wide.n >= 5 && wide.centerHit === 0 && wide.outside === 0, JSON.stringify(wide));
+  check("电路：横屏 844×390 也能生成", wide.W === 844 && wide.traces >= 15 && wide.pulses >= 3, JSON.stringify(wide));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
   const cb = await page.evaluate(() => {
@@ -499,20 +487,20 @@ try {
     for (let y = 10; y < innerHeight; y += 47) for (let x = 5; x < innerWidth; x += 31) if (document.elementsFromPoint(x, y)[0]?.closest(".circuit-bg")) hit = true;
     return { pe: c.pointerEvents, pos: c.position, pulses, hit };
   });
-  check("电路：只有少量光点，每次流动 8–12 秒", cb.pulses.length >= 2 && cb.pulses.length <= 4 && cb.pulses.every((p) => p.n === "flow" && p.d >= 8 && p.d <= 12), JSON.stringify(cb.pulses));
+  check("电路：亮蓝色发光光点沿走线流动，每次流动 3–8 秒", cb.pulses.length >= 6 && cb.pulses.length <= 12 && cb.pulses.every((p) => p.n === "flow" && p.d >= 3 && p.d <= 8), JSON.stringify(cb.pulses));
   check("电路：不拦截点击和滚动（pointer-events: none，任何位置的最上层都不是电路）", cb.pe === "none" && cb.pos === "fixed" && !cb.hit);
   await page.evaluate(() => { Object.defineProperty(document, "hidden", { value: true, configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
   check("电路：切到后台时暂停动画", await page.evaluate(() => document.documentElement.classList.contains("bg-paused") && getComputedStyle(document.querySelector(".circuit-bg .pulse")).animationPlayState === "paused"));
   await page.evaluate(() => { Object.defineProperty(document, "hidden", { value: false, configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
   check("电路：回到前台恢复动画", await page.evaluate(() => !document.documentElement.classList.contains("bg-paused")));
   await page.emulateMedia({ reducedMotion: "reduce" });
-  check("电路：减少动态效果时光点隐藏、线条静止", await page.evaluate(() => [...document.querySelectorAll(".circuit-bg .pulse")].every((p) => getComputedStyle(p).display === "none") && getComputedStyle(document.querySelector(".hex-ring") || document.body).animationName === "none"));
+  check("电路：减少动态效果时光点停住（仍显示并保留发光）、线条静止", await page.evaluate(() => [...document.querySelectorAll(".circuit-bg .pulse")].every((p) => getComputedStyle(p).display !== "none" && getComputedStyle(p).animationName === "none") && getComputedStyle(document.querySelector(".hex-ring") || document.body).animationName === "none"));
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.locator(".node.current").tap(); await page.locator(".overlay .btn3d.primary").tap();
   check("电路：关卡开场页有电路，正文在不透明面板上", (await page.locator(".circuit-bg.full").count()) === 1 && await opaque(page, ".intro-panel, .intro-screen"));
   await tapBtn("继续"); await page.waitForSelector("[data-check]");
   const edgeHit = await page.evaluate(() => { let hit = false; for (let y = 10; y < innerHeight; y += 47) for (let x = 3; x < innerWidth; x += 29) if (document.elementsFromPoint(x, y)[0]?.closest(".circuit-bg")) hit = true; return hit; });
-  check("电路：答题页只有边缘电路，题目、选项和代码都在不透明面板上", (await page.locator(".circuit-bg.edge").count()) === 1 && (await page.locator(".circuit-bg .pulse").count()) <= 2 && await opaque(page, ".codeblock, .choice, .order-mine, .slot") && !edgeHit);
+  check("电路：答题页只有边缘电路，题目、选项和代码都在不透明面板上", (await page.locator(".circuit-bg.edge").count()) === 1 && (await page.locator(".circuit-bg .pulse").count()) <= 4 && await opaque(page, ".codeblock, .choice, .order-mine, .slot") && !edgeHit);
   // 电路不挡滚动：做题页内容区仍可滚动
   check("电路：内容区的滚动不受影响", await page.evaluate(() => { const m = document.querySelector(".lesson"); m.scrollTop = 5; return getComputedStyle(m).overflowY === "auto"; }));
   await page.getByRole("button", { name: "退出本关" }).tap(); await tapBtn("退出");

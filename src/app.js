@@ -108,52 +108,129 @@ function icon(name, { size = 22, fill = false, cls = "" } = {}) {
   svg("path", { d: ICONS[name] }));
 }
 
-// ---------- 流动电路背景：稀疏的线 + 少量缓慢移动的光点（8–12 秒一次） ----------
-// 纯装饰：不拦截点击和滚动；减少动态效果时光点隐藏、线条静止；切到后台时暂停动画。
+// ---------- 电路背景：种子固定的复杂电路图（电源总线束、芯片、逻辑门、阻容元件、过孔、测试点）+ 亮蓝色发光光点沿走线流动 ----------
+// 纯装饰：不拦截点击和滚动；切到后台时暂停动画；减少动态效果时光点停住（仍保留发光），线条静止。
 // 电路按“当前窗口的实际大小”生成（手机竖屏、iPad 小窗口、横屏都能看到），窗口变化时重新生成。
-// 第一屏 7 条路径从左、右、上三个方向进入，其中 4 条带分支；全部在两侧和上下边缘，中间留空给文字和节点。
-const BEND = 16; // 45° 拐角的大小
-function circuitLayout(variant, W, H) {
-  const r = Math.round;
-  const lines = [];
-  const add = (d, pulse, pads) => lines.push({ d, pulse, pads });
-  if (variant === "edge") {
-    const m = (x, y0, y1, y2) => `M${x} ${r(y0)}V${r(y1)}L${x + (x < W / 2 ? 6 : -6)} ${r(y1 + 6)}V${r(y2)}`;
-    const a = m(6, 0, H * 0.26, H * 0.6); add(a, a, [[12, r(H * 0.6)]]);
-    const b = m(W - 6, H * 0.12, H * 0.45, H * 0.83); add(b, b, [[W - 12, r(H * 0.83)]]);
-    const c = `M6 ${r(H * 0.72)}V${r(H)}`; add(c, c, [[6, r(H)]]);
-    const d = `M${W - 6} ${r(H * 0.9)}V${r(H)}`; add(d, d, [[W - 6, r(H)]]);
-    return { lines, pulses: [[0, 11, 0], [1, 9, -5]] };
+// 元件都落在左右两侧边缘区；内容区都用不透明面板盖住它。来源：spikes/2026-11-13-flow-prototype（设计评审通过）。
+function rngSeed(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=(t+Math.imul(t^t>>>7,61|t))^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function circuitSVG(W, H, variant) {
+  const R = rngSeed(variant==="edge" ? 11 : 20261113), rr=(a,b)=>a+R()*(b-a), ri=(a,b)=>Math.floor(rr(a,b+1));
+  const edge = variant==="edge", M = Math.max(58, Math.min(112, W*.28));      // 左右边缘区的宽度
+  const out = [], boxes = [], pulses = [];
+  const f = n => (+n).toFixed(1);
+  const poly = pts => "M" + pts.map(p=>f(p[0])+" "+f(p[1])).join(" L");
+  const free = (x,y,w,h) => !boxes.some(b => x < b[0]+b[2]+6 && x+w+6 > b[0] && y < b[1]+b[3]+6 && y+h+6 > b[1]);
+  const claim = (x,y,w,h) => boxes.push([x,y,w,h]);
+  const mirror = side => x => side===0 ? x : W - x;
+  const refN = (()=>{ let n=0; return ()=>"U"+(++n); })();
+
+  /* 1) 总线束：每侧 2 束（边缘版 1 束），每束 3–4 根平行线，竖直走线、45° 斜拐；各线在不同高度收尾于焊盘 */
+  const lanes = [];  // 供后续支线接入：{side, pts}
+  for (const side of [0,1]) {
+    const bundles = edge ? [{x:7,n:2}] : [{x:7,n:4},{x:M*.50,n:3}];
+    bundles.forEach((bd,bi)=>{
+      const sp = 6, span = (bd.n-1)*sp, lim = M - span - 8;
+      let x = bd.x, y = -10; const base = [[x,y]];
+      while (y < H + 10) {
+        y += rr(60,150); base.push([x,y]);
+        let dx = (R()<.5?-1:1) * rr(10,22); if (x+dx < 4 || x+dx > lim) dx = -dx; if (x+dx < 4 || x+dx > lim) dx = 0;
+        if (dx) { x += dx; y += Math.abs(dx); base.push([x,y]); }
+      }
+      for (let k=0;k<bd.n;k++) {
+        const yEnd = R()<.35 ? H+20 : rr(H*.25, H*.95);
+        const pts = []; for (const p of base) { pts.push([mirror(side)(p[0]+k*sp*(side?-1:1)), p[1]]); if (p[1] >= yEnd) break; }
+        const last = pts[pts.length-1];
+        out.push(`<path class="trace" d="${poly(pts)}"/>`);
+        if (last[1] < H) out.push(`<circle class="pad" cx="${f(last[0])}" cy="${f(last[1])}" r="3.200"/>`);
+        lanes.push({side, pts});
+        if (k===1 && !edge) pulses.push(poly(pts));
+      }
+    });
   }
-  // 从左边进入：横走到 x1，45° 拐弯后竖走到 y2，可在 yb 处接一条横向分支（长 bl）
-  const side = (right, y0, x1, y2, yb, bl) => {
-    const sx = (x) => r(right ? W - x : x); const dir = y2 >= y0 ? 1 : -1;
-    const xs = x1 + BEND;
-    const main = `M${right ? r(W) : 0} ${r(y0)}H${sx(x1)}L${sx(xs)} ${r(y0 + BEND * dir)}V${r(y2)}`;
-    const pads = [[sx(xs), r(y2)]];
-    let d = main;
-    if (yb != null) { d += `M${sx(xs)} ${r(yb)}H${sx(xs + bl)}`; pads.push([sx(xs + bl), r(yb)], [sx(xs), r(yb)]); }
-    add(d, main, pads);
-  };
-  const top = (x0, y1, x2) => { const d = `M${r(x0)} 0V${r(y1)}L${r(x0 + BEND)} ${r(y1 + BEND)}H${r(x2)}`; add(d, d, [[r(x2), r(y1 + BEND)]]); };
-  side(false, H * 0.12, W * 0.10, H * 0.31, H * 0.215, W * 0.10);
-  top(W * 0.30, H * 0.12, W * 0.43);
-  side(true, H * 0.17, W * 0.09, H * 0.39, H * 0.29, W * 0.08);
-  side(false, H * 0.52, W * 0.08, H * 0.68, H * 0.60, W * 0.08);
-  side(true, H * 0.64, W * 0.09, H * 0.84, H * 0.75, W * 0.08);
-  side(false, H * 0.90, W * 0.16, H * 0.82, null, 0);
-  top(W * 0.74, H * 0.10, W * 0.88);
-  return { lines, pulses: [[0, 10, 0], [2, 12, -4], [3, 9, -2], [4, 11, -7]] };
+  if (edge) {
+    // 边缘版：再补几个过孔和一根脉冲，保持很淡
+    for (let i=0;i<7;i++) out.push(`<circle class="dot" cx="${f(R()<.5?rr(3,18):W-rr(3,18))}" cy="${f(rr(20,H-20))}" r="1.800"/>`);
+    return { svg:`<g class="cb">${out.join("")}<g class="pulses">${pulses.slice(0,3).map((d,i)=>`<path class="pulse" pathLength="100" d="${d}" style="animation-duration:${(6+i*1.5)}s;animation-delay:-${i*2}s"/>`).join("")}</g></g>`, n:out.length };
+  }
+
+  /* 2) 芯片（DIP）：随机落位在两侧边缘区，不重叠；左右排针，带「1 脚」点和位号；部分针脚拉线接到最近的总线 */
+  const chipPins = [];
+  for (let t=0, placed=0; t<90 && placed<(W<340?4:6); t++) {
+    const w = rr(34,52), h = rr(46,92), side = R()<.5?0:1;
+    const x = side===0 ? rr(M*.52, M-w-6) : W - rr(M*.52, M-6) ;
+    const x0 = side===0 ? x : x - w, y0 = rr(70, H-h-90);
+    if (!free(x0-8,y0,w+16,h)) continue; claim(x0-8,y0,w+16,h); placed++;
+    const n = Math.max(3, Math.floor(h/11)), step = h/(n+1);
+    out.push(`<rect class="chip" x="${f(x0)}" y="${f(y0)}" width="${f(w)}" height="${f(h)}" rx="4"/>`);
+    out.push(`<circle class="dot" cx="${f(x0+7)}" cy="${f(y0+7)}" r="2"/>`);
+    out.push(`<text x="${f(x0+w/2)}" y="${f(y0+h/2+3)}" text-anchor="middle">${refN()}</text>`);
+    for (let i=1;i<=n;i++) { const yy=y0+i*step; out.push(`<path class="pin" d="M${f(x0-7)} ${f(yy)}H${f(x0)}M${f(x0+w)} ${f(yy)}H${f(x0+w+7)}"/>`); }
+    const wireTo = (xFrom, dir, yy) => { const xTo = dir<0 ? 12 : W-12; out.push(`<path class="trace thin" d="M${f(xFrom)} ${f(yy)}H${f(xTo)}"/><circle class="pad" cx="${f(xTo)}" cy="${f(yy)}" r="2.800"/>`); };
+    if (side===0) { wireTo(x0-7, -1, y0+step*1); if (n>3) wireTo(x0-7, -1, y0+step*(n-1)); } else { wireTo(x0+w+7, 1, y0+step*2); }
+    chipPins.push([side===0?x0+w+7:x0-7, y0+step*2, side]);
+  }
+
+  /* 3) 逻辑门：AND / OR / NOT / NAND / NOR / XOR，带输入输出引线和位号，可水平翻转 */
+  const kinds = ["and","or","not","nand","nor","xor"];
+  for (let t=0, placed=0; t<120 && placed<7; t++) {
+    const kind = kinds[ri(0,kinds.length-1)], sc = rr(.95,1.3), gw = 34*sc, gh = 24*sc, side = R()<.5?0:1;
+    const x = side===0 ? rr(8, M-gw-14) : W - rr(gw+14, M-8), y = rr(60, H-gh-80);
+    if (!free(x-12,y-10,gw+24,gh+20)) continue; claim(x-12,y-10,gw+24,gh+20); placed++;
+    const flip = side===1, bubble = kind==="nand"||kind==="nor"||kind==="not";
+    const body = kind==="and"||kind==="nand" ? "M0 0H13a12 12 0 0 1 0 24H0z" : kind==="not" ? "M0 0L24 12L0 24z" : "M0 0Q10 0 26 12Q10 24 0 24Q8 12 0 0z";
+    const ow = kind==="not" ? 24 : kind==="and"||kind==="nand" ? 25 : 26;
+    const ins = kind==="not" ? [12] : [6,18];
+    let g = `<g transform="translate(${f(flip?x+gw+8:x-8)} ${f(y)}) scale(${flip?-sc:sc} ${sc})">`;
+    g += `<path class="gate" d="${body}"/>`;
+    if (kind==="xor") g += `<path class="part" d="M-4.500 0Q3.500 12 -4.500 24"/>`;
+    if (bubble) g += `<circle class="gate" cx="${ow+3.2}" cy="12" r="3"/>`;
+    for (const yy of ins) g += `<path class="trace" d="M-8 ${yy}H${kind==="xor"?-1:1}"/>`;
+    g += `<path class="trace" d="M${ow+(bubble?6.2:0)} 12H${ow+(bubble?6.2:0)+9}"/>`;
+    g += `</g>`;
+    out.push(g);
+    out.push(`<text x="${f(x+gw/2)}" y="${f(y-4)}" text-anchor="middle">${refN()}</text>`);
+    // 引线接到边缘的过孔
+    const yy = y + gh/2, edgeX = side===0 ? 10 : W-10;
+    out.push(`<path class="trace thin" d="M${f(side===0?x-8:x+gw+8)} ${f(yy)}H${f(edgeX)}"/><circle class="pad" cx="${f(edgeX)}" cy="${f(yy)}" r="2.800"/>`);
+  }
+
+  /* 4) 阻容元件：横向支线上的电阻、电容、二极管；有的是竖放 */
+  for (let t=0, placed=0; t<80 && placed<9; t++) {
+    const side = R()<.5?0:1, y = rr(40,H-40), x = side===0 ? rr(14, M-34) : W - rr(40, M), kind = ["r","c","d"][ri(0,2)];
+    const vertical = R()<.4, w = kind==="r" ? 34 : 22, bw = vertical ? 12 : w, bh = vertical ? w : 12;
+    if (!free(x-4,y-bh/2,bw+8,bh+8)) continue; claim(x-4,y-bh/2,bw+8,bh+8); placed++;
+    let d = "";
+    if (kind==="r") d = "M0 0h6l3 -5 6 10 6 -10 6 10 3 -5h4";
+    else if (kind==="c") d = "M0 0h8M8 -7v14M14 -7v14M14 0h8";
+    else d = "M0 0h6M6 -6v12l9 -6zM15 -6v12M15 0h7";
+    out.push(`<g transform="translate(${f(vertical?x+6:x)} ${f(vertical?y-w/2:y)}) ${vertical?"rotate(90)":""}"><path class="part" d="${d}"/></g>`);
+  }
+
+  /* 5) 横向走线 + 过孔网：从总线接出的短支线，带 45° 转角，末端是焊盘 / 测试点 */
+  for (const L of lanes.filter((_,i)=>i%2===0).slice(0,12)) {
+    const p = L.pts[Math.floor(R()*(L.pts.length-1))], q = L.pts[Math.min(L.pts.length-1, Math.floor(L.pts.indexOf(p)+1))];
+    if (!p || !q || Math.abs(q[0]-p[0])>1) continue;               // 只在竖直段上接支线
+    const y = rr(p[1], q[1]), dir = L.side===0 ? 1 : -1, len = rr(14, M*.55);
+    const x1 = p[0]+dir*len*.6, x2 = x1+dir*8, y2 = y+(R()<.5?-8:8), x3 = x2+dir*len*.4;
+    out.push(`<path class="trace thin" d="M${f(p[0])} ${f(y)}H${f(x1)}L${f(x2)} ${f(y2)}H${f(x3)}"/><circle class="pad" cx="${f(x3)}" cy="${f(y2)}" r="2.800"/>`);
+  }
+  for (let i=0;i<26;i++) { const x = R()<.5 ? rr(3, M) : W - rr(3, M), y = rr(10, H-10); if (free(x-3,y-3,6,6)) out.push(`<circle class="dot" cx="${f(x)}" cy="${f(y)}" r="${f(rr(1.200,2.200))}"/>`); }
+  // 测试点阵列：2×3 小焊盘
+  for (const side of [0,1]) { const bx = side===0 ? rr(M*.55, M-20) : W - rr(M*.55, M-8), by = rr(H*.55, H-110); if (!free(bx-4,by-4,28,22)) continue; claim(bx-4,by-4,28,22);
+    for (let a=0;a<3;a++) for (let b=0;b<2;b++) out.push(`<circle class="pad" cx="${f(bx+a*10)}" cy="${f(by+b*10)}" r="2.600"/>`);
+    out.push(`<text x="${f(bx)}" y="${f(by+28)}">TP${side+1}</text>`); }
+  // 电源 / 信号标注
+  for (const [t,fx,fy] of [["VCC",.06,.30],["GND",.80,.62],["CLK",.12,.82],["D0",.84,.22],["RST",.78,.90]]) { const x = W*fx, y = H*fy; if (free(x-4,y-10,34,14)) { claim(x-4,y-10,34,14); out.push(`<text x="${f(x)}" y="${f(y)}">${t}</text>`); } }
+  // 芯片间的连线脉冲：取芯片侧的若干总线 + 一条跨中间区域很淡的长线
+  for (const L of lanes.filter(l=>l.pts.length>3).slice(0,9)) pulses.push(poly(L.pts));
+  out.push(`<path class="trace thin" d="M${f(M-6)} ${f(H*.38)}H${f(M+12)}L${f(M+24)} ${f(H*.38+12)}H${f(W/2-30)}" opacity=".5"/><circle class="pad" cx="${f(W/2-30)}" cy="${f(H*.38+12)}" r="3"/>`);
+  out.push(`<path class="trace thin" d="M${f(W-M+6)} ${f(H*.74)}H${f(W-M-12)}L${f(W-M-24)} ${f(H*.74-12)}H${f(W/2+34)}" opacity=".5"/><circle class="pad" cx="${f(W/2+34)}" cy="${f(H*.74-12)}" r="3"/>`);
+  return { svg:`<g class="cb">${out.join("")}<g class="pulses">${pulses.slice(0,10).map((d,i)=>`<path class="pulse" pathLength="100" d="${d}" style="animation-duration:${(3.5+(i*1.3)%3.5).toFixed(1)}s;animation-delay:-${(i*1.7).toFixed(1)}s"/>`).join("")}</g></g>`, n:out.length };
 }
 function fillCircuit(el, variant) {
   const W = Math.max(240, Math.round(window.innerWidth)); const H = Math.max(240, Math.round(window.innerHeight));
   el.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  const c = circuitLayout(variant, W, H);
-  el.replaceChildren(
-    ...c.lines.map((l) => svg("path", { d: l.d, class: "trace" })),
-    ...c.lines.flatMap((l) => l.pads.map(([x, y]) => svg("circle", { cx: String(x), cy: String(y), r: "3.5", class: "pad" }))),
-    ...c.pulses.map(([i, dur, delay]) => svg("path", { d: c.lines[i].pulse, class: "pulse", pathLength: "100", style: `animation-duration:${dur}s;animation-delay:${delay}s` })),
-  );
+  el.innerHTML = circuitSVG(W, H, variant).svg;
 }
 const liveCircuits = new Set();
 function circuit(variant = "full") {
@@ -176,9 +253,14 @@ function hexNode(st, review) {
   inner.setAttribute("x", "20"); inner.setAttribute("y", "20");
   const badge = st === "locked" && review ? icon("lock", { size: 16, cls: "hex-badge" }) : null;
   if (badge) { badge.setAttribute("x", "47"); badge.setAttribute("y", "46"); }
-  const el = svg("svg", { viewBox: "0 0 72 72", width: "72", height: "72", class: "hexnode", "aria-hidden": "true", "data-icon": kind },
+  // 立体六角形：投影 + 厚度（侧面）+ 顶面 + 内六边形 + 顶边高光 + 上下焊点（来自 sonnet/design-ink-3d-1 的 hexNode，经流程原型评审）
+  const el = svg("svg", { viewBox: "0 0 72 80", width: "72", height: "80", class: "hexnode", "aria-hidden": "true", "data-icon": kind },
     st === "current" ? svg("polygon", { points: "36,1 67,19 67,53 36,71 5,53 5,19", class: "hex-ring" }) : null,
+    svg("ellipse", { cx: "36", cy: "73", rx: "27", ry: "5", class: "hex-shadow" }),
+    svg("polygon", { points: "9,51.5 36,67 63,51.5 63,59.5 36,75 9,59.5", class: "hex-side" }),
     svg("polygon", { points: "36,5 63,20.5 63,51.5 36,67 9,51.5 9,20.5", class: "hex-body" }),
+    svg("polygon", { points: "36,16 53.5,26 53.5,46 36,56 18.5,46 18.5,26", class: "hex-facet" }),
+    svg("polyline", { points: "9,20.5 36,5 63,20.5", class: "hex-hi" }),
     svg("circle", { cx: "36", cy: "5", r: "2.8", class: "hex-pad" }), svg("circle", { cx: "36", cy: "67", r: "2.8", class: "hex-pad" }),
     inner, badge,
   );

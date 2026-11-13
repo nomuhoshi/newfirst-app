@@ -8,6 +8,9 @@
   --g-bad: #A43C32; --g-bad-bg: #F8E4E0;
   --g-locked: #E4E0D6;
   --g-trace: #C5CDD2; /* 电路线：低对比度，不盖过课程节点 */
+  --g-copper-text: #A24A29; /* 铜色小字用（对暖白底 5.4:1） */
+  --g-side: #CFC8B8; --g-hi: rgba(255,255,255,.85); --g-shadow: rgba(23,43,58,.16); /* 立体六角形的侧面、高光、投影 */
+  --g-flow: #2B9BFF; --g-flow-glow: rgba(43,155,255,.75); /* 电路光点：亮蓝 */
   --g-code-bg: #172B3A; --g-code-fg: #EAF0F3; --g-code-dim: #8FA3B0;
   --g-tk-str: #F3BA87; --g-tk-num: #9CC4E4; --g-tk-fn: #8ED7B8; --g-tk-op: #D5DEE4;
   --g-chip: #243D50; --g-chip-fg: #F3BA87;
@@ -24,6 +27,9 @@
     --g-bad: #FFB3A3; --g-bad-bg: #3F2421;
     --g-locked: #243845;
     --g-trace: #2F4A5B;
+    --g-copper-text: #F3BA87;
+    --g-side: #0D1B24; --g-hi: rgba(255,255,255,.14); --g-shadow: rgba(0,0,0,.5);
+    --g-flow: #6CD0FF; --g-flow-glow: rgba(77,190,255,.9);
     --g-code-bg: #0B1820; --g-code-fg: #EAF0F3; --g-code-dim: #7C93A1;
     --g-chip: #1F3646; --g-chip-fg: #F3BA87;
     --fn: #243845;
@@ -88,22 +94,31 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .unit.locked .unit-banner { background: var(--g-locked); color: var(--g-muted); }
 .path { list-style: none; padding: 18px 0 0; margin: 0; display: flex; flex-direction: column; align-items: center; gap: 18px; }
 .path-item { position: relative; display: flex; flex-direction: column; align-items: center; transform: translateX(calc(var(--off) * 44px)); }
-.node { width: 76px; height: 76px; border: none; background: none; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--g-muted); }
-.node:active { transform: scale(.97); }
+.node { width: 76px; height: 84px; border: none; background: none; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--g-muted); }
+.node:active .hexnode { transform: scale(.97); }
 .node-face { display: inline-flex; }
-.hexnode { overflow: visible; }
+/* 立体六角形节点：投影 + 厚度 + 顶面 + 内六边形 + 顶边高光 + 上下焊点；当前关铜色发光，已完成绿色微光 */
+.hexnode { display: block; overflow: visible; }
+.hex-shadow { fill: var(--g-shadow); }
+.hex-side { fill: var(--g-side); stroke: var(--g-line); stroke-width: 1.5; stroke-linejoin: round; }
 .hex-body { fill: var(--g-card); stroke: var(--g-line); stroke-width: 3; stroke-linejoin: round; }
+.hex-facet { fill: none; stroke: currentColor; stroke-opacity: .22; stroke-width: 1.2; stroke-linejoin: round; }
+.hex-hi { fill: none; stroke: var(--g-hi); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .hex-pad { fill: var(--g-line); }
 .hex-ico { color: inherit; }
 .hex-badge { color: var(--g-muted); }
 .node.locked .hex-body { fill: var(--g-locked); }
 .node.done { color: var(--g-ok); }
-.node.done .hex-body { stroke: var(--g-ok); }
+.node.done .hex-body { stroke: var(--g-ok); fill: color-mix(in srgb, var(--g-ok) 16%, var(--g-card)); }
+.node.done .hex-side { fill: color-mix(in srgb, var(--g-ok) 22%, var(--g-side)); stroke: var(--g-ok); stroke-opacity: .45; }
 .node.done .hex-pad { fill: var(--g-ok); }
-.node.current { color: var(--g-primary); }
-.node.current .hex-body { stroke: var(--g-primary); stroke-width: 4; }
-.node.current .hex-pad { fill: var(--g-primary); }
-.hex-ring { fill: none; stroke: var(--g-primary); stroke-width: 2; stroke-linejoin: round; opacity: .35; animation: ring 2.4s ease-in-out infinite; }
+.node.done .hexnode { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--g-ok) 35%, transparent)); }
+.node.current { color: var(--g-copper-text); }
+.node.current .hex-body { stroke: var(--g-copper); stroke-width: 4; fill: color-mix(in srgb, var(--g-primary) 22%, var(--g-card)); }
+.node.current .hex-side { fill: color-mix(in srgb, var(--g-copper) 26%, var(--g-side)); stroke: var(--g-copper); stroke-opacity: .55; }
+.node.current .hex-pad { fill: var(--g-copper); }
+.node.current .hexnode { filter: drop-shadow(0 0 9px color-mix(in srgb, var(--g-copper) 55%, transparent)); }
+.hex-ring { fill: none; stroke: var(--g-copper); stroke-width: 2; stroke-linejoin: round; stroke-dasharray: 3 5; opacity: .35; animation: ring 2.4s ease-in-out infinite; }
 @keyframes ring { 50% { opacity: .1; } }
 .node-label { font-size: 13px; font-weight: 700; color: var(--g-muted); margin-top: 6px; background: var(--g-bg); padding: 1px 8px; border-radius: 8px; }
 .bubble { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; min-width: 44px; background: var(--g-card); border: 1.5px solid var(--g-line); color: var(--g-copper); font-weight: 700; font-size: 14px; padding: 0 14px; border-radius: 10px; margin-bottom: 8px; } /* 可点区域高度 ≥ 44（设计 4.12） */
@@ -111,11 +126,19 @@ body { background: var(--g-bg); color: var(--g-fg); }
 /* 流动电路背景：固定在最底层，不拦截点击和滚动；内容区都用不透明面板盖住它 */
 .circuit-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 #app > :not(.circuit-bg) { position: relative; z-index: 1; }
-.circuit-bg .trace { fill: none; stroke: var(--g-trace); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.circuit-bg .pad { fill: var(--g-bg); stroke: var(--g-trace); stroke-width: 1.6; }
-.circuit-bg .pulse { fill: none; stroke: var(--g-copper); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 95; stroke-dashoffset: 5; opacity: .85;
-  animation: flow 10s linear infinite; }
-@keyframes flow { from { stroke-dashoffset: 5; } to { stroke-dashoffset: -95; } }
+.circuit-bg .cb .trace { fill: none; stroke: var(--g-trace); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.circuit-bg .cb .trace.thin { stroke-width: 1; opacity: .75; }
+.circuit-bg .cb .pad { fill: var(--g-bg); stroke: var(--g-trace); stroke-width: 1.5; }
+.circuit-bg .cb .dot { fill: var(--g-trace); }
+.circuit-bg .cb .chip { fill: var(--g-bg); stroke: var(--g-trace); stroke-width: 1.5; stroke-linejoin: round; }
+.circuit-bg .cb .pin { fill: none; stroke: var(--g-trace); stroke-width: 2.2; stroke-linecap: round; }
+.circuit-bg .cb .gate { fill: var(--g-bg); stroke: var(--g-trace); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.circuit-bg .cb .part { fill: none; stroke: var(--g-trace); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.circuit-bg .cb text { fill: var(--g-trace); font: 700 9px ui-monospace, Menlo, monospace; letter-spacing: .3px; }
+/* 光点：沿走线流动的亮蓝色圆点，带发光（点 = 极短的线段加圆头） */
+.circuit-bg .cb .pulses { filter: drop-shadow(0 0 2.5px var(--g-flow)) drop-shadow(0 0 7px var(--g-flow-glow)); }
+.circuit-bg .cb .pulse { fill: none; stroke: var(--g-flow); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 0.01 24.99; stroke-dashoffset: 0; animation: flow 4s linear infinite; }
+@keyframes flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -25; } }
 .bg-paused .circuit-bg .pulse, .bg-paused .hex-ring { animation-play-state: paused; }
 .statsbar, .tabbar { background: var(--g-bg); }
 
@@ -280,10 +303,11 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 /* 系统开启“减少动态效果”：取消位移、抖动、缩放、淡入和脉冲，直接显示完整结果 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
-  .circuit-bg .pulse { display: none; }
+  /* 光点停住不动，仍保留发光（只取消位移） */
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .node:active, .keybtn:active { transform: none; }
   /* 不位移，按下时只有即时的描边 / 亮度变化 */
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .keybtn:active { outline: 3px solid var(--g-primary); outline-offset: -3px; }
+  .node:active .hexnode { transform: none; }
   .node:active { filter: brightness(1.12); }
 }
 /* 输出面板底色一直是深色，所以提示文字用浅色（原来用的灰色在深底上看不清）；比正常输出略暗一点用来区分 */
@@ -411,7 +435,7 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 @media (max-height: 500px) and (orientation: landscape) {
   .node { width: 60px; height: 60px; }
   .node-face { width: 60px; height: 60px; }
-  .node-face svg { width: 100%; height: 100%; }
+  .node-face svg { width: 100%; height: 100%; } /* 六角形按比例缩在 60×60 里，布局高度不变 */
 }
 
 /* 隐私说明链接：登录框底部、账号卡片、“我的”页底部。文字链接也保证 44 高的点按区域 */
