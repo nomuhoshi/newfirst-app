@@ -27,7 +27,8 @@ check("我的页有「外观」三个选项：跟随系统、浅色、深色", (
 check("每个选项的点按区域不小于 44px", await page.evaluate(() => [...document.querySelectorAll("[data-theme-opt]")].every((b) => b.getBoundingClientRect().height >= 44)));
 check("默认「跟随系统」：没有 data-theme，系统浅色 → 浅色", (await page.locator('[data-theme-opt="system"]').getAttribute("aria-pressed")) === "true" && (await attr()) === null && (await bg()) === LIGHT && (await bar()) === LIGHT);
 await page.emulateMedia({ colorScheme: "dark" });
-check("跟随系统：系统改深色 → 深色，顶栏颜色同步", (await bg()) === DARK && (await bar()) === DARK);
+await page.waitForFunction(() => document.querySelector('meta[name="theme-color"]').getAttribute("content") === "#101E28", null, { timeout: 3000 }).catch(() => {}); // 系统外观变化的通知是异步的
+check("跟随系统：系统改深色 → 深色，顶栏颜色同步", (await bg()) === DARK && (await bar()) === DARK, `bg=${await bg()} bar=${await bar()}`);
 await page.locator('[data-theme-opt="light"]').tap();
 check("选「浅色」：系统是深色也显示浅色", (await attr()) === "light" && (await bg()) === LIGHT && (await bar()) === LIGHT && (await page.locator('[data-theme-opt="light"]').getAttribute("aria-pressed")) === "true");
 await page.emulateMedia({ colorScheme: "light" });
