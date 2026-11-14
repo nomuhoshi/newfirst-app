@@ -42,6 +42,40 @@ check("选择存在学习记录的 prefs.theme 里（会随账号同步），其
 await page.locator('[data-theme-opt="system"]').tap();
 check("选回「跟随系统」后 prefs.theme 回到 system", await page.evaluate(() => window.__app.getState().prefs.theme === "system"));
 check("选回「跟随系统」：去掉 data-theme，重新跟着系统", (await attr()) === null && (await bg()) === LIGHT);
+// ---- 复核补充（#100）：双标签、外观缓存写不进去 ----
+// 双标签（游客）：标签 B 一直开着，标签 A 选了新外观 → B 收到 storage 事件后，页面外观和“我的”页的按钮状态都要跟着变
+const page2 = await ctx.newPage(); page2.on("pageerror", (e) => errors.push(e.message));
+await page2.goto(srv.base); await page2.waitForFunction(() => window.__app?.getState); await page2.waitForSelector(".pathview");
+await page2.getByRole("button", { name: "我的" }).tap(); await page2.locator('[data-me-menu="settings"]').tap(); await page2.waitForSelector("[data-theme-row]");
+const attr2 = () => page2.evaluate(() => document.documentElement.getAttribute("data-theme"));
+await page.locator('[data-theme-opt="dark"]').tap();
+await page2.waitForFunction(() => document.documentElement.getAttribute("data-theme") === "dark", null, { timeout: 5000 }).catch(() => {});
+check("双标签：A 选「深色」→ B（一直开着）页面外观也变深色", (await attr2()) === "dark", `B data-theme=${await attr2()}`);
+check("双标签：B 的「我的」页里「深色」按钮也被选中（不是页面深色、按钮还停在旧选项）", (await page2.locator('[data-theme-opt="dark"]').getAttribute("aria-pressed")) === "true" && (await page2.locator('[data-theme-opt="system"]').getAttribute("aria-pressed")) === "false");
+await page.locator('[data-theme-opt="system"]').tap();
+await page2.waitForFunction(() => document.documentElement.getAttribute("data-theme") === null, null, { timeout: 5000 }).catch(() => {});
+check("双标签：A 选回「跟随系统」→ B 也回到跟随系统", (await attr2()) === null, `B data-theme=${await attr2()}`);
+await page2.close();
+await page.close(); // 先关掉写缓存正常的标签：它会收到同源 storage 事件并把 suipian-theme 写成 dark，污染下面“缓存写不进去”的前提
+// 外观缓存（localStorage 里的 suipian-theme）写不进去（无痕 / 配额）：手动选择照样生效，之后系统外观变化也不能把它覆盖掉
+const page3 = await ctx.newPage(); page3.on("pageerror", (e) => errors.push(e.message));
+await page3.addInitScript(() => { const s = Storage.prototype.setItem, r = Storage.prototype.removeItem; Storage.prototype.setItem = function (k, v) { if (k === "suipian-theme") throw new Error("QuotaExceededError"); return s.call(this, k, v); }; Storage.prototype.removeItem = function (k) { if (k === "suipian-theme") throw new Error("denied"); return r.call(this, k); }; });
+await page3.goto(srv.base); await page3.waitForFunction(() => window.__app?.getState); await page3.waitForSelector(".pathview");
+await page3.getByRole("button", { name: "我的" }).tap(); await page3.locator('[data-me-menu="settings"]').tap(); await page3.waitForSelector("[data-theme-row]");
+const attr3 = () => page3.evaluate(() => document.documentElement.getAttribute("data-theme"));
+await page3.locator('[data-theme-opt="dark"]').tap();
+{
+  const a = await attr3(), pt = await page3.evaluate(() => window.__app.getState().prefs.theme), cv = await page3.evaluate(() => localStorage.getItem("suipian-theme"));
+  check("缓存写失败：选「深色」照样变深色", a === "dark", `data-theme=${a}`);
+  check("缓存写失败：选择已存进 prefs.theme", pt === "dark", `prefs.theme=${pt}`);
+  check("缓存写失败：缓存里确实没有写进去（前提成立）", cv === null, `suipian-theme=${cv}`);
+}
+await page3.emulateMedia({ colorScheme: "dark" }); await page3.waitForTimeout(300); await page3.emulateMedia({ colorScheme: "light" }); await page3.waitForTimeout(300);
+check("缓存写失败：系统外观来回变化后，手动选的「深色」仍然在（不被当成“跟随系统”）", (await attr3()) === "dark", `data-theme=${await attr3()}`);
+await page3.reload(); await page3.waitForFunction(() => window.__app?.getState);
+await page3.waitForFunction(() => document.documentElement.getAttribute("data-theme") === "dark", null, { timeout: 5000 }).catch(() => {});
+check("缓存写失败：刷新后按已保存的 prefs.theme 恢复深色", (await attr3()) === "dark", `data-theme=${await attr3()}`);
+await page3.close();
 check("全程没有脚本错误", errors.length === 0, errors.join("|"));
 await browser.close(); await srv.close();
 console.log(`\n外观切换：通过 ${pass}，失败 ${fail}`);
