@@ -65,8 +65,10 @@ try {
     await page.waitForFunction(e => window.__app.sync.account()?.email === e, email);
     await page.getByRole('button', { name: '学习' }).tap();
   };
-  await page.goto(srv.base); await ready();
+  // 全新页面先是开场页，没有 .pathview：先等应用就绪、标记已过开场，再等地图（CI 首次失败：run 43645766016，ready() 在开场页等 .pathview 超时）
+  await page.goto(srv.base); await page.waitForFunction(() => window.__app?.getState && window.__app?.sync);
   await page.evaluate(() => { const s = window.__app.getState(); s.onboarded = true; s.installTipClosed = true; window.__app.persist(); window.__app.renderPath(); });
+  await page.waitForSelector('.pathview');
   await setTheme('light');
   await assertTheme('游客：浅色设置三者一致', 'light', null);
   await login('a@example.com');
