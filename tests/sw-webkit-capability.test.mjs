@@ -91,15 +91,34 @@ try {
 // Stage 2: Lifecycle, version query, and activation takeover assertions (exit 1 on failure)
 let code = 0;
 try {
-  const installed = await page.evaluate(async () => {
+  await page.evaluate(async () => {
     const reg = await navigator.serviceWorker.register("/sw.js");
     await Promise.race([
       navigator.serviceWorker.ready,
       new Promise((_, rej) => setTimeout(() => rej(new Error("sw ready timeout (15000ms)")), 15000)),
     ]);
-    return reg.active?.state || null;
+    const sw = reg.active;
+    if (sw && sw.state !== "activated") {
+      await Promise.race([
+        new Promise((resolve) => {
+          if (sw.state === "activated" || sw.state === "redundant") return resolve();
+          const onState = () => {
+            if (sw.state === "activated" || sw.state === "redundant") {
+              sw.removeEventListener("statechange", onState);
+              resolve();
+            }
+          };
+          sw.addEventListener("statechange", onState);
+        }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("sw activated state timeout (15000ms)")), 15000)),
+      ]);
+    }
   });
-  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
+  await page.waitForFunction(async () => {
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg?.active?.state === "activated" && !!navigator.serviceWorker.controller;
+  }, null, { timeout: 15000 });
+  const installed = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state || null);
   const ctrlV1 = await queryControllerVersion(page, 4000);
 
   // Publish v2: must install and wait without taking over prematurely
@@ -124,7 +143,7 @@ try {
   });
   await page.waitForFunction(async () => {
     const reg = await navigator.serviceWorker.getRegistration();
-    return window.__swControllerChanges >= 1 && !reg?.waiting && !!navigator.serviceWorker.controller;
+    return window.__swControllerChanges >= 1 && !reg?.waiting && reg?.active?.state === "activated" && !!navigator.serviceWorker.controller;
   }, null, { timeout: 15000 });
   const ctrlV2 = await queryControllerVersion(page, 4000);
   const cachesList = await page.evaluate(async () => (await caches.keys()).filter((k) => k.startsWith("suipian-")).sort());

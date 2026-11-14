@@ -121,7 +121,7 @@ async function answer(page, right = true) {
   await page.waitForSelector(".feedbar [data-continue]:not([disabled])");
 }
 
-async function finishLesson(page, id) {
+async function finishLesson(page, id, returnToPath = true) {
   await startLesson(page, id);
   for (let n = 0; n < 20 && !(await page.locator(".finish").count()); n++) {
     await answer(page, true);
@@ -129,6 +129,10 @@ async function finishLesson(page, id) {
     await page.waitForTimeout(150);
   }
   await page.waitForSelector(".finish");
+  if (returnToPath) {
+    await page.locator(".finish button", { hasText: "继续" }).first().click();
+    await page.waitForSelector(".pathview");
+  }
 }
 
 const readSnap = (page) => page.evaluate(() => {
@@ -178,17 +182,55 @@ try {
     await closeCtx(ctx);
   }
 
-  // ---------- 2. [SYNTHETIC_EVENT] 冻结 storage/visibilitychange/focus/pageshow 模拟 bfcache 恢复合并与清除隔离 ----------
+  // ---------- 2. [SYNTHETIC_EVENT] 冻结 BroadcastChannel/定时器与被动可见性事件模拟 bfcache 恢复合并与清除隔离 ----------
   {
     const ctx = await openCtx(newDir());
-    const tab1 = await openApp(ctx);
-    await passOnboarding(tab1);
-
-    // 捕获阶段拦截所有被动/可见性同步事件（storage / visibilitychange / focus / pageshow），仅放行显式加入 __allowedSyncEvents 的目标事件
-    await tab1.evaluate(() => {
+    await ctx.addInitScript(() => {
+      window.__bfcacheFrozen = false;
       window.__allowedSyncEvents = new Set();
+
+      const OrigBC = window.BroadcastChannel;
+      if (OrigBC) {
+        window.BroadcastChannel = function (...args) {
+          const bc = new OrigBC(...args);
+          const origAdd = bc.addEventListener.bind(bc);
+          let userOnMessage = null;
+          origAdd("message", (ev) => {
+            if (window.__bfcacheFrozen) return;
+            if (typeof userOnMessage === "function") userOnMessage.call(bc, ev);
+          });
+          Object.defineProperty(bc, "onmessage", {
+            configurable: true,
+            get() { return userOnMessage; },
+            set(fn) { userOnMessage = fn; },
+          });
+          bc.addEventListener = function (type, listener, options) {
+            if (type === "message" && typeof listener === "function") {
+              return origAdd(type, function (ev) {
+                if (window.__bfcacheFrozen) return;
+                return listener.call(this, ev);
+              }, options);
+            }
+            return origAdd(type, listener, options);
+          };
+          return bc;
+        };
+        window.BroadcastChannel.prototype = OrigBC.prototype;
+      }
+
+      const origSetInterval = window.setInterval.bind(window);
+      window.setInterval = function (fn, delay, ...rest) {
+        if (typeof fn === "function") {
+          return origSetInterval(() => {
+            if (window.__bfcacheFrozen) return;
+            fn(...rest);
+          }, delay);
+        }
+        return origSetInterval(fn, delay, ...rest);
+      };
+
       const guard = (e) => {
-        if (!window.__allowedSyncEvents.has(e.type)) {
+        if (window.__bfcacheFrozen && !window.__allowedSyncEvents.has(e.type)) {
           e.stopImmediatePropagation();
         }
       };
@@ -198,6 +240,15 @@ try {
       window.addEventListener("pageshow", guard, true);
     });
 
+    const tab1 = await openApp(ctx);
+    await passOnboarding(tab1);
+
+    // 进入模拟 bfcache 冻结态：拦截 BroadcastChannel / setInterval 与 storage / visibilitychange / focus / pageshow
+    await tab1.evaluate(() => {
+      window.__allowedSyncEvents.clear();
+      window.__bfcacheFrozen = true;
+    });
+
     const tab2 = await openApp(ctx);
     await tab2.waitForSelector(".pathview");
     await finishLesson(tab2, "U1L1");
@@ -205,11 +256,11 @@ try {
     await tab2.close();
     await tab1.waitForTimeout(150);
 
-    // 必须先证明 pageshow 之前 tab1 确实持有旧状态（排除 storage 与关闭标签引发的 visibilitychange/focus 提前同步）
+    // 必须先证明 pageshow 之前 tab1 确实持有旧状态（排除 BroadcastChannel / storage / visibilitychange / focus 提前同步）
     const staleBeforeR3 = await readSnap(tab1);
-    check("SYNTHETIC_EVENT", "R3 前置：bfcache 冻结期间未触发 storage/visibilitychange/focus 同步，tab1 仍持有旧状态（xp=0）", staleBeforeR3.xp === 0 && staleBeforeR3.runs === 0 && staleBeforeR3.done.length === 0, JSON.stringify(staleBeforeR3));
+    check("SYNTHETIC_EVENT", "R3 前置：bfcache 冻结期间未触发跨标签同步，tab1 仍持有旧状态（xp=0）", staleBeforeR3.xp === 0 && staleBeforeR3.runs === 0 && staleBeforeR3.done.length === 0, JSON.stringify(staleBeforeR3));
 
-    // 仅放行 pageshow 并派发 persisted=true（storage/visibilitychange/focus 仍保持冻结）
+    // 仅放行 pageshow 并派发 persisted=true（BroadcastChannel / storage / visibilitychange / focus 仍保持冻结）
     await tab1.evaluate(() => {
       window.__allowedSyncEvents.add("pageshow");
       window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
@@ -219,7 +270,7 @@ try {
     const u1DoneRendered = await tab1.locator('[data-lesson="U1L1"].done').count();
     check("SYNTHETIC_EVENT", "R3 单独放行 pageshow(persisted=true) 恢复后合并另一页通关进度，内存与状态栏 XP 一致", afterBfcache.xp === expected.xp && afterBfcache.runs === expected.runs && afterBfcache.done.join(",") === "U1L1" && afterBfcache.xpText === String(expected.xp) && u1DoneRendered === 1, JSON.stringify(afterBfcache));
 
-    // 重新清空放行集合（再次冻结 storage / visibilitychange / focus / pageshow），另一标签页执行清除
+    // 重新清空放行集合（再次冻结所有同步通道），另一标签页执行清除
     await tab1.evaluate(() => { window.__allowedSyncEvents.clear(); });
     const tab3 = await openApp(ctx);
     await tab3.waitForSelector(".pathview");
@@ -239,6 +290,7 @@ try {
     await tab1.waitForTimeout(200);
     const afterClearBfcache = await readSnap(tab1);
     check("SYNTHETIC_EVENT", "R4 清除后单独放行 pageshow(persisted=true) 恢复不会让旧代进度复活", afterClearBfcache.xp === 0 && afterClearBfcache.runs === 0 && afterClearBfcache.done.length === 0 && afterClearBfcache.xpText === "0", JSON.stringify(afterClearBfcache));
+    await tab1.evaluate(() => { window.__bfcacheFrozen = false; });
     await closeCtx(ctx);
   }
 
