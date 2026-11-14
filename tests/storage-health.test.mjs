@@ -58,4 +58,60 @@ mem["suipian.meta.backupBase"] = String(T0); mem["suipian.meta.lastExport"] = St
 ok("旧版 lastExport 不当确认：到期仍提醒", m.exportReminderDue({ now: T0 + 15 * D, doneCount: 5 }) && m.lastExportAt() === 0);
 m.markExported(T0 + 15 * D);
 ok("用户确认后写入 confirmedExport 并重新计时", m.lastExportAt() === T0 + 15 * D && !m.exportReminderDue({ now: T0 + 20 * D, doneCount: 5 }));
+
+// ---- F：存储探针只输出受支持的异常类别，不输出任意 name / message ----
+// 全部使用本机内存对象和明显的合成字符串；不读真实存档、不发网络请求。
+const FAKE_PRIVATE = "FAKE-PRIVATE token=TEST_TOKEN_123 user@example.invalid https://example.invalid/a?key=TEST#private";
+const probeGlobals = ["navigator", "localStorage", "sessionStorage", "indexedDB"];
+const beforeProbe = new Map(probeGlobals.map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
+const thrown = (name) => Object.assign(new Error(FAKE_PRIVATE), { name });
+function probeMemory(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return { values, getItem: (k) => values.get(k) ?? null, setItem: (k, v) => values.set(k, String(v)), removeItem: (k) => values.delete(k), key: (i) => [...values.keys()][i] ?? null, get length() { return values.size; } };
+}
+async function probeScene(options = {}) {
+  const local = probeMemory(options.initial), session = probeMemory();
+  const nav = { cookieEnabled: true, storage: { estimate: async () => ({ usage: 5 * 1024 * 1024, quota: 1024 * 1024 * 1024 }) } };
+  if ("cookieError" in options) Object.defineProperty(nav, "cookieEnabled", { get() { throw options.cookieError; } });
+  if ("localError" in options) local.setItem = () => { throw options.localError; };
+  if ("sessionError" in options) session.setItem = () => { throw options.sessionError; };
+  const idbCalls = [];
+  let idb;
+  if ("idbSyncError" in options) idb = { open() { throw options.idbSyncError; } };
+  else if ("idbError" in options) idb = { open() { const r = { error: options.idbError }; queueMicrotask(() => r.onerror()); return r; } };
+  else if (options.idb === "ok") idb = { open(name) { idbCalls.push("open:" + name); const r = { result: { close() { idbCalls.push("close"); } } }; queueMicrotask(() => r.onsuccess()); return r; }, deleteDatabase(name) { idbCalls.push("delete:" + name); } };
+  else if (options.idb === "blocked") idb = { open() { const r = {}; queueMicrotask(() => r.onblocked()); return r; } };
+  for (const [key, value] of Object.entries({ navigator: nav, localStorage: local, sessionStorage: session, indexedDB: idb })) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  try { return { lines: await (options.report ? m.storageReport() : m.browserProbe()), local, session, idbCalls }; }
+  finally { for (const [key, descriptor] of beforeProbe) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; } }
+}
+for (const [field, index, prefix] of [["cookieError", 0, "Cookie：出错："], ["localError", 1, "localStorage 写入：出错："], ["sessionError", 2, "sessionStorage：出错："], ["idbSyncError", 3, "IndexedDB：出错："], ["idbError", 3, "IndexedDB：被拒绝（"]]) {
+  const end = field === "idbError" ? "）" : "";
+  const normal = await probeScene({ [field]: thrown("SecurityError") });
+  ok(`F ${field}：保留 SecurityError，不带异常 message`, normal.lines[index] === prefix + "SecurityError" + end && !normal.lines.join("\n").includes("FAKE-PRIVATE"), normal.lines.join(" | "));
+  const unsafe = await probeScene({ [field]: thrown(FAKE_PRIVATE) });
+  ok(`F ${field}：异常 name 含假邮箱 / URL / 令牌时只报未知类型`, unsafe.lines[index] === prefix + "未知类型" + end && !unsafe.lines.join("\n").includes("FAKE-PRIVATE"), unsafe.lines.join(" | "));
+}
+const quota = await probeScene({ localError: thrown("QuotaExceededError") });
+ok("F 配额异常仍保留 QuotaExceededError", quota.lines[1] === "localStorage 写入：出错：QuotaExceededError");
+for (const name of ["A".repeat(5000), "TEST_TOKEN_WITHOUT_PUNCTUATION", { toString() { throw new Error("must not coerce"); } }]) {
+  let result;
+  try { result = await probeScene({ localError: thrown(name) }); } catch { result = { lines: ["", "probe rejected"] }; }
+  ok("F 过长 / 自定义标识符 / 非字符串 name：不原样输出也不强制转字符串", result.lines[1] === "localStorage 写入：出错：未知类型", result.lines[1]);
+}
+for (const value of [FAKE_PRIVATE, null, undefined]) {
+  const result = await probeScene({ sessionError: value });
+  ok("F 抛出字符串 / null / undefined：不泄露原值", result.lines[2] === "sessionStorage：出错：未知类型", result.lines[2]);
+}
+let getterResult;
+try { getterResult = (await probeScene({ localError: Object.defineProperty({}, "name", { get() { throw new Error(FAKE_PRIVATE); } }) })).lines[1]; } catch { getterResult = "probe rejected"; }
+ok("F name getter 自身抛错：探针仍返回未知类型", getterResult === "localStorage 写入：出错：未知类型", getterResult);
+const goodProbe = await probeScene({ idb: "ok" });
+ok("F 正常探针保持四行、成功关闭并删除自己的探针数据库", goodProbe.lines.join("|") === "Cookie：允许|localStorage 写入：正常|sessionStorage：正常|IndexedDB：可用" && goodProbe.idbCalls.join("|") === "open:suipian-probe|close|delete:suipian-probe" && !goodProbe.local.values.has("suipian.meta.probe") && !goodProbe.session.values.has("suipian.probe"), goodProbe.lines.join("|"));
+const blockedProbe = await probeScene({ idb: "blocked" });
+ok("F IndexedDB 被阻塞仍如实显示", blockedProbe.lines[3] === "IndexedDB：被阻塞");
+const unchanged = { "suipian.meta.firstSeen": "1000", "suipian.meta.loads": "[1000,2000]", "suipian.v4.tab.keep": FAKE_PRIVATE };
+const report = await probeScene({ initial: unchanged, sessionError: thrown(FAKE_PRIVATE), report: true });
+ok("F 完整体检保留首次使用 / 键数 / 打开次数 / 额度", report.lines.some((x) => x.startsWith("这份存储首次使用：") && !x.includes("无法读取")) && report.lines.some((x) => x.includes("3 个键（学习记录相关 1 个）")) && report.lines.some((x) => x.includes("打开次数：2")) && report.lines.some((x) => x.includes("5 MB / 共 1024 MB")), report.lines.join(" | "));
+ok("F 完整体检不带合成私人文本，已有学习记录和打开记录原样保留", !report.lines.join("\n").includes("FAKE-PRIVATE") && JSON.stringify(Object.fromEntries(report.local.values)) === JSON.stringify(unchanged), report.lines.join(" | "));
 process.exit(fail ? 1 : 0);
