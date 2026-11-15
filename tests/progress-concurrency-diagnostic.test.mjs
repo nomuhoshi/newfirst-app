@@ -1,10 +1,15 @@
 // 并发清除窗口浏览器事件诊断专项（保留 tests/progress-concurrency.test.mjs 原无注入用例零改动）
 // 约定：
 // 1. 直接复用 R2 观察器 tests/lib/ledger-observer.mjs 的唯一命名导出 observeSuipianV4Storage(storage?)；
-// 2. T1 原始只读快照放入 Tab B 清除的同一次同步 evaluate 中，随后立即执行 Tab A 单次同步保存采样（T2），之后再开静态观察页；
-// 3. 断言 persistError === null、typeof persistRet === "boolean"，并核验清除换代及 T0-T4 各阶段 epoch；
+// 2. T1 原始只读快照放入 Tab B 清除的同一次同步 evaluate 中，随后立即执行 Tab A 单次同步保存采样（T2），两次调用之间不开页、不做其他页面操作，之后再开静态观察页。
+//    注意：相邻两次跨页 evaluate 调用之间仍可能发生调度，这不是跨页原子操作，不得这样表述；
+//    T1 的本代进度不在页面里另写判定，而是把同步转存的 suipian.v4.* 原始键值交给上面同一个已审观察器判定
+//    （真实清除写入 base.s={}，且清除后 Tab B 会写本代合法的空进度账本，二者都应被接受；基线缺失、损坏、读取失败一律不算“空”）；
+// 3. 断言 persistError === null、typeof persistRet === "boolean"，两条轨道都要求 T2 保存后的即时内存为 0 XP / 0 次 / done 为空
+//    （清除冲突时 persist() 返回 false 是合法的），并核验清除换代及 T0-T4 各阶段 epoch；
 // 4. 完整保留内存与存储的 xp / runs / done 证据，真实回前台 T3 与人工事件 T4 分列独立判定；
-// 5. 正常或异常退出时严格按“先关闭全部 BrowserContext -> 再停 HTTP 服务 -> 最后清理临时目录”顺序释放资源。
+// 5. 正常或异常退出时按“先关闭全部 BrowserContext -> 再停 HTTP 服务 -> 最后清理临时目录”顺序释放资源；
+//    BrowserContext 关闭成功后才移出追踪集合，关闭失败不被吞掉：记录、继续清理其余资源、最终以失败退出。
 // 运行（需先合入 R2 补丁并执行 npm run build）：
 //   MOBILE_BROWSER=webkit|chromium node tests/progress-concurrency-diagnostic.test.mjs
 
@@ -75,10 +80,17 @@ const open = async (dir) => {
   return ctx;
 };
 
+// 关闭成功后才移出追踪集合；关闭失败向上抛出并保留引用，由收尾阶段再试，且计入失败
 const closeCtx = async (ctx) => {
   if (!ctx) return;
+  await ctx.close();
   activeContexts.delete(ctx);
-  await ctx.close().catch(() => {});
+};
+
+const cleanupErrors = [];
+const cleanupFailure = (stage, err) => {
+  cleanupErrors.push({ stage, error: String(err?.stack || err) });
+  console.log(`❌ [${BNAME}] 清理失败：${stage}  — ${String(err?.message || err)}`);
 };
 
 // 仅用于受控轨道（controlled-deferred-delivery）的跨标签事件截获、队列回放与实际处理计数脚本
@@ -281,6 +293,9 @@ const matchesStorageTriad = (obs, expected, expectedEpoch = null) =>
   obs.done.length === expected.done.length &&
   obs.done.every((v, i) => v === expected.done[i]);
 
+// 把 T1 同步转存的 suipian.v4.* 原始键值做成只读 Storage 外形，交给已审观察器 observeSuipianV4Storage 判定
+const storageFromDump = (dump) => ({ get length() { return Object.keys(dump).length; }, key: (i) => Object.keys(dump)[i] ?? null, getItem: (k) => (Object.prototype.hasOwnProperty.call(dump, k) ? dump[k] : null) });
+
 const matchesMemoryTriad = (mem, expected) =>
   mem !== null &&
   typeof mem === "object" &&
@@ -477,6 +492,15 @@ try {
             : null,
       };
 
+      // 同一次同步执行内原样转存全部 suipian.v4.* 原始键值：Node 侧交给已审观察器判定本代有效进度（页面内不另写判定逻辑，也不再开页）
+      const v4Dump = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (typeof k === "string" && k.startsWith("suipian.v4.")) v4Dump[k] = rawGet.call(localStorage, k);
+      }
+
+      // rawBaseXp / rawBaseRuns / activeTabKeysAfterClear 仅作证据留存，不再作断言：
+      // 真实清除写入 base.s={}（没有这两个字段），且清除后 persist() 会写 Tab B 本代的合法空进度账本
       return {
         epochBeforeClear,
         epochAfterClear,
@@ -490,10 +514,11 @@ try {
         rawBaseDone,
         activeTabKeysAfterClear: activeTabKeysAfterClear.sort(),
         tabBMemoryAfterClear,
+        v4Dump,
       };
     });
 
-    // ---------- T2：零异步间隔，立即执行 Tab A 单次同步保存采样 ----------
+    // ---------- T2：紧接 T1 之后立即执行 Tab A 单次同步保存采样（两次调用之间不开页、不做其他页面操作；不是跨页原子操作） ----------
     const t2ImmediateSave = await tabA.evaluate(() => {
       const rawGet = Storage.prototype.getItem;
       const storageEpochBeforeSave = rawGet.call(localStorage, "suipian.v4.epoch") || "m0";
@@ -533,9 +558,11 @@ try {
     // ---------- 此时再打开同源静态观察页，采集 T2 后的存储权威视图 ----------
     const t2Obs = await observeStaticStorage(ctx);
     const clearedEpoch = t1ClearAndRaw.epochAfterClear;
+    // T1 本代进度由已审观察器判定：基线缺失 / 损坏 / 读取失败都得 ok:false，不会被当成“空进度”；缺转存时按空转存处理（同样失败）
+    const t1LedgerView = observeSuipianV4Storage(storageFromDump(t1ClearAndRaw.v4Dump ?? {}));
 
     check(
-      `[${track}] T1 清除换代与原始只读快照核验（epoch 切换且新代基线为空）`,
+      `[${track}] T1 清除换代与原始只读快照核验（epoch 切换；新代基线存在且可解析；观察器判定本代进度为空，接受 base.s={} 与本代空进度账本）`,
       t1ClearAndRaw.epochBeforeClear === preClearEpoch &&
         typeof clearedEpoch === "string" &&
         clearedEpoch.length > 0 &&
@@ -544,12 +571,9 @@ try {
         t1ClearAndRaw.parseError === null &&
         t1ClearAndRaw.rawBaseVersion === 4 &&
         t1ClearAndRaw.rawBaseEpoch === clearedEpoch &&
-        t1ClearAndRaw.rawBaseXp === 0 &&
-        t1ClearAndRaw.rawBaseRuns === 0 &&
-        t1ClearAndRaw.rawBaseDone.length === 0 &&
-        t1ClearAndRaw.activeTabKeysAfterClear.length === 0 &&
+        matchesStorageTriad(t1LedgerView, EXPECTED_EMPTY, clearedEpoch) &&
         matchesMemoryTriad(t1ClearAndRaw.tabBMemoryAfterClear, EXPECTED_EMPTY),
-      JSON.stringify(t1ClearAndRaw)
+      JSON.stringify({ t1ClearAndRaw, t1LedgerView })
     );
 
     if (isControlled) {
@@ -560,16 +584,11 @@ try {
       );
     }
 
-    const postSaveMemValid = isControlled
-      ? matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_PRE_CLEAR)
-      : matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_PRE_CLEAR) ||
-        matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_EMPTY);
-
     check(
-      `[${track}] T2 persist() 返回契约、保存后内存与 epoch 前后对齐核验（persistError === null, typeof persistRet === "boolean"）`,
+      `[${track}] T2 persist() 返回契约、保存后即时内存为空（xp=0, runs=0, done=[]）与 epoch 前后对齐核验（persistError === null, typeof persistRet === "boolean"；清除冲突时返回 false 合法）`,
       t2ImmediateSave.persistError === null &&
         typeof t2ImmediateSave.persistRet === "boolean" &&
-        postSaveMemValid &&
+        matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_EMPTY) &&
         t2ImmediateSave.storageEpochBeforeSave === clearedEpoch &&
         t2ImmediateSave.storageEpochAfterSave === clearedEpoch,
       JSON.stringify(t2ImmediateSave)
@@ -728,6 +747,7 @@ try {
       },
       t0: { memory: t0Memory, storage: t0Obs },
       t1_syncClearAndRawSnapshot: t1ClearAndRaw,
+      t1_ledgerView: t1LedgerView,
       t2_syncImmediateSave: { immediateSave: t2ImmediateSave, storageAfterSave: t2Obs },
       controlledStats,
       t3_realBringToFront: { lifecycle: t3Lifecycle, memory: t3Memory, storage: t3Obs },
@@ -739,19 +759,38 @@ try {
     await closeCtx(ctx);
   }
 } finally {
+  // 每一步失败都只记录并继续清理其余资源（失败的 BrowserContext 仍留在追踪集合里），最后统一计入失败
   // 1. 先关闭全部残留 BrowserContext
   for (const ctx of [...activeContexts]) {
-    await closeCtx(ctx);
+    try {
+      await closeCtx(ctx);
+    } catch (err) {
+      cleanupFailure("关闭 BrowserContext", err);
+    }
   }
   // 2. 再停止本地 HTTP 服务
   if (srv && srv.listening) {
-    await new Promise((r) => srv.close(r));
+    try {
+      await new Promise((resolveClose, rejectClose) => srv.close((err) => (err ? rejectClose(err) : resolveClose())));
+    } catch (err) {
+      cleanupFailure("停止 HTTP 服务", err);
+    }
   }
   // 3. 最后清理所有测试临时目录
   for (const d of dirs) {
-    rmSync(d, { recursive: true, force: true });
+    try {
+      rmSync(d, { recursive: true, force: true });
+    } catch (err) {
+      cleanupFailure(`清理临时目录 ${d}`, err);
+    }
   }
 }
+
+check(
+  `清理断言：BrowserContext 关闭、HTTP 服务停止、临时目录清理全部成功（残留未关闭 context ${activeContexts.size} 个）`,
+  cleanupErrors.length === 0 && activeContexts.size === 0,
+  JSON.stringify(cleanupErrors)
+);
 
 console.log(
   fail
