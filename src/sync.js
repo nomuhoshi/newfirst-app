@@ -481,12 +481,14 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   // ---------- 登录 ----------
-  async function sendCode(addr) {
+  // captchaToken（可选，D 防滥用的准备）：只作为本次请求的参数原样交给 api，不在这里保存、不缓存、不记录；
+  // 账号隔离（loginBlocked）和冷却检查都在它之前，被拦下时不会发出任何请求，也不会碰令牌。
+  async function sendCode(addr, captchaToken) {
     const blocked = loginBlocked(addr);
     if (blocked) return blocked;
     // 冷却期内不再调用发信接口。测试只用假接口，这里也不会向任何真实邮箱发验证码。
     if (inCooldown()) return rateLimited();
-    const r = await api.sendCode(String(addr).trim());
+    const r = await (captchaToken ? api.sendCode(String(addr).trim(), captchaToken) : api.sendCode(String(addr).trim())); // 没有令牌时调用形状和以前完全一致
     if (r && r.kind === "rate-limit") armCooldown();
     return r;
   }

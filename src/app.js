@@ -7,6 +7,7 @@ import "./style.css";
 import "./app.css";
 import "./game.css";
 import { versionLabel } from "./version-label.js";
+import { swRegistrationError } from "./sw-diagnostics.js";
 import course from "../content/course.json";
 import unit1 from "../content/unit1.json";
 import unit2 from "../content/unit2.json";
@@ -1782,7 +1783,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
     check(); track(reg.installing); // 页面加载时新版可能已经在安装中
     reg.addEventListener("updatefound", () => track(reg.installing));
   };
-  const register = () => navigator.serviceWorker.register("./sw.js").then((reg) => { swReg = reg; watchUpdate(reg); refreshSwInfo(); }).catch((e) => { swInfo.status = "注册失败：" + (e?.message || e); });
+  const register = () => navigator.serviceWorker.register("./sw.js").then((reg) => { swReg = reg; watchUpdate(reg); refreshSwInfo(); }).catch((e) => { swInfo.status = swRegistrationError(e); });
   if (document.readyState === "complete") register(); else window.addEventListener("load", register);
   // 回到前台、恢复网络时检查有没有新版本，避免长期停在旧课程
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") swReg?.update().catch(() => {}); });

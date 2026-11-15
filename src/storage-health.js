@@ -113,12 +113,26 @@ export function recordLoad(now = Date.now()) {
   } catch { return null; }
 }
 export function loadHistory() { try { const a = JSON.parse(localStorage.getItem(META_LOADS) || "[]"); return Array.isArray(a) ? a.filter((x) => Number.isFinite(x)) : []; } catch { return null; } }
+
+// 复制诊断只保留固定的异常类别；name 和 message 都可能带任意文本，不能按字符串原样拼入。
+// 自定义名称统一显示“未知类型”，包括看起来像普通标识符的令牌；不读取 message，也不强制转换异常对象。
+const PROBE_ERROR_NAMES = new Set([
+  "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError",
+  "SecurityError", "QuotaExceededError", "InvalidStateError", "UnknownError", "NotFoundError", "VersionError",
+  "AbortError", "ReadOnlyError", "ConstraintError", "DataError", "TransactionInactiveError", "InvalidAccessError",
+  "NotSupportedError", "DataCloneError", "TimeoutError", "NotAllowedError",
+]);
+function probeErrorName(error) {
+  try { const name = error?.name; return PROBE_ERROR_NAMES.has(name) ? name : "未知类型"; }
+  catch { return "未知类型"; }
+}
+
 export async function browserProbe() {
   const out = [];
-  const t = (f) => { try { return f(); } catch (e) { return "出错：" + (e && e.name || "未知"); } };
+  const t = (f) => { try { return f(); } catch (e) { return "出错：" + probeErrorName(e); } };
   out.push(`Cookie：${t(() => (navigator.cookieEnabled ? "允许" : "被阻止"))}`);
   out.push(`localStorage 写入：${t(() => { const k = "suipian.meta.probe"; localStorage.setItem(k, "1"); const ok = localStorage.getItem(k) === "1"; localStorage.removeItem(k); return ok ? "正常" : "写入后读不回"; })}`);
   out.push(`sessionStorage：${t(() => { sessionStorage.setItem("suipian.probe", "1"); const ok = sessionStorage.getItem("suipian.probe") === "1"; sessionStorage.removeItem("suipian.probe"); return ok ? "正常" : "读不回"; })}`);
-  out.push(`IndexedDB：${await new Promise((res) => { try { if (!globalThis.indexedDB) return res("不支持"); const r = indexedDB.open("suipian-probe"); r.onsuccess = () => { try { r.result.close(); indexedDB.deleteDatabase("suipian-probe"); } catch { /* 忽略 */ } res("可用"); }; r.onerror = () => res("被拒绝（" + (r.error && r.error.name || "未知") + "）"); r.onblocked = () => res("被阻塞"); setTimeout(() => res("无响应"), 1500); } catch (e) { res("出错：" + (e && e.name || "未知")); } })}`);
+  out.push(`IndexedDB：${await new Promise((res) => { try { if (!globalThis.indexedDB) return res("不支持"); const r = indexedDB.open("suipian-probe"); r.onsuccess = () => { try { r.result.close(); indexedDB.deleteDatabase("suipian-probe"); } catch { /* 忽略 */ } res("可用"); }; r.onerror = () => res("被拒绝（" + probeErrorName(r.error) + "）"); r.onblocked = () => res("被阻塞"); setTimeout(() => res("无响应"), 1500); } catch (e) { res("出错：" + probeErrorName(e)); } })}`);
   return out;
 }
