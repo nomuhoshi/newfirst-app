@@ -220,11 +220,15 @@ let lastSavedAt = 0;
 export const getLastSavedAt = () => lastSavedAt;
 function pageId() { return Date.now().toString(36) + rnd() + rnd(); } // 每次页面加载一个新 id
 const PAGE_ID = pageId();
-function attach(S, state, epoch, id = PAGE_ID) {
+function createLedger(S, epoch, id = PAGE_ID) {
   const e = emptyEntry();
   const r = rd(S, K_TAB + id), rec = r.ok && r.v ? parse(r.v) : null; // 同一标签页刷新：接着写自己上一次的账本
   if (rec && rec.v === 4 && rec.epoch === epoch && rec.entries && rec.entries[id]) joinEntry(e, rec.entries[id]);
   const L = { id, epoch, e, metaT: 0, saved: JSON.stringify(e) }; // saved：最近一次成功写入（或读到）的自己的账本内容，用来判断“有没有还没存下的变化”
+  return L;
+}
+function attach(S, state, epoch, id = PAGE_ID) {
+  const L = createLedger(S, epoch, id);
   LEDGERS.set(state, L);
   return L;
 }
@@ -315,10 +319,11 @@ export function compactLedgers({ now = Date.now(), minKeys = COMPACT_MIN_KEYS, m
 
 // 别处清除过（代数变了）：丢弃内存里的旧记录，采用新一代的状态。视图读不完整时返回 false，内存记录不动。
 function adoptEpoch(S, state, epoch, base) {
-  const prefs = state.prefs, L = attach(S, state, epoch);
+  const prefs = state.prefs, L = createLedger(S, epoch);
   const v = computeView(S, epoch, base, L);
   if (!v) return false;
   applyView(state, v, L, { reset: true }); state.prefs = { ...state.prefs, ...prefs };
+  LEDGERS.set(state, L); // 视图完整且已采用后才换代，读取失败不能把旧进度绑定到新代。
   return true;
 }
 
