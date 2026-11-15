@@ -114,11 +114,11 @@ try {
       ]);
     }
   });
-  await page.waitForFunction(async () => {
+  // 条件成立时的取值就是断言用的值（同一次读取），避免“等到了、再读一次却变了”的间隔（run 43661367643 的 waitingState 就是这样读成 null）
+  const installed = await (await page.waitForFunction(async () => {
     const reg = await navigator.serviceWorker.getRegistration();
-    return reg?.active?.state === "activated" && !!navigator.serviceWorker.controller;
-  }, null, { timeout: 15000 });
-  const installed = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state || null);
+    return reg?.active?.state === "activated" && !!navigator.serviceWorker.controller ? reg.active.state : false;
+  }, null, { timeout: 15000 })).jsonValue();
   const ctrlV1 = await queryControllerVersion(page, 4000);
 
   // Publish v2: must install and wait without taking over prematurely
@@ -130,8 +130,10 @@ try {
       new Promise((_, rej) => setTimeout(() => rej(new Error("sw update timeout (15000ms)")), 15000)),
     ]);
   });
-  await page.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting, null, { timeout: 15000 });
-  const waitingState = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.waiting?.state || null);
+  const waitingState = await (await page.waitForFunction(async () => {
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg?.waiting ? reg.waiting.state : false;
+  }, null, { timeout: 15000 })).jsonValue();
   const ctrlStillV1 = await queryControllerVersion(page, 4000);
 
   // Trigger skipWaiting and verify controllerchange + v2 controller version + retained v1 cache
