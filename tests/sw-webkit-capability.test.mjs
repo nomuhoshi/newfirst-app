@@ -145,7 +145,16 @@ try {
     const reg = await navigator.serviceWorker.getRegistration();
     return window.__swControllerChanges >= 1 && !reg?.waiting && reg?.active?.state === "activated" && !!navigator.serviceWorker.controller;
   }, null, { timeout: 15000 });
-  const ctrlV2 = await queryControllerVersion(page, 4000);
+  // 首次 CI 失败（run 43659502332，Chromium）：controllerchange 之后第一次查询仍答 cap-v1，同一代码重跑通过（间歇）。
+  // 改为轮询到控制者答 cap-v2（最多约 10 秒）；仍然必须最终是 cap-v2，否则照样失败，并把每次答复写进 SW_CAPABILITY_RESULT 便于定位。
+  let ctrlV2 = null;
+  const v2Probes = [];
+  for (let n = 0; n < 20; n++) {
+    ctrlV2 = await queryControllerVersion(page, 1000);
+    v2Probes.push(ctrlV2?.version ?? null);
+    if (ctrlV2?.version === "cap-v2") break;
+    await page.waitForTimeout(250);
+  }
   const cachesList = await page.evaluate(async () => (await caches.keys()).filter((k) => k.startsWith("suipian-")).sort());
 
   const outcome = {
@@ -155,6 +164,7 @@ try {
     waitingState,
     ctrlStillV1,
     ctrlV2,
+    v2Probes,
     cachesList,
   };
   console.log("SW_CAPABILITY_RESULT", JSON.stringify(outcome));
