@@ -68,6 +68,19 @@ const queryControllerVersion = (page, timeoutMs = 4000) =>
     }, ms);
   }), timeoutMs);
 
+// 注意：page.waitForFunction 的谓词若是 async，只会执行一次，返回 false 也会放行（本地实测：谓词 resolve false 仍直接返回），不会重试。
+// 所以凡是要“反复读取 SW 注册状态直到条件成立”的地方都用这个 Node 侧轮询；超时就抛错，成立时返回的就是断言用的那次读取值。
+const pollPage = async (page, fn, what, timeoutMs = 15000, stepMs = 100) => {
+  const t0 = Date.now();
+  let last;
+  for (;;) {
+    last = await page.evaluate(fn);
+    if (last) return last;
+    if (Date.now() - t0 > timeoutMs) throw new Error(`${what} timeout (${timeoutMs}ms), last=${JSON.stringify(last)}`);
+    await page.waitForTimeout(stepMs);
+  }
+};
+
 let browser = null;
 let ctx = null;
 let page = null;
@@ -114,11 +127,10 @@ try {
       ]);
     }
   });
-  // 条件成立时的取值就是断言用的值（同一次读取），避免“等到了、再读一次却变了”的间隔（run 43661367643 的 waitingState 就是这样读成 null）
-  const installed = await (await page.waitForFunction(async () => {
+  const installed = await pollPage(page, async () => {
     const reg = await navigator.serviceWorker.getRegistration();
     return reg?.active?.state === "activated" && !!navigator.serviceWorker.controller ? reg.active.state : false;
-  }, null, { timeout: 15000 })).jsonValue();
+  }, "v1 activated + controller");
   const ctrlV1 = await queryControllerVersion(page, 4000);
 
   // Publish v2: must install and wait without taking over prematurely
@@ -130,10 +142,10 @@ try {
       new Promise((_, rej) => setTimeout(() => rej(new Error("sw update timeout (15000ms)")), 15000)),
     ]);
   });
-  const waitingState = await (await page.waitForFunction(async () => {
+  const waitingState = await pollPage(page, async () => {
     const reg = await navigator.serviceWorker.getRegistration();
     return reg?.waiting ? reg.waiting.state : false;
-  }, null, { timeout: 15000 })).jsonValue();
+  }, "v2 waiting worker");
   const ctrlStillV1 = await queryControllerVersion(page, 4000);
 
   // Trigger skipWaiting and verify controllerchange + v2 controller version + retained v1 cache
@@ -143,10 +155,10 @@ try {
     const reg = await navigator.serviceWorker.getRegistration();
     reg.waiting.postMessage({ type: "skipWaiting" });
   });
-  await page.waitForFunction(async () => {
+  await pollPage(page, async () => {
     const reg = await navigator.serviceWorker.getRegistration();
     return window.__swControllerChanges >= 1 && !reg?.waiting && reg?.active?.state === "activated" && !!navigator.serviceWorker.controller;
-  }, null, { timeout: 15000 });
+  }, "controllerchange + v2 active, no waiting");
   // 首次 CI 失败（run 43659502332，Chromium）：controllerchange 之后第一次查询仍答 cap-v1，同一代码重跑通过（间歇）。
   // 改为轮询到控制者答 cap-v2（最多约 10 秒）；仍然必须最终是 cap-v2，否则照样失败，并把每次答复写进 SW_CAPABILITY_RESULT 便于定位。
   let ctrlV2 = null;
