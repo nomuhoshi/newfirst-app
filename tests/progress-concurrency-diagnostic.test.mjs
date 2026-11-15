@@ -29,9 +29,14 @@ if (!existsSync(join(DIST, "index.html"))) {
 
 let pass = 0;
 let fail = 0;
+let unverified = 0;
 const check = (name, ok, detail = "") => {
   ok ? pass++ : fail++;
   console.log(`${ok ? "✅" : "❌"} [${BNAME}] ${name}${ok || !detail ? "" : "  — " + detail}`);
+};
+const markUnverified = (name, detail = "") => {
+  unverified++;
+  console.log(`⚠️ [${BNAME}] ${name}${!detail ? "" : "  — " + detail}`);
 };
 
 const MIME = {
@@ -246,6 +251,7 @@ function installControlledTrackHooks() {
     const handledTotal = window.__appHandledNotifications.length;
     return {
       interceptedCount,
+      deferredBeforeRelease: batch.length,
       releaseAttempts: batch.length,
       releasedCount,
       handledBeforeRelease,
@@ -554,10 +560,16 @@ try {
       );
     }
 
+    const postSaveMemValid = isControlled
+      ? matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_PRE_CLEAR)
+      : matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_PRE_CLEAR) ||
+        matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_EMPTY);
+
     check(
-      `[${track}] T2 persist() 返回契约与 epoch 核验（persistError === null, typeof persistRet === "boolean"）`,
+      `[${track}] T2 persist() 返回契约、保存后内存与 epoch 前后对齐核验（persistError === null, typeof persistRet === "boolean"）`,
       t2ImmediateSave.persistError === null &&
         typeof t2ImmediateSave.persistRet === "boolean" &&
+        postSaveMemValid &&
         t2ImmediateSave.storageEpochBeforeSave === clearedEpoch &&
         t2ImmediateSave.storageEpochAfterSave === clearedEpoch,
       JSON.stringify(t2ImmediateSave)
@@ -580,6 +592,12 @@ try {
         JSON.stringify(controlledStats)
       );
       check(
+        `[${track}] 回放前未投递断言：释放前应用处理数为 0 且暂存队列等于截获数`,
+        controlledStats.handledBeforeRelease === 0 &&
+          controlledStats.deferredBeforeRelease === controlledStats.interceptedCount,
+        JSON.stringify(controlledStats)
+      );
+      check(
         `[${track}] 通知释放断言：暂存通知全量释放且回放无异常`,
         controlledStats.releaseAttempts === controlledStats.interceptedCount &&
           controlledStats.releasedCount === controlledStats.interceptedCount &&
@@ -598,20 +616,67 @@ try {
       );
     }
 
-    // ---------- T3（独立分列）：真实回前台 bringToFront()（不用 T4 成功掩盖 T3 异常） ----------
+    // ---------- T3（独立分列）：真实回前台 bringToFront()（未观测到真实 hidden→visible 仅标未取得该生命周期证据） ----------
+    await tabA.evaluate(() => {
+      const probe = {
+        visibilityBefore: document.visibilityState,
+        transitions: [],
+        focusCount: 0,
+      };
+      const onVis = () => probe.transitions.push(document.visibilityState);
+      const onFocus = () => {
+        probe.focusCount += 1;
+      };
+      document.addEventListener("visibilitychange", onVis);
+      window.addEventListener("focus", onFocus);
+      window.__t3PassiveProbe = {
+        finish() {
+          document.removeEventListener("visibilitychange", onVis);
+          window.removeEventListener("focus", onFocus);
+          return {
+            visibilityBefore: probe.visibilityBefore,
+            transitions: probe.transitions.slice(),
+            focusCount: probe.focusCount,
+            visibilityAfter: document.visibilityState,
+          };
+        },
+      };
+    });
     await tabA.bringToFront();
+    const t3ProbeRaw = await tabA.evaluate(() => {
+      const p = window.__t3PassiveProbe ? window.__t3PassiveProbe.finish() : null;
+      delete window.__t3PassiveProbe;
+      return p;
+    });
     const t3Memory = await readTabMemory(tabA);
     const t3Obs = await observeStaticStorage(ctx);
+    const observedHiddenToVisible = Boolean(
+      t3ProbeRaw &&
+        (t3ProbeRaw.visibilityBefore === "hidden" || t3ProbeRaw.transitions.includes("hidden")) &&
+        t3Memory.visibilityState === "visible"
+    );
+    const t3Lifecycle = {
+      ...(t3ProbeRaw || {}),
+      observedHiddenToVisible,
+      status: observedHiddenToVisible ? "OBSERVED_HIDDEN_TO_VISIBLE" : "LIFECYCLE_EVIDENCE_NOT_OBTAINED",
+    };
     check(
       `[${track}] T3 真实回前台(bringToFront)存储完整核验（currentEpoch=${clearedEpoch}, xp=0, runs=0, done=[]）`,
       matchesStorageTriad(t3Obs, EXPECTED_EMPTY, clearedEpoch),
-      JSON.stringify({ t3Memory, t3Obs })
+      JSON.stringify({ t3Lifecycle, t3Memory, t3Obs })
     );
-    check(
-      `[${track}] T3 真实回前台(bringToFront)旧页内存收敛独立核验（xp=0, runs=0, done=[]）`,
-      matchesMemoryTriad(t3Memory, EXPECTED_EMPTY),
-      JSON.stringify({ t3Memory, t3Obs })
-    );
+    if (observedHiddenToVisible) {
+      check(
+        `[${track}] T3 真实回前台(hidden→visible)旧页内存收敛独立核验（xp=0, runs=0, done=[]）`,
+        matchesMemoryTriad(t3Memory, EXPECTED_EMPTY),
+        JSON.stringify({ t3Lifecycle, t3Memory, t3Obs })
+      );
+    } else {
+      markUnverified(
+        `[${track}] T3 未取得真实 hidden→visible 生命周期证据（LIFECYCLE_EVIDENCE_NOT_OBTAINED：bringToFront() 返回成功不等同验证通过）`,
+        JSON.stringify({ t3Lifecycle, t3Memory, t3Obs })
+      );
+    }
 
     // ---------- T4（独立分列）：人工派发前台事件 SYNTHETIC_EVENT（visibilitychange + focus） ----------
     const t4Memory = await tabA.evaluate(() => {
@@ -665,7 +730,7 @@ try {
       t1_syncClearAndRawSnapshot: t1ClearAndRaw,
       t2_syncImmediateSave: { immediateSave: t2ImmediateSave, storageAfterSave: t2Obs },
       controlledStats,
-      t3_realBringToFront: { memory: t3Memory, storage: t3Obs },
+      t3_realBringToFront: { lifecycle: t3Lifecycle, memory: t3Memory, storage: t3Obs },
       t4_syntheticEvents: { memory: t4Memory, storage: t4Obs },
       pageErrors: { tabA: tabA.errors, tabB: tabB.errors },
     };
@@ -688,5 +753,9 @@ try {
   }
 }
 
-console.log(fail ? `\n[${BNAME}] ${fail} 项失败` : `\n[${BNAME}] 全部通过`);
+console.log(
+  fail
+    ? `\n[${BNAME}] ${fail} 项失败（通过 ${pass}，未取得生命周期证据 ${unverified}）`
+    : `\n[${BNAME}] 通过 ${pass} 项，未取得生命周期证据 ${unverified} 项，0 项失败`
+);
 process.exit(fail ? 1 : 0);
