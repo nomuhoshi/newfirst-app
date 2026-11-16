@@ -143,3 +143,6 @@ lifecycleTest("negative: a conversion completed before the probe window is not T
 lifecycleTest("negative: visible only after probe finish is outside the window", { visibilityBefore: "hidden", transitions: [], visibilityAfter: "hidden" }, false);
 lifecycleTest("negative: always-visible probe has no conversion evidence", { visibilityBefore: "visible", transitions: [], visibilityAfter: "visible" }, false);
 lifecycleTest("negative: missing probe is unverified", null, false);
+
+// Strict requirement: after the observed conversion the probe must not return to hidden, even if it later becomes visible again.
+lifecycleTest("negative: hidden after an accepted conversion permanently invalidates this probe window", { visibilityBefore: "visible", transitions: ["hidden", "visible", "hidden", "visible"], visibilityAfter: "visible" }, false);

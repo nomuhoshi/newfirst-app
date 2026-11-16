@@ -677,14 +677,18 @@ try {
       if (!t3ProbeRaw || !Array.isArray(t3ProbeRaw.transitions)) return false;
       let hidden = t3ProbeRaw.visibilityBefore === "hidden";
       let orderedVisible = false;
+      let returnedToHidden = false;
       for (const state of t3ProbeRaw.transitions) {
-        if (state === "hidden") hidden = true;
+        if (state === "hidden") {
+          if (orderedVisible) returnedToHidden = true;
+          hidden = true;
+        }
         else if (state === "visible") {
           if (hidden) orderedVisible = true;
           hidden = false;
         }
       }
-      return orderedVisible && !hidden && t3ProbeRaw.visibilityAfter === "visible" && t3Memory.visibilityState === "visible";
+      return orderedVisible && !returnedToHidden && !hidden && t3ProbeRaw.visibilityAfter === "visible" && t3Memory.visibilityState === "visible";
     })();
     const t3Lifecycle = {
       ...(t3ProbeRaw || {}),
