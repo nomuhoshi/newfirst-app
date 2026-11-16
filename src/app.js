@@ -452,7 +452,18 @@ const runner = new Runner({
   onOutput(t) { for (const l of [...listeners]) l.output?.(t); },
 });
 const codeExec = makeRunnerExecutor(runner); // 写代码 / 改代码题的判题与运行
+// 共享的 Python 运行器一次只能跑一段代码。几处同时要“运行结果”时（例如冷启动还在加载时连续答了两题）必须按顺序排队：
+// 否则 ready 一到，几个等待者同时调用 runner.run，只有第一个成功，其余被“运行器忙”误判成“Python 不可用”。
+// 每个请求一定会结束（结果 / null）；兜底超时保证某个请求卡住时不会堵死后面的请求。
+let outputChain = Promise.resolve();
 function runForOutput(code) {
+  let cap = null;
+  const guarded = () => Promise.race([runForOutputNow(code), new Promise((resolve) => { cap = setTimeout(() => resolve(null), LIMITS.loadMs + LIMITS.runMs + 3000); })]).finally(() => clearTimeout(cap));
+  const p = outputChain.then(guarded);
+  outputChain = p.then(() => {}, () => {});
+  return p;
+}
+function runForOutputNow(code) {
   return new Promise((resolve) => {
     let waiter = null, timer = null;
     const finish = (v) => { clearTimeout(timer); if (waiter) listeners.delete(waiter); resolve(v); };
@@ -1754,7 +1765,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
 window.addEventListener("storage", (e) => { if (e.key && e.key.includes("suipian.v4.")) refreshFromStorage(); }); // 测试入口里键带前缀，所以用 includes
 
-window.__app = { clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { runForOutput, clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 async function refreshSwInfo() {

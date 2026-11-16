@@ -7,6 +7,8 @@
 //     6a 首次真实运行失败 → 提示 + 重试 → 真实输出 → 继续做完整轮；练习不增加 XP / 红心 / 连续天数 / 完成次数，学习字段精确不变；
 //     6b 冷启动还在加载时连续答两题：两次运行请求都排队，加载完成后第二题仍得到真实输出（不能被“运行器忙”误判成 Python 不可用）；
 //     6c 加载中退出练习：迟到的结果不会改动路径页，学习字段不变，重进练习后正常出结果。
+//     6d 共享运行器的串行调度（直接调 runForOutput，输出各不相同）：并发请求各得各的结果；加载失败、死循环超时之后，后面的请求仍能正确结束；
+//     6e 加载中退出练习且迟到的是失败：路径页不变、无未处理异常。
 // 桌面模拟，不等于 iPhone 真机。运行：npm run build && node tests/lazy-python.test.mjs（MOBILE_BROWSER=chromium|webkit）
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -84,11 +86,11 @@ try {
   async function newColdPage() {
     const c = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block" });
     const p = await c.newPage();
-    const t = { ctx: c, page: p, abort: false, errors: [], base: 0, release: () => {} };
+    const t = { ctx: c, page: p, abort: false, abortAfterGate: false, errors: [], base: 0, release: () => {} };
     let gateP = Promise.resolve();
     t.hold = () => { gateP = new Promise((res) => { t.release = res; }); };
     p.on("pageerror", (e) => t.errors.push(e.message));
-    await p.route(/\/pyodide\//, async (r) => { if (t.abort) return r.abort(); await gateP; return r.continue(); });
+    await p.route(/\/pyodide\//, async (r) => { if (t.abort) return r.abort(); await gateP; if (t.abortAfterGate) return r.abort(); return r.continue(); });
     await p.goto(BASE, { waitUntil: "domcontentloaded" });
     await p.waitForSelector(".statsbar, .onboard");
     await p.waitForFunction(() => window.__app?.runner, null, { timeout: 15000 });
@@ -161,8 +163,10 @@ try {
     check("6a 其余题目都得到真实输出（选输出题 = 正确选项文字，其余非空且不是不可用提示）", allReal, realDetail);
     const first = await p.locator("[data-practice-first]").innerText();
     check("6a 结算：全部答对，首次答对 = 题数/题数", /^(\d+)\/\1$/.test(first), first);
-    check("6a 随机练习不改变学习字段（XP / 红心 / 连续天数 / 已通关 / 完成次数精确不变）", (await snap(p)) === before, before + " → " + (await snap(p)));
+    check("6a 结算页：学习字段精确不变（XP / 红心 / 连续天数 / 已通关 / 完成次数）", (await snap(p)) === before, before + " → " + (await snap(p)));
     check("6a 结算后没有残留的练习状态", (await p.evaluate(() => window.__app.getPractice())) === null);
+    await p.locator(".practice-finish [data-continue]").click(); await p.waitForSelector(".pathview");
+    check("6a 手动点“回到地图”后再采最终快照：学习字段仍然精确不变，回到路径页", (await snap(p)) === before && (await p.locator(".pathview").count()) === 1, before + " → " + (await snap(p)));
     check("6a 全程没有脚本错误", t.errors.length === 0, t.errors.join(" | "));
     await t.ctx.close();
   }
@@ -207,6 +211,51 @@ try {
       await p.waitForSelector(".feedbar"); await outDone(p, 30000);
       const o = (await p.locator(".outpanel pre").innerText()).trim();
       check("6c 重进练习：Python 已就绪，直接得到真实输出", (await p.locator("[data-retry-python]").count()) === 0 && o === ex.options.find((x) => x.correct).text.trim(), o.slice(0, 80));
+    } finally { t.release(); await t.ctx.close(); }
+  }
+
+  { // 6d 共享运行器的串行调度：直接调 runForOutput，三个输出各不相同
+    const t = await newColdPage(), p = t.page;
+    try {
+      const callTwo = () => p.evaluate(() => { window.__q = [window.__app.runForOutput('print("AAA-1")'), window.__app.runForOutput('print("BBB-2")')]; return true; });
+      const results = () => p.evaluate(async () => { const cap = new Promise((r) => setTimeout(() => r("TIMEOUT"), 90000)); return Promise.race([Promise.all(window.__q), cap]); });
+      t.hold(); await callTwo();
+      check("6d 冷启动时并发两个请求（Python 被按住）：runner 在加载中", (await p.evaluate(() => window.__app.runner.state)) === "loading");
+      t.release();
+      const r1 = await results();
+      check("6d 放行后两个请求各得各的结果：A → AAA-1，B → BBB-2（没有被“运行器忙”误判，也没有串号）", Array.isArray(r1) && r1[0]?.out === "AAA-1\n" && r1[1]?.out === "BBB-2\n" && !r1[0]?.error && !r1[1]?.error, JSON.stringify(r1));
+      // 加载失败：两个并发请求都如实失败（null），不卡住；恢复后下一个请求正常
+      const t2 = await newColdPage(), p2 = t2.page;
+      try {
+        t2.abort = true;
+        await p2.evaluate(() => { window.__q = [window.__app.runForOutput('print("F1")'), window.__app.runForOutput('print("F2")')]; return true; });
+        const rf = await p2.evaluate(async () => { const cap = new Promise((r) => setTimeout(() => r("TIMEOUT"), 90000)); return Promise.race([Promise.all(window.__q), cap]); });
+        check("6d 加载被拦：两个并发请求都如实失败（null），没有卡住", Array.isArray(rf) && rf[0] === null && rf[1] === null, JSON.stringify(rf));
+        t2.abort = false;
+        const ok3 = await p2.evaluate(async () => { const cap = new Promise((r) => setTimeout(() => r("TIMEOUT"), 90000)); return Promise.race([window.__app.runForOutput('print("CCC-3")'), cap]); });
+        check("6d 失败之后恢复：下一个请求得到真实输出 CCC-3", ok3?.out === "CCC-3\n", JSON.stringify(ok3));
+        // 死循环超时之后：排在后面的请求仍能结束并得到自己的输出
+        const loop = await p2.evaluate(async () => { window.__q = [window.__app.runForOutput("while True:\n    pass"), window.__app.runForOutput('print("EEE-5")')]; const cap = new Promise((r) => setTimeout(() => r("TIMEOUT"), 90000)); return Promise.race([Promise.all(window.__q), cap]); });
+        check("6d 第一个请求死循环被超时停止（Stopped），排队的第二个请求仍得到 EEE-5", Array.isArray(loop) && loop[0]?.error?.kind === "Stopped" && loop[1]?.out === "EEE-5\n", JSON.stringify(loop));
+        check("6d 全程没有未处理的脚本错误", t.errors.length === 0 && t2.errors.length === 0, t.errors.concat(t2.errors).join(" | "));
+      } finally { t2.release(); await t2.ctx.close(); }
+    } finally { t.release(); await t.ctx.close(); }
+  }
+  { // 6e 加载中退出练习，迟到的是“失败”：路径页不变、无未处理异常
+    const t = await newColdPage(), p = t.page;
+    try {
+      const before = await snap(p);
+      t.hold(); t.abortAfterGate = true;
+      await startPredictFirst(p);
+      await fillCorrect(p); await clickCheck(p);
+      await p.waitForSelector(".feedbar");
+      check("6e 请求已挂起（Python 被按住）：运行中…", /运行中/.test(await p.locator(".outpanel pre").innerText()) && (await p.evaluate(() => window.__app.runner.state)) === "loading");
+      await p.locator('button[aria-label="退出练习"]').click(); await p.locator("[data-practice-quit]").click(); await p.waitForSelector(".pathview");
+      t.release();
+      await p.waitForFunction(() => window.__app.runner.state === "loadError", null, { timeout: 60000 });
+      await p.waitForTimeout(1500);
+      check("6e 迟到的失败没有改动路径页：没有“运行结果”面板、没有“重试”按钮、仍在路径页", (await p.locator(".outpanel").count()) === 0 && (await p.locator("[data-retry-python]").count()) === 0 && (await p.locator(".pathview").count()) === 1);
+      check("6e 学习字段不变，没有残留练习状态，没有脚本错误", (await snap(p)) === before && (await p.evaluate(() => window.__app.getPractice())) === null && t.errors.length === 0, t.errors.join(" | "));
     } finally { t.release(); await t.ctx.close(); }
   }
 } finally { await browser.close(); srv.close(); }
