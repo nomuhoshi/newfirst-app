@@ -125,7 +125,7 @@ async function sendFrom(box, addr) { const input = find(box, "data-email"); inpu
   let box = launch(s);
   await sendFrom(box, "a@b.co");
   let msg = textOf(find(s.box(), "data-login-msg"));
-  check("E1 首次发送 sendCode 抛异常：按钮恢复可点（不卡在“发送中…”），提示保守文案，不含异常原文", recovered(s) && msg.includes("验证码没发出去") && !msg.includes(RAWERR) && !msg.includes("TOK"), msg + " | " + textOf(find(s.box(), "data-send-code")));
+  check("E1 首次发送 sendCode 抛异常：按钮恢复可点（不卡在“发送中…”），提示“暂时无法确认是否发出，请先检查邮件”（不说没发出去），不含异常原文，有“去输入验证码”入口", recovered(s) && msg === "暂时无法确认是否发出，请先检查邮件。" && !!find(s.box(), "data-enter-code") && !msg.includes(RAWERR) && !msg.includes("TOK"), msg + " | " + textOf(find(s.box(), "data-send-code")));
   check("E1 令牌作废（reset）、没有冷却、没有未处理异常", s.log.some((x) => x[0] === "reset") && unhandled.length === 0, JSON.stringify(s.log));
   find(s.box(), "data-send-code").click(); await flush();
   check("E1 立即重试：重新取令牌（TOK2），这次成功并进入输码页", s.log.filter((x) => x[0] === "sendCode").length === 2 && s.log.filter((x) => x[0] === "sendCode")[1][2] === "TOK2" && !!find(s.box(), "data-code"));
@@ -137,7 +137,7 @@ async function sendFrom(box, addr) { const input = find(box, "data-email"); inpu
   resend.click(); await flush();
   resend = find(s.box(), "data-resend");
   msg = textOf(find(s.box(), "data-login-msg"));
-  check("E2 重发 sendCode 抛异常：重发按钮恢复（不卡“发送中…”），提示保守文案，无冷却", resend.disabled === false && textOf(resend) === "重新发送" && msg.includes("验证码没发出去") && !msg.includes(RAWERR), msg + " | " + textOf(resend) + " | " + resend.disabled);
+  check("E2 重发 sendCode 抛异常：重发按钮恢复（不卡“发送中…”），提示“暂时无法确认是否发出，请先检查邮件”，无冷却", resend.disabled === false && textOf(resend) === "重新发送" && msg === "暂时无法确认是否发出，请先检查邮件。" && !msg.includes(RAWERR), msg + " | " + textOf(resend) + " | " + resend.disabled);
   check("E2 登录按钮没有被锁死（busy 已清）", find(s.box(), "data-verify").disabled === false);
   resend.click(); await flush();
   check("E2 立即再重发：新令牌（TOK3）、成功后提示“已重新发送”", s.log.filter((x) => x[0] === "sendCode").length === 3 && s.log.filter((x) => x[0] === "sendCode")[2][2] === "TOK3" && textOf(find(s.box(), "data-login-msg")).includes("已重新发送"));
@@ -145,14 +145,14 @@ async function sendFrom(box, addr) { const input = find(box, "data-email"); inpu
   s = setup({ captchaEnabled: true, tokenResults: [{ reject: true }] });
   box = launch(s); await sendFrom(box, "a@b.co");
   msg = textOf(find(s.box(), "data-login-msg"));
-  check("E3 getToken 被拒绝：没发请求，按钮恢复，提示保守文案，令牌 reset 过，没有未处理异常", !s.log.some((x) => x[0] === "sendCode") && recovered(s) && msg.includes("验证码没发出去") && !msg.includes("boom") && s.log.some((x) => x[0] === "reset") && unhandled.length === 0, JSON.stringify(s.log) + msg);
+  check("E3 getToken 被拒绝：没发请求（邮件确定没发），按钮恢复，提示“人机验证出错了…验证码没发出去”，令牌 reset 过，没有未处理异常", !s.log.some((x) => x[0] === "sendCode") && recovered(s) && msg.includes("人机验证出错了") && msg.includes("验证码没发出去") && !msg.includes("boom") && s.log.some((x) => x[0] === "reset") && unhandled.length === 0, JSON.stringify(s.log) + msg);
   find(s.box(), "data-send-code").click(); await flush();
   check("E3 重试成功（下一次取令牌正常）", s.log.filter((x) => x[0] === "sendCode").length === 1 && !!find(s.box(), "data-code"));
   // E4 没开人机验证时 sendCode 抛异常：同样不卡死，也不 reset / 取令牌
   s = setup({ captchaEnabled: false, sendResults: [{ throws: true }, { ok: true }] });
   box = launch(s); await sendFrom(box, "a@b.co");
   msg = textOf(find(s.box(), "data-login-msg"));
-  check("E4 没开 + sendCode 抛异常：按钮恢复、保守文案、调用形状不变（仍只传邮箱）、不取令牌不 reset", recovered(s) && msg.includes("验证码没发出去") && s.log.filter((x) => x[0] === "sendCode").every((x) => x.length === 2) && !s.log.some((x) => x[0] === "getToken" || x[0] === "reset"), JSON.stringify(s.log));
+  check("E4 没开 + sendCode 抛异常：按钮恢复、提示“暂时无法确认是否发出，请先检查邮件”、调用形状不变（仍只传邮箱）、不取令牌不 reset", recovered(s) && msg === "暂时无法确认是否发出，请先检查邮件。" && s.log.filter((x) => x[0] === "sendCode").every((x) => x.length === 2) && !s.log.some((x) => x[0] === "getToken" || x[0] === "reset"), JSON.stringify(s.log));
   find(s.box(), "data-send-code").click(); await flush();
   check("E4 重试成功", !!find(s.box(), "data-code"));
   check("E 全程没有未处理异常", unhandled.length === 0, JSON.stringify(unhandled));

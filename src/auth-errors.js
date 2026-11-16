@@ -29,6 +29,8 @@ export const SEND_COPY = {
   S5: { text: () => "这个邮箱暂时收不到登录验证码。请换一个邮箱试试。", cooldown: 0, diag: true },
   S5t: { text: () => "这个邮箱不在测试名单里。测试入口只允许指定邮箱登录。", cooldown: 0, diag: true },
   S6: { text: () => "验证码没发出去。请检查邮箱地址，或稍后再试。仍不行请截图下方诊断信息。", cooldown: 0, diag: true },
+  // S7：发送请求已经交出去、但这一步意外出错（不是服务器返回的错误）：邮件可能已发出，也可能没有——不能说“没发出去”。不冷却、不显示原文；给“去输入验证码”入口。
+  S7: { text: () => "暂时无法确认是否发出，请先检查邮件。", cooldown: 0, diag: false, secondary: "enter-code" },
 };
 // D：人机验证失败（独立一张表，不混进 S1–S6）。K1 组件没加载出来（被网络 / 浏览器拦了）；K2 超时或令牌过期；K3 组件报错；K4 服务器拒绝了令牌（captcha_failed）。
 // 都不冷却（没有发出邮件，也没有占用邮件额度）；不显示服务器原文；不带诊断行。
@@ -75,6 +77,7 @@ const S5_CODES = new Set(["email_address_not_authorized", "email_address_invalid
 export function classifySend(r, { preview = IS_PREVIEW } = {}) {
   if (!r || r.ok) return "";
   if (r.kind === "config") return "CFG";
+  if (r.kind === "unknown") return "S7"; // 发送这一步意外抛出：结果不可确认（邮件可能已发出）
   if (r.kind === "captcha") return r.reason === "unavailable" ? "K1" : r.reason === "timeout" || r.reason === "expired" ? "K2" : "K3"; // 本地取令牌失败（没有发请求）
   if (r.kind === "network") return r.offline ? "S1a" : "S1b";
   const st = http(r), code = safeCode(r.errorCode);
