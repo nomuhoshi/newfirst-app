@@ -452,32 +452,69 @@ const runner = new Runner({
   onOutput(t) { for (const l of [...listeners]) l.output?.(t); },
 });
 const codeExec = makeRunnerExecutor(runner); // 写代码 / 改代码题的判题与运行
+// 共享的 Python 运行器一次只能跑一段代码。几处同时要“运行结果”时（例如冷启动还在加载时连续答了两题）必须按顺序排队：
+// 否则 ready 一到，几个等待者同时调用 runner.run，只有第一个成功，其余被“运行器忙”误判成“Python 不可用”。
+// 设计（每个请求自己负责收尾，队列只负责顺序）：
+//  · 一个请求 = 一个 finish：只会结算一次，同时注销它注册过的全部监听、清掉全部计时器，然后才让出队列；
+//  · 等待阶段（等加载）：加载失败 / 等太久 → 结算 null；等待中别人的运行结束（runner 回到 ready）也会被唤醒；
+//  · 运行阶段：正常结束 / 超时 / 被停止 / 输出超限 → 结算结果；运行中工作线程报错（runner 进入 loadError）→ 结算 null；
+//    再加一道看门狗（比 runner 自己的超时晚 3 秒）：到点仍没结果 → 结算 null，并停掉这次运行（runner 重新加载），这样排在后面的请求拿到的是一个干净的运行器。
+let outputChain = Promise.resolve();
 function runForOutput(code) {
+  const p = outputChain.then(() => runForOutputNow(code));
+  outputChain = p.then(() => {}, () => {});
+  return p;
+}
+function runForOutputNow(code) {
   return new Promise((resolve) => {
-    let waiter = null, timer = null;
-    const finish = (v) => { clearTimeout(timer); if (waiter) listeners.delete(waiter); resolve(v); };
+    const mine = new Set(); // 本次请求注册过的监听，结算时一并注销
+    let settled = false, loadTimer = null, runTimer = null, pollTimer = null, myRunId = 0;
+    const add = (l) => { mine.add(l); listeners.add(l); return l; };
+    const finish = (v) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(loadTimer); clearTimeout(runTimer); clearTimeout(pollTimer);
+      for (const l of mine) listeners.delete(l);
+      mine.clear();
+      resolve(v);
+    };
     const go = () => {
+      if (settled) return;
       let out = "";
-      const l = {
+      add({
         output: (t) => { out += t; },
         status: (s, info) => {
+          if (s === "loadError") return finish(null); // 运行中工作线程出错：运行器已回到 loadError，这次请求如实失败
           if (!["done", "timeout", "stopped", "outputLimit", "outputLimitStopped"].includes(s)) return;
-          listeners.delete(l);
-          resolve(s === "done" ? { out, error: info.error } : { out, error: { kind: "Stopped", line: null, msg: "运行被停止" } });
+          finish(s === "done" ? { out, error: info.error } : { out, error: { kind: "Stopped", line: null, msg: "运行被停止" } });
         },
-      };
-      listeners.add(l);
-      if (!runner.run(code)) { listeners.delete(l); resolve(null); }
+      });
+      clearTimeout(loadTimer); clearTimeout(pollTimer);
+      if (!runner.run(code)) return finish(null);
+      myRunId = runner.runId;
+      // 看门狗：runner 自己有超时；这里是兜底，防止任何路径都没有给出结果
+      runTimer = setTimeout(() => {
+        const stuck = runner.state === "running" && runner.current?.id === myRunId;
+        finish(null);
+        if (stuck) runner.stop(); // 此时监听已注销，stop 发出的“stopped”不会再碰到这次请求
+      }, LIMITS.runMs + 3000);
     };
     if (runner.state === "ready") return go();
     // 先挂好监听，再重新启动：启动可能同步失败（比如不能创建 Worker），那时监听必须已经在了
-    waiter = { status: (s) => {
-      if (s === "ready") { listeners.delete(waiter); clearTimeout(timer); go(); }
-      else if (s === "loadError") finish(null);
-    } };
-    listeners.add(waiter);
+    // 等待有两条路：状态通知（快）+ 每 25 毫秒看一次 runner.state（稳）。
+    // 只靠通知不够：判题执行器（judge.js makeRunnerExecutor）运行期间会临时接管 runner 的回调，结束时只还原、不把 done 转给原来的分发器，
+    // 这时 runner 已经 ready，但等待者收不到任何通知（GPT1 在 e225cf73 的真实执行器反例）。
+    let waiting = true;
+    const wake = () => {
+      if (settled || !waiting) return;
+      if (runner.state === "loadError") return finish(null);
+      if (runner.state === "ready") { waiting = false; mine.delete(waiter); listeners.delete(waiter); clearTimeout(pollTimer); go(); }
+    };
+    const waiter = add({ status: (s) => { if (s === "loadError") finish(null); else wake(); } });
+    const poll = () => { pollTimer = setTimeout(() => { wake(); if (!settled && waiting) poll(); }, 25); };
+    poll();
     // 兜底：无论什么原因一直等不到，到时间就结束“运行中…”，显示失败提示和“重试”
-    timer = setTimeout(() => finish(null), LIMITS.loadMs + 2000);
+    loadTimer = setTimeout(() => finish(null), LIMITS.loadMs + 2000);
     if (runner.state === "idle" || runner.state === "loadError") runner.boot(); // idle = 本次打开后第一次真正要执行：此时才开始加载 Python
   });
 }
@@ -1754,7 +1791,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
 window.addEventListener("storage", (e) => { if (e.key && e.key.includes("suipian.v4.")) refreshFromStorage(); }); // 测试入口里键带前缀，所以用 includes
 
-window.__app = { clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { runForOutput, listenerCount: () => listeners.size, clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 async function refreshSwInfo() {
