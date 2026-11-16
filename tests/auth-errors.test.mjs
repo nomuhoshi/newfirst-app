@@ -65,6 +65,13 @@ check("S6：认不出的错误码 → 保守文案，不编原因，显示状态
 x = await send(401, { msg: "Invalid API key" });
 check("S6：401 不泄露原文", x.d.id === "S6" && !/API key/.test(x.d.text + x.d.diag));
 
+// ---------- S7：发送这一步意外出错，结果不可确认 ----------
+{
+  const r = { ok: false, kind: "unknown", message: "CANARY_RAW", stack: "at x" }, d = describeSendError(r, { xp: 50 }); seen.send.add(d.id);
+  check("S7：kind=unknown → S7，文案是“暂时无法确认是否发出，请先检查邮件。”（不说“没发出去”）", classifySend(r) === "S7" && d.text === "暂时无法确认是否发出，请先检查邮件。" && !d.text.includes("没发出去"), JSON.stringify(d));
+  check("S7：不冷却、无诊断行、不含原文、带去输入验证码入口、不自动跳页、有 XP 提示", d.cooldownMs === 0 && d.diag === "" && !JSON.stringify(d).includes("CANARY") && d.secondary === "enter-code" && d.uncertainSent === false && d.xp.includes("50 XP"), JSON.stringify(d));
+}
+
 // ---------- S1a / S1b ----------
 {
   const off = await down(false).sendCode("a@b.co"), dOff = describeSendError(off); seen.send.add(dOff.id);
