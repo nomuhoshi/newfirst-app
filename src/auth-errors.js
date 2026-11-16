@@ -30,6 +30,14 @@ export const SEND_COPY = {
   S5t: { text: () => "这个邮箱不在测试名单里。测试入口只允许指定邮箱登录。", cooldown: 0, diag: true },
   S6: { text: () => "验证码没发出去。请检查邮箱地址，或稍后再试。仍不行请截图下方诊断信息。", cooldown: 0, diag: true },
 };
+// D：人机验证失败（独立一张表，不混进 S1–S6）。K1 组件没加载出来（被网络 / 浏览器拦了）；K2 超时或令牌过期；K3 组件报错；K4 服务器拒绝了令牌（captcha_failed）。
+// 都不冷却（没有发出邮件，也没有占用邮件额度）；不显示服务器原文；不带诊断行。
+export const CAPTCHA_COPY = {
+  K1: { text: () => "人机验证没加载出来，验证码没发出去。检查网络（或关掉拦截广告 / 内容的插件）后再点「发送验证码」。", cooldown: 0, diag: false },
+  K2: { text: () => "人机验证超时或已过期，验证码没发出去。请再点一次「发送验证码」。", cooldown: 0, diag: false },
+  K3: { text: () => "人机验证出错了，验证码没发出去。请再点一次「发送验证码」；反复出现请换个网络试试。", cooldown: 0, diag: false },
+  K4: { text: () => "人机验证没通过，验证码没发出去。请再点一次「发送验证码」。", cooldown: 0, diag: false },
+};
 export const VERIFY_COPY = {
   CFG: SEND_COPY.CFG,
   V1: { text: () => "验证码错误或已过期，请检查后重试，或点“重新发送”。", cooldown: 0, diag: false },
@@ -67,8 +75,10 @@ const S5_CODES = new Set(["email_address_not_authorized", "email_address_invalid
 export function classifySend(r, { preview = IS_PREVIEW } = {}) {
   if (!r || r.ok) return "";
   if (r.kind === "config") return "CFG";
+  if (r.kind === "captcha") return r.reason === "unavailable" ? "K1" : r.reason === "timeout" || r.reason === "expired" ? "K2" : "K3"; // 本地取令牌失败（没有发请求）
   if (r.kind === "network") return r.offline ? "S1a" : "S1b";
   const st = http(r), code = safeCode(r.errorCode);
+  if (code === "captcha_failed") return "K4"; // 服务器拒绝了令牌（令牌用过 / 过期 / 站点密钥不匹配）
   if (st === 429 || r.kind === "rate-limit" || code === "over_email_send_rate_limit" || code === "over_request_rate_limit") {
     if (serverWaitSec(r) > 0 || code === "over_request_rate_limit") return "S2";
     return "S3";
@@ -110,7 +120,7 @@ function build(table, id, r, { xp = 0, fails = 1 } = {}) {
     cooldownLabel: id === "S2" ? "可再发" : id === "S3" ? "约 5 分钟后可再试" : id === "S4" ? (fails >= 3 ? "约 5 分钟后可再试" : "30 秒后可再试") : "",
   };
 }
-export const describeSendError = (r, o = {}) => (r && !r.ok ? build(SEND_COPY, classifySend(r, o), r, o) : null);
+export const describeSendError = (r, o = {}) => { if (!r || r.ok) return null; const id = classifySend(r, o); return build(CAPTCHA_COPY[id] ? CAPTCHA_COPY : SEND_COPY, id, r, o); };
 export const describeVerifyError = (r, o = {}) => (r && !r.ok ? build(VERIFY_COPY, classifyVerify(r), r, o) : null);
 export function describeChoiceError(r, o = {}) {
   if (!r || r.ok) return null;

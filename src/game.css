@@ -496,6 +496,9 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 .lsheet.kb-open .login-actions, .login-sheet .kb-open .login-actions { position: static; } /* 键盘弹出时可视区很矮：按钮跟在错误区后面，不再盖住它 */
 .lsheet .login-extra { display: flex; flex-direction: column; gap: 8px; }
 .lsheet .login-extra:empty { display: none; }
+/* D：人机验证组件的挂载点。平时（Turnstile interaction-only）不占位，需要交互时组件自己撑开 */
+.lsheet .login-captcha { display: flex; justify-content: center; }
+.lsheet .login-captcha:empty { display: none; }
 .lsheet .login-hint { font-size: 14px; color: var(--g-muted); }
 .lsheet .login-sent { overflow-wrap: anywhere; }
 /* 键盘弹出：说明缩成一行；有错误时说明整段隐藏，只留错误区 */
