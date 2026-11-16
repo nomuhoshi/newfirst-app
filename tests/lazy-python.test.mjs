@@ -139,7 +139,12 @@ try {
     await p.waitForSelector(".feedbar"); await outDone(p, 40000);
     check("6a 点“检查”时才开始请求 Python（这次被拦成失败）", t.py() > 0, String(t.py()));
     const failText = await p.locator(".outpanel pre").innerText();
-    check("6a 加载失败：如实提示不可用 + “重试”按钮，不用预设输出冒充；练习照常判分（显示答对了）", (await p.locator("[data-retry-python]").count()) === 1 && !failText.includes(correctText) && UNAVAILABLE.test(failText) && (await p.locator(".feedbar.ok").count()) === 1, failText.slice(0, 80));
+    // 注意：选项文字可能很短（如“是”“0”），而不可用提示的诊断行里本来就有“在线：是”之类的字，所以不能用“包含”判断；
+    // 用“整行等于正确选项文字”判断是否拿预设输出冒充（第一次 CI 的 6a 失败就是这个原因的嫌疑，日志已保留，见 PR 说明）。
+    const retryN = await p.locator("[data-retry-python]").count(), okN = await p.locator(".feedbar.ok").count();
+    const passedOff = failText.split("\n").some((l) => l.trim() === correctText.trim());
+    check("6a 加载失败：如实提示不可用（不是预设输出冒充）", UNAVAILABLE.test(failText) && !passedOff, `correct=${JSON.stringify(correctText)} text=${failText.slice(0, 80)}`);
+    check("6a 加载失败：出现“重试”按钮，练习照常判分（显示答对了）", retryN === 1 && okN === 1, `retry=${retryN} feedbar.ok=${okN}`);
     const nFail = t.py(); await p.waitForTimeout(3000);
     check("6a 失败后没有自动反复请求", t.py() === nFail, `${nFail} → ${t.py()}`);
     t.abort = false;
