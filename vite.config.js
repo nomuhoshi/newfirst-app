@@ -24,6 +24,10 @@ if (PREVIEW_ID && process.env.REQUIRE_TEST_CLOUD === "1" && !/^[0-9a-f]{40}$/.te
 console.log(`[构建] ${PREVIEW_ID ? "测试入口 " + PREVIEW_ID : CSP_TEST_ORIGIN ? "测试专用构建（CSP 含测试域，不得发布）" : "正式构建"} | 云端：${CLOUD_CHECK.info.cloud} | 源码提交：${SOURCE_SHA}`);
 for (const n of CLOUD_CHECK.notes) console.log("[构建] " + n);
 if (CLOUD_CHECK.errors.length) throw new Error("测试入口云配置校验失败，构建已中止：\n  - " + CLOUD_CHECK.errors.join("\n  - "));
+// D：人机验证站点密钥（Turnstile site key，本来就是公开值）。只对测试入口生效（PREVIEW_ID 非空），正式构建永远为空 = 功能关闭、CSP 不放行 Cloudflare。格式不对 = 构建失败（不静默忽略）。
+const RAW_CAPTCHA_KEY = (process.env.TEST_TURNSTILE_SITE_KEY || "").trim();
+if (RAW_CAPTCHA_KEY && !/^[0-9A-Za-z_-]{8,64}$/.test(RAW_CAPTCHA_KEY)) throw new Error("TEST_TURNSTILE_SITE_KEY 格式不对（应为 8–64 位字母数字、下划线或连字符），构建已中止");
+const CAPTCHA_SITE_KEY = PREVIEW_ID ? RAW_CAPTCHA_KEY : "";
 // CSP 的 connect-src 只放行这一份构建实际连接的云项目：正式构建 = 正式项目；测试入口 = 构建时给的测试项目（指向正式的已在上面被拒绝）；没给 = 不放行。
 const CSP_CLOUD_URL = PREVIEW_ID ? (TEST_CLOUD.url && !isProdUrl(TEST_CLOUD.url) ? TEST_CLOUD.url : "") : `https://${PROD_HOST}`;
 export default defineConfig({
@@ -33,6 +37,6 @@ export default defineConfig({
     rollupOptions: { input: { main: "index.html", lab: "lab.html" } },
   },
   worker: { format: "es" },
-  plugins: [cspPlugin({ cloudUrl: CSP_CLOUD_URL, testOrigin: CSP_TEST_ORIGIN }), swPlugin({ version: BUILD, prefix: PREVIEW_ID ? `${PREVIEW_ID}-suipian-` : "suipian-" })],
-  define: { __SOURCE_SHA__: JSON.stringify(SOURCE_SHA), __BUILD__: JSON.stringify(BUILD), __PREVIEW_ID__: JSON.stringify(PREVIEW_ID), __TEST_CLOUD__: JSON.stringify(TEST_CLOUD) },
+  plugins: [cspPlugin({ cloudUrl: CSP_CLOUD_URL, testOrigin: CSP_TEST_ORIGIN, captcha: !!CAPTCHA_SITE_KEY }), swPlugin({ version: BUILD, prefix: PREVIEW_ID ? `${PREVIEW_ID}-suipian-` : "suipian-" })],
+  define: { __SOURCE_SHA__: JSON.stringify(SOURCE_SHA), __BUILD__: JSON.stringify(BUILD), __PREVIEW_ID__: JSON.stringify(PREVIEW_ID), __TEST_CLOUD__: JSON.stringify(TEST_CLOUD), __CAPTCHA_SITE_KEY__: JSON.stringify(CAPTCHA_SITE_KEY) },
 });

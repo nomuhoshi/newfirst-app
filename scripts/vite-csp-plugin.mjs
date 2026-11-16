@@ -30,14 +30,17 @@ export const TEST_CLOUD_ORIGIN = "https://fake.supabase.test";
 export function cloudOrigin(url) {
   try { const u = new URL(String(url)); return /^https?:$/.test(u.protocol) ? u.origin : ""; } catch { return ""; }
 }
-export const CSP_DIRECTIVES = (scriptHashes, connect = [], { testOrigin = false } = {}) => [
+// D：人机验证（Cloudflare Turnstile）。只有构建时给了站点密钥（目前只有测试入口）才放行这一个来源的脚本和嵌入框架，别的指令不动；正式构建不放行。
+export const CAPTCHA_ORIGIN = "https://challenges.cloudflare.com";
+export const CSP_DIRECTIVES = (scriptHashes, connect = [], { testOrigin = false, captcha = false } = {}) => [
   "default-src 'self'",
-  `script-src 'self' ${scriptHashes.map((h) => `'${h}'`).join(" ")} 'wasm-unsafe-eval'`.replace(/\s+/g, " "),
+  `script-src 'self' ${scriptHashes.map((h) => `'${h}'`).join(" ")}${captcha ? " " + CAPTCHA_ORIGIN : ""} 'wasm-unsafe-eval'`.replace(/\s+/g, " "),
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' data: blob:",
   "font-src 'self' data:",
   ["connect-src 'self'", ...new Set([...connect.filter(Boolean), ...(testOrigin ? [TEST_CLOUD_ORIGIN] : [])])].join(" "),
+  ...(captcha ? [`frame-src ${CAPTCHA_ORIGIN}`] : []),
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",
@@ -57,8 +60,8 @@ export function inlineScriptHashes(html) {
   return out;
 }
 
-export function buildCsp(html, { connect = [], testOrigin = false } = {}) {
-  return CSP_DIRECTIVES(inlineScriptHashes(html), connect, { testOrigin }).join("; ");
+export function buildCsp(html, { connect = [], testOrigin = false, captcha = false } = {}) {
+  return CSP_DIRECTIVES(inlineScriptHashes(html), connect, { testOrigin, captcha }).join("; ");
 }
 
 // 把 meta 放在 <meta charset> 之后（必须在任何脚本之前，否则前面的脚本不受约束）
@@ -74,7 +77,7 @@ export function injectCsp(html, opts = {}) {
 // 只在构建时、只对 index.html 生效（开发服务器有热更新内联脚本和 websocket，不加 CSP；lab.html 是技术验证页）。
 // connect：这次构建连接的云项目网址（vite.config.js 传入；正式构建 = 正式项目，测试入口 = 测试项目，没有云端 = 空）
 // testOrigin：只有“测试专用构建”（构建时显式设置 CSP_TEST_ORIGIN=1，见 vite.config.js）才为 true；正式构建永远不带测试域。
-export default function cspPlugin({ cloudUrl = "", testOrigin = false } = {}) {
+export default function cspPlugin({ cloudUrl = "", testOrigin = false, captcha = false } = {}) {
   const connect = [cloudOrigin(cloudUrl)].filter(Boolean);
   return {
     name: "suipian-csp",
@@ -83,7 +86,7 @@ export default function cspPlugin({ cloudUrl = "", testOrigin = false } = {}) {
       order: "post", // 在 Vite 改完 HTML（插入打包后的脚本标签）之后再算哈希
       handler(html, ctx) {
         if (!/(^|[\\/])index\.html$/.test(ctx.filename || ctx.path || "")) return html;
-        return injectCsp(html, { connect, testOrigin });
+        return injectCsp(html, { connect, testOrigin, captcha });
       },
     },
   };

@@ -1,5 +1,6 @@
 // 登录 / 账号界面：邮箱验证码登录、同步状态、退出、切换账号、删除账号。
 // 不直接碰数据：全部通过 sync（src/sync.js）；元素创建函数和弹窗从 app.js 传进来，所以样式和无障碍行为和其他弹窗一致。
+import { createCaptcha } from "./captcha.js";
 import { describeSendError, describeVerifyError, describeChoiceError, syncErrorText, safeMessage, SYNC_COPY } from "./auth-errors.js";
 
 // 同步状态的文字。出错类状态不显示服务器原文（Y3b/Y3c/Y3d）；诊断行只带过滤后的状态码和错误码。
@@ -35,7 +36,10 @@ const syncedToast = (r, okText, notText) => (r.synced ? okText : notText + (r.sy
 
 const fmtWait = (ms) => { const s = Math.max(1, Math.ceil(ms / 1000)); return s <= 90 ? `${s} 秒` : `约 ${Math.ceil(s / 60)} 分钟`; };
 
-export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, getState, onSwitchedIn, onSwitchedOut, rerender }) {
+// D：人机验证站点密钥只来自构建（测试入口），正式构建为空 = 功能关闭
+const BUILD_CAPTCHA_KEY = typeof __CAPTCHA_SITE_KEY__ !== "undefined" ? __CAPTCHA_SITE_KEY__ : "";
+
+export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, getState, onSwitchedIn, onSwitchedOut, rerender, makeCaptcha = () => createCaptcha({ siteKey: BUILD_CAPTCHA_KEY }) }) {
   const statusEls = new Set();
   function refreshStatus() {
     const s = sync.status();
@@ -49,6 +53,15 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
   function openLogin({ reason = "", email: prefill = "" } = {}) {
     if (!api.configured) { showToast("云端暂未开通，现在只能在这台设备上学习。"); return; }
     let busy = false, inChoice = false, finished = false;
+    const captcha = makeCaptcha(); // 每次打开登录弹窗一个；关闭（done / 弹窗被移出页面）时销毁
+    const captchaMount = h("div", { class: "login-captcha", "data-captcha-mount": "" });
+    // 发验证码：先取一次性令牌（没开人机验证 = 不取、调用形状和以前完全一致），发完无论成败都作废，下一次（含重发）重新取。
+    const sendWithCaptcha = async (addr) => {
+      if (!captcha.enabled) return sync.sendCode(addr);
+      const t = await captcha.getToken({ mount: captchaMount });
+      if (!t.ok) { captcha.reset(); return { ok: false, kind: "captcha", reason: t.reason }; }
+      try { return await sync.sendCode(addr, t.token); } finally { captcha.reset(); }
+    };
     return sheet((close) => {
       const box = h("div", { class: "lsheet login", "data-login": "" });
       let email = prefill, cooldownTimer = null, cooldownUntil = 0, verifyUntil = 0, sendLabel = "", s4Fails = 0, kb = false;
@@ -70,7 +83,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       };
       const localXp = () => { try { const x = getState()?.xp; return Number.isFinite(x) ? x : 0; } catch { return 0; } };
       const sayFail = (d) => say(d.text, true, d);
-      const done = () => { clearInterval(cooldownTimer); finished = true; close(); };
+      const done = () => { clearInterval(cooldownTimer); finished = true; captcha.destroy(); close(); };
       // 键盘判断（规范 §5.1 第 4 条）：可视高度不到窗口高度的 75% 就算键盘弹出，说明文字缩成一行；有错误时说明整段隐藏。
       const desc = h("p", { class: "login-desc", "data-login-desc": "" });
       const descText = () => {
@@ -87,10 +100,10 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       }
       let inStepEmail = false, inStepCode = false, tickNow = () => {};
       const vv = window.visualViewport;
-      const onVv = () => { if (!box.isConnected) { vv?.removeEventListener("resize", onVv); return; } applyKb(); };
+      const onVv = () => { if (!box.isConnected) { vv?.removeEventListener("resize", onVv); captcha.destroy(); return; } applyKb(); };
       vv?.addEventListener("resize", onVv);
       // 取验证码要切到邮件 App：iOS 会暂停后台页面的计时器，回到前台时按时间戳立刻重算（规范 §2.3 第 2 条）
-      const onVis = () => { if (!box.isConnected) { document.removeEventListener("visibilitychange", onVis); return; } if (document.visibilityState === "visible") tickNow(); };
+      const onVis = () => { if (!box.isConnected) { document.removeEventListener("visibilitychange", onVis); captcha.destroy(); return; } if (document.visibilityState === "visible") tickNow(); };
       document.addEventListener("visibilitychange", onVis);
 
       function stepEmail() {
@@ -101,7 +114,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           const v = input.value.trim();
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { say("请输入有效的邮箱地址。"); return; }
           if (busy || cdLeft(v) > 0) return; busy = true; go.disabled = true; go.textContent = "发送中…"; say("正在发送…", false);
-          const r = await sync.sendCode(v);
+          const r = await sendWithCaptcha(v);
           busy = false;
           if (!r.ok) {
             const d0 = describeSendError(r, { xp: localXp(), fails: 1 });
@@ -131,10 +144,12 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         input.addEventListener("input", () => { if (!busy && cdEmail && norm(input.value) !== cdEmail && box.classList.contains("has-error")) say(""); sendTick(); });
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
         desc.textContent = descText();
+        captcha.release(); // 换页会搬动挂载点（嵌入框架会重载），先拆掉旧组件，下次发送时重新建
         box.replaceChildren(
           h("h2", { text: "登录 / 注册" }),
           desc,
           input, feedback,
+          ...(captcha.enabled ? [captchaMount] : []),
           h("div", { class: "login-actions" }, go, extra),
           ...(sync.hasLeftoverAuth && sync.hasLeftoverAuth() ? [leftoverButton()] : []),
           button("先不登录", done, "btn3d ghost wide"),
@@ -158,7 +173,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const input = h("input", { class: "login-input code", type: "text", inputmode: "numeric", pattern: "[0-9]*", autocomplete: "one-time-code", maxlength: "10", placeholder: "验证码", "aria-label": "邮箱验证码", "data-code": "" });
         const resend = button("重新发送", async () => {
           if (cdLeft(email) > 0 || busy) return;
-          busy = true; resend.disabled = true; resend.textContent = "发送中…"; const r = await sync.sendCode(email); busy = false;
+          busy = true; resend.disabled = true; resend.textContent = "发送中…"; const r = await sendWithCaptcha(email); busy = false;
           if (!r.ok) {
             const d0 = describeSendError(r, { xp: localXp(), fails: 1 });
             s4Fails = d0.id === "S4" ? s4Fails + 1 : 0;
@@ -198,10 +213,12 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         tick();
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
         desc.textContent = "";
+        captcha.release();
         box.replaceChildren(
           h("h2", { text: "输入验证码" }),
           h("p", { class: "login-sent", text: `验证码已发到 ${email}。没收到？看看垃圾邮件，或稍等再重新发送。` }),
           input, feedback,
+          ...(captcha.enabled ? [captchaMount] : []),
           h("div", { class: "login-actions" }, go, resend, extra),
           button("换个邮箱", () => { say(""); stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着
         );
@@ -254,7 +271,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     }, {
       cls: "login-sheet",
       canClose: () => !busy, // 发送 / 登录 / 处理中不允许点遮罩或按 Esc 关掉
-      onClose: () => { if (inChoice && !finished) { const x = Math.floor(getState()?.xp ?? 0); showToast("已取消登录。" + (x > 0 ? `你的 ${x} XP 还在这台设备上。` : "你的进度原样留在这台设备上。")); } },
+      onClose: () => { captcha.destroy(); if (inChoice && !finished) { const x = Math.floor(getState()?.xp ?? 0); showToast("已取消登录。" + (x > 0 ? `你的 ${x} XP 还在这台设备上。` : "你的进度原样留在这台设备上。")); } },
     });
   }
 
