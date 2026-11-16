@@ -56,11 +56,19 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     const captcha = makeCaptcha(); // 每次打开登录弹窗一个；关闭（done / 弹窗被移出页面）时销毁
     const captchaMount = h("div", { class: "login-captcha", "data-captcha-mount": "" });
     // 发验证码：先取一次性令牌（没开人机验证 = 不取、调用形状和以前完全一致），发完无论成败都作废，下一次（含重发）重新取。
+    // 这里不会抛异常：getToken / sync.sendCode 意外抛出（或被拒绝）时按“发送失败”返回，令牌照样作废——
+    // 否则调用方的 busy 标志和“发送中…”按钮永远恢复不了。意外异常不带任何原文（unknown 走保守文案 S6）。
     const sendWithCaptcha = async (addr) => {
-      if (!captcha.enabled) return sync.sendCode(addr);
-      const t = await captcha.getToken({ mount: captchaMount });
-      if (!t.ok) { captcha.reset(); return { ok: false, kind: "captcha", reason: t.reason }; }
-      try { return await sync.sendCode(addr, t.token); } finally { captcha.reset(); }
+      try {
+        if (!captcha.enabled) return await sync.sendCode(addr);
+        const t = await captcha.getToken({ mount: captchaMount });
+        if (!t.ok) return { ok: false, kind: "captcha", reason: t.reason };
+        return await sync.sendCode(addr, t.token);
+      } catch {
+        return { ok: false, kind: "unknown" };
+      } finally {
+        if (captcha.enabled) captcha.reset();
+      }
     };
     return sheet((close) => {
       const box = h("div", { class: "lsheet login", "data-login": "" });

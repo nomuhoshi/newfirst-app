@@ -38,7 +38,7 @@ function setup({ captchaEnabled, tokens = ["TOK1", "TOK2", "TOK3"], tokenResults
   const log = []; let ti = 0, si = 0, sheetBox = null;
   const cap = {
     enabled: captchaEnabled,
-    async getToken(o) { log.push(["getToken", o?.mount?.attrs?.["data-captcha-mount"] === ""]); const scripted = tokenResults?.shift(); if (scripted) return scripted; return { ok: true, token: tokens[ti++] }; },
+    async getToken(o) { log.push(["getToken", o?.mount?.attrs?.["data-captcha-mount"] === ""]); const scripted = tokenResults?.shift(); if (scripted?.reject) throw new Error("getToken boom"); if (scripted) return scripted; return { ok: true, token: tokens[ti++] }; },
     reset() { log.push(["reset"]); }, release() { log.push(["release"]); }, destroy() { log.push(["destroy"]); },
   };
   const sync = { async sendCode(...args) { log.push(["sendCode", ...args]); const r = sendResults[si++] || { ok: true }; if (r.throws) throw new Error("boom"); return r; }, hasLeftoverAuth: () => false, account: () => null, status: () => ({}), async verify() { return { ok: false, kind: "auth", stage: "verify" }; } };
@@ -111,7 +111,51 @@ async function sendFrom(box, addr) { const input = find(box, "data-email"); inpu
   const s2 = setup({ captchaEnabled: true, sendResults: [{ throws: true }] });
   const box2 = launch(s2);
   await sendFrom(box2, "a@b.co");
-  check("D sendCode 抛异常时 reset 仍然执行（令牌不残留）", s2.log.some((x) => x[0] === "reset") && unhandled.length === 1, JSON.stringify({ log: s2.log, unhandled }));
+  check("D sendCode 抛异常时 reset 仍然执行（令牌不残留），且没有未处理异常", s2.log.some((x) => x[0] === "reset") && unhandled.length === 0, JSON.stringify({ log: s2.log, unhandled }));
+}
+
+{ // E 异常恢复：sendCode / getToken 意外抛出时，不能卡在“发送中…”，必须能重试（GPT1 阻断项）
+  const RAWERR = "boom";
+  const recovered = (s, where) => {
+    const go = find(s.box(), "data-send-code");
+    return go && go.disabled === false && textOf(go) === "发送验证码";
+  };
+  // E1 首次发送：sendCode 抛异常
+  let s = setup({ captchaEnabled: true, sendResults: [{ throws: true }] });
+  let box = launch(s);
+  await sendFrom(box, "a@b.co");
+  let msg = textOf(find(s.box(), "data-login-msg"));
+  check("E1 首次发送 sendCode 抛异常：按钮恢复可点（不卡在“发送中…”），提示保守文案，不含异常原文", recovered(s) && msg.includes("验证码没发出去") && !msg.includes(RAWERR) && !msg.includes("TOK"), msg + " | " + textOf(find(s.box(), "data-send-code")));
+  check("E1 令牌作废（reset）、没有冷却、没有未处理异常", s.log.some((x) => x[0] === "reset") && unhandled.length === 0, JSON.stringify(s.log));
+  find(s.box(), "data-send-code").click(); await flush();
+  check("E1 立即重试：重新取令牌（TOK2），这次成功并进入输码页", s.log.filter((x) => x[0] === "sendCode").length === 2 && s.log.filter((x) => x[0] === "sendCode")[1][2] === "TOK2" && !!find(s.box(), "data-code"));
+  // E2 重发：sendCode 抛异常
+  s = setup({ captchaEnabled: true, sendResults: [{ ok: true }, { throws: true }, { ok: true }] });
+  box = launch(s); await sendFrom(box, "a@b.co");
+  NOW += 61_000; await new Promise((r) => setTimeout(r, 1100));
+  let resend = find(s.box(), "data-resend");
+  resend.click(); await flush();
+  resend = find(s.box(), "data-resend");
+  msg = textOf(find(s.box(), "data-login-msg"));
+  check("E2 重发 sendCode 抛异常：重发按钮恢复（不卡“发送中…”），提示保守文案，无冷却", resend.disabled === false && textOf(resend) === "重新发送" && msg.includes("验证码没发出去") && !msg.includes(RAWERR), msg + " | " + textOf(resend) + " | " + resend.disabled);
+  check("E2 登录按钮没有被锁死（busy 已清）", find(s.box(), "data-verify").disabled === false);
+  resend.click(); await flush();
+  check("E2 立即再重发：新令牌（TOK3）、成功后提示“已重新发送”", s.log.filter((x) => x[0] === "sendCode").length === 3 && s.log.filter((x) => x[0] === "sendCode")[2][2] === "TOK3" && textOf(find(s.box(), "data-login-msg")).includes("已重新发送"));
+  // E3 getToken 被拒绝（Promise reject）
+  s = setup({ captchaEnabled: true, tokenResults: [{ reject: true }] });
+  box = launch(s); await sendFrom(box, "a@b.co");
+  msg = textOf(find(s.box(), "data-login-msg"));
+  check("E3 getToken 被拒绝：没发请求，按钮恢复，提示保守文案，令牌 reset 过，没有未处理异常", !s.log.some((x) => x[0] === "sendCode") && recovered(s) && msg.includes("验证码没发出去") && !msg.includes("boom") && s.log.some((x) => x[0] === "reset") && unhandled.length === 0, JSON.stringify(s.log) + msg);
+  find(s.box(), "data-send-code").click(); await flush();
+  check("E3 重试成功（下一次取令牌正常）", s.log.filter((x) => x[0] === "sendCode").length === 1 && !!find(s.box(), "data-code"));
+  // E4 没开人机验证时 sendCode 抛异常：同样不卡死，也不 reset / 取令牌
+  s = setup({ captchaEnabled: false, sendResults: [{ throws: true }, { ok: true }] });
+  box = launch(s); await sendFrom(box, "a@b.co");
+  msg = textOf(find(s.box(), "data-login-msg"));
+  check("E4 没开 + sendCode 抛异常：按钮恢复、保守文案、调用形状不变（仍只传邮箱）、不取令牌不 reset", recovered(s) && msg.includes("验证码没发出去") && s.log.filter((x) => x[0] === "sendCode").every((x) => x.length === 2) && !s.log.some((x) => x[0] === "getToken" || x[0] === "reset"), JSON.stringify(s.log));
+  find(s.box(), "data-send-code").click(); await flush();
+  check("E4 重试成功", !!find(s.box(), "data-code"));
+  check("E 全程没有未处理异常", unhandled.length === 0, JSON.stringify(unhandled));
 }
 console.log(`\n${ok} 通过，${bad} 失败`);
 process.exit(bad ? 1 : 0);
