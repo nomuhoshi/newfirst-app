@@ -1,10 +1,10 @@
 # 当前执行盘面（2026-11-16 JST，随工作更新）
 
-本节在 2026-11-15 07:15 JST 盘面之上追加；下方旧盘面与 2026-11-13 快照、A–M 表保留为历史，冲突时以本节和实际证据为准。
+本节是 **2026-11-16 17:46 JST 固定核对时间的快照**（之后的变化以 `gh pr list`、`git log origin/main` 和各 PR 页面为准，不随每条回执改写）；在 2026-11-15 07:15 JST 盘面之上追加；下方旧盘面与 2026-11-13 快照、A–M 表保留为历史，冲突时以本节和实际证据为准。
 
 ## 最新授权（老大 2026-11-16 13:25，产品官 13:48 转达，传话员 13:51 转程序员）
 
-- 风险操作由团队决定并执行，不再记录“C/D 等老大”。后台写入仍须有具体变更、影响、回读和恢复方案；不删除历史数据、不清或注入真实存档、不回滚、不开放公开入口。
+- 风险操作由团队按必要性、影响及恢复方案决定并执行，不再记录“C/D 等老大”。后台写入须有具体变更、影响、回读和恢复方案。
 - C 已由传话员实施：main 保护 `strict` 由 false 改为 true；`enforce_admins` 本就为 true；必需检查 `build`、`mobile (chromium)`、`mobile (webkit)` 不变；批准数 0；禁止强推与删除。改前/改后读回已存档（c_protection_before_1350.json / c_protection_after_1351.json）。**后果：PR 合并前必须与最新 main 同步。**
 - D：团队决定先在测试项目验证 **Turnstile、6 位验证码、600 秒有效期**；大陆可达性单独测。正式 Supabase 先只读核对 schema、RLS、RPC 与 Auth 当前值（`supabase/check-readonly.sql` + 后台截图），差异经评审后由团队执行；正式账号入口须在正式环境验收后才开放。**正式 CAPTCHA 保持关闭**（产品官 16:46）。
 
@@ -16,20 +16,21 @@
 | #111 | 9b228cf6 | 43687832148 | 7800028906 | 只读账本观察器 + 9 项 Node 校准 |
 | #112 | 1bc65d35 | 43804047882 | 7815650695 | 清除窗口浏览器诊断（T1/T2/T3；GPT1 校准 33 项）；产品官 13:42 核对线上 bundle SHA 与 9 项静态检查 |
 | #107 | 6370398345ff4a432ae5b14c3354d0168fb7c43e | 43817218960 | 7817347278 | SW 更新双引擎探针 / 进度后台恢复 / WebKit 能力探针（仅测试与辅助文件，无生产代码）；合并 HEAD deb16e73；传话员 16:29 线上核对：main-Be96Faer.js 含完整 SHA，privacy.html 200，测试页 404 |
+| #115 | d67435deaf8dd73317ae8a7b26aca87858de814d | 43832031686 | 7819353193 | 发送请求交出去后意外出错时提示改为「暂时无法确认是否发出，请先检查邮件。」（S7）；合并 HEAD c9b3f6c9；GPT1 PASS，产品官放行；**线上静态核对：传话员待做，本快照时点未登记** |
 | #113 | 33375879cd42f0b439bad59637247b9e133e545c | 43826095220 | 7818501747 | D：Turnstile 客户端闭环（默认关闭；站点密钥只对测试入口生效；正式构建与现状一致）；合并 HEAD 464626a4（GPT1 首审 FAIL 于异常后无法重试，已修并复审 PASS）；线上核对通过：main-BKfCH3RM.js 含完整 SHA，privacy 200，测试页 404，产品官已登记上线 |
 
 更早合并的 #102（bc0298cb）、#97（3e411dd）、#105（0a1d9c3）、#106（2e39434）、#108（1f091a4）、#104（a646504）只登记合并 SHA；它们的 CI 与部署编号以 `gh api repos/nomuhoshi/newfirst-app/commits/<sha>/check-runs` 和 deploy 工作流为准，本节不重复抄录。
 
 ## 进行中
 
-- **#115**（fix/send-unconfirmed-copy，HEAD c9b3f6c97abcc09aefa7b9d62e62a8f914d12693）：发送请求交出去后意外出错时，提示改为「暂时无法确认是否发出，请先检查邮件。」（S7；取令牌失败等“确定没发”的情形文案不变）。GPT1 PASS（145/145，校准 4/4），待产品官裁决合并。
-- **#114**（本 PR）：文档更新，已并入最新 main。
+- **#114**（本 PR）：文档更新，并入 main 到 #115（d67435de）后再按四处修正一次修齐；之后送 GPT1 做文档事实复核（已通过的代码不重审）。
+- **#116**（test/practice-cold-python）：随机练习 + Python 冷启动补测（先补测试；CI 结果出来前不登记通过；实跑证明缺陷后再做最小修复）。
 - **#110**：冻结证据（head 1e0c9d46），不编辑、不重跑、不合并。
 
 ## D 验收记录（2026-11-16）
 
 - **测试项目 suipian-test（只动测试项目，正式项目只读未改）**：GitHub 变量 `TEST_TURNSTILE_SITE_KEY` = Cloudflare 官方测试站点密钥；Supabase CAPTCHA 开（Turnstile，测试 secret）；Email OTP 6 位、600 秒；邮件模板含 `{{ .Token }}`；测试入口 captcha1（run 43808591220，sha 44953092）。
-- **已通过**：E1 正常闭环（6 位码、登录成功、无 CSP 报错）；E2 重发取新令牌并登录；E3 过期码提示、旧令牌作废；E4 服务端拒绝令牌（secret 临时改 2x 永远失败键，测完已改回并读回）→「人机验证没通过」无冷却可重试；E5 组件被屏蔽 →「没加载出来」不转圈、不发请求。
+- **已通过**：E1 正常闭环（6 位码、登录成功、无 CSP 报错）；E2 重发（重新取 Turnstile 令牌）并用新邮箱验证码登录；E3 过期码提示、**旧邮箱验证码失效**（被后发的验证码替代，与 Turnstile 令牌无关）；E4 服务端拒绝令牌（secret 临时改 2x 永远失败键，测完已改回并读回）→「人机验证没通过」无冷却可重试；E5 组件被屏蔽 →「没加载出来」不转圈、不发请求。
 - **未验证（资源缺口）**：E6 大陆网络可达性、iPhone Safari / 主屏幕 PWA。**没有证据前不写“大陆可用”或“iPhone 通过”。**
 - **边界**：1x / 2x 测试密钥只证明成功与拒绝两条分支，**不是真实 CAPTCHA 防护**；真实 sitekey / secret 成对验收待 Cloudflare 账号（步骤与恢复方案已交传话员）。正式构建目前无法开启人机验证（站点密钥只对测试入口生效），正式启用须另开 PR 让正式构建读取独立变量并走审查。
 - **429 备注**：suipian-test 在几分钟内发第 3 封时触发发信频率限制（不是 CAPTCHA 问题）；“邮件发得太多”按总配额做全局冷却，换邮箱也锁，属既有设计。
@@ -38,7 +39,7 @@
 
 - progress 列、RLS（on + forced）、策略、三个 RPC（security definer + 固定 search_path）、函数执行权限与测试项目一致；PUBLIC 无任何授权，anon 无权限，authenticated 仅 SELECT / EXECUTE。
 - 函数 owner = postgres，`rolbypassrls = true`，对表有完整权限，`auth` USAGE 与 `auth.users` DELETE 具备；三个函数源码 md5 两库一致。
-- 唯一差异：正式库 `service_role` 在 progress 上只有 REFERENCES / TRIGGER / TRUNCATE（测试库另有 SELECT / INSERT / UPDATE / DELETE，函数另有 EXECUTE）。`supabase/schema.sql` 不涉及 service_role，来自平台默认授权的历史；应用只走 authenticated 与受控 RPC，不使用 service_role。**登记为无需修复的差异，不扩权。**
+- 唯一差异：正式库 `service_role` 在 progress 上只有 REFERENCES / TRIGGER / TRUNCATE（测试库另有 SELECT / INSERT / UPDATE / DELETE，函数另有 EXECUTE）。`supabase/schema.sql` 不涉及 service_role；**差异原因未证实**。应用只走 authenticated 与受控 RPC，不使用 service_role。**结论限于 `public.progress` 表和三个 RPC：登记为无需修复的差异，不扩权。**
 - 正式 Auth 当前值：OTP 6 位 / 600 秒、CAPTCHA 关、两个模板含 `{{ .Token }}`；行数 0。核对 SQL：`supabase/check-readonly.sql` 与程序员补充的 7 段 `check-rpc-acl-readonly.sql`（本地一次性 Postgres 验证语法，未入仓库）。
 
 ## 仍开放（不由本轮关闭）
