@@ -37,9 +37,9 @@
 
 ## 正式 Supabase 只读核对（传话员，suipian-app，仅 select）
 
-- progress 列、RLS（on + forced）、策略、三个 RPC（security definer + 固定 search_path）、函数执行权限与测试项目一致；PUBLIC 无任何授权，anon 无权限，authenticated 仅 SELECT / EXECUTE。
+- progress 列、RLS（on + forced）、策略、三个 RPC（security definer + 固定 search_path）、PUBLIC、anon、authenticated 的有效权限与测试项目一致（PUBLIC 无任何授权，anon 无权限，authenticated 仅 SELECT / EXECUTE）；`service_role` 的显式授权与测试库不同，见下一条。
 - 函数 owner = postgres，`rolbypassrls = true`，对表有完整权限，`auth` USAGE 与 `auth.users` DELETE 具备；三个函数源码 md5 两库一致。
-- 唯一差异：正式库 `service_role` 在 progress 上只有 REFERENCES / TRIGGER / TRUNCATE（测试库另有 SELECT / INSERT / UPDATE / DELETE，函数另有 EXECUTE）。`supabase/schema.sql` 不涉及 service_role；**差异原因未证实**。应用只走 authenticated 与受控 RPC，不使用 service_role。**结论限于 `public.progress` 表和三个 RPC：登记为无需修复的差异，不扩权。**
+- 唯一差异：正式库 `service_role` 在 progress 上只有 REFERENCES / TRIGGER / TRUNCATE / MAINTAIN（原始 ACL 为 `Dxtm`，m = MAINTAIN；测试库另有 SELECT / INSERT / UPDATE / DELETE，函数另有 EXECUTE）。`supabase/schema.sql` 不涉及 service_role；**差异原因未证实**。应用只走 authenticated 与受控 RPC，不使用 service_role。**结论限于 `public.progress` 表和三个 RPC：登记为无需修复的差异，不扩权。**
 - 正式 Auth 当前值：OTP 6 位 / 600 秒、CAPTCHA 关、两个模板含 `{{ .Token }}`；行数 0。核对 SQL：`supabase/check-readonly.sql` 与程序员补充的 7 段 `check-rpc-acl-readonly.sql`（本地一次性 Postgres 验证语法，未入仓库）。
 
 ## 仍开放（不由本轮关闭）
