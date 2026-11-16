@@ -22,6 +22,7 @@ jobs:
       PREVIEW_ID: ${{ inputs.preview_id }}
       TEST_SUPABASE_URL: ${{ vars.TEST_SUPABASE_URL }}
       TEST_SUPABASE_ANON_KEY: ${{ vars.TEST_SUPABASE_ANON_KEY }}
+      TEST_TURNSTILE_SITE_KEY: ${{ vars.TEST_TURNSTILE_SITE_KEY }}  # 可选：人机验证站点密钥（公开值）；不设 = 人机验证关闭、CSP 不放行 Cloudflare
       EXPECTED_TEST_PROJECT_REF: ${{ vars.EXPECTED_TEST_PROJECT_REF || 'tqdwhtrextqlmctkryyg' }}
       REQUIRE_TEST_CLOUD: "1"
       SOURCE_SHA: ${{ github.sha }}
