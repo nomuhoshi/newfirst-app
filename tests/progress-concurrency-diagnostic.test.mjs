@@ -588,6 +588,8 @@ try {
       `[${track}] T2 persist() 返回契约、保存后即时内存为空（xp=0, runs=0, done=[]）与 epoch 前后对齐核验（persistError === null, typeof persistRet === "boolean"；清除冲突时返回 false 合法）`,
       t2ImmediateSave.persistError === null &&
         typeof t2ImmediateSave.persistRet === "boolean" &&
+        // false 仅在保存前旧页内存确实仍是清除前的旧进度（有真实的旧→空采用过程）时合法；保存前已空而返回 false 没有清除冲突依据，不能算健康保存
+        (t2ImmediateSave.persistRet === true || matchesMemoryTriad(t2ImmediateSave.preMem, EXPECTED_PRE_CLEAR)) &&
         matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_EMPTY) &&
         t2ImmediateSave.storageEpochBeforeSave === clearedEpoch &&
         t2ImmediateSave.storageEpochAfterSave === clearedEpoch,
@@ -669,11 +671,21 @@ try {
     });
     const t3Memory = await readTabMemory(tabA);
     const t3Obs = await observeStaticStorage(ctx);
-    const observedHiddenToVisible = Boolean(
-      t3ProbeRaw &&
-        (t3ProbeRaw.visibilityBefore === "hidden" || t3ProbeRaw.transitions.includes("hidden")) &&
-        t3Memory.visibilityState === "visible"
-    );
+    // 只认探针窗口内（监听器安装→finish()）有序的 hidden→visible：初始 hidden 或窗口内出现 hidden，之后窗口内必须出现 visible，
+    // 且之后不得再回到 hidden，finish() 时 visibilityAfter 必须为 visible；窗口外较晚才变 visible（只靠 t3Memory 采样）一律不算。
+    const observedHiddenToVisible = (() => {
+      if (!t3ProbeRaw || !Array.isArray(t3ProbeRaw.transitions)) return false;
+      let hidden = t3ProbeRaw.visibilityBefore === "hidden";
+      let orderedVisible = false;
+      for (const state of t3ProbeRaw.transitions) {
+        if (state === "hidden") hidden = true;
+        else if (state === "visible") {
+          if (hidden) orderedVisible = true;
+          hidden = false;
+        }
+      }
+      return orderedVisible && !hidden && t3ProbeRaw.visibilityAfter === "visible" && t3Memory.visibilityState === "visible";
+    })();
     const t3Lifecycle = {
       ...(t3ProbeRaw || {}),
       observedHiddenToVisible,
