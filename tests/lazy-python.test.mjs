@@ -38,18 +38,31 @@ function makeCleanup() {
 }
 const CL = makeCleanup();
 const hits = [];
-const srv = createServer((req, resp) => {
+const requestHandler = (req, resp) => {
   const url = new URL(req.url, "http://x"); hits.push(url.pathname);
   let p = join(DIST, decodeURIComponent(url.pathname)); if (url.pathname.endsWith("/")) p = join(p, "index.html");
   if (!p.startsWith(DIST) || !existsSync(p) || statSync(p).isDirectory()) { resp.writeHead(404); resp.end("nf"); return; }
   resp.writeHead(200, { "content-type": MIME[extname(p)] || "application/octet-stream", "cache-control": "no-store" }); resp.end(readFileSync(p));
-});
-await new Promise((r) => srv.listen(0, r));
-const BASE = `http://localhost:${srv.address().port}/`;
+};
 const pyHits = () => hits.filter((h) => /\/pyodide\/|py-worker/.test(h));
-
-const browser = await pw[BROWSER].launch();
+// G5：启动和收尾也在清理保护里。资源句柄先是空的，启动到哪一步失败，收尾就关到哪一步（服务器已监听但浏览器启动失败 → 服务器照样被关）。
+async function startResources(R, { makeServer, launch }) {
+  R.srv = makeServer(requestHandler);
+  await new Promise((res) => R.srv.listen(0, res));
+  R.base = `http://localhost:${R.srv.address().port}/`;
+  R.browser = await launch();
+}
+async function stopResources(C, R) {
+  await C.steps([
+    ["关闭仍打开的上下文", async () => { for (const c of [...C.opened]) await C.closeCtx(c); }],
+    ["关闭浏览器", async () => { if (R.browser) await R.browser.close(); }],
+    ["关闭服务器并等回调", async () => { if (!R.srv) return; R.srv.closeAllConnections?.(); await new Promise((res, rej) => { const t = setTimeout(() => rej(new Error("服务器 5 秒内没有关闭")), 5000); R.srv.close((e) => { clearTimeout(t); e ? rej(e) : res(); }); }); }],
+  ]);
+}
+const RES = { srv: null, browser: null, base: "" };
 try {
+  await startResources(RES, { makeServer: createServer, launch: () => pw[BROWSER].launch() });
+  const BASE = RES.base, browser = RES.browser;
   const ctx = CL.track(await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: "block" }));
   const page = await ctx.newPage();
   const errors = []; page.on("pageerror", (e) => errors.push(e.message));
@@ -122,10 +135,11 @@ try {
     await p.waitForSelector(".statsbar, .onboard");
     await p.waitForFunction(() => window.__app?.runner, null, { timeout: 15000 });
     // G3：非零已通关夹具（XP / 红心 / 连续天数 / 完成次数 / 完成日期 / 首次通关 XP 都不为零），先写旧版记录，加载后再用应用自己的接口补上首次通关 XP 并保存，再重载确认读得回来
-    await p.evaluate((cleared) => {
+    t.today = await p.evaluate((cleared) => {
       const s = window.__app.getState(); const d = new Date(); const pad = (n) => String(n).padStart(2, "0"); const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       Object.assign(s, { onboarded: true, xp: 360, hearts: 3, heartsAt: Date.now(), streak: 3, lastDay: today, lessonsCompleted: 6, done: Object.fromEntries(cleared.map((k) => [k, true])), doneOn: Object.fromEntries(cleared.map((k) => [k, today])), prefs: { ...s.prefs, sound: false } });
       Object.keys(localStorage).filter((k) => k.includes("suipian.v4.")).forEach((k) => localStorage.removeItem(k)); localStorage.setItem("suipian.progress", JSON.stringify(s));
+      return today;
     }, CLEARED);
     await p.reload(); await p.waitForSelector(".statsbar");
     await p.evaluate(() => { window.__app.addXp(40, "U1L1", true); window.__app.addXp(40, "U1L2", true); window.__app.persist(); });
@@ -147,7 +161,7 @@ try {
   };
   const snap = async (p) => JSON.stringify(await snapObj(p));
   // 夹具有效性：必须是非零、读得回的存档，否则“前后相等”什么也证明不了
-  const fixtureOk = (j) => { const o = JSON.parse(j); return typeof o.disk === "object" && o.mem.xp > 0 && o.mem.hearts === 3 && o.mem.streak > 0 && !!o.mem.lastDay && o.mem.lessonsCompleted > 0 && Object.keys(o.mem.done).length === 6 && Object.keys(o.mem.doneOn).length === 6 && o.disk.xp > 0 && o.disk.runs > 0 && o.disk.done.length === 6 && Object.keys(o.disk.firstXpByLesson).length >= 2 && typeof o.disk.currentEpoch === "string" && o.disk.currentEpoch.length > 0; };
+  const fixtureOk = (j, today = null) => { try { const o = JSON.parse(j); if (typeof o.disk !== "object" || o.disk === null) return false; const ids = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"], d = o.mem.lastDay; if (typeof d !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d) || (today !== null && d !== today)) return false; const exp = { mem: { xp: 440, hearts: 3, streak: 3, lastDay: d, lessonsCompleted: 6, done: Object.fromEntries(ids.map((k) => [k, true])), doneOn: Object.fromEntries(ids.map((k) => [k, d])), run: false }, disk: { currentEpoch: "m0", xp: 440, runs: 6, done: ids, firstXpByLesson: { U1L1: 40, U1L2: 40 } } }; return JSON.stringify(exp) === JSON.stringify({ mem: o.mem, disk: o.disk }); } catch { return false; } }; // G3：固定种子的独立预期值（XP 360+80=440、红心 3、连续 3 天、完成 6 次、6 关带完成日期、firstXp U1L1=40/U1L2=40、epoch m0），内存与持久化都必须精确相等
   // 6a 整行比较：用“整行等于正确选项文字”判断是否拿预设输出冒充（选项可能很短，诊断行里本来就有“在线：是”）
   const looksPresetOutput = (text, correct) => text.split("\n").some((l) => l.trim() === String(correct).trim());
   // 进入随机练习，范围只选 U1L4 + U1L5（大多是选输出题），直到第一题是选输出题（它的真实输出 = 正确选项文字，可以精确比对）
@@ -179,7 +193,7 @@ try {
   { // 6a 首次真实运行失败 → 重试 → 真实输出 → 做完整轮
     const t = await newColdPage(), p = t.page;
     const before = await snap(p);
-    check("6a T0 夹具有效：XP / 红心 / 连续天数 / 完成次数 / 完成日期非零，持久化读得回（观察器 ok、status=OK、currentEpoch、firstXpByLesson、done 共 6 关）", fixtureOk(before), before);
+    check("6a T0 夹具与固定预期精确相等：XP 440、红心 3、连续 3 天、完成 6 次、6 关及完成日期、firstXp U1L1=40/U1L2=40，内存与持久化（观察器 ok、status=OK、epoch m0）一致", fixtureOk(before, t.today), before);
     check("6a G1 检查之前：runner 是 idle，没有创建 Python 线程，没有任何 Pyodide 资源请求", (await p.evaluate(() => [window.__app.runner.state, !!window.__app.runner.worker].join())) === "idle,false" && t.rl.length === 0 && t.py() === 0, JSON.stringify(t.rl));
     t.abort = true;
     const ex = await startPredictFirst(p);
@@ -197,12 +211,14 @@ try {
     check("6a 加载失败：如实提示不可用（不是预设输出冒充）", UNAVAILABLE.test(failText) && !passedOff, `correct=${JSON.stringify(correctText)} text=${failText.slice(0, 80)}`);
     check("6a 加载失败：出现“重试”按钮，练习照常判分（显示答对了）", retryN === 1 && okN === 1, `retry=${retryN} feedbar.ok=${okN}`);
     check("6a G1 真实拦截命中：被 abort 的 Pyodide 资源 ≥ 1（具体文件见明细），没有放行过的资源", t.cnt("abort", /\/pyodide\//) >= 1 && t.cnt("continue") === 0, `abort=${t.cnt("abort")} [${t.urls("abort")}] continue=${t.cnt("continue")}`);
+    check("6a T1b 首次加载失败之后即时：内存与持久化与 T0 逐项相同", (await snap(p)) === before, await snap(p));
     const nFail = t.py(); await p.waitForTimeout(3000);
     check("6a 失败后没有自动反复请求", t.py() === nFail, `${nFail} → ${t.py()}`);
     t.abort = false;
     await p.locator("[data-retry-python]").click();
     await p.waitForFunction((x) => document.querySelector(".outpanel pre")?.textContent.trim() === x, correctText, { timeout: 60000 });
     check("6a 点“重试”：真实输出 = 正确选项文字，重试按钮消失，runner 就绪", (await p.locator("[data-retry-python]").count()) === 0 && (await p.evaluate(() => window.__app.runner.state)) === "ready");
+    check("6a T1c 重试成功、真实输出出现之后即时：内存与持久化与 T0 逐项相同", (await snap(p)) === before, await snap(p));
     check("6a G1 重试放行：pyodide.asm.wasm 真的被放行加载", t.cnt("continue", /pyodide\.asm\.wasm$/) >= 1 && t.pending() === 0, `continue=${t.cnt("continue")} [${t.urls("continue")}]`);
     // 继续做完整轮：每题都应得到真实输出（不是不可用提示）
     let n = 0, allReal = true, realDetail = "";
@@ -324,23 +340,37 @@ try {
     check("校准 6a：诊断行里的“在线：是”不会被误判成预设输出（正确选项“是”）", looksPresetOutput(diag, "是") === false);
     check("校准 6a：独立成行的预设输出会被检出（正确选项“是”）", looksPresetOutput(diag + "\n是", "是") === true);
     check("校准 6a：整段输出恰好等于正确选项会被检出", looksPresetOutput("杯数 4", "杯数 4") === true);
-    const good = JSON.stringify({ mem: { xp: 360, hearts: 3, streak: 3, lastDay: "2026-11-16", lessonsCompleted: 6, done: { a: 1, b: 1, c: 1, d: 1, e: 1, f: 1 }, doneOn: { a: 1, b: 1, c: 1, d: 1, e: 1, f: 1 } }, disk: { currentEpoch: "m0", xp: 360, runs: 6, done: ["a", "b", "c", "d", "e", "f"], firstXpByLesson: { U1L1: 40, U1L2: 40 } } });
-    check("校准 G3：合格的非零夹具通过 fixtureOk", fixtureOk(good) === true);
-    check("校准 G3：读取失败（READ_FAIL）的快照不能通过", fixtureOk(JSON.stringify({ ...JSON.parse(good), disk: "READ_FAIL:{}" })) === false);
-    check("校准 G3：XP 为零的夹具不能通过", fixtureOk(JSON.stringify({ ...JSON.parse(good), mem: { ...JSON.parse(good).mem, xp: 0 } })) === false);
+    const ids6 = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"], D0 = "2026-11-16";
+    const exact = () => ({ mem: { xp: 440, hearts: 3, streak: 3, lastDay: D0, lessonsCompleted: 6, done: Object.fromEntries(ids6.map((k) => [k, true])), doneOn: Object.fromEntries(ids6.map((k) => [k, D0])), run: false }, disk: { currentEpoch: "m0", xp: 440, runs: 6, done: ids6, firstXpByLesson: { U1L1: 40, U1L2: 40 } } });
+    const mut = (f) => { const o = exact(); f(o); return JSON.stringify(o); };
+    check("校准 G3：固定预期的夹具通过 fixtureOk（带今天日期也通过）", fixtureOk(JSON.stringify(exact())) === true && fixtureOk(JSON.stringify(exact()), D0) === true);
+    check("校准 G3：日期不是种子当天会被拒绝", fixtureOk(JSON.stringify(exact()), "2026-11-17") === false);
+    check("校准 G3：读取失败（READ_FAIL）的快照不能通过", fixtureOk(mut((o) => { o.disk = "READ_FAIL:{}"; })) === false);
+    check("校准 G3：GPT1 的错误固定夹具被拒绝（磁盘 XP 1 / 次数 1 / epoch wrong / firstXp 1 和 9999，内存仍 440）", fixtureOk(mut((o) => { o.disk = { ...o.disk, xp: 1, runs: 1, currentEpoch: "wrong-epoch", firstXpByLesson: { U1L1: 1, U1L2: 9999 } }; })) === false);
+    check("校准 G3：内存 XP 为零 / 红心不对 / 少一关 / firstXp 缺失，都被拒绝", [(o) => { o.mem.xp = 0; }, (o) => { o.mem.hearts = 5; }, (o) => { delete o.mem.done.U1L6; }, (o) => { o.disk.firstXpByLesson = {}; }, (o) => { o.disk.xp = 441; }].every((f) => fixtureOk(mut(f)) === false));
     const C2 = makeCleanup(); const order = [];
     await C2.steps([["a", async () => order.push("a")], ["b-失败", async () => { throw new Error("boom"); }], ["c", async () => order.push("c")]]);
     check("校准 G5：中间一步失败，后面的清理步骤仍然执行，错误被记录", order.join() === "a,c" && C2.errors.length === 1 && /b-失败/.test(C2.errors[0]), JSON.stringify(C2.errors));
     const fakeCtx = { close: async () => { throw new Error("close failed"); } }; C2.track(fakeCtx); await C2.closeCtx(fakeCtx);
     check("校准 G5：关闭失败的上下文被记入 failed 并算作残留", C2.failed.length === 1 && C2.residue() === 1);
+    // 启动失败反例：服务器已监听、浏览器启动失败 → 收尾仍然关闭服务器（用真实的 startResources / stopResources，只替换 HTTP 与浏览器边界）
+    const probe = async (launchFails, closeFails = false) => {
+      const st = { listening: false, serverClosed: 0, browserClosed: 0 };
+      const fakeServer = { listen(_p, cb) { st.listening = true; cb(); }, address: () => ({ port: 12345 }), closeAllConnections() {}, close(cb) { st.serverClosed++; st.listening = false; cb(closeFails ? new Error("close failed") : undefined); } };
+      const R2 = { srv: null, browser: null, base: "" }, C3 = makeCleanup(); let err = null;
+      try { await startResources(R2, { makeServer: () => fakeServer, launch: async () => { if (launchFails) throw new Error("injected launch failure"); return { close: async () => { st.browserClosed++; } }; } }); } catch (e) { err = e.message; }
+      await stopResources(C3, R2);
+      return { st, err, C3 };
+    };
+    const pn = await probe(false), pf = await probe(true), pc = await probe(false, true);
+    check("校准 G5：正常启动，收尾关闭浏览器和服务器各一次", pn.err === null && pn.st.serverClosed === 1 && pn.st.browserClosed === 1 && pn.C3.errors.length === 0, JSON.stringify(pn.st));
+    check("校准 G5：浏览器启动失败，已监听的服务器仍被关闭（不再绕过清理）", pf.err === "injected launch failure" && pf.st.serverClosed === 1 && pf.st.listening === false && pf.st.browserClosed === 0, JSON.stringify(pf.st));
+    check("校准 G5：服务器关闭回调报错会被记入错误（非零退出）", pc.C3.errors.length === 1 && /关闭服务器/.test(pc.C3.errors[0]), JSON.stringify(pc.C3.errors));
   }
+} catch (e) {
+  CL.errors.push("运行异常：" + String(e?.stack || e).slice(0, 300));
 } finally {
-  // G5：每一步单独 try/catch；先关上下文，再关浏览器，最后等服务器的关闭回调；任何错误或残留 = 非零退出
-  await CL.steps([
-    ["关闭仍打开的上下文", async () => { for (const c of [...CL.opened]) await CL.closeCtx(c); }],
-    ["关闭浏览器", async () => { await browser.close(); }],
-    ["关闭服务器并等回调", async () => { srv.closeAllConnections?.(); await new Promise((res, rej) => { const t = setTimeout(() => rej(new Error("服务器 5 秒内没有关闭")), 5000); srv.close((e) => { clearTimeout(t); e ? rej(e) : res(); }); }); }],
-  ]);
+  await stopResources(CL, RES);
 }
 const cleanBad = CL.errors.length + CL.failed.length + CL.residue();
 if (cleanBad) console.log("❌ 清理失败 / 残留：" + JSON.stringify({ errors: CL.errors, failedClose: CL.failed, residue: CL.residue() }));

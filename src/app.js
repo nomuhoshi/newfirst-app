@@ -468,12 +468,12 @@ function runForOutput(code) {
 function runForOutputNow(code) {
   return new Promise((resolve) => {
     const mine = new Set(); // 本次请求注册过的监听，结算时一并注销
-    let settled = false, loadTimer = null, runTimer = null, myRunId = 0;
+    let settled = false, loadTimer = null, runTimer = null, pollTimer = null, myRunId = 0;
     const add = (l) => { mine.add(l); listeners.add(l); return l; };
     const finish = (v) => {
       if (settled) return;
       settled = true;
-      clearTimeout(loadTimer); clearTimeout(runTimer);
+      clearTimeout(loadTimer); clearTimeout(runTimer); clearTimeout(pollTimer);
       for (const l of mine) listeners.delete(l);
       mine.clear();
       resolve(v);
@@ -489,7 +489,7 @@ function runForOutputNow(code) {
           finish(s === "done" ? { out, error: info.error } : { out, error: { kind: "Stopped", line: null, msg: "运行被停止" } });
         },
       });
-      clearTimeout(loadTimer);
+      clearTimeout(loadTimer); clearTimeout(pollTimer);
       if (!runner.run(code)) return finish(null);
       myRunId = runner.runId;
       // 看门狗：runner 自己有超时；这里是兜底，防止任何路径都没有给出结果
@@ -501,12 +501,18 @@ function runForOutputNow(code) {
     };
     if (runner.state === "ready") return go();
     // 先挂好监听，再重新启动：启动可能同步失败（比如不能创建 Worker），那时监听必须已经在了
+    // 等待有两条路：状态通知（快）+ 每 25 毫秒看一次 runner.state（稳）。
+    // 只靠通知不够：判题执行器（judge.js makeRunnerExecutor）运行期间会临时接管 runner 的回调，结束时只还原、不把 done 转给原来的分发器，
+    // 这时 runner 已经 ready，但等待者收不到任何通知（GPT1 在 e225cf73 的真实执行器反例）。
     let waiting = true;
-    const waiter = add({ status: (s) => {
+    const wake = () => {
       if (settled || !waiting) return;
-      if (s === "loadError") finish(null);
-      else if (runner.state === "ready" && (s === "ready" || s === "done")) { waiting = false; mine.delete(waiter); listeners.delete(waiter); go(); }
-    } });
+      if (runner.state === "loadError") return finish(null);
+      if (runner.state === "ready") { waiting = false; mine.delete(waiter); listeners.delete(waiter); clearTimeout(pollTimer); go(); }
+    };
+    const waiter = add({ status: (s) => { if (s === "loadError") finish(null); else wake(); } });
+    const poll = () => { pollTimer = setTimeout(() => { wake(); if (!settled && waiting) poll(); }, 25); };
+    poll();
     // 兜底：无论什么原因一直等不到，到时间就结束“运行中…”，显示失败提示和“重试”
     loadTimer = setTimeout(() => finish(null), LIMITS.loadMs + 2000);
     if (runner.state === "idle" || runner.state === "loadError") runner.boot(); // idle = 本次打开后第一次真正要执行：此时才开始加载 Python

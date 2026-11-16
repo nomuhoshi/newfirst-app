@@ -36,8 +36,9 @@ const appSrc = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
 const a = appSrc.indexOf("let outputChain = Promise.resolve();"), b = appSrc.indexOf("// Python 运行不了时，如实说明原因");
 assert.ok(a > 0 && b > a, "找不到 runForOutput 源码标记");
 const body = appSrc.slice(a, b);
+const { makeRunnerExecutor } = await import("../src/judge.js");
 
-function setup() {
+function setup(bodyText = body) {
   workers.length = 0; behavior = { load: "ok", run: "ok" };
   LIMITS.runMs = 150; LIMITS.loadMs = 400;
   const listeners = new Set();
@@ -45,7 +46,7 @@ function setup() {
     onStatus(s, info) { for (const l of [...listeners]) l.status?.(s, info); },
     onOutput(t) { for (const l of [...listeners]) l.output?.(t); },
   });
-  const { runForOutput } = new Function("runner", "listeners", "LIMITS", body + "\nreturn { runForOutput };")(runner, listeners, LIMITS);
+  const { runForOutput } = new Function("runner", "listeners", "LIMITS", bodyText + "\nreturn { runForOutput };")(runner, listeners, LIMITS);
   return { runner, listeners, runForOutput };
 }
 const settle = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -137,6 +138,47 @@ test("Q6 运行器被别处占用（例如写代码题在跑）：请求等对�
     assert.ok(slowDone, "应当在对方结束之后才执行");
     assert.equal(listeners.size, 0);
   } finally { FakeWorker.prototype.postMessage = orig; }
+});
+
+// 真实判题执行器（src/judge.js makeRunnerExecutor）占用运行器：它运行期间临时接管 runner.onStatus/onOutput，结束时只还原、不把 done 转给原分发器。
+// GPT1 在 e225cf73 的反例：等待中的 runForOutput 收不到任何通知，一直等到加载等待上限才返回 null。
+const slowWorker = () => {
+  const orig = FakeWorker.prototype.postMessage;
+  FakeWorker.prototype.postMessage = function (m) {
+    if (m.type === "run" && m.code === "SLOW") { setTimeout(() => { this.onmessage?.({ data: { type: "out", id: m.id, text: "JUDGE\n" } }); this.onmessage?.({ data: { type: "done", id: m.id, error: null } }); }, 80); return; }
+    return orig.call(this, m);
+  };
+  return () => { FakeWorker.prototype.postMessage = orig; };
+};
+async function executorBusyScenario(bodyText) {
+  const { runner, listeners, runForOutput } = setup(bodyText);
+  await runForOutput('print("warm")');
+  const restore = slowWorker();
+  try {
+    const exec = makeRunnerExecutor(runner);
+    const judge = exec.exec({ code: "SLOW", timeoutMs: 2000 });
+    await settle(20);
+    assert.equal(runner.state, "running");
+    const t0 = Date.now();
+    const pr = runForOutput('print("AFTER")');
+    const j = await judge;
+    const r = await Promise.race([pr, settle(1500).then(() => "STUCK")]);
+    return { j, r, ms: Date.now() - t0, listeners, runner };
+  } finally { restore(); }
+}
+
+test("Q9 真实判题执行器占用运行器：等待中的请求在对方结束后立刻执行，得到自己的输出（不是等到上限返回 null）", async () => {
+  const { j, r, ms, listeners, runner } = await executorBusyScenario(body);
+  assert.equal(j.stdout, "JUDGE\n");
+  assert.equal(r?.out, "AFTER\n", JSON.stringify(r));
+  assert.ok(ms < 1000, "应当很快执行，实际 " + ms + "ms");
+  assert.equal(listeners.size, 0); assert.equal(runner.state, "ready");
+});
+
+test("Q10 校准：去掉状态轮询（只靠通知）时 Q9 的场景确实失败——证明测试能抓到这个缺陷", async () => {
+  assert.ok(body.includes("    poll();"), "找不到轮询语句");
+  const { r } = await executorBusyScenario(body.replace("\n    poll();", ""));
+  assert.notEqual(r?.out, "AFTER\n", "只靠通知时应当拿不到输出（缺陷存在）：" + JSON.stringify(r));
 });
 
 test("Q7 校准：旧写法（超时只清自己的计时器、忽略运行中 loadError）在 Q2/Q3 的场景下确实会残留监听或卡住下一个请求（证明测试能抓到缺陷）", async () => {
