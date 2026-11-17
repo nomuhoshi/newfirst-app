@@ -102,7 +102,7 @@ try {
   await page.waitForSelector(".statsbar", { timeout: 15000 });
   check("离线：带查询参数的地址（从主屏幕打开）也能打开", /文字与长度/.test(await text()));
   await page.getByRole("button", { name: "我的" }).tap();
-  const meOpen = /我的学习/.test(await text());
+  const meOpen = /学习进度/.test(await text()) && (await page.locator("[data-me-id]").count()) === 1 && (await page.locator("[data-me-menu]").count()) === 4; // 2026-11-17 入口页重排：原标题“我的学习”换成身份卡 + 学习进度卡
   await page.locator('[data-me-menu="help"]').tap(); await page.evaluate(() => { const d = document.querySelector("details.me-tools"); if (d) d.open = true; });
   check("离线：“我的”页能打开", meOpen && /离线支持：已启用/.test(await page.locator('[aria-label="诊断信息"]').innerText()));
   await page.getByRole("button", { name: "学习", exact: true }).tap();

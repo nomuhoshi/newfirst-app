@@ -78,7 +78,7 @@ async function loginUi(d, email, { choice = null } = {}) {
     check("我的入口页：点主按钮直接打开登录弹窗（有邮箱输入框）", (await d.page.locator("[data-email]").count()) === 1);
     await d.page.getByRole("button", { name: "先不登录" }).tap();
     check("我的入口页：点「先不登录」关掉弹窗，仍是游客", (await d.page.locator("[data-email]").count()) === 0 && (await d.page.locator('[data-me-id="guest"]').count()) === 1);
-    await d.page.getByRole("button", { name: "学习" }).tap();
+    await d.page.getByRole("button", { name: "学习", exact: true }).tap();
   }
   await toMe(d);
   await d.page.locator("[data-open-login]").tap();
