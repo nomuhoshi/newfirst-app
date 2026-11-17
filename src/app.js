@@ -1259,6 +1259,9 @@ function startLesson(l, { review = false } = {}) {
   const run = {
     lesson: l, review,
     queue: l.exercises.map((_, i) => i),
+    // 选输出题的选项在课程里也要打乱（数据里正确答案都写在第一个）。每次开始一关只打乱一次，放进 run：同一关内重绘 / 答错后再做同一道题，选项位置不变；
+    // 正确标记和解释跟着选项对象走，判分只看选项对象，与位置无关。重新开始这一关会重新打乱。
+    exercises: l.exercises.map((ex) => (ex.type === "predict" ? shuffleExercise(ex) : ex)),
     total: l.exercises.length,
     correct: 0,
     xp: 0,
@@ -1313,7 +1316,7 @@ function renderExercise(run) {
   currentArea?.destroy?.(); currentArea = null; // 离开上一道代码题：先把草稿存好
   if (run.queue.length === 0) return renderFinish(run);
   const idx = run.queue[0];
-  const ex = run.lesson.exercises[idx];
+  const ex = run.exercises[idx];
   if (isCodeTask(ex) && !codeTaskMod) return renderCodeTaskLoading(run, idx);
   window.__app.currentEx = ex; // 给自动测试用
   window.__app.renders = (window.__app.renders || 0) + 1;

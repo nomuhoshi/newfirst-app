@@ -190,7 +190,7 @@ L.append(lesson("U6L8", "项目：修好收银程序", "一处一处修，每次
   perr("第 3 行修好了。再运行，报错说 line 4、TypeError。第 4 行怎么改？", CASH1, "TypeError", 4, [
     ("if int(cups) > 5:", True, "cups 是文字，和整数 5 比较之前先变成整数。", CASH2),
     ("if str(cups) > 5:", False, "str(cups) 还是文字，文字不能和整数比大小。", swap(CASH1, "if cups > 5:", "if str(cups) > 5:")),
-    ("if cups > \"5\":", False, "不报错了，但这是按文字比较，不是按数字大小比，结果靠不住。", swap(CASH1, "if cups > 5:", "if cups > \"5\":"))],
+    ("if int(cups) > \"5\":", False, "int(cups) 是整数，\"5\" 是文字，整数和文字还是不能比大小，第 4 行照样报同样的错。", swap(CASH1, "if cups > 5:", "if int(cups) > \"5\":"))],
     "修好一处又出现新的报错是正常的：程序往下多走了一步。", fixed=None),
   perr("前两处修好了。再运行，报错说 line 6、TypeError。第 6 行怎么改？", CASH2, "TypeError", 6, [
     ("print(\"应付：\" + str(total))", True, "total 是整数，先变成文字才能接在 \"应付：\" 后面。", CASH3),
