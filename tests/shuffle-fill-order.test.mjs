@@ -9,7 +9,7 @@
 //   5. 可注入随机数 → 同样的随机数序列得到同样的结果（稳定、可复现）。
 // 运行：node tests/shuffle-fill-order.test.mjs
 import { readFileSync } from "node:fs";
-import { shuffleExercise, orderIsCorrect, shuffleOrderInitial, ORDER_RETRIES, SHUFFLED_TYPES } from "../src/practice.js";
+import { shuffleExercise, orderIsCorrect, shuffleOrderInitial, findWrongArrangement, ORDER_RETRIES, SHUFFLED_TYPES } from "../src/practice.js";
 
 let pass = 0, fail = 0;
 const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`${ok ? "✅" : "❌"} ${n}${ok || !d ? "" : "  — " + d}`); };
@@ -35,8 +35,7 @@ for (const { id, ex } of orders) {
     if (orderIsCorrect(ex, s.shuffled)) bad.push(`${id}（对抗随机数 ${name}）`);
   }
   // 是否存在任何错误排列（不存在 = 题目本身有问题，兜底无法修）
-  const n = ex.lines.length; const perms = (a) => (a.length <= 1 ? [a] : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map((p) => [x, ...p])));
-  if (n <= 8 && !perms([...Array(n).keys()]).some((p) => !orderIsCorrect(ex, p))) noWrong.push(id);
+  if (!findWrongArrangement(ex, ex.shuffled)) noWrong.push(id); // 不存在（或超过扫描上限）= 题库问题，列出题目 ID
 }
 check(`全部 ${orders.length} 道排序题 × ${N} 次随机 + 3 种对抗随机数：初始排列从不是正确答案`, bad.length === 0, bad.slice(0, 10).join("；"));
 check("打乱只是换位置：行的集合、answers、lines 都没变", badSets.length === 0, badSets.join("、"));
@@ -67,7 +66,14 @@ check("填空（单空、3 词块）：正确词块在第 1/2/3 位的比例都�
   // 不存在错误排列：所有排列都算对（行文字全相同）
   const allOk = { type: "order", lines: ["x", "x"], shuffled: [0, 1], answers: [[0, 1]] };
   const r3 = shuffleOrderInitial(allOk, c);
-  check("不存在错误排列的题：不死循环，如实返回仍为“正确”的结果（由逐题检查把它列出来）", orderIsCorrect(allOk, r3) === true);
+  check("不存在错误排列的题：不死循环，如实返回仍为“正确”的结果；findWrongArrangement 返回 null（逐题检查据此列出题目 ID）", orderIsCorrect(allOk, r3) === true && findWrongArrangement(allOk, [0, 1]) === null);
+  // 四行反例（产品官6号）：answers 列出当前排列 + 全部相邻交换 / 反转 / 轮转候选，仍保留其它错误排列；随机数恒命中正确排列 → 最终必须选到错误排列
+  const four = { type: "order", lines: ["a = 1", "b = 2", "c = 3", "print(a, b, c)"], shuffled: [0, 1, 2, 3], answers: [[0, 1, 2, 3], [1, 0, 2, 3], [0, 2, 1, 3], [0, 1, 3, 2], [3, 2, 1, 0], [1, 2, 3, 0], [2, 3, 0, 1], [3, 0, 1, 2]] };
+  const r4 = shuffleOrderInitial(four, c);
+  check("四行反例：重抽和全部兜底候选（相邻交换 / 反转 / 轮转）都是可接受答案时，遍历其余排列选到已验证错误的排列", !orderIsCorrect(four, r4) && [...r4].sort().join() === "0,1,2,3", JSON.stringify(r4));
+  check("四行反例：24 个排列里恰有 8 个可接受答案，仍存在错误排列（反例成立）", findWrongArrangement(four, [0, 1, 2, 3]) !== null);
+  const ex4 = shuffleExercise(four, c);
+  check("四行反例（经 shuffleExercise）：同样选到错误排列，判分数据不变", !orderIsCorrect(ex4, ex4.shuffled) && JSON.stringify(ex4.answers) === JSON.stringify(four.answers));
 }
 
 // 5：可复现 / 其它题型不动
