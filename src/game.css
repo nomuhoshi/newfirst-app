@@ -205,24 +205,50 @@ body { background: var(--g-bg); color: var(--g-fg); }
 
 /* 我的 */
 .me { padding: 16px; }
-.me-head { display: flex; align-items: center; gap: 12px; }
-.me-head h1 { margin: 0; font-size: 22px; }
-.me-head p { margin: 2px 0 0; }
-.me-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
-.me-card { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
-.me-card b { font-size: 20px; display: inline-flex; align-items: center; gap: 6px; } .me-card span { font-size: 12px; color: var(--g-muted); }
-.rules { padding-left: 18px; font-size: 14px; line-height: 1.8; color: var(--g-muted); }
-.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
-.toggle-row b { display: block; font-size: 15px; }
-.toggle-row small { display: block; font-size: 12px; color: var(--g-muted); line-height: 1.5; margin-top: 2px; }
-/* 「我的」页入口：账号 / 设置 / 数据与备份 / 帮助 四个按钮，点进去是各自的页面 */
-.me-menu { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
-.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; box-sizing: border-box; width: 100%; min-height: 64px; padding: 12px 14px; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; color: var(--g-fg); text-align: left; }
+/* 「我的」入口页（2026-11-17 重排）：身份卡 → 学习进度 → 备份提醒 → 分组入口 */
+.me-entry { display: flex; flex-direction: column; gap: 12px; }
+.me-entry > * { margin-top: 0; margin-bottom: 0; }
+.me-id, .me-progress { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.me-id-row { display: flex; align-items: center; gap: 12px; }
+.me-id-text { min-width: 0; }
+.me-id h1 { margin: 0; font-size: 20px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-id p { margin: 2px 0 0; font-size: 13px; line-height: 1.45; }
+.me-id .btn3d.wide { margin-top: 0; margin-bottom: 4px; }
+.me-id .me-id-note { margin: 0; font-size: 12px; text-align: center; color: var(--g-muted); }
+.me-id .acct-row-mini { margin: 0; }
+.me-progress-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.me-progress h2 { margin: 0; font-size: 16px; }
+.me-progress-head span { font-size: 13px; }
+.me-bar { height: 10px; border-radius: 5px; background: var(--g-locked); overflow: hidden; }
+.me-bar > div { height: 100%; border-radius: 5px; background: var(--g-primary); }
+.me-week { display: flex; justify-content: space-between; }
+.me-day { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 40px; }
+.me-day span { font-size: 12px; color: var(--g-muted); }
+.me-day i { width: 28px; height: 28px; border-radius: 14px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; background: var(--g-locked); color: var(--g-on-copper); }
+.me-day[data-day="done"] i { background: var(--g-copper); }
+.me-day[data-day="today"] i { background: var(--g-card); border: 2px dashed var(--g-copper); }
+.me-day .ico { stroke-width: 3.5; }
+.me-streak-line { margin: 0; font-size: 13px; line-height: 1.45; }
+.me-mini { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--g-muted); }
+.me-mini span { display: inline-flex; align-items: center; gap: 5px; }
+.me-mini b { color: var(--g-fg); font-size: 15px; }
+.me-backup { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 18px; padding: 12px 12px 14px 16px; display: flex; align-items: center; gap: 12px; }
+.me-backup > .ico { flex-shrink: 0; color: var(--g-copper-text); }
+.me-backup[data-me-backup="done"] > .ico { color: var(--g-ok); }
+.me-backup-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.me-backup-text b { font-size: 15px; } .me-backup-text small { font-size: 12px; line-height: 1.4; color: var(--g-muted); }
+.me-backup .btn3d { min-height: 44px; padding: 0 16px; font-size: 15px; flex-shrink: 0; border-color: var(--g-primary); color: var(--g-primary); box-shadow: 0 3px 0 var(--g-primary); }
+.me-backup .btn3d:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 0 0 transparent; }
+.me-menu { display: flex; flex-direction: column; background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 18px; overflow: hidden; }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; box-sizing: border-box; width: 100%; min-height: 60px; padding: 10px 14px 10px 16px; background: transparent; border: 0; border-bottom: 1px solid var(--g-line); border-radius: 0; color: var(--g-fg); text-align: left; }
+.menu-row:last-child { border-bottom: 0; }
 .menu-row::after { content: "›"; font-size: 26px; line-height: 1; color: var(--g-muted); }
+.menu-in { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.menu-in > .ico { flex-shrink: 0; color: var(--g-primary); }
 .menu-row .menu-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.menu-row b { font-size: 17px; }
+.menu-row b { font-size: 16px; }
 .menu-row small { font-size: 13px; color: var(--g-muted); line-height: 1.4; }
-.menu-row:active { transform: translateY(1px); }
+.menu-row:active { background: color-mix(in srgb, var(--g-fg) 6%, transparent); }
 .me-subhead { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; }
 .me-subhead h1 { margin: 0; font-size: 22px; }
 .me-subhead .link { text-decoration: none; min-height: 44px; min-width: 44px; padding: 0 8px 0 0; font-weight: 700; font-size: 16px; }
@@ -391,7 +417,7 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
   /* 不位移，按下时只有即时的描边 / 亮度变化 */
   .btn3d:active:not(:disabled), .choice:active, .kchip:active, .line-chip:active, .keybtn:active { outline: 3px solid var(--g-primary); outline-offset: -3px; }
   .node:active .hexnode { transform: none; }
-  .menu-row:active { transform: none; outline: 3px solid var(--g-primary); outline-offset: -3px; }
+  .menu-row:active { outline: 3px solid var(--g-primary); outline-offset: -3px; }
   .node:active { filter: brightness(1.12); }
 }
 /* 输出面板底色一直是深色，所以提示文字用浅色（原来用的灰色在深底上看不清）；比正常输出略暗一点用来区分 */
