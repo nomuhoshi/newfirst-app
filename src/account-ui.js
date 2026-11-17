@@ -128,6 +128,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           if (busy || cdLeft(v) > 0) return; busy = true; go.disabled = true; go.textContent = "发送中…"; say("正在发送…", false);
           const r = await sendWithCaptcha(v);
           busy = false;
+          if (finished) return; // 发送途中点了「先不登录」：弹窗已关，迟到的结果不再翻页、不改提示、不起计时
           if (!r.ok) {
             const d0 = describeSendError(r, { xp: localXp(), fails: 1 });
             s4Fails = d0.id === "S4" ? s4Fails + 1 : 0; // S4 连续失败计数只放内存，成功一次清零
@@ -232,7 +233,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           input, feedback,
           ...(captcha.enabled ? [captchaMount] : []),
           h("div", { class: "login-actions" }, go, resend, extra),
-          button("换个邮箱", () => { say(""); stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着
+          button("换个邮箱", () => { if (busy) return; say(""); stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着；重发 / 登录还在处理时不换页（和遮罩、Esc 一致），否则邮箱页的发送按钮会停在“发送中…”
         );
         setTimeout(() => input.focus(), 50);
       }
