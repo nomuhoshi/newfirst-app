@@ -36,7 +36,15 @@ for (const [r, id] of cases) {
   const d = describeSendError(r, { xp: 50 });
   check(`文案 ${JSON.stringify({ kind: r.kind, reason: r.reason, code: r.errorCode })} → ${id}：固定文案、不冷却、无诊断行、不含原文/错误码、有 XP 提示`, classifySend(r) === id && d.id === id && d.text === CAPTCHA_COPY[id].text() && d.cooldownMs === 0 && d.diag === "" && !d.text.includes("CANARY") && !d.text.includes("300030") && d.xp.includes("50 XP") && !d.uncertainSent, JSON.stringify(d));
 }
-check("K1–K4 文案互不相同", new Set(Object.values(CAPTCHA_COPY).map((e) => e.text())).size === 4);
+check("K1–K5 文案互不相同（2026-11-17 新增 K5，原来断言 4 条，现在 5 条）", new Set(Object.values(CAPTCHA_COPY).map((e) => e.text())).size === 5 && Object.keys(CAPTCHA_COPY).length === 5);
+// K5：这份页面没带人机验证，服务器却要求（旧版本缓存 / 构建没配站点密钥）——重试没用，要叫人更新
+{
+  const r = { ok: false, kind: "auth", status: 400, errorCode: "captcha_failed", message: RAW };
+  check("K5 只在调用方明确说“没开人机验证”（captchaOn:false）时出现；开了 / 没说 → 仍是 K4", classifySend(r, { captchaOn: false }) === "K5" && classifySend(r, { captchaOn: true }) === "K4" && classifySend(r) === "K4" && classifySend(r, {}) === "K4");
+  const d = describeSendError(r, { xp: 50, captchaOn: false });
+  check("K5 文案：叫人更新而不是“再点一次”，不冷却、无诊断行、不含原文", d.id === "K5" && d.text === CAPTCHA_COPY.K5.text() && /更新到最新版本/.test(d.text) && !/再点一次/.test(d.text) && d.cooldownMs === 0 && d.diag === "" && !d.text.includes("CANARY") && !d.uncertainSent, JSON.stringify(d));
+  check("captchaOn 不影响别的分类", classifySend({ ok: false, kind: "network", offline: true }, { captchaOn: false }) === "S1a" && classifySend({ ok: false, status: 500 }, { captchaOn: false }) === "S4" && classifySend({ ok: false, kind: "captcha", reason: "unavailable" }, { captchaOn: false }) === "K1");
+}
 check("K 类都说了“验证码没发出去”，不让人以为邮件发了", Object.values(CAPTCHA_COPY).every((e) => e.text().includes("验证码没发出去")));
 // 不影响已有分类
 const keep = [[{ ok: false, kind: "network", offline: true }, "S1a"], [{ ok: false, kind: "network" }, "S1b"], [{ ok: false, status: 429, errorCode: "over_email_send_rate_limit", retryAfterSec: 30 }, "S2"], [{ ok: false, status: 500 }, "S4"], [{ ok: false, status: 400, errorCode: "email_address_invalid" }, "S5"], [{ ok: false, status: 400, errorCode: "something_else" }, "S6"], [{ ok: false, kind: "config" }, "CFG"]];

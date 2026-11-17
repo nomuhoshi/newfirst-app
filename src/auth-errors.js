@@ -39,6 +39,8 @@ export const CAPTCHA_COPY = {
   K2: { text: () => "人机验证超时或已过期，验证码没发出去。请再点一次「发送验证码」。", cooldown: 0, diag: false },
   K3: { text: () => "人机验证出错了，验证码没发出去。请再点一次「发送验证码」；反复出现请换个网络试试。", cooldown: 0, diag: false },
   K4: { text: () => "人机验证没通过，验证码没发出去。请再点一次「发送验证码」。", cooldown: 0, diag: false },
+  // K5：服务器要求人机验证，但这一份页面没带人机验证（旧版本缓存 / 这份构建没配站点密钥）。再点多少次都一样，所以不叫人重试，叫人更新。
+  K5: { text: () => "登录现在需要人机验证，这个版本还不支持，验证码没发出去。请刷新页面（或关掉重新打开）更新到最新版本后再试。", cooldown: 0, diag: false },
 };
 export const VERIFY_COPY = {
   CFG: SEND_COPY.CFG,
@@ -74,14 +76,14 @@ export function serverWaitSec(r) {
   return n > 0 ? Math.min(3600, n) : 0;
 }
 const S5_CODES = new Set(["email_address_not_authorized", "email_address_invalid", "signup_disabled", "otp_disabled"]);
-export function classifySend(r, { preview = IS_PREVIEW } = {}) {
+export function classifySend(r, { preview = IS_PREVIEW, captchaOn } = {}) {
   if (!r || r.ok) return "";
   if (r.kind === "config") return "CFG";
   if (r.kind === "unknown") return "S7"; // 发送这一步意外抛出：结果不可确认（邮件可能已发出）
   if (r.kind === "captcha") return r.reason === "unavailable" ? "K1" : r.reason === "timeout" || r.reason === "expired" ? "K2" : "K3"; // 本地取令牌失败（没有发请求）
   if (r.kind === "network") return r.offline ? "S1a" : "S1b";
   const st = http(r), code = safeCode(r.errorCode);
-  if (code === "captcha_failed") return "K4"; // 服务器拒绝了令牌（令牌用过 / 过期 / 站点密钥不匹配）
+  if (code === "captcha_failed") return captchaOn === false ? "K5" : "K4"; // K4 服务器拒绝了令牌（令牌用过 / 过期 / 站点密钥不匹配）；K5 这份页面根本没带人机验证（调用方明确传 captchaOn:false 才算）
   if (st === 429 || r.kind === "rate-limit" || code === "over_email_send_rate_limit" || code === "over_request_rate_limit") {
     if (serverWaitSec(r) > 0 || code === "over_request_rate_limit") return "S2";
     return "S3";

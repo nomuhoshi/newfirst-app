@@ -195,7 +195,7 @@ try {
     const st = await b.evaluate((el) => { const c = getComputedStyle(el); return { transform: c.transform, outline: c.outlineStyle, w: c.outlineWidth }; });
     await p.mouse.move(5, 5); await p.mouse.up();
     if (reduce) check("减少动态效果：按钮按下时不位移，只有即时描边高亮", (st.transform === "none" || st.transform === "matrix(1, 0, 0, 1, 0, 0)") && st.outline === "solid" && parseFloat(st.w) >= 2, JSON.stringify(st));
-    else check("没有开启减少动态效果：按钮按下仍下移 1px，没有描边", st.transform === "matrix(1, 0, 0, 1, 0, 1)" && st.outline === "none", JSON.stringify(st));
+    else check("没有开启减少动态效果：按钮按下整体下沉 4px（2026-11-17 立体按钮，见 spec 决策记录；原来是 1px），没有描边", st.transform === "matrix(1, 0, 0, 1, 0, 4)" && st.outline === "none", JSON.stringify(st));
     await c2.close();
   }
 

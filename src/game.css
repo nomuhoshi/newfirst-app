@@ -4,6 +4,7 @@
   --g-bg: #F7F5F0; --g-card: #FFFFFF; --g-line: #DDD8CC; --g-fg: #172B3A; --g-muted: #5B6B76;
   --g-primary: #234E70; --g-on-primary: #FFFFFF;
   --g-copper: #B75532; --g-on-copper: #FFFFFF;
+  --g-copper-edge: #8A3C20; --g-primary-edge: #15324A; --g-bad-edge: #7A2A22; /* 立体按钮的底边 */
   --g-ok: #176B59; --g-on-ok: #FFFFFF; --g-ok-bg: #E3F1EC;
   --g-bad: #A43C32; --g-bad-bg: #F8E4E0;
   --g-locked: #E4E0D6;
@@ -25,6 +26,7 @@
     --g-bg: #101E28; --g-card: #1A2D39; --g-line: #2C4352; --g-fg: #EAF0F3; --g-muted: #9FB1BC;
     --g-primary: #A9CCE0; --g-on-primary: #102431;
     --g-copper: #F3BA87; --g-on-copper: #102431;
+  --g-copper-edge: #B57F52; --g-primary-edge: #6E93A8; --g-bad-edge: #B8776A;
     --g-ok: #8ED7B8; --g-on-ok: #0E2A22; --g-ok-bg: #17382F;
     --g-bad: #FFB3A3; --g-bad-bg: #3F2421;
     --g-locked: #243845;
@@ -42,6 +44,7 @@
   --g-bg: #101E28; --g-card: #1A2D39; --g-line: #2C4352; --g-fg: #EAF0F3; --g-muted: #9FB1BC;
   --g-primary: #A9CCE0; --g-on-primary: #102431;
   --g-copper: #F3BA87; --g-on-copper: #102431;
+  --g-copper-edge: #B57F52; --g-primary-edge: #6E93A8; --g-bad-edge: #B8776A;
   --g-ok: #8ED7B8; --g-on-ok: #0E2A22; --g-ok-bg: #17382F;
   --g-bad: #FFB3A3; --g-bad-bg: #3F2421;
   --g-locked: #243845;
@@ -91,15 +94,19 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .c-dot { fill: var(--ic-flow); }
 .c-hi { fill: none; stroke: var(--ic-hi); stroke-opacity: .7; stroke-width: 1.8; stroke-linecap: round; }
 
-/* 按钮：不再有厚底座，按下只下移 1px */
-.btn3d { min-height: 52px; border-radius: 12px; font-size: 17px; font-weight: 700; letter-spacing: .3px; padding: 0 20px;
-  background: var(--g-card); color: var(--g-fg); border: 1.5px solid var(--g-line); transition: transform .08s, background-color .12s; }
-.btn3d:active:not(:disabled) { transform: translateY(1px); }
-.btn3d.primary { background: var(--g-primary); color: var(--g-on-primary); border-color: var(--g-primary); }
-.btn3d.danger { background: var(--g-bad); color: var(--g-card); border-color: var(--g-bad); }
-.btn3d.ghost { background: transparent; border-color: transparent; color: var(--g-muted); }
-.btn3d.danger-ghost { background: transparent; border-color: transparent; color: var(--g-bad); }
-.btn3d:disabled { background: var(--g-locked); border-color: var(--g-locked); color: var(--g-muted); }
+/* 按钮（2026-11-17 改，取代 11-01 的“无厚底座”）：底边厚 4px，按下整体下沉 4px 并收掉底边，80ms。
+   底边用 box-shadow 画，不占版面位置（按钮的尺寸、间距和以前一样）。铜色只给主按钮；文字按钮（ghost）没有底边。 */
+.btn3d { min-height: 52px; border-radius: 14px; font-size: 17px; font-weight: 700; letter-spacing: .3px; padding: 0 20px;
+  background: var(--g-card); color: var(--g-fg); border: 1.5px solid var(--g-line); box-shadow: 0 4px 0 var(--g-side);
+  transition: transform .08s, box-shadow .08s, background-color .12s; }
+.btn3d:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 0 0 transparent; }
+.btn3d.primary { background: var(--g-copper); color: var(--g-on-copper); border-color: var(--g-copper); box-shadow: 0 4px 0 var(--g-copper-edge); }
+.btn3d.danger { background: var(--g-bad); color: var(--g-card); border-color: var(--g-bad); box-shadow: 0 4px 0 var(--g-bad-edge); }
+.btn3d.ghost { background: transparent; border-color: transparent; color: var(--g-muted); box-shadow: none; }
+.btn3d.danger-ghost { background: transparent; border-color: transparent; color: var(--g-bad); box-shadow: none; }
+.btn3d.ghost:active:not(:disabled), .btn3d.danger-ghost:active:not(:disabled) { transform: none; background: color-mix(in srgb, var(--g-fg) 8%, transparent); }
+.btn3d:disabled { background: var(--g-locked); border-color: var(--g-locked); color: var(--g-muted); box-shadow: 0 4px 0 var(--g-side); }
+.btn3d.ghost:disabled, .btn3d.danger-ghost:disabled { background: transparent; border-color: transparent; box-shadow: none; }
 .btn3d.wide { width: 100%; margin-top: 10px; }
 .btn3d.grow { flex: 1; }
 
@@ -371,8 +378,8 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
 .fb-heart { display: flex; align-items: center; gap: 6px; }
 .fb-heart .ico { color: var(--g-bad); }
 .fb-answer code { white-space: pre-wrap; background: var(--g-card); padding: 2px 6px; border-radius: 6px; }
-.feedbar .btn3d:disabled { opacity: .55; background: var(--g-primary); border-color: var(--g-primary); color: var(--g-on-primary); }
-.feedbar.bad .btn3d:disabled { background: var(--g-bad); border-color: var(--g-bad); color: var(--g-card); }
+.feedbar .btn3d:disabled { opacity: .55; background: var(--g-copper); border-color: var(--g-copper); color: var(--g-on-copper); box-shadow: 0 4px 0 var(--g-copper-edge); }
+.feedbar.bad .btn3d:disabled { background: var(--g-bad); border-color: var(--g-bad); color: var(--g-card); box-shadow: 0 4px 0 var(--g-bad-edge); }
 
 /* 完成页 */
 .finish { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); gap: 6px; }
