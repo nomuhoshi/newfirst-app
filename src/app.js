@@ -314,7 +314,7 @@ function hexNode(st, review) {
   return el;
 }
 
-// ---------- 吉祥物“小码”：立体折角记录卡（奶白正面 + 米色厚度，铜色折角，大圆眼，短脚；没有手） ----------
+// ---------- 吉祥物“小码”：立体折角记录卡（奶白正面 + 米色厚度，铜色折角，大圆眼，短脚，两只小手） ----------
 // 旧调用名 → 新表情：happy=平常，celebrate=答对，companion / sad=答错（红心用完、有错题时），think=想一想
 const MASCOT_MOOD = { happy: "normal", celebrate: "happy", companion: "wrong", sad: "wrong", think: "think" };
 let mascotSeq = 0;
@@ -344,20 +344,33 @@ function mascot(size = 96, mood = "happy") {
   }[m]();
   const O = "M17 12H44L57 25V48a10 10 0 0 1-10 10H17a10 10 0 0 1-10-10V22a10 10 0 0 1 10-10z";
   const P = "M17 12H44L57 25V42a10 10 0 0 1-10 10H17a10 10 0 0 1-10-10V22a10 10 0 0 1 10-10z";
+  // 手：身体两侧各一只短手臂 + 圆手；位置随表情变化（平常垂着、答对举起、答错垂低、想一想右手托腮）。手臂先画（在身体后面），托腮的手最后画（在脸前面）
+  const arm = (x1, y1, x2, y2) => [
+    svg("path", { d: `M${x1} ${y1}L${x2} ${y2}`, class: "m-edge", "stroke-width": 3.4, "stroke-linecap": "round", fill: "none" }),
+    svg("circle", { cx: x2, cy: y2, r: 3, fill: "#FFF6E4", class: "m-edge", "stroke-width": 2.4 })];
+  const pose = {
+    normal: { L: [9, 41, 3.8, 45.5], R: [55, 41, 60.2, 45.5] },
+    happy: { L: [9, 38, 3.6, 29], R: [55, 38, 60.4, 29] },
+    wrong: { L: [9, 42, 3.8, 49], R: [55, 42, 60.2, 49] },
+    think: { L: [9, 41, 3.8, 45.5], R: [55, 43, 47.5, 47.5] },
+  }[m];
+  const armsBack = [...arm(...pose.L), ...(m === "think" ? [] : arm(...pose.R))];
+  const armFront = m === "think" ? arm(...pose.R) : [];
   const stop = (o, c) => svg("stop", { offset: o, "stop-color": c });
   return svg("svg", { viewBox: "-1 2 66 66", width: size, height: size, class: "mascot", fill: "none", "aria-hidden": "true" },
     svg("defs", {},
       svg("linearGradient", { id: gid, x1: 0, y1: 12, x2: 0, y2: 52, gradientUnits: "userSpaceOnUse" }, stop(0, "#FFFDF7"), stop(1, "#F9EEDA")),
       svg("linearGradient", { id: `${gid}f`, x1: 44, y1: 12, x2: 57, y2: 25, gradientUnits: "userSpaceOnUse" }, stop(0, "#D9774F"), stop(1, "#A84A2A"))),
     svg("ellipse", { cx: 32, cy: 65, rx: 21, ry: 2.8, class: "m-shadow" }),
-    svg("path", { d: "M17 57h9v4.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2zM38 57h9v4.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2z", class: "m-fill" }),
+    ...armsBack,
+    svg("path", { d: "M17 57h9v4.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2zM38 57h9v4.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2z", class: "m-edgefill" }),
     svg("path", { d: O, class: "m-side" }),
     svg("path", { d: P, fill: `url(#${gid})` }),
     svg("path", { d: "M43 26h14v5c-6-3-10-3-14-5z", fill: "#172B3A", opacity: ".1" }),
-    svg("path", { d: O, class: "m-line", "stroke-width": 3, "stroke-linejoin": "round" }),
-    svg("path", { d: "M44 12v9a4 4 0 0 0 4 4h9z", class: "m-line", fill: `url(#${gid}f)`, "stroke-width": 3, "stroke-linejoin": "round" }),
+    svg("path", { d: O, class: "m-edge", "stroke-width": 3, "stroke-linejoin": "round" }),
+    svg("path", { d: "M44 12v9a4 4 0 0 0 4 4h9z", class: "m-edge", fill: `url(#${gid}f)`, "stroke-width": 3, "stroke-linejoin": "round" }),
     svg("path", { d: "M11 26v-4a6 6 0 0 1 6-6h14", stroke: "#fff", "stroke-width": 2.2, "stroke-linecap": "round", fill: "none" }),
-    ...face,
+    ...face, ...armFront,
     m === "happy" ? svg("path", { d: "M6 3v6M3 6h6", class: "m-spark" }) : null,
   );
 }
@@ -641,7 +654,7 @@ const fmtWait = (ms) => { const m = Math.ceil(ms / 60000); return m >= 60 ? `${M
 function renderOnboarding(i = 0) {
   const steps = [
     { text: "你好，我是小码！", sub: "", mood: "happy" },
-    { text: "我会陪你一关一关学 Python。", sub: "每关只要两三分钟，全部用点的，不用打字。", mood: "companion" },
+    { text: "我会陪你一关一关学 Python。", sub: "每关只要两三分钟，全部用点的，不用打字。", mood: "happy" },
     { text: "卡住了就点我，我会给你提示。", sub: "做题时我在左下角。", mood: "think" },
   ];
   const s = steps[i];
