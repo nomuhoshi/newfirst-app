@@ -3,7 +3,7 @@
 // 在试点构建里验证：整关通关（XP / 红心规则不变）、答错重做、“看参考解法 → 变化题”状态机、随机练习题池排除代码题。
 // 运行：npm run build:ci && node tests/code-task-pilot-browser.test.mjs [chromium|webkit]
 import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { join, extname } from "node:path";
 import { chromium, webkit } from "playwright";
 import { fileURLToPath } from "node:url";
@@ -56,17 +56,28 @@ async function answerPlain(page, wrong = false) {
 async function checkCode(page) { await page.locator("[data-check]").tap(); await judged(page); }
 
 try {
+  // ===== 0. 构建产物层面：试点列表只在 dist-code-tasks 的主脚本里是 [U3L5-M1]；dist / dist-formal 里是空列表 =====
+  { const main = (d) => { const dir = join(ROOT, d, "assets"); const f = readdirSync(dir).find((x) => /^main-.*\.js$/.test(x)); return readFileSync(join(dir, f), "utf8"); };
+    const RE = /=\[(`U3L5-M1`)?\],[\w$]+=[\w$]+\(\{U1:/;
+    const m = Object.fromEntries(["dist", "dist-formal", "dist-code-tasks"].map((d) => [d, main(d).match(RE)]));
+    check("构建产物（主脚本）：dist 里代码题试点列表是空数组 []", !!m.dist && m.dist[1] === undefined, String(m.dist));
+    check("构建产物（主脚本）：dist-formal（正式）里代码题试点列表是空数组 []", !!m["dist-formal"] && m["dist-formal"][1] === undefined, String(m["dist-formal"]));
+    check("构建产物（主脚本）：只有 dist-code-tasks 里是 [`U3L5-M1`]", !!m["dist-code-tasks"] && m["dist-code-tasks"][1] === "`U3L5-M1`", String(m["dist-code-tasks"])); }
   // ===== 1. 开关：普通测试构建和正式构建里代码题关闭 =====
   for (const [name, port] of [["测试构建 dist", PORT0], ["正式构建 dist-formal", PORT0 + 1]]) {
     const { ctx, page, errors } = await openPage(port);
     const r = await page.evaluate(() => ({ en: window.__app.codeTasksEnabled(), l5: window.__app.allLessons().find((x) => x.id === "U3L5") }));
     check(`${name}：代码题试点列表为空，U3L5 的 4 题仍是 选输出/填空/排序/选输出，没有代码题，pending 仍在`, r.en.length === 0 && JSON.stringify(r.l5.exercises.map((e) => e.type)) === JSON.stringify(["predict", "fill", "order", "predict"]) && Array.isArray(r.l5.pending), JSON.stringify([r.en, r.l5.exercises.map((e) => e.type)]));
+    const allTypes = await page.evaluate(() => window.__app.allLessons().flatMap((l) => l.exercises.map((e) => e.type)));
+    check(`${name}：整个课程里没有任何改代码 / 写代码题（${allTypes.length} 道题，类型只有选输出 / 填空 / 排序）`, allTypes.length > 100 && allTypes.every((t) => ["predict", "fill", "order"].includes(t)), JSON.stringify([...new Set(allTypes)]));
     check(`${name}：无脚本错误`, errors.length === 0, errors.join("|")); await ctx.close();
   }
   // ===== 2. 试点构建：合并结果 =====
   { const { ctx, page, errors } = await openPage(PORT0 + 2);
     const r = await page.evaluate(() => { const L = window.__app.allLessons(); const l5 = L.find((x) => x.id === "U3L5"); return { en: window.__app.codeTasksEnabled(), types: l5.exercises.map((e) => e.type), id: l5.exercises[3].id, pend: l5.pending ?? null, l6: L.find((x) => x.id === "U3L6").exercises.map((e) => e.type), l6p: (L.find((x) => x.id === "U3L6").pending || []).length }; });
     check("试点构建：启用列表是 [U3L5-M1]；U3L5 第 4 题是改代码题 U3L5-M1，前 3 题类型不变，pending 被移出", JSON.stringify(r.en) === '["U3L5-M1"]' && JSON.stringify(r.types) === JSON.stringify(["predict", "fill", "order", "modify"]) && r.id === "U3L5-M1" && r.pend === null, JSON.stringify(r));
+    const nCode = await page.evaluate(() => window.__app.allLessons().flatMap((l) => l.exercises).filter((e) => e.type === "modify" || e.type === "write").map((e) => e.id));
+    check("试点构建：整个课程里恰好一道代码题，就是 U3L5-M1", JSON.stringify(nCode) === '["U3L5-M1"]', JSON.stringify(nCode));
     check("试点构建：其它关卡不受影响（U3L6 仍是 4 道点选题，pending 还在）", r.l6.every((t) => ["predict", "fill", "order"].includes(t)) && r.l6p === 1, JSON.stringify(r.l6));
     await ctx.close(); if (errors.length) check("试点构建初始页面无脚本错误", false, errors.join("|")); }
 
@@ -146,6 +157,43 @@ try {
     for (let g = 0; g < 8 && (await page.locator("[data-check]").count()); g++) { types.push(await answerPlain(page)); await page.locator("[data-continue]:not([disabled])").tap(); await page.waitForSelector("[data-check], .practice-finish"); }
     check("练习整轮只出点选题、不增加 XP、没有代码题界面", types.length === 3 && (await page.locator("[data-code-task]").count()) === 0 && (await stat(page)).xp === x0.xp, JSON.stringify(types));
     check("练习路径无脚本错误", errors.length === 0, errors.join("|")); await ctx.close(); }
+
+  // ===== 7. 未知题型 / 代码题混进随机练习：绝不进入排序界面（防御性跳过）=====
+  { const { ctx, page, errors } = await openPage(PORT0 + 2, [...prev, "U3L5"]);
+    const warns = []; page.on("console", (m) => { if (m.type() === "warning" && /随机练习：跳过不支持的题型/.test(m.text())) warns.push(m.text()); });
+    await page.waitForSelector("[data-practice-entry]");
+    await page.evaluate((task) => { const l5 = window.__app.allLessons().find((x) => x.id === "U3L5"); const mk = (id, ex) => ({ id, lessonId: "U3L5", unitId: "U3", index: 0, ex });
+      window.__app.startPractice([mk("X#0", { type: "mystery", prompt: "不认识的题型" }), mk("X#1", { ...task }), mk("U3L5#0", l5.exercises[0])], 3, { selected: ["U3L5"], size: 3 }); }, TASK);
+    await page.waitForSelector("[data-check], .practice-finish");
+    const seen = [];
+    for (let g = 0; g < 6 && (await page.locator("[data-check]").count()); g++) {
+      const ex = await cur(page); seen.push(ex.type);
+      if ((await page.locator(".order-bank").count()) || (await page.locator("[data-code-task]").count())) seen.push("BAD-UI");
+      await answerPlain(page); await page.locator("[data-continue]:not([disabled])").tap(); await page.waitForSelector("[data-check], .practice-finish");
+    }
+    check("混入未知题型和代码题的练习：它们被跳过（各记一条警告），界面里始终只有点选题，绝没出现排序区 / 代码编辑器", JSON.stringify(seen) === '["predict"]' && warns.length === 2 && warns.some((w) => /mystery/.test(w)) && warns.some((w) => /modify/.test(w)), JSON.stringify([seen, warns]));
+    check("混入后练习仍能走到结束页（不卡死）", (await page.locator(".practice-finish").count()) === 1);
+    check("混入练习无脚本错误", errors.length === 0, errors.join("|")); await ctx.close(); }
+
+  // ===== 8. Python 加载失败 / 离线：不算作答、不扣红心；恢复后同一关能做完，XP 精确 =====
+  { const { ctx, page, errors } = await openPage(PORT0 + 2);
+    let block = true; await page.route("**/pyodide/**", (r) => (block ? r.abort() : r.continue()));
+    await startU3L5(page); const s0 = await stat(page);
+    for (let guard = 0; guard < 6 && (await cur(page)).type !== "modify"; guard++) { await answerPlain(page); await cont(page); }
+    const s1 = await stat(page); check("到达代码题前：3 道点选题答对 +30", s1.xp - s0.xp === 30);
+    await setCode(page, TASK.reference); await checkCode(page);
+    const s2 = await stat(page); const txt = await page.locator("[data-results]").innerText();
+    check("Python 加载失败（pyodide 请求被拦）：检查不算作答，不扣红心，XP 不变，没有反馈条，按钮回到“检查”", JSON.stringify(s2) === JSON.stringify(s1) && (await page.locator(".feedbar").count()) === 0 && (await page.locator("[data-check]").innerText()) === "检查" && /Python|没准备好|不算作答/.test(txt), txt.slice(0, 120));
+    check("加载失败时代码保留，提示写明“不算作答、代码已保留、请重试”（红心确实没扣见上一项）", (await page.evaluate(() => window.__app.currentArea.code())) === TASK.reference && /不算作答/.test(txt) && /代码已保留/.test(txt), txt.slice(0, 160));
+    await ctx.setOffline(true); await checkCode(page);
+    const s3 = await stat(page); check("离线（断网）再检查：同样不算作答、不扣红心", JSON.stringify(s3) === JSON.stringify(s1) && (await page.locator(".feedbar").count()) === 0);
+    await ctx.setOffline(false); block = false; await page.waitForTimeout(500);
+    await checkCode(page); await page.waitForSelector(".feedbar.ok", { timeout: 90000 });
+    const s4 = await stat(page); check("恢复网络后同一题能判对：+10，红心不变", s4.xp - s1.xp === 10 && s4.hearts === s1.hearts, JSON.stringify([s1, s4]));
+    await cont(page);
+    for (let guard = 0; guard < 4 && !(await page.locator(".finish").count()); guard++) { await answerPlain(page); await cont(page); }
+    const s5 = await stat(page); check("真实 U3L5 全关：加载失败一次 + 离线一次之后通关，XP 恰好 +50，红心 5 不变", (await page.locator(".finish").count()) === 1 && s5.xp - s0.xp === 50 && s5.hearts === s0.hearts, JSON.stringify([s0, s5]));
+    check("加载失败 / 离线流程无脚本错误", errors.length === 0, errors.join("|")); await ctx.close(); }
 } finally { for (const s of servers) { s.closeAllConnections?.(); s.close(); } await browser.close(); }
 console.log(`\n共 ${pass + fail} 项，失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);
