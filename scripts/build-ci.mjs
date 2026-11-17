@@ -10,9 +10,12 @@ const sha = process.env.GITHUB_SHA || process.env.SOURCE_SHA || "";
 const run = (cmd, args, env = {}) => { const r = spawnSync(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } }); if (r.status !== 0) { console.error(`失败：${cmd} ${args.join(" ")}`); process.exit(r.status || 1); } };
 console.log(`[build-ci] BUILD_TIME=${BUILD_TIME} 源码提交=${sha || "（本地，取 git）"}`);
 run("npm", ["run", "copy-pyodide"]);
-rmSync("dist", { recursive: true, force: true }); rmSync("dist-formal", { recursive: true, force: true });
+rmSync("dist", { recursive: true, force: true }); rmSync("dist-formal", { recursive: true, force: true }); rmSync("dist-code-tasks", { recursive: true, force: true });
 console.log("[build-ci] 目标：测试专用构建 → dist/（含测试域，不得发布）");
 run("npx", ["vite", "build", "--outDir", "dist"], { BUILD_TIME, CSP_TEST_ORIGIN: "1" });
 console.log("[build-ci] 目标：正式构建 → dist-formal/（不含测试域，发布内容从这里来）");
 run("npx", ["vite", "build", "--outDir", "dist-formal"], { BUILD_TIME, CSP_TEST_ORIGIN: "0" });
-console.log("[build-ci] 两份构建完成");
+// 第三份：代码题试点构建（只给“代码题试点”测试用，绝不发布；不影响上面两份逐字节对照）
+console.log("[build-ci] 目标：代码题试点构建 → dist-code-tasks/（CODE_TASKS=U3L5-M1，仅测试，不得发布）");
+run("npx", ["vite", "build", "--outDir", "dist-code-tasks"], { BUILD_TIME, CSP_TEST_ORIGIN: "1", CODE_TASKS_TEST_BUILD: "1", CODE_TASKS: "U3L5-M1" });
+console.log("[build-ci] 三份构建完成");

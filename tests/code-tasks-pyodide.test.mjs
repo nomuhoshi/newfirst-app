@@ -1,17 +1,18 @@
 // P0（只读验证）：课程 pending 里的 16 道“写代码 / 改代码题”，真实浏览器 + 真实 Pyodide 逐题验证。不改课程、不改产品代码、不联网（Pyodide 来自 public/pyodide）。
 // A 层（判题层，vite 开发服 + 真实 Runner/Worker）：参考答案、起始代码、变化题、示范、数据注入、报错展示；
 // B 层（界面层，dist 构建产物 + 真实应用）：把每道题放进临时关卡，真实点“检查”，看 XP / 红心 / 反馈 / 通关流程。
-// 运行：npm run build && node tests/p0-code-tasks-pyodide.mjs [chromium|webkit]    结果 JSON：OUT=<路径>（默认 /tmp/p0-<引擎>.json）
+// 运行：npm run build && node tests/code-tasks-pyodide.test.mjs [chromium|webkit]    结果 JSON：OUT=<路径>（默认 /tmp/p0-<引擎>.json）
 import { createServer as viteServer } from "vite";
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync, writeFileSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 
 const ENGINE = process.argv[2] || process.env.MOBILE_BROWSER || "chromium";
 const bt = ENGINE === "webkit" ? webkit : chromium;
-const OUT = process.env.OUT || `/tmp/p0-${ENGINE}.json`;
+const OUT = process.env.OUT || join(tmpdir(), `p0-${ENGINE}.json`);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const DIST = join(ROOT, "dist");
 const course = JSON.parse(readFileSync(join(ROOT, "content/course.json")));
@@ -112,4 +113,25 @@ try {
   await ctx.close();
 } finally { srv.closeAllConnections?.(); srv.close(); await browser.close(); }
 writeFileSync(OUT, JSON.stringify(R, null, 1));
+// ---- 判定（P0 验证变成回归测试：任何一项不符合预期 → 退出码 1）----
+let bad = 0; const chk = (n, ok, d = "") => { if (!ok) { bad++; log(`❌ ${n}${d ? "  — " + d : ""}`); } };
+const EXPECT_HANG = new Set(["U4L6-M1"]);
+for (const [id, r] of Object.entries(R.tasks)) {
+  if (!r.reference) continue;
+  chk(`${id} 参考答案全过`, r.reference.status === "pass" && r.reference.cases.every((c) => c.ok), r.reference.status);
+  chk(`${id} 起始代码不能全过`, r.starter.status !== "pass");
+  chk(`${id} 起始代码 ${EXPECT_HANG.has(id) ? "必须超时" : "不能超时"}`, EXPECT_HANG.has(id) ? r.starter.status === "timeout" : r.starter.status !== "timeout", r.starter.status);
+  if (r.variation) { chk(`${id} 变化题答案全过`, r.variation.solution.status === "pass"); chk(`${id} 变化题起始不能全过`, r.variation.starter.status !== "pass"); chk(`${id} 父题答案过不了变化题`, r.variation.parentRefOnVariation.status !== "pass"); }
+  chk(`${id} 示范输出属实`, !r.worked || r.worked.status === "pass");
+  chk(`${id} 数据注入类型和值一致`, r.injection.status === "pass" && r.injection.bad.length === 0, JSON.stringify(r.injection.bad));
+  const u = r.ui; if (!u) continue;
+  chk(`${id} 界面：初始代码正确`, u.initialCodeOk);
+  if (EXPECT_HANG.has(id)) chk(`${id} 界面：超时不结算、不扣红心`, !u.starterSettled && u.starterHeartsDelta === 0 && u.starterXpDelta === 0);
+  else chk(`${id} 界面：起始代码判错扣 1 颗心`, u.starterSettled && u.starterHeartsDelta === -1 && u.starterXpDelta === 0);
+  chk(`${id} 界面：参考答案答对 +10 XP，通关页，总 +20`, u.refFeedbackOk && u.refXpDelta === 10 && u.reachedFinish && u.totalXpDelta === 20);
+}
+chk("U5L2 报错：IndexError 中文展示", !R.probes.u5l2 || R.probes.u5l2.every((c) => c.error?.kind === "IndexError" && /索引错误/.test(c.zh)));
+chk("无页面脚本错误", R.pageErrorsA.length === 0 && R.pageErrorsB.length === 0, JSON.stringify([R.pageErrorsA, R.pageErrorsB]));
+log(bad ? `P0 回归：${bad} 项不符合预期` : `P0 回归：${Object.keys(R.tasks).length} 道题全部符合预期`);
+process.exit(bad ? 1 : 0);
 log("结果已写入", OUT);
