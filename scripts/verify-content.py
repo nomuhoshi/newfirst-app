@@ -14,6 +14,31 @@ for u in course["units"]:
     for l in json.loads((ROOT / "content" / u["file"]).read_text())["lessons"]:
         lessons.append(l)
         for qi, ex in enumerate(l["exercises"], 1): items.append((f"{l['id']}-Q{qi}({ex['type']})", l, ex))
+# 候选单元：content/ 里已经写好、但还没接进 course.json 的 unitN.json（没有上线）。同样用真实 Python 验证，免得接入时才发现问题。
+listed = {u.get("file") for u in course["units"]}
+candidates = sorted(p.name for p in (ROOT / "content").glob("unit*.json") if p.name not in listed)
+for name in candidates:
+    for l in json.loads((ROOT / "content" / name).read_text())["lessons"]:
+        lessons.append(l)
+        for qi, ex in enumerate(l["exercises"], 1): items.append((f"{l['id']}-Q{qi}({ex['type']})", l, ex))
+if candidates: print("候选单元（未接入课程）：", "、".join(candidates))
+# 自检：报错题的检查必须能分出对错（期望类型 / 行号 / 报错前输出 / 改法 任何一项写错都要判失败）
+def _selftest():
+    base = {"type": "predict", "prompt": "x", "code": 'print("开始")\nprint("共" + 4)', "fixed": "开始\n共4",
+            "expectError": {"type": "TypeError", "line": 2, "stdout": "开始"},
+            "options": [{"text": "a", "correct": True, "why": "w", "program": 'print("开始")\nprint("共" + str(4))'},
+                        {"text": "b", "correct": False, "why": "w", "program": 'print("开始")\nprint("共" + int(4))'}]}
+    import copy
+    def fails(mut):
+        ex = copy.deepcopy(base); mut(ex); return len(output.check([("自检", {}, ex)]).fails)
+    assert fails(lambda e: None) == 0, "自检：正确的报错题被判失败"
+    for name, mut in [("类型", lambda e: e["expectError"].update(type="NameError")), ("行号", lambda e: e["expectError"].update(line=1)),
+                      ("报错前输出", lambda e: e["expectError"].update(stdout="")), ("不报错的程序", lambda e: e.update(code='print("开始")')),
+                      ("错误改法其实可行", lambda e: e["options"][1].update(program=e["options"][0]["program"])),
+                      ("正确改法不可行", lambda e: e["options"][0].update(program=e["options"][1]["program"])),
+                      ("两个正确选项", lambda e: e["options"][1].update(correct=True)), ("缺解释", lambda e: e["options"][1].update(why=""))]:
+        assert fails(mut) > 0, "自检：写错的报错题没有被判失败：" + name
+_selftest()
 known_types = {"predict", "fill", "order"}
 results = [output.check(items), fill.check(items), order.check(items), codetask.check(lessons)]
 other = common.Check("其他题型")

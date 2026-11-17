@@ -1,0 +1,1314 @@
+{
+ "id": "U6",
+ "title": "类型与报错",
+ "subtitle": "type、int()/str()/float()、读报错",
+ "lessons": [
+  {
+   "id": "U6L1",
+   "title": "它是什么类型",
+   "concept": "type()",
+   "story": "点单屏里的值有不同的种类：3 是整数（int），15.5 是小数（float），\"奶茶\" 是文字（str），True 是布尔（bool）。type() 能问出一个值的种类。",
+   "introCode": "cups = 3\nprint(type(cups))",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "price = 15.5\nprint(type(price))",
+     "options": [
+      {
+       "text": "<class 'float'>",
+       "correct": true,
+       "why": "15.5 带小数点，是小数，种类名是 float。"
+      },
+      {
+       "text": "<class 'int'>",
+       "correct": false,
+       "why": "int 是整数。15.5 带小数点，不是整数。"
+      },
+      {
+       "text": "15.5",
+       "correct": false,
+       "why": "type() 问的是种类，显示的是种类名，不是值本身。"
+      }
+     ],
+     "tip": "type(值) 显示 <class '种类名'>，引号里的就是种类。"
+    },
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "a = 15\nb = \"15\"\nprint(type(a))\nprint(type(b))",
+     "options": [
+      {
+       "text": "<class 'int'>\n<class 'str'>",
+       "correct": true,
+       "why": "a 没有引号，是整数；b 加了引号，是文字。"
+      },
+      {
+       "text": "<class 'int'>\n<class 'int'>",
+       "correct": false,
+       "why": "b 加了引号。加了引号的 \"15\" 是文字，不是整数。"
+      },
+      {
+       "text": "<class 'str'>\n<class 'int'>",
+       "correct": false,
+       "why": "顺序反了：先显示 a 的种类，a 是没有引号的 15。"
+      }
+     ],
+     "tip": "长得一样的 15，加了引号就是文字。"
+    },
+    {
+     "type": "fill",
+     "prompt": "屏幕要显示：<class 'float'>",
+     "code": "print(type({0}))",
+     "tokens": [
+      "3.5",
+      "3",
+      "\"3.5\""
+     ],
+     "answer": [
+      "3.5"
+     ],
+     "expected": "<class 'float'>",
+     "why": {
+      "3": "3 没有小数点，是整数，会显示 <class 'int'>。",
+      "\"3.5\"": "加了引号就是文字，会显示 <class 'str'>。"
+     },
+     "hint": "float 是小数：有小数点，没有引号。"
+    },
+    {
+     "type": "order",
+     "prompt": "排好顺序。屏幕显示：\n奶茶\n<class 'str'>",
+     "lines": [
+      "name = \"奶茶\"",
+      "print(name)",
+      "print(type(name))"
+     ],
+     "shuffled": [
+      2,
+      0,
+      1
+     ],
+     "answers": [
+      [
+       0,
+       1,
+       2
+      ]
+     ],
+     "expected": "奶茶\n<class 'str'>",
+     "hint": "先把名字存好；先显示名字，再显示它的种类。"
+    },
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "ok = 5 > 3\nprint(ok)\nprint(type(ok))",
+     "options": [
+      {
+       "text": "True\n<class 'bool'>",
+       "correct": true,
+       "why": "5 > 3 成立，ok 是 True；True 和 False 的种类是 bool。"
+      },
+      {
+       "text": "True\n<class 'str'>",
+       "correct": false,
+       "why": "True 没有引号，不是文字，它的种类是 bool。"
+      },
+      {
+       "text": "5 > 3\n<class 'bool'>",
+       "correct": false,
+       "why": "ok 里存的是比较的结果 True，不是 5 > 3 这几个字。"
+      }
+     ],
+     "tip": "比较的结果 True / False 是第四种：布尔（bool）。"
+    }
+   ]
+  },
+  {
+   "id": "U6L2",
+   "title": "文字变数字",
+   "concept": "int()",
+   "story": "点单屏读进来的“15”其实是文字 \"15\"，不能直接拿来算。int(\"15\") 把它变成整数 15，就能算了。",
+   "introCode": "price = \"15\"\nprint(int(price) + 5)",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "cups = \"3\"\nprint(int(cups) + 1)",
+     "options": [
+      {
+       "text": "4",
+       "correct": true,
+       "why": "int(cups) 把文字 \"3\" 变成整数 3，3 + 1 得 4。"
+      },
+      {
+       "text": "31",
+       "correct": false,
+       "why": "int() 已经把 \"3\" 变成整数，这里做的是加法，不是把文字接在一起。"
+      },
+      {
+       "text": "3",
+       "correct": false,
+       "why": "变成整数 3 之后还要加 1。"
+      }
+     ],
+     "tip": "int(文字) 得到整数，之后就能做加减乘除。"
+    },
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "a = \"12\"\nb = \"8\"\nprint(a + b)\nprint(int(a) + int(b))",
+     "options": [
+      {
+       "text": "128\n20",
+       "correct": true,
+       "why": "第一行是两段文字相接，得 128；第二行先都变成整数再相加，得 20。"
+      },
+      {
+       "text": "20\n20",
+       "correct": false,
+       "why": "a 和 b 带引号，是文字。文字用 + 是接在一起，不是加法。"
+      },
+      {
+       "text": "128\n128",
+       "correct": false,
+       "why": "第二行用了 int()，12 和 8 已经是整数，+ 是加法。"
+      }
+     ],
+     "tip": "同样是 +：两边是文字就相接，两边是整数才相加。"
+    },
+    {
+     "type": "fill",
+     "prompt": "price 是文字 \"12\"。要算两杯的钱，屏幕显示：24",
+     "code": "price = \"12\"\ntotal = {0} * 2\nprint(total)",
+     "tokens": [
+      "int(price)",
+      "price",
+      "\"price\""
+     ],
+     "answer": [
+      "int(price)"
+     ],
+     "expected": "24",
+     "why": {
+      "price": "price 还是文字，文字 * 2 是把它重复两遍，会显示 1212。",
+      "\"price\"": "加了引号就不是变量了，是 price 这五个字母，重复两遍显示 priceprice。"
+     },
+     "hint": "先把文字变成整数，再乘。"
+    },
+    {
+     "type": "order",
+     "prompt": "排好顺序。屏幕显示：20",
+     "lines": [
+      "text = \"12\"",
+      "num = int(text)",
+      "total = num + 8",
+      "print(total)"
+     ],
+     "shuffled": [
+      2,
+      0,
+      3,
+      1
+     ],
+     "answers": [
+      [
+       0,
+       1,
+       2,
+       3
+      ]
+     ],
+     "expected": "20",
+     "hint": "先有文字，再变成整数，再计算，最后显示。"
+    },
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "n = int(\"7\")\nprint(n * 2)\nprint(\"7\" * 2)",
+     "options": [
+      {
+       "text": "14\n77",
+       "correct": true,
+       "why": "n 是整数 7，乘 2 得 14；\"7\" 是文字，乘 2 是重复两遍，得 77。"
+      },
+      {
+       "text": "14\n14",
+       "correct": false,
+       "why": "第二个 print 里的 \"7\" 带引号，是文字，没有经过 int()。"
+      },
+      {
+       "text": "77\n77",
+       "correct": false,
+       "why": "n 是 int(\"7\") 的结果，已经是整数，7 * 2 得 14。"
+      }
+     ],
+     "tip": "看有没有引号、有没有 int()，就知道它是文字还是整数。"
+    }
+   ]
+  },
+  {
+   "id": "U6L3",
+   "title": "数字变文字",
+   "concept": "str()",
+   "story": "想显示“杯数：3”。\"杯数：\" 是文字，3 是整数，不能直接用 + 接在一起。str(3) 把整数变成文字 \"3\"，就能接了。",
+   "introCode": "cups = 3\nprint(\"杯数：\" + str(cups))",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "n = 4\nprint(\"共\" + str(n) + \"杯\")",
+     "options": [
+      {
+       "text": "共4杯",
+       "correct": true,
+       "why": "str(n) 把 4 变成文字 \"4\"，三段文字接在一起。"
+      },
+      {
+       "text": "共n杯",
+       "correct": false,
+       "why": "n 没有引号，是变量，str(n) 用的是它的值 4。"
+      },
+      {
+       "text": "共 4 杯",
+       "correct": false,
+       "why": "用 + 接文字不会自动加空格。"
+      }
+     ],
+     "tip": "str(整数) 得到文字，之后就能用 + 接进一句话里。"
+    },
+    {
+     "type": "fill",
+     "prompt": "屏幕要显示：杯数：3",
+     "code": "cups = 3\nprint(\"杯数：\" + {0})",
+     "tokens": [
+      "str(cups)",
+      "cups",
+      "\"cups\""
+     ],
+     "answer": [
+      "str(cups)"
+     ],
+     "expected": "杯数：3",
+     "why": {
+      "cups": "cups 是整数，文字和整数不能直接用 + 接，会报错。",
+      "\"cups\"": "加了引号就是 cups 这四个字母，会显示 杯数：cups。"
+     },
+     "hint": "先把整数变成文字，再接。"
+    },
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "a = 1\nb = 2\nprint(str(a) + str(b))\nprint(a + b)",
+     "options": [
+      {
+       "text": "12\n3",
+       "correct": true,
+       "why": "第一行两边都变成了文字，相接得 12；第二行两边是整数，相加得 3。"
+      },
+      {
+       "text": "3\n3",
+       "correct": false,
+       "why": "str(a) 和 str(b) 是文字 \"1\" 和 \"2\"，文字用 + 是相接。"
+      },
+      {
+       "text": "12\n12",
+       "correct": false,
+       "why": "第二行没有 str()，a 和 b 还是整数，+ 是加法。"
+      }
+     ],
+     "tip": "str() 之后 + 是相接；整数之间 + 是相加。"
+    },
+    {
+     "type": "order",
+     "prompt": "排好顺序。屏幕显示：15元",
+     "lines": [
+      "price = 15",
+      "text = str(price)",
+      "print(text + \"元\")"
+     ],
+     "shuffled": [
+      1,
+      2,
+      0
+     ],
+     "answers": [
+      [
+       0,
+       1,
+       2
+      ]
+     ],
+     "expected": "15元",
+     "hint": "先有数字，再变成文字，最后接上“元”显示。"
+    },
+    {
+     "type": "fill",
+     "prompt": "屏幕要显示：应付20元",
+     "code": "n = 20\nprint(\"应付\" + str({0}) + \"元\")",
+     "tokens": [
+      "n",
+      "\"n\"",
+      "20元"
+     ],
+     "answer": [
+      "n"
+     ],
+     "expected": "应付20元",
+     "why": {
+      "\"n\"": "加了引号就是 n 这个字母，会显示 应付n元。",
+      "20元": "20元 不是数字也不是带引号的文字，Python 看不懂，会报错。"
+     },
+     "hint": "str() 的括号里放要变成文字的那个变量。"
+    }
+   ]
+  },
+  {
+   "id": "U6L4",
+   "title": "读报错：看最后一行",
+   "concept": "报错的最后一行 = 错误类型: 说明",
+   "story": "程序出错时会停下来，显示一段报错。先看最后一行：冒号前面是错误类型，后面是具体说明。TypeError 是类型搭配不对，NameError 是这个名字没有定义过。",
+   "introCode": "cups = 3\nprint(\"杯数：\" + cups)",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "这段程序报错了，最后一行是：\nTypeError: can only concatenate str (not \"int\") to str\n错误类型是哪一个？",
+     "code": "cups = 3\nprint(\"杯数：\" + cups)",
+     "expectError": {
+      "type": "TypeError",
+      "line": 2,
+      "stdout": "",
+      "msg": "can only concatenate str (not \"int\") to str"
+     },
+     "options": [
+      {
+       "text": "TypeError",
+       "correct": true,
+       "why": "冒号前面的就是错误类型。TypeError 表示类型搭配不对：文字和整数不能直接用 + 接。"
+      },
+      {
+       "text": "can only concatenate",
+       "correct": false,
+       "why": "这是冒号后面的具体说明，不是类型。"
+      },
+      {
+       "text": "str",
+       "correct": false,
+       "why": "str 是说明里提到的种类名。错误类型要看冒号前面。"
+      }
+     ],
+     "tip": "报错最后一行：冒号前是错误类型，冒号后是说明。"
+    },
+    {
+     "type": "predict",
+     "prompt": "这段程序报错了，最后一行是：\nNameError: name 'drink' is not defined\n它在说什么？",
+     "code": "print(drink)",
+     "expectError": {
+      "type": "NameError",
+      "line": 1,
+      "stdout": "",
+      "msg": "name 'drink' is not defined"
+     },
+     "options": [
+      {
+       "text": "drink 这个名字没有定义过",
+       "correct": true,
+       "why": "NameError 是名字的问题：程序里从来没有给 drink 存过值。"
+      },
+      {
+       "text": "drink 的类型不对",
+       "correct": false,
+       "why": "类型不对是 TypeError。这里冒号前面写的是 NameError。"
+      },
+      {
+       "text": "少写了一个括号",
+       "correct": false,
+       "why": "括号是成对的。最后一行说的是 name 'drink' is not defined：名字没定义。"
+      }
+     ],
+     "tip": "NameError：用了一个还没有存过值的名字。"
+    },
+    {
+     "type": "fill",
+     "prompt": "小码写的是 print(\"共\" + n + \"杯\")，报了 TypeError。改好它，屏幕显示：共4杯",
+     "code": "n = 4\nprint(\"共\" + {0} + \"杯\")",
+     "tokens": [
+      "str(n)",
+      "n",
+      "\"n\""
+     ],
+     "answer": [
+      "str(n)"
+     ],
+     "expected": "共4杯",
+     "why": {
+      "n": "这就是原来的写法：n 是整数，不能和文字直接用 + 接，还是 TypeError。",
+      "\"n\"": "不报错了，但显示的是 共n杯，不是 4。"
+     },
+     "hint": "TypeError 说类型搭配不对：把整数变成文字再接。"
+    },
+    {
+     "type": "predict",
+     "prompt": "这段程序报错了，最后一行是：\nNameError: name 'prise' is not defined\n是怎么回事？",
+     "code": "price = 15\nprint(prise)",
+     "expectError": {
+      "type": "NameError",
+      "line": 2,
+      "stdout": "",
+      "msg": "name 'prise' is not defined"
+     },
+     "options": [
+      {
+       "text": "名字打错了：prise 应该是 price",
+       "correct": true,
+       "why": "存的时候叫 price，用的时候写成了 prise。Python 认为这是另一个没定义的名字。"
+      },
+      {
+       "text": "15 不能显示",
+       "correct": false,
+       "why": "整数可以直接 print。问题出在名字上。"
+      },
+      {
+       "text": "print 写错了",
+       "correct": false,
+       "why": "print 没有写错。最后一行指出的是 prise 这个名字没有定义。"
+      }
+     ],
+     "tip": "NameError 常常是名字打错了一个字母。"
+    },
+    {
+     "type": "order",
+     "prompt": "排好顺序，让程序不报 NameError。屏幕显示：来一杯奶茶",
+     "lines": [
+      "drink = \"奶茶\"",
+      "text = \"来一杯\" + drink",
+      "print(text)"
+     ],
+     "shuffled": [
+      2,
+      1,
+      0
+     ],
+     "answers": [
+      [
+       0,
+       1,
+       2
+      ]
+     ],
+     "expected": "来一杯奶茶",
+     "hint": "名字要先存好，后面才能用。"
+    }
+   ]
+  },
+  {
+   "id": "U6L5",
+   "title": "读报错：找第几行",
+   "concept": "报错里的 line 几",
+   "story": "报错里还有 line 几，指出是第几行出的错。程序从上到下一行一行运行：出错那行之前的已经运行过，之后的不会再运行。",
+   "introCode": "print(\"开始\")\nprint(\"共\" + 4)\nprint(\"结束\")",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "这段程序报错了，报错里写着 line 4。出错的是哪一行？",
+     "code": "cups = 3\nlabel = \"杯数：\"\nprint(label)\nprint(label + cups)\nprint(cups)",
+     "expectError": {
+      "type": "TypeError",
+      "line": 4,
+      "stdout": "杯数："
+     },
+     "options": [
+      {
+       "text": "print(label + cups)",
+       "correct": true,
+       "why": "从上往下数，第 4 行是它：文字 label 和整数 cups 不能直接用 + 接。"
+      },
+      {
+       "text": "print(label)",
+       "correct": false,
+       "why": "这是第 3 行，它正常运行了，屏幕上已经显示了 杯数：。"
+      },
+      {
+       "text": "cups = 3",
+       "correct": false,
+       "why": "这是第 1 行，存一个整数没有问题。"
+      }
+     ],
+     "tip": "line 几就是从上往下数的第几行。"
+    },
+    {
+     "type": "predict",
+     "prompt": "这段程序在第 2 行报错。报错之前，屏幕上已经显示了什么？",
+     "code": "print(\"开始\")\nprint(\"共\" + 4)\nprint(\"结束\")",
+     "expectError": {
+      "type": "TypeError",
+      "line": 2,
+      "stdout": "开始"
+     },
+     "options": [
+      {
+       "text": "开始",
+       "correct": true,
+       "why": "第 1 行在出错之前已经运行过。第 2 行出错，程序停下，第 3 行不再运行。"
+      },
+      {
+       "text": "开始\n结束",
+       "correct": false,
+       "why": "第 2 行出错后程序就停了，第 3 行不会运行。"
+      },
+      {
+       "text": "什么都没有",
+       "correct": false,
+       "why": "第 1 行排在出错行的前面，已经运行过了。"
+      }
+     ],
+     "tip": "出错行之前的照常运行，之后的不运行。"
+    },
+    {
+     "type": "predict",
+     "prompt": "这段程序报了 TypeError。报错里的 line 会是几？",
+     "code": "a = 5\nb = \"2\"\nprint(a)\nprint(a + b)",
+     "expectError": {
+      "type": "TypeError",
+      "line": 4,
+      "stdout": "5"
+     },
+     "options": [
+      {
+       "text": "line 4",
+       "correct": true,
+       "why": "第 4 行把整数 a 和文字 b 相加，类型搭配不对，在这一行出错。"
+      },
+      {
+       "text": "line 2",
+       "correct": false,
+       "why": "第 2 行只是把文字 \"2\" 存进 b，这样写是允许的。出错的是用到它的那一行。"
+      },
+      {
+       "text": "line 3",
+       "correct": false,
+       "why": "第 3 行只显示 a，正常运行，屏幕上已经显示了 5。"
+      }
+     ],
+     "tip": "报错指的是真正出错的那一行，不一定是你写错想法的那一行。"
+    },
+    {
+     "type": "fill",
+     "prompt": "把第 3 行改好。屏幕显示：7",
+     "code": "a = 5\nb = \"2\"\nprint(a + {0})",
+     "tokens": [
+      "int(b)",
+      "b",
+      "str(b)"
+     ],
+     "answer": [
+      "int(b)"
+     ],
+     "expected": "7",
+     "why": {
+      "b": "b 是文字，整数和文字不能相加，还是 TypeError。",
+      "str(b)": "str(b) 还是文字，还是 TypeError。要的是整数。"
+     },
+     "hint": "要做加法，两边都得是整数。"
+    },
+    {
+     "type": "order",
+     "prompt": "排好顺序。屏幕显示：\n开始\n共4杯\n结束",
+     "lines": [
+      "print(\"开始\")",
+      "n = 4",
+      "print(\"共\" + str(n) + \"杯\")",
+      "print(\"结束\")"
+     ],
+     "shuffled": [
+      3,
+      2,
+      0,
+      1
+     ],
+     "answers": [
+      [
+       0,
+       1,
+       2,
+       3
+      ],
+      [
+       1,
+       0,
+       2,
+       3
+      ]
+     ],
+     "expected": "开始\n共4杯\n结束",
+     "hint": "n 要在用到它的那一行之前存好。"
+    }
+   ]
+  },
+  {
+   "id": "U6L6",
+   "title": "转不了的文字",
+   "concept": "ValueError 和 float()",
+   "story": "int() 只认整数写法的文字。int(\"3.5\")、int(\"3杯\") 会报 ValueError：内容转不了。带小数点的文字用 float(\"3.5\")，得到小数 3.5。",
+   "introCode": "price = \"3.5\"\nprint(float(price) + 1)",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "print(float(\"3.5\") + 1)",
+     "options": [
+      {
+       "text": "4.5",
+       "correct": true,
+       "why": "float(\"3.5\") 得到小数 3.5，加 1 得 4.5。"
+      },
+      {
+       "text": "3.51",
+       "correct": false,
+       "why": "float() 已经把文字变成小数，这里是加法，不是把文字接起来。"
+      },
+      {
+       "text": "4",
+       "correct": false,
+       "why": "float 保留小数：3.5 + 1 是 4.5。"
+      }
+     ],
+     "tip": "带小数点的文字用 float() 变成小数。"
+    },
+    {
+     "type": "predict",
+     "prompt": "这段程序报错了，最后一行是：\nValueError: invalid literal for int() with base 10: '3.5'\n它在说什么？",
+     "code": "num = int(\"3.5\")\nprint(num)",
+     "expectError": {
+      "type": "ValueError",
+      "line": 1,
+      "stdout": "",
+      "msg": "invalid literal for int() with base 10: '3.5'"
+     },
+     "options": [
+      {
+       "text": "文字 \"3.5\" 不是整数的写法，int() 转不了",
+       "correct": true,
+       "why": "ValueError：种类对（是文字），但内容不合适。\"3.5\" 带小数点，不是整数的写法。"
+      },
+      {
+       "text": "3.5 没有加引号",
+       "correct": false,
+       "why": "这里 \"3.5\" 是加了引号的。问题是 int() 转不了带小数点的内容。"
+      },
+      {
+       "text": "num 这个名字没有定义",
+       "correct": false,
+       "why": "名字没定义是 NameError。这里冒号前面是 ValueError。"
+      }
+     ],
+     "tip": "ValueError：内容转不了。看清是整数还是小数，选 int() 或 float()。"
+    },
+    {
+     "type": "fill",
+     "prompt": "杯数必须是整数。cups 里写什么，屏幕才会显示：5",
+     "code": "cups = {0}\nprint(int(cups) + 2)",
+     "tokens": [
+      "\"3\"",
+      "\"3杯\"",
+      "\"3.0\""
+     ],
+     "answer": [
+      "\"3\""
+     ],
+     "expected": "5",
+     "why": {
+      "\"3杯\"": "带了“杯”字，int() 转不了，会报 ValueError。数据里只写数字。",
+      "\"3.0\"": "带小数点的文字 int() 转不了，会报 ValueError。"
+     },
+     "hint": "int() 只认纯整数写法的文字。"
+    },
+    {
+     "type": "order",
+     "prompt": "排好顺序。屏幕显示：7.0",
+     "lines": [
+      "price = \"3.5\"",
+      "num = float(price)",
+      "print(num * 2)"
+     ],
+     "shuffled": [
+      1,
+      2,
+      0
+     ],
+     "answers": [
+      [
+       0,
+       1,
+       2
+      ]
+     ],
+     "expected": "7.0",
+     "hint": "先有文字，再变成小数，最后计算并显示。"
+    },
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "print(int(\"12\") + 1)\nprint(float(\"12\") + 1)",
+     "options": [
+      {
+       "text": "13\n13.0",
+       "correct": true,
+       "why": "int 得到整数，结果是 13；float 得到小数，结果带 .0，是 13.0。"
+      },
+      {
+       "text": "13\n13",
+       "correct": false,
+       "why": "float() 得到的是小数，算出来的结果会带小数点：13.0。"
+      },
+      {
+       "text": "13.0\n13.0",
+       "correct": false,
+       "why": "第一行用的是 int()，结果是整数 13，不带小数点。"
+      }
+     ],
+     "tip": "float 算出来的结果总带小数点。"
+    }
+   ]
+  },
+  {
+   "id": "U6L7",
+   "title": "用 print 找 bug",
+   "concept": "在中间加 print 看变量的值",
+   "story": "有时程序不报错，结果却不对。在中间加一行 print，把变量当时的值显示出来，从上往下看，找到第一处和你想的不一样的地方，错就在它附近。",
+   "introCode": "price = 12\ncups = 3\ntotal = price + cups\nprint(\"total:\", total)",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "小码想算 3 杯 12 元一共 36 元，加了一行 print 看 total。屏幕上会显示什么？",
+     "code": "price = 12\ncups = 3\ntotal = price + cups\nprint(\"total:\", total)",
+     "options": [
+      {
+       "text": "total: 15",
+       "correct": true,
+       "why": "程序写的是 price + cups，12 + 3 得 15。print 把这个不对的值照实显示出来了。"
+      },
+      {
+       "text": "total: 36",
+       "correct": false,
+       "why": "36 是小码想要的结果。但程序写的是 +，不是 *。"
+      },
+      {
+       "text": "total: 123",
+       "correct": false,
+       "why": "price 和 cups 是整数，+ 是加法，不是把数字接在一起。"
+      }
+     ],
+     "tip": "加的 print 显示的是程序真正算出的值，不是你希望的值。"
+    },
+    {
+     "type": "predict",
+     "prompt": "想算 1 + 2 + 3 = 6，小码加了 print 看每一轮。屏幕上会显示什么？",
+     "code": "total = 0\nfor i in range(1, 4):\n    total = 0\n    total = total + i\n    print(i, total)\nprint(total)",
+     "options": [
+      {
+       "text": "1 1\n2 2\n3 3\n3",
+       "correct": true,
+       "why": "每一轮都先把 total 改回 0 再加 i，所以每轮的 total 就等于 i，最后是 3。"
+      },
+      {
+       "text": "1 1\n2 3\n3 6\n6",
+       "correct": false,
+       "why": "这是想要的结果。但循环里多了一行 total = 0，每一轮都从头开始。"
+      },
+      {
+       "text": "3",
+       "correct": false,
+       "why": "循环里的 print 每一轮都会显示一行。"
+      }
+     ],
+     "tip": "看每一轮的值：哪一轮开始和预想不一样，就看那附近的代码。"
+    },
+    {
+     "type": "fill",
+     "prompt": "想看每一轮累加后的 total。屏幕显示：\n1 1\n2 3\n3 6",
+     "code": "total = 0\nfor i in range(1, 4):\n    total = total + i\n    print(i, {0})",
+     "tokens": [
+      "total",
+      "i",
+      "\"total\""
+     ],
+     "answer": [
+      "total"
+     ],
+     "expected": "1 1\n2 3\n3 6",
+     "why": {
+      "i": "这样显示的是两遍 i，看不到 total 的值。",
+      "\"total\"": "加了引号显示的是 total 这几个字母，不是它的值。"
+     },
+     "hint": "想看哪个变量，就把它的名字（不加引号）放进 print。"
+    },
+    {
+     "type": "order",
+     "prompt": "排好顺序：每一轮显示累加后的 total，最后显示合计。屏幕显示：\n1\n3\n合计 3",
+     "lines": [
+      "total = 0",
+      "for i in range(1, 3):",
+      "    total = total + i",
+      "    print(total)",
+      "print(\"合计\", total)"
+     ],
+     "shuffled": [
+      4,
+      2,
+      0,
+      3,
+      1
+     ],
+     "answers": [
+      [
+       0,
+       1,
+       2,
+       3,
+       4
+      ]
+     ],
+     "expected": "1\n3\n合计 3",
+     "hint": "想看更新后的值，print 要放在更新那一行的下面。"
+    },
+    {
+     "type": "fill",
+     "prompt": "找到了：算总价应该用乘。改好它，屏幕显示：36",
+     "code": "price = 12\ncups = 3\ntotal = price {0} cups\nprint(total)",
+     "tokens": [
+      "*",
+      "+",
+      "-"
+     ],
+     "answer": [
+      "*"
+     ],
+     "expected": "36",
+     "why": {
+      "+": "这就是原来的错：12 + 3 得 15。",
+      "-": "12 - 3 得 9。总价是单价乘杯数。"
+     },
+     "hint": "总价 = 单价 × 杯数。"
+    }
+   ]
+  },
+  {
+   "id": "U6L8",
+   "title": "项目：修好收银程序",
+   "concept": "一处一处修，每次重新读报错",
+   "story": "收银程序有好几处错。price 和 cups 是从点单屏读来的文字。办法：运行，读报错，修一处；再运行，再修。不报错了，也要拿数据对一对结果。",
+   "introCode": "price = \"10\"\ncups = \"5\"\ntotal = price * cups\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "第一次运行，报错说 line 3、TypeError。第 3 行怎么改？",
+     "code": "price = \"10\"\ncups = \"5\"\ntotal = price * cups\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+     "expectError": {
+      "type": "TypeError",
+      "line": 3,
+      "stdout": ""
+     },
+     "options": [
+      {
+       "text": "total = int(price) * int(cups)",
+       "correct": true,
+       "why": "price 和 cups 是文字，先都变成整数才能相乘。"
+      },
+      {
+       "text": "total = str(price) * str(cups)",
+       "correct": false,
+       "why": "它们本来就是文字，再 str() 还是文字，文字不能和文字相乘。"
+      },
+      {
+       "text": "total = price + cups",
+       "correct": false,
+       "why": "不报错了，但这是把两段文字接成 \"105\"，不是总价；后面还会接着出错。"
+      }
+     ],
+     "tip": "修一处，就重新运行一次。"
+    },
+    {
+     "type": "predict",
+     "prompt": "第 3 行修好了。再运行，报错说 line 4、TypeError。第 4 行怎么改？",
+     "code": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+     "expectError": {
+      "type": "TypeError",
+      "line": 4,
+      "stdout": ""
+     },
+     "options": [
+      {
+       "text": "if int(cups) > 5:",
+       "correct": true,
+       "why": "cups 是文字，和整数 5 比较之前先变成整数。"
+      },
+      {
+       "text": "if str(cups) > 5:",
+       "correct": false,
+       "why": "str(cups) 还是文字，文字不能和整数比大小。"
+      },
+      {
+       "text": "if cups > \"5\":",
+       "correct": false,
+       "why": "不报错了，但这是按文字比较，不是按数字大小比，结果靠不住。"
+      }
+     ],
+     "tip": "修好一处又出现新的报错是正常的：程序往下多走了一步。"
+    },
+    {
+     "type": "predict",
+     "prompt": "前两处修好了。再运行，报错说 line 6、TypeError。第 6 行怎么改？",
+     "code": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + total)",
+     "expectError": {
+      "type": "TypeError",
+      "line": 6,
+      "stdout": ""
+     },
+     "options": [
+      {
+       "text": "print(\"应付：\" + str(total))",
+       "correct": true,
+       "why": "total 是整数，先变成文字才能接在 \"应付：\" 后面。",
+       "program": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + str(total))"
+      },
+      {
+       "text": "print(\"应付：\" + int(total))",
+       "correct": false,
+       "why": "total 本来就是整数，int() 之后还是整数，还是不能和文字接。",
+       "program": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + int(total))"
+      },
+      {
+       "text": "print(\"应付：\" + \"total\")",
+       "correct": false,
+       "why": "不报错了，但显示的是 应付：total，不是金额。",
+       "program": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + \"total\")"
+      }
+     ],
+     "tip": "拼进一句话之前，把整数变成文字。",
+     "fixed": "应付：50"
+    },
+    {
+     "type": "predict",
+     "prompt": "不报错了。规则是满 5 杯减 5 元，正好 5 杯也减。屏幕上会显示什么？",
+     "code": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+     "options": [
+      {
+       "text": "应付：50",
+       "correct": true,
+       "why": "程序写的是 > 5，5 > 5 不成立，没有减。10 × 5 = 50。"
+      },
+      {
+       "text": "应付：45",
+       "correct": false,
+       "why": "这是规则想要的结果。但条件写的是 > 5，正好 5 杯不算。"
+      },
+      {
+       "text": "应付：105",
+       "correct": false,
+       "why": "price 和 cups 已经用 int() 变成整数，是相乘，不是把文字接起来。"
+      }
+     ],
+     "tip": "不报错不等于算对：拿一组数据对一对结果。"
+    },
+    {
+     "type": "fill",
+     "prompt": "改好条件。屏幕显示：应付：45",
+     "code": "price = \"10\"\ncups = \"5\"\ntotal = int(price) * int(cups)\nif int(cups) {0} 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+     "tokens": [
+      ">=",
+      ">",
+      "<"
+     ],
+     "answer": [
+      ">="
+     ],
+     "expected": "应付：45",
+     "why": {
+      ">": "这就是原来的错：正好 5 杯时 5 > 5 不成立，不会减。",
+      "<": "这样变成不满 5 杯才减，和规则相反。"
+     },
+     "hint": "“正好 5 杯也减”要用包含相等的比较。"
+    }
+   ],
+   "pending": [
+    {
+     "type": "modify",
+     "replaces": 5,
+     "status": "待 Claude 的代码题运行器，暂不开放",
+     "plan": "改一改（项目）：price、cups 是表示整数的文字；一处一处修好，满 5 杯减 5 元，输出“应付：金额”",
+     "task": {
+      "id": "U6L8-M1",
+      "version": 1,
+      "type": "modify",
+      "prompt": "收银程序有好几处错。price 和 cups 是表示整数的文字（比如 \"12\" 和 \"3\"）。要求：算出总价（单价 × 杯数），满 5 杯（正好 5 杯也算）减 5 元，输出“应付：金额”。请一处一处改好，每改一处就重新运行。",
+      "given": [
+       "price",
+       "cups"
+      ],
+      "checkMode": "output",
+      "code": "total = price * cups\nif cups > 5:\n    total = total - 5\nprint(\"应付：\" + total)\n",
+      "tests": [
+       {
+        "name": "3 杯",
+        "data": {
+         "price": "12",
+         "cups": "3"
+        },
+        "expected": "应付：36"
+       },
+       {
+        "name": "正好 5 杯",
+        "data": {
+         "price": "10",
+         "cups": "5"
+        },
+        "expected": "应付：45"
+       },
+       {
+        "name": "6 杯",
+        "data": {
+         "price": "8",
+         "cups": "6"
+        },
+        "expected": "应付：43",
+        "hidden": true
+       },
+       {
+        "name": "1 杯",
+        "data": {
+         "price": "15",
+         "cups": "1"
+        },
+        "expected": "应付：15",
+        "hidden": true
+       },
+       {
+        "name": "4 杯",
+        "data": {
+         "price": "9",
+         "cups": "4"
+        },
+        "expected": "应付：36",
+        "hidden": true
+       }
+      ],
+      "hints": [
+       "先运行，读最后一行的错误类型和 line 几；修好一处再运行，看有没有新的报错。",
+       "price、cups 是文字：乘法和比较之前先用 int() 转成整数；拼进“应付：”之前用 str() 把整数变成文字。边界“满 5 杯”要用 >=。"
+      ],
+      "reference": "total = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))\n",
+      "worked": {
+       "code": "width = \"20\"\nheight = \"3\"\nw = int(width)\nh = int(height)\narea = w * h\nprint(\"面积：\" + str(area))",
+       "output": "面积：60",
+       "explain": "三步：先把表示整数的文字用 int() 转成整数，再计算，最后输出时用 str() 把整数变回文字拼进句子。"
+      },
+      "alternatives": [
+       "cups = int(cups)\nprice = int(price)\ntotal = price * cups\nif cups >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+       "total = int(price) * int(cups)\nif int(cups) > 4:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+       "total = int(price) * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\", total, sep=\"\")"
+      ],
+      "wrongAnswers": [
+       {
+        "code": "total = int(price) * int(cups)\nif int(cups) > 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+        "why": "正好 5 杯没有减 5 元（边界）"
+       },
+       {
+        "code": "total = price * int(cups)\nif int(cups) >= 5:\n    total = total - 5\nprint(\"应付：\" + str(total))",
+        "why": "price 还是文字，文字 × 整数是重复，不是乘法"
+       }
+      ],
+      "requiresVariationAfterSolution": true,
+      "variation": {
+       "id": "U6L6-M1-V1",
+       "prompt": "满 4 杯（正好 4 杯也算）减 3 元，其他不变，输出“应付：金额”。",
+       "starter": "# price、cups 是表示整数的文字，已经准备好\n",
+       "tests": [
+        {
+         "name": "4 杯",
+         "data": {
+          "price": "6",
+          "cups": "4"
+         },
+         "expected": "应付：21"
+        },
+        {
+         "name": "3 杯",
+         "data": {
+          "price": "7",
+          "cups": "3"
+         },
+         "expected": "应付：21"
+        },
+        {
+         "name": "8 杯",
+         "data": {
+          "price": "5",
+          "cups": "8"
+         },
+         "expected": "应付：37",
+         "hidden": true
+        },
+        {
+         "name": "1 杯",
+         "data": {
+          "price": "9",
+          "cups": "1"
+         },
+         "expected": "应付：9",
+         "hidden": true
+        },
+        {
+         "name": "正好 4 杯",
+         "data": {
+          "price": "10",
+          "cups": "4"
+         },
+         "expected": "应付：37",
+         "hidden": true
+        }
+       ],
+       "hints": [
+        "先转成整数再算；满额的界线这次是 4 杯。",
+        "total = int(price) * int(cups) / if int(cups) >= 4: total = total - 3 / print(\"应付：\" + str(total))。"
+       ],
+       "solution": "total = int(price) * int(cups)\nif int(cups) >= 4:\n    total = total - 3\nprint(\"应付：\" + str(total))\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "U6L9",
+   "title": "单元复习：收银台小结",
+   "concept": "类型、int()、str()、float()、读报错",
+   "story": "这一关不教新东西，把本单元的几样一起用一遍：看种类、文字和数字互相转换、读报错的最后一行和行号。",
+   "introCode": "text = \"8\"\nn = int(text)\nprint(\"共\" + str(n + 2) + \"杯\")",
+   "exercises": [
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "a = \"5\"\nb = 5\nprint(type(a))\nprint(type(b))",
+     "options": [
+      {
+       "text": "<class 'str'>\n<class 'int'>",
+       "correct": true,
+       "why": "a 加了引号，是文字；b 没有引号，是整数。"
+      },
+      {
+       "text": "<class 'int'>\n<class 'int'>",
+       "correct": false,
+       "why": "a 加了引号，是文字 \"5\"，不是整数。"
+      },
+      {
+       "text": "<class 'int'>\n<class 'str'>",
+       "correct": false,
+       "why": "顺序反了：先显示的是 a，a 加了引号。"
+      }
+     ],
+     "tip": "有没有引号，决定它是文字还是数字。"
+    },
+    {
+     "type": "fill",
+     "prompt": "屏幕要显示：10",
+     "code": "text = \"8\"\nprint({0} + 2)",
+     "tokens": [
+      "int(text)",
+      "text",
+      "str(text)"
+     ],
+     "answer": [
+      "int(text)"
+     ],
+     "expected": "10",
+     "why": {
+      "text": "text 是文字，文字和整数不能相加，会报 TypeError。",
+      "str(text)": "str(text) 还是文字，还是 TypeError。"
+     },
+     "hint": "要做加法，先把文字变成整数。"
+    },
+    {
+     "type": "predict",
+     "prompt": "这段程序报了 TypeError。怎么改，屏幕才会显示：共6杯",
+     "code": "n = 6\nprint(\"共\" + n + \"杯\")",
+     "expectError": {
+      "type": "TypeError",
+      "line": 2,
+      "stdout": ""
+     },
+     "options": [
+      {
+       "text": "print(\"共\" + str(n) + \"杯\")",
+       "correct": true,
+       "why": "n 是整数，用 str() 变成文字再接。",
+       "program": "n = 6\nprint(\"共\" + str(n) + \"杯\")"
+      },
+      {
+       "text": "print(\"共\" + int(n) + \"杯\")",
+       "correct": false,
+       "why": "n 本来就是整数，int() 之后还是整数，还是 TypeError。",
+       "program": "n = 6\nprint(\"共\" + int(n) + \"杯\")"
+      },
+      {
+       "text": "print(\"共\" + \"n\" + \"杯\")",
+       "correct": false,
+       "why": "不报错了，但显示的是 共n杯，不是 6。",
+       "program": "n = 6\nprint(\"共\" + \"n\" + \"杯\")"
+      }
+     ],
+     "tip": "TypeError：把类型统一了再接。",
+     "fixed": "共6杯"
+    },
+    {
+     "type": "order",
+     "prompt": "排好顺序。屏幕显示：25.0",
+     "lines": [
+      "price = \"12.5\"",
+      "num = float(price)",
+      "total = num * 2",
+      "print(total)"
+     ],
+     "shuffled": [
+      3,
+      1,
+      0,
+      2
+     ],
+     "answers": [
+      [
+       0,
+       1,
+       2,
+       3
+      ]
+     ],
+     "expected": "25.0",
+     "hint": "先有文字，再变成小数，再计算，最后显示。"
+    },
+    {
+     "type": "predict",
+     "prompt": "点单屏运行这段程序，屏幕上会显示什么？",
+     "code": "print(\"3\" + \"4\")\nprint(int(\"3\") + int(\"4\"))\nprint(str(3) + str(4))",
+     "options": [
+      {
+       "text": "34\n7\n34",
+       "correct": true,
+       "why": "第一行文字相接；第二行变成整数后相加；第三行整数变成文字后又是相接。"
+      },
+      {
+       "text": "7\n7\n7",
+       "correct": false,
+       "why": "只有第二行两边是整数。第一、三行两边是文字，+ 是相接。"
+      },
+      {
+       "text": "34\n7\n7",
+       "correct": false,
+       "why": "第三行用了 str()，3 和 4 变成了文字，+ 是相接，得 34。"
+      }
+     ],
+     "tip": "+ 做什么，取决于两边是文字还是数字。"
+    }
+   ],
+   "review": true
+  }
+ ]
+}
