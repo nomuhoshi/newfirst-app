@@ -25,6 +25,14 @@ ok("D1 诊断下载按钮旁有分享前检查提示（原文）", app.includes(
 ok("D2 提示只在有读不懂的旧记录时随按钮一起出现", /listUnreadable\(\)\.length \? h\("div", \{\}, h\("p"[\s\S]{0,700}data-export-diagnostic[\s\S]{0,300}data-diagnostic-warning/.test(app));
 ok("D3 普通备份仍不带旧记录原文（unreadable: [] 路径未改）", /unreadable: diagnostic \? listUnreadable\(\) : \[\]/.test(app));
 
+// 人机验证最近一次失败（原因 + 过滤后的错误码）进复制诊断；不进页面文字
+const cap = readFileSync(new URL("../src/captcha.js", import.meta.url), "utf8");
+const acc = readFileSync(new URL("../src/account-ui.js", import.meta.url), "utf8");
+const authErr = readFileSync(new URL("../src/auth-errors.js", import.meta.url), "utf8");
+ok("E1 复制诊断里有人机验证最近失败这一行，来自 captchaDiagLine()", /import \{ captchaDiagLine \} from "\.\/captcha\.js"/.test(app) && /\n\s*captchaDiagLine\(\),/.test(app));
+ok("E2 错误码只经 safeCode 白名单进记录（字母数字 / 下划线 / 连字符，1–24 位），记录里没有令牌或原文字段", /const rec = \(r\) => \{[^}]*lastFailure = \{ reason: r\.reason, \.\.\.\(r\.code \? \{ code: r\.code \} : \{\}\) \}/.test(cap) && /SAFE_CODE = \/\^\[0-9a-zA-Z_-\]\{1,24\}\$\//.test(cap));
+ok("E3 页面文字（account-ui / auth-errors）不引用错误码记录：错误码只在复制诊断里", !/getLastCaptchaFailure|captchaDiagLine|lastFailure/.test(acc) && !/getLastCaptchaFailure|captchaDiagLine|lastFailure/.test(authErr));
+
 // Service Worker 注册失败同样进入复制诊断的“离线支持”行，不能原样拼接 message。
 const { swRegistrationError } = await import("../src/sw-diagnostics.js");
 const { runInNewContext } = await import("node:vm");

@@ -1,6 +1,6 @@
 // D：src/captcha.js（Turnstile 客户端封装）的行为。Node，假 window / document / turnstile，不联网。
 // 运行：node tests/captcha.test.mjs
-import { createCaptcha } from "../src/captcha.js";
+import { createCaptcha, getLastCaptchaFailure, resetCaptchaFailure, captchaDiagLine } from "../src/captcha.js";
 
 let ok = 0, bad = 0;
 const check = (name, cond, detail = "") => { if (cond) ok++; else bad++; console.log(`${cond ? "✅" : "❌"} ${name}${!cond && detail ? "  — " + detail : ""}`); };
@@ -124,6 +124,83 @@ const fire = (id, cb, ...a) => { const w = env.widgets.get(id); const f = cb ===
   const p = c.getToken({ mount: new Node_("div") }); await tick(5); fire(e.calls.find((x) => x[0] === "render")[1], "callback", "SECRET-TOKEN-XYZ"); await p;
   const dump = JSON.stringify(Object.keys(c)) + JSON.stringify(e.win, (k, v) => (typeof v === "function" ? undefined : v)) + JSON.stringify(e.doc.body, (k, v) => (k === "parentNode" ? undefined : v));
   check("8 令牌没有留在实例、window、document 上", !dump.includes("SECRET-TOKEN-XYZ"));
+}
+
+// ---- 9 “复制诊断”用的最近一次失败记录：原因（固定枚举）+ 过滤后的短错误码，不含令牌 / 邮箱 / 原文 ----
+const SYN = "SYNTHETIC-TOKEN=eyJabc123 user@example.invalid /private/path";
+const startPending = async (c, e, mount = new Node_("div")) => { const p = c.getToken({ mount }); await tick(5); return { p, id: e.calls.filter((x) => x[0] === "render").at(-1)[1] }; };
+{ // 9a 没失败过：没有这一行
+  resetCaptchaFailure();
+  check("9a 没有失败过：记录为空，诊断行为空串（诊断里不会多出这一行）", getLastCaptchaFailure() === null && captchaDiagLine() === "");
+}
+{ // 9b 组件报错 + 数字错误码 → 记 error + 码（数字类型也行）
+  resetCaptchaFailure(); const e = mkEnv(); const c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  const { p, id } = await startPending(c, e); fire(id, "error-callback", 110200); const r = await p;
+  check("9b error-callback(110200) → 返回值带 code，诊断行 = “人机验证最近一次失败：error（错误码 110200）”", r.reason === "error" && r.code === "110200" && captchaDiagLine() === "人机验证最近一次失败：error（错误码 110200）", captchaDiagLine());
+  const { p: p2, id: id2 } = await startPending(c, e); fire(id2, "error-callback", "300030"); await p2;
+  check("9b 再失败一次：只保留最近一次", getLastCaptchaFailure().code === "300030" && captchaDiagLine().includes("300030") && !captchaDiagLine().includes("110200"));
+}
+{ // 9c 不安全的错误码（含空格 / 等号 / 邮箱 / 路径 / 过长 / 非字符串 / 对象）→ 丢掉码，只留原因；诊断行里没有任何合成敏感字符串
+  for (const bad of [SYN, "x y", "a=b", "user@example.invalid", "/private/path", "A".repeat(25), { code: SYN }, ["110200"], null, undefined, true]) {
+    resetCaptchaFailure(); const e = mkEnv(); const c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+    const { p, id } = await startPending(c, e); fire(id, "error-callback", bad); const r = await p;
+    const line = captchaDiagLine();
+    if (!(r.reason === "error" && r.code === undefined && line === "人机验证最近一次失败：error" && !/SYNTHETIC|token=|example\.invalid|private/i.test(line))) { check(`9c 不安全错误码被丢弃：${String(JSON.stringify(bad)).slice(0, 30)}`, false, `${JSON.stringify(r)} ${line}`); }
+  }
+  check("9c 11 种不安全的错误码都只留原因、不带码，诊断行里没有合成敏感内容", true);
+}
+{ // 9d 超时、脚本没加载、组件建不出来 → 各记一条；busy / cancelled / destroy 不算
+  resetCaptchaFailure(); let e = mkEnv(); let c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc, tokenTimeoutMs: 30 });
+  await c.getToken({ mount: new Node_("div") });
+  check("9d 取令牌超时 → 记 timeout（无码）", captchaDiagLine() === "人机验证最近一次失败：timeout");
+  resetCaptchaFailure(); e = mkEnv({ scriptBehavior: "error" }); c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  await c.getToken({ mount: new Node_("div") });
+  check("9d 脚本没加载出来 → 记 unavailable", captchaDiagLine() === "人机验证最近一次失败：unavailable");
+  resetCaptchaFailure(); e = mkEnv(); c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  const { p, id } = await startPending(c, e);
+  const busy = await c.getToken({ mount: new Node_("div") });
+  check("9d 重复点击得到 busy → 不记", busy.reason === "busy" && getLastCaptchaFailure() === null);
+  c.reset(); const cancelled = await p;
+  check("9d reset 取消等待中的请求（cancelled）→ 不记", cancelled.reason === "cancelled" && getLastCaptchaFailure() === null);
+  const { p: p3 } = await startPending(c, e); c.destroy(); await p3;
+  check("9d destroy 取消等待、之后再取被拒（unavailable）→ 都不记", getLastCaptchaFailure() === null && (await c.getToken({ mount: new Node_("div") })).reason === "unavailable" && getLastCaptchaFailure() === null);
+}
+{ // 9e 过期回调：有等待请求时记 expired；没有等待请求（用完的令牌自己过期）时不记
+  resetCaptchaFailure(); const e = mkEnv(); const c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  const { p, id } = await startPending(c, e); fire(id, "callback", "TOK"); await p;
+  fire(id, "expired-callback");
+  check("9e 没有等待请求时的过期回调 → 不记（没有失败）", getLastCaptchaFailure() === null);
+  const { p: p2, id: id2 } = await startPending(c, e); fire(id2, "expired-callback"); await p2;
+  check("9e 等待中的请求遇到过期 → 记 expired", captchaDiagLine() === "人机验证最近一次失败：expired");
+}
+{ // 9f 成功取到令牌后清空；令牌本身不会出现在诊断行里
+  resetCaptchaFailure(); const e = mkEnv(); const c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  const a = await startPending(c, e); fire(a.id, "error-callback", "110200"); await a.p;
+  check("9f 前提：先失败一次", captchaDiagLine().includes("110200"));
+  const b = await startPending(c, e); fire(b.id, "callback", "SECRET-TOKEN-XYZ"); const r = await b.p;
+  check("9f 之后成功取到令牌 → 失败记录清空，诊断行为空", r.ok === true && getLastCaptchaFailure() === null && captchaDiagLine() === "" && !JSON.stringify(getLastCaptchaFailure()).includes("SECRET-TOKEN-XYZ"));
+}
+{ // 9g 诊断行只会由固定枚举 + 过滤码组成；伪造的记录（不在枚举里 / 带别的字段）不会被渲染成别的文字
+  check("9g captchaDiagLine 对不在枚举里的原因、带脏字段的记录只给空串 / 不带脏字段", captchaDiagLine({ reason: SYN, code: "110200" }) === "" && captchaDiagLine({ reason: "error", code: "110200", token: SYN, email: SYN }) === "人机验证最近一次失败：error（错误码 110200）" && getLastCaptchaFailure() === null);
+}
+{ // 9h 等脚本加载期间弹窗已关闭（destroy），之后加载失败 / 加载超时：关闭之后的结果，不记成真实验证失败
+  resetCaptchaFailure(); let e = mkEnv({ scriptBehavior: "error" }); let c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  let p = c.getToken({ mount: new Node_("div") }); c.destroy(); let r = await p;
+  check("9h 加载中关闭后脚本加载出错 → 返回 unavailable，但不记失败（诊断行为空）", r.ok === false && r.reason === "unavailable" && getLastCaptchaFailure() === null && captchaDiagLine() === "", JSON.stringify(r));
+  resetCaptchaFailure(); e = mkEnv({ scriptBehavior: "hang" }); c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc, loadTimeoutMs: 40 });
+  p = c.getToken({ mount: new Node_("div") }); c.destroy(); r = await p;
+  check("9h 加载中关闭后脚本一直不回应（加载超时）→ 也不记失败", r.ok === false && r.reason === "unavailable" && getLastCaptchaFailure() === null, JSON.stringify(r));
+  resetCaptchaFailure(); e = mkEnv({ scriptBehavior: "error" }); c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  await c.getToken({ mount: new Node_("div") });
+  check("9h 对照：没有关闭时同样的加载出错照常记 unavailable（上面的“不记”不是误伤）", captchaDiagLine() === "人机验证最近一次失败：unavailable");
+}
+{ // 9i captchaDiagLine 收到脏 code（不是内部产生的记录）：格式化时再过 safeCode，只输出白名单内的码
+  const dirty = [SYN, "x y", "a=b", "user@example.invalid", "/private/path", "A".repeat(25), "", { code: SYN }, ["110200"], null, undefined, true, false, 0];
+  let leaked = [];
+  for (const code of dirty) { const line = captchaDiagLine({ reason: "error", code }); if (line !== "人机验证最近一次失败：error" && !(code === 0 && line.includes("错误码 0"))) leaked.push(JSON.stringify(code)?.slice(0, 30) + " → " + line.slice(0, 60)); }
+  check("9i 14 种脏 code 传给 captchaDiagLine：不输出任何一个（只剩原因）", leaked.length === 0, leaked.join(" | "));
+  check("9i 合法的码（字符串 / 数字）仍照常输出", captchaDiagLine({ reason: "error", code: "110200" }) === "人机验证最近一次失败：error（错误码 110200）" && captchaDiagLine({ reason: "error", code: 300030 }) === "人机验证最近一次失败：error（错误码 300030）");
+  check("9i 脏 code 的返回里没有任何合成敏感字符串", !/SYNTHETIC|token=|example\.invalid|private/i.test(captchaDiagLine({ reason: "error", code: SYN }) + captchaDiagLine({ reason: "timeout", code: SYN })));
 }
 console.log(`\n${ok} 通过，${bad} 失败`);
 process.exit(bad ? 1 : 0);

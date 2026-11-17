@@ -9,12 +9,23 @@ const SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render
 const SAFE_CODE = /^[0-9a-zA-Z_-]{1,24}$/;
 const safeCode = (c) => (typeof c === "string" || typeof c === "number") && SAFE_CODE.test(String(c)) ? String(c) : "";
 
+// 复制诊断用：最近一次人机验证失败的“原因（固定枚举）+ 过滤后的短错误码”。只在内存里，只给“复制诊断”看，不进页面文字、不进存档、不带令牌 / 邮箱 / 原文。
+// 成功取到令牌后清空；cancelled（取到令牌后的正常 reset）和 busy（重复点击）不算失败。
+const FAIL_REASONS = new Set(["unavailable", "timeout", "error", "expired"]);
+let lastFailure = null;
+export const getLastCaptchaFailure = () => (lastFailure ? { ...lastFailure } : null);
+export const resetCaptchaFailure = () => { lastFailure = null; };
+// 格式化时再过一次 safeCode：即使收到的记录不是内部产生的（带脏 code），也只会输出白名单内的短错误码
+export const captchaDiagLine = (f = lastFailure) => { if (!f || !FAIL_REASONS.has(f.reason)) return ""; const c = safeCode(f.code); return `人机验证最近一次失败：${f.reason}${c ? `（错误码 ${c}）` : ""}`; };
+
 export function createCaptcha({ siteKey = "", win = typeof window !== "undefined" ? window : undefined, doc = typeof document !== "undefined" ? document : undefined, loadTimeoutMs = 15000, tokenTimeoutMs = 30000, scriptUrl = SCRIPT_URL } = {}) {
   const key = typeof siteKey === "string" ? siteKey.trim() : "";
   const enabled = !!key;
   let widgetId = null, container = null, loading = null, pending = null, destroyed = false;
 
   const fail = (reason, code) => ({ ok: false, reason, ...(safeCode(code) ? { code: safeCode(code) } : {}) });
+  // 只有“真的有一次取令牌失败了”才记：等待中的请求被失败结算，或取令牌前就失败（脚本没加载 / 组件建不出来）。没有等待请求时的过期回调、destroy 后的拒绝、cancelled、busy 都不记。
+  const rec = (r) => { if (!r.ok && FAIL_REASONS.has(r.reason)) lastFailure = { reason: r.reason, ...(r.code ? { code: r.code } : {}) }; return r; };
 
   function loadScript() {
     if (win?.turnstile) return Promise.resolve(true);
@@ -34,7 +45,7 @@ export function createCaptcha({ siteKey = "", win = typeof window !== "undefined
     return loading;
   }
 
-  function settle(result) { const p = pending; pending = null; if (p) { clearTimeout(p.timer); p.resolve(result); } }
+  function settle(result) { const p = pending; pending = null; if (p) { clearTimeout(p.timer); if (result.ok) lastFailure = null; else rec(result); p.resolve(result); } }
 
   function ensureWidget(mount) {
     if (widgetId !== null && container && container.isConnected !== false && (!mount || container.parentNode === mount)) return true;
@@ -60,8 +71,9 @@ export function createCaptcha({ siteKey = "", win = typeof window !== "undefined
       if (!enabled) return { ok: true, token: "" };
       if (destroyed) return fail("unavailable");
       if (pending) return fail("busy");
-      if (!(await loadScript())) return fail("unavailable");
-      if (destroyed || !ensureWidget(mount)) return fail("unavailable");
+      if (!(await loadScript())) return destroyed ? fail("unavailable") : rec(fail("unavailable")); // 等脚本加载期间弹窗已关闭（destroy）：这次失败是关闭之后的结果，不记成真实验证失败
+      if (destroyed) return fail("unavailable");
+      if (!ensureWidget(mount)) return rec(fail("unavailable"));
       try { win.turnstile.reset(widgetId); } catch { /* 忽略 */ }
       return new Promise((resolve) => {
         const timer = setTimeout(() => settle(fail("timeout")), tokenTimeoutMs);
