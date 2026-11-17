@@ -32,6 +32,8 @@ const CAPTCHA_SITE_KEY = PREVIEW_ID ? RAW_CAPTCHA_KEY : "";
 const CSP_CLOUD_URL = PREVIEW_ID ? (TEST_CLOUD.url && !isProdUrl(TEST_CLOUD.url) ? TEST_CLOUD.url : "") : `https://${PROD_HOST}`;
 // 代码题试点：只有构建时同时给 CODE_TASKS（题目 ID，逗号分隔）和 CODE_TASKS_TEST_BUILD=1 才启用；正式构建和普通测试构建永远是空列表。
 // 题目 ID 必须是已知格式，不对就中止构建。启用的构建产物只放在独立目录（dist-code-tasks），不会进发布内容。
+// 额外保险：正式构建（CSP_TEST_ORIGIN 不是 "1"）如果被外层环境设了 CODE_TASKS_TEST_BUILD=1，直接中止，不静默构建出带代码题的正式版。
+if (process.env.CODE_TASKS_TEST_BUILD === "1" && !CSP_TEST_ORIGIN) throw new Error("CODE_TASKS_TEST_BUILD=1 只能用于测试专用构建（CSP_TEST_ORIGIN=1）；正式构建不得启用代码题试点，构建已中止");
 const CODE_TASKS = process.env.CODE_TASKS_TEST_BUILD === "1" ? (process.env.CODE_TASKS || "").split(",").map((x) => x.trim()).filter(Boolean) : [];
 for (const id of CODE_TASKS) if (!/^U\d+L\d+-[MW]\d+$/.test(id)) throw new Error("CODE_TASKS 里的题目 ID 格式不对：" + id);
 console.log(`[构建] 代码题试点：${CODE_TASKS.length ? CODE_TASKS.join("、") + "（仅测试构建，不得发布）" : "关闭"}`);
