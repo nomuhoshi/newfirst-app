@@ -47,7 +47,7 @@ import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize, encodeCode, decodeCode } from "./progress-file.js";
 import { captchaDiagLine } from "./captcha.js";
 import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad, ensureBackupBase, getLastReminderStatus, lastExportAt } from "./storage-health.js";
-import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
+import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise, SHUFFLED_TYPES } from "./practice.js";
 
 const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6 };
 const XP_CORRECT = 10;
@@ -1261,9 +1261,9 @@ function startLesson(l, { review = false } = {}) {
   const run = {
     lesson: l, review,
     queue: l.exercises.map((_, i) => i),
-    // 选输出题的选项在课程里也要打乱（数据里正确答案都写在第一个）。每次开始一关只打乱一次，放进 run：同一关内重绘 / 答错后再做同一道题，选项位置不变；
-    // 正确标记和解释跟着选项对象走，判分只看选项对象，与位置无关。重新开始这一关会重新打乱。
-    exercises: l.exercises.map((ex) => (ex.type === "predict" ? shuffleExercise(ex) : ex)),
+    // 选输出题的选项、填空题的词块、排序题的初始排列在课程里也要打乱（数据里正确答案总在第一个 / 排列是写死的）。每次开始一关只打乱一次，放进 run：
+    // 同一关内重绘 / 答错后再做同一道题，位置不变；判分只看选项对象 / 词块文字 / 行文字，与位置无关。重新开始这一关会重新打乱。排序题保证初始排列不是正确答案。
+    exercises: l.exercises.map((ex) => (SHUFFLED_TYPES.includes(ex.type) ? shuffleExercise(ex) : ex)),
     total: l.exercises.length,
     correct: 0,
     xp: 0,
