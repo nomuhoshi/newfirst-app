@@ -520,18 +520,20 @@ try {
 
     // ---------- T2：紧接 T1 之后立即执行 Tab A 单次同步保存采样（两次调用之间不开页、不做其他页面操作；不是跨页原子操作） ----------
     // 前置同步（不是放宽断言）：WebKit 跨进程同步 localStorage 有短暂延迟，main CI 44053667006 attempt 1 里旧页直接读到的代数还是 m0（清除页和观察页读到的已是新代数），
-    // 此时旧页不可能知道发生过清除，T2 的“清除冲突 → 内存归零”前提不成立。这里先轮询旧页自己读到的代数，最多 3 秒，让 T2 测的是“旧页已看到新代数但通知还没到”这个窗口；
-    // 等了多久记入诊断（epochVisibleAfterMs）。3 秒内仍读不到：照常保存并采样，下面的断言原样失败（不会因为等待而判通过）。
-    // 旧页读不到新代数时的行为由 tests/storage-stale-epoch.test.mjs 单独固定（旧进度不会写进新一代）。
-    const t1ClearedEpoch = t1ClearAndRaw.epochAfterClear;
-    const t2ImmediateSave = await tabA.evaluate(async (expectedEpoch) => {
+    // 此时旧页不可能知道发生过清除，T2 的“清除冲突 → 内存归零”前提不成立。这里在保存前先轮询旧页自己读到的代数，最多 3 秒，让 T2 测的是“旧页已看到新代数但通知还没到”这个窗口；
+    // 等了多久记入诊断（t2EpochWait）。3 秒内仍读不到：照常保存并采样，下面的断言原样失败（不会因为等待而判通过）。
+    // 旧页读不到新代数时的行为由 tests/storage-stale-epoch.test.mjs 单独固定（旧进度不会写进新一代）。T2 采样本身（下面这一段）和它的断言一字未改。
+    const t2EpochWait = await tabA.evaluate(async (expectedEpoch) => {
       const rawGet = Storage.prototype.getItem;
-      const waitStart = performance.now();
-      let epochVisibleAfterMs = null;
-      while (performance.now() - waitStart < 3000) {
-        if ((rawGet.call(localStorage, "suipian.v4.epoch") || "m0") === expectedEpoch) { epochVisibleAfterMs = Math.round(performance.now() - waitStart); break; }
+      const start = performance.now();
+      while (performance.now() - start < 3000) {
+        if ((rawGet.call(localStorage, "suipian.v4.epoch") || "m0") === expectedEpoch) return { epochVisibleAfterMs: Math.round(performance.now() - start) };
         await new Promise((r) => setTimeout(r, 20));
       }
+      return { epochVisibleAfterMs: null };
+    }, t1ClearAndRaw.epochAfterClear);
+    const t2ImmediateSave = await tabA.evaluate(() => {
+      const rawGet = Storage.prototype.getItem;
       const storageEpochBeforeSave = rawGet.call(localStorage, "suipian.v4.epoch") || "m0";
       const sPre = window.__app.getState();
       const preMem = {
@@ -563,8 +565,8 @@ try {
         visibilityState: document.visibilityState,
       };
       const storageEpochAfterSave = rawGet.call(localStorage, "suipian.v4.epoch") || "m0";
-      return { storageEpochBeforeSave, storageEpochAfterSave, preMem, persistRet, persistError, postMem, epochVisibleAfterMs };
-    }, t1ClearedEpoch);
+      return { storageEpochBeforeSave, storageEpochAfterSave, preMem, persistRet, persistError, postMem };
+    });
 
     // ---------- 此时再打开同源静态观察页，采集 T2 后的存储权威视图 ----------
     const t2Obs = await observeStaticStorage(ctx);
@@ -775,7 +777,7 @@ try {
       t0: { memory: t0Memory, storage: t0Obs },
       t1_syncClearAndRawSnapshot: t1ClearAndRaw,
       t1_ledgerView: t1LedgerView,
-      t2_syncImmediateSave: { immediateSave: t2ImmediateSave, storageAfterSave: t2Obs },
+      t2_syncImmediateSave: { epochWait: t2EpochWait, immediateSave: t2ImmediateSave, storageAfterSave: t2Obs },
       controlledStats,
       t3_realBringToFront: { lifecycle: t3Lifecycle, memory: t3Memory, storage: t3Obs },
       t4_syntheticEvents: { memory: t4Memory, storage: t4Obs },
