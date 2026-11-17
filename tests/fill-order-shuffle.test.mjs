@@ -1,4 +1,4 @@
-// 闯关和随机练习里填空词块、排序题初始排列的打乱。真实构建，手机视口；闯关用 U1L3（选输出 ×2 + 排序 + 填空），练习用 U1L1–U1L6 的 24 道题。
+// 闯关和随机练习里填空词块、排序题初始排列的打乱。真实构建，手机视口；闯关用 U1L3（选输出 ×2 + 排序 + 填空），练习用 U1L1、L2、L3、L6 的 16 道题（少于 20，选 20 题时全部抽到，结果不靠运气）。
 //   1. 屏幕上的词块 / 代码行顺序 = window.__app.currentEx（实际展示那道题）的顺序；
 //   2. 多次进入同一关：填空的正确词块、排序题的初始排列不再固定（不总是同一个位置 / 同一个排列）；排序题初始排列绝不是正确答案；
 //   3. 稳定：选词块 / 点行 / 看反馈期间不换位；答错后这道题排到最后再做时，顺序和第一次完全一样；
@@ -96,15 +96,16 @@ async function answerCurrent(page, correct, seen, key, label) {
   await ctx.close();
 }
 
-// ===== 随机练习路径：U1L1–U1L6 =====
+// ===== 随机练习路径：U1L1/L2/L3/L6 =====
 {
-  const done = ["U1L1", "U1L2", "U1L3", "U1L4", "U1L5", "U1L6"];
+  const done = ["U1L1", "U1L2", "U1L3", "U1L6"]; // 共 16 题（< 20）：选 20 题时全部抽到，其中填空 5 题、排序 3 题，每次运行都一样（不靠运气）
   const { ctx, page, errors } = await openPage(done);
   await page.goto(BASE); await page.waitForSelector(".pathview");
   const xp0 = await page.evaluate(() => window.__app.getState().xp);
   await page.locator("[data-practice-entry]").click(); await page.waitForSelector(".practice-setup");
   await page.locator('[data-practice-size="20"]').click(); await page.locator("[data-practice-start]").click();
   await page.waitForSelector("[data-check]");
+  const practiceTotal = await page.evaluate(() => window.__app.getPractice().total);
   const seen = new Map(), wrongDone = new Set(); let n = 0, fills = 0, orders = 0;
   while (await page.locator("[data-check]").count()) {
     const item = await page.evaluate(() => window.__app.currentPracticeItem); const ex = await cur(page);
@@ -116,7 +117,7 @@ async function answerCurrent(page, correct, seen, key, label) {
     try { await page.waitForSelector("[data-check], .practice-finish"); } catch (e) { console.log("DEBUG", n, JSON.stringify(item), await page.evaluate(() => document.body.innerText.slice(0, 300))); throw e; } if (++n > 60) break;
   }
   await page.waitForSelector(".practice-finish");
-  check(`练习轮：整轮完成，遇到填空 ${fills} 次、排序 ${orders} 次（都做了逐题检查）`, fills >= 3 && orders >= 3, `${fills}/${orders}`);
+  check(`练习轮：16 题全部抽到，首轮填空 5 题、排序 3 题都做了逐题检查（含答错重做共 填空 ${fills} 次、排序 ${orders} 次）`, practiceTotal === 16 && fills >= 5 && orders >= 3, `total=${practiceTotal} ${fills}/${orders}`);
   check("练习轮：整轮不改 XP", (await page.evaluate(() => window.__app.getState().xp)) === xp0);
   check("练习路径无脚本错误", errors.length === 0, errors.join(" | "));
   await ctx.close();
