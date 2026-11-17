@@ -15,7 +15,8 @@ const FAIL_REASONS = new Set(["unavailable", "timeout", "error", "expired"]);
 let lastFailure = null;
 export const getLastCaptchaFailure = () => (lastFailure ? { ...lastFailure } : null);
 export const resetCaptchaFailure = () => { lastFailure = null; };
-export const captchaDiagLine = (f = lastFailure) => (f && FAIL_REASONS.has(f.reason) ? `人机验证最近一次失败：${f.reason}${f.code ? `（错误码 ${f.code}）` : ""}` : "");
+// 格式化时再过一次 safeCode：即使收到的记录不是内部产生的（带脏 code），也只会输出白名单内的短错误码
+export const captchaDiagLine = (f = lastFailure) => { if (!f || !FAIL_REASONS.has(f.reason)) return ""; const c = safeCode(f.code); return `人机验证最近一次失败：${f.reason}${c ? `（错误码 ${c}）` : ""}`; };
 
 export function createCaptcha({ siteKey = "", win = typeof window !== "undefined" ? window : undefined, doc = typeof document !== "undefined" ? document : undefined, loadTimeoutMs = 15000, tokenTimeoutMs = 30000, scriptUrl = SCRIPT_URL } = {}) {
   const key = typeof siteKey === "string" ? siteKey.trim() : "";
@@ -70,7 +71,7 @@ export function createCaptcha({ siteKey = "", win = typeof window !== "undefined
       if (!enabled) return { ok: true, token: "" };
       if (destroyed) return fail("unavailable");
       if (pending) return fail("busy");
-      if (!(await loadScript())) return rec(fail("unavailable"));
+      if (!(await loadScript())) return destroyed ? fail("unavailable") : rec(fail("unavailable")); // 等脚本加载期间弹窗已关闭（destroy）：这次失败是关闭之后的结果，不记成真实验证失败
       if (destroyed) return fail("unavailable");
       if (!ensureWidget(mount)) return rec(fail("unavailable"));
       try { win.turnstile.reset(widgetId); } catch { /* 忽略 */ }

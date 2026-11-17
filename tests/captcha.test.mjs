@@ -183,5 +183,24 @@ const startPending = async (c, e, mount = new Node_("div")) => { const p = c.get
 { // 9g 诊断行只会由固定枚举 + 过滤码组成；伪造的记录（不在枚举里 / 带别的字段）不会被渲染成别的文字
   check("9g captchaDiagLine 对不在枚举里的原因、带脏字段的记录只给空串 / 不带脏字段", captchaDiagLine({ reason: SYN, code: "110200" }) === "" && captchaDiagLine({ reason: "error", code: "110200", token: SYN, email: SYN }) === "人机验证最近一次失败：error（错误码 110200）" && getLastCaptchaFailure() === null);
 }
+{ // 9h 等脚本加载期间弹窗已关闭（destroy），之后加载失败 / 加载超时：关闭之后的结果，不记成真实验证失败
+  resetCaptchaFailure(); let e = mkEnv({ scriptBehavior: "error" }); let c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  let p = c.getToken({ mount: new Node_("div") }); c.destroy(); let r = await p;
+  check("9h 加载中关闭后脚本加载出错 → 返回 unavailable，但不记失败（诊断行为空）", r.ok === false && r.reason === "unavailable" && getLastCaptchaFailure() === null && captchaDiagLine() === "", JSON.stringify(r));
+  resetCaptchaFailure(); e = mkEnv({ scriptBehavior: "hang" }); c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc, loadTimeoutMs: 40 });
+  p = c.getToken({ mount: new Node_("div") }); c.destroy(); r = await p;
+  check("9h 加载中关闭后脚本一直不回应（加载超时）→ 也不记失败", r.ok === false && r.reason === "unavailable" && getLastCaptchaFailure() === null, JSON.stringify(r));
+  resetCaptchaFailure(); e = mkEnv({ scriptBehavior: "error" }); c = createCaptcha({ siteKey: "SITEKEY123", win: e.win, doc: e.doc });
+  await c.getToken({ mount: new Node_("div") });
+  check("9h 对照：没有关闭时同样的加载出错照常记 unavailable（上面的“不记”不是误伤）", captchaDiagLine() === "人机验证最近一次失败：unavailable");
+}
+{ // 9i captchaDiagLine 收到脏 code（不是内部产生的记录）：格式化时再过 safeCode，只输出白名单内的码
+  const dirty = [SYN, "x y", "a=b", "user@example.invalid", "/private/path", "A".repeat(25), "", { code: SYN }, ["110200"], null, undefined, true, false, 0];
+  let leaked = [];
+  for (const code of dirty) { const line = captchaDiagLine({ reason: "error", code }); if (line !== "人机验证最近一次失败：error" && !(code === 0 && line.includes("错误码 0"))) leaked.push(JSON.stringify(code)?.slice(0, 30) + " → " + line.slice(0, 60)); }
+  check("9i 14 种脏 code 传给 captchaDiagLine：不输出任何一个（只剩原因）", leaked.length === 0, leaked.join(" | "));
+  check("9i 合法的码（字符串 / 数字）仍照常输出", captchaDiagLine({ reason: "error", code: "110200" }) === "人机验证最近一次失败：error（错误码 110200）" && captchaDiagLine({ reason: "error", code: 300030 }) === "人机验证最近一次失败：error（错误码 300030）");
+  check("9i 脏 code 的返回里没有任何合成敏感字符串", !/SYNTHETIC|token=|example\.invalid|private/i.test(captchaDiagLine({ reason: "error", code: SYN }) + captchaDiagLine({ reason: "timeout", code: SYN })));
+}
 console.log(`\n${ok} 通过，${bad} 失败`);
 process.exit(bad ? 1 : 0);
