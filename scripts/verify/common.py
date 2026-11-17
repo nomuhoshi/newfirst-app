@@ -20,6 +20,25 @@ def run(code):
     out = buf.getvalue()
     return (out[:-1] if out.endswith("\n") else out), err
 
+def run_detail(code):
+    """返回 (输出, 错误类型或 None, 出错行号或 None, 错误说明)。给“这段程序会报某个错”的题用；不改变 run() 的行为。"""
+    import traceback
+    stats["runs"] += 1
+    buf = io.StringIO(); err = line = None; msg = ""
+    signal.setitimer(signal.ITIMER_REAL, RUN_S)
+    try:
+        with contextlib.redirect_stdout(buf):
+            exec(compile(code, "<题目>", "exec"), {"__name__": "__main__"})
+    except Timeout: err = "Timeout"
+    except SyntaxError as e: err, line, msg = type(e).__name__, e.lineno, str(e.msg)
+    except BaseException as e:
+        err, msg = type(e).__name__, str(e)
+        for f in traceback.extract_tb(e.__traceback__):
+            if f.filename == "<题目>": line = f.lineno
+    finally: signal.setitimer(signal.ITIMER_REAL, 0)
+    out = buf.getvalue()
+    return (out[:-1] if out.endswith("\n") else out), err, line, msg
+
 # 已知问题：在别的 PR 里修，单独列出，不算失败。修好合并后删掉。
 KNOWN = {}
 
