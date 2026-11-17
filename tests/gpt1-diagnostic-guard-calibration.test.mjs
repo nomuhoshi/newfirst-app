@@ -74,8 +74,9 @@ class MemoryStorage {
 function runCallback(body, globals) {
   return vm.runInNewContext(`(() => {${body}\n})()`, globals, { timeout: 1000 });
 }
-function sampleT2({ throws = false, stale = false, returnValue = false, epochAfter = CLEARED } = {}) {
-  const storage = new MemoryStorage({ "suipian.v4.epoch": CLEARED });
+// epochVisible=false：旧页读到的还是旧代数（本机存储里没有 suipian.v4.epoch = m0），这时它不可能知道发生过清除：persist() 返回 true、内存仍是旧进度、代数保持 m0
+function sampleT2({ throws = false, stale = false, returnValue = false, epochAfter = CLEARED, epochVisible = true } = {}) {
+  const storage = new MemoryStorage(epochVisible ? { "suipian.v4.epoch": CLEARED } : {});
   let memory = { xp: 50, lessonsCompleted: 1, done: { U1L1: true } };
   return runCallback(t2Body, {
     Storage: MemoryStorage, localStorage: storage, document: { visibilityState: "hidden" },
@@ -83,6 +84,7 @@ function sampleT2({ throws = false, stale = false, returnValue = false, epochAft
       getState: () => memory,
       persist() {
         if (throws) throw new Error("gpt1-synthetic-persist-error");
+        if (!epochVisible) return true; // 看不到清除：保存成功，内存与代数都不变
         if (!stale) memory = { xp: 0, lessonsCompleted: 0, done: {} };
         storage.setItem("suipian.v4.epoch", epochAfter);
         return returnValue;
@@ -107,12 +109,14 @@ function syntheticT1(dump = syntheticDump()) {
     v4Dump: dump,
   };
 }
-async function evaluateGates(t2, observation = storageSnapshot(), t1 = syntheticT1(), preClearEpoch = "m0") {
+async function evaluateGates(t2, observation = storageSnapshot(), t1 = syntheticT1(), preClearEpoch = "m0", { waitForEpoch = false } = {}) {
   const checks = [];
+  const unverifiedNames = [];
   const sandbox = {
     EXPECTED_PRE_CLEAR: clone(OLD), EXPECTED_EMPTY: clone(EMPTY),
     t2ImmediateSave: t2, t1ClearAndRaw: t1, preClearEpoch,
-    isControlled: true, track: "controlled-deferred-delivery", ctx: {},
+    isControlled: true, track: "controlled-deferred-delivery", ctx: {}, waitForEpoch,
+    markUnverified(name, detail = "") { unverifiedNames.push(String(name)); },
     observeStaticStorage: async () => observation,
     observeSuipianV4Storage,
     check(name, ok, detail = "") { checks.push({ name: String(name), ok: ok === true, detail }); },
@@ -120,6 +124,7 @@ async function evaluateGates(t2, observation = storageSnapshot(), t1 = synthetic
   };
   await vm.runInNewContext(`${helpers}\n(async () => {${gateSource}\n})()`, sandbox, { timeout: 1000 });
   assert.ok(checks.some((c) => c.name.includes(" T2 ")), "no T2 assertions were executed");
+  checks.unverifiedNames = unverifiedNames;
   return checks;
 }
 function assertVerdict(checks, phase, expected, evidence) {
@@ -136,6 +141,37 @@ test("positive: a healthy immediate clear-conflict save is accepted", async () =
   assert.equal(t2.persistRet, false); // clear won; this is a valid boolean result.
   assert.equal(t2.postMem.xp, 0);
   assertVerdict(await evaluateGates(t2), "T2", true, t2);
+});
+
+test("immediate track: old page still sees the OLD epoch -> STALE_EPOCH_NOT_VISIBLE is reported as unverified, never as a T2 pass", async () => {
+  const t2 = sampleT2({ epochVisible: false });
+  assert.equal(t2.storageEpochBeforeSave, "m0");
+  assert.equal(t2.persistRet, true);
+  assert.equal(t2.postMem.xp, 50);
+  const checks = await evaluateGates(t2);
+  assert.equal(checks.unverifiedNames.length, 1, JSON.stringify(checks.unverifiedNames));
+  assert.match(checks.unverifiedNames[0], /STALE_EPOCH_NOT_VISIBLE/);
+  // 没有任何一条“T2 persist() 返回契约 / 收敛”断言通过：只有安全不变量（不抛错、返回布尔值）和新代数存储为空
+  assert.equal(checks.some((c) => c.ok && c.name.includes("返回契约")), false, JSON.stringify(checks));
+  assert.ok(checks.filter((c) => c.name.includes(" T2 ")).every((c) => c.ok), "safety invariants and new-epoch storage emptiness must hold");
+});
+
+test("immediate track: STALE_EPOCH_NOT_VISIBLE with old progress leaked into the new epoch must fail", async () => {
+  const t2 = sampleT2({ epochVisible: false });
+  const leaked = storageSnapshot({ xp: 50, runs: 1, done: ["U1L1"] });
+  assertVerdict(await evaluateGates(t2, leaked), "T2", false, { t2, leaked });
+});
+
+test("immediate track: STALE_EPOCH_NOT_VISIBLE with a throwing persist must fail", async () => {
+  const t2 = sampleT2({ epochVisible: false, throws: true });
+  assertVerdict(await evaluateGates(t2), "T2", false, t2);
+});
+
+test("wait track: old page that never saw the new epoch must FAIL the strict T2 contract (no unverified escape hatch)", async () => {
+  const t2 = sampleT2({ epochVisible: false });
+  const checks = await evaluateGates(t2, storageSnapshot(), syntheticT1(), "m0", { waitForEpoch: true });
+  assert.equal(checks.unverifiedNames.length, 0);
+  assertVerdict(checks, "T2", false, t2);
 });
 
 test("negative: persist throwing must fail even when persisted progress is empty", async () => {

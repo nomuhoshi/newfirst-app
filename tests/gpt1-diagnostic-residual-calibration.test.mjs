@@ -81,6 +81,7 @@ async function nativeVerdict({ before, returnValue, controlled = false }) {
   await vm.runInNewContext(helpers + `\n(async () => {${gateBody}\n})()`, {
     t2ImmediateSave: sample, t1ClearAndRaw: t1Fixture(), preClearEpoch: "m0",
     isControlled: controlled, track: controlled ? "controlled-deferred-delivery" : "native-unmodified", ctx: {},
+    waitForEpoch: false, markUnverified() {}, // 即时轨道（不等待）；旧页读不到新代数的分类由 gpt1-diagnostic-guard-calibration 单独校准
     EXPECTED_PRE_CLEAR: clone(OLD), EXPECTED_EMPTY: clone(EMPTY), observeSuipianV4Storage,
     observeStaticStorage: async () => emptyObservation(),
     check(name, ok, detail = "") { checks.push({ name: String(name), ok: ok === true, detail }); },

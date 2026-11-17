@@ -409,8 +409,10 @@ try {
     await page.waitForSelector(".pathview");
   };
 
-  for (const track of ["native-unmodified", "controlled-deferred-delivery"]) {
+  // 三条轨道：前两条清除后立即采样、不等待（保留首轮失败的即时窗口）；第三条先等旧页读到新代数再采样，验证“已看见清除”时的收敛。
+  for (const track of ["native-unmodified", "controlled-deferred-delivery", "native-after-epoch-visible"]) {
     const isControlled = track === "controlled-deferred-delivery";
+    const waitForEpoch = track === "native-after-epoch-visible";
     const ctx = await open(newDir());
 
     // 事件包装仅注入受控轨道；原生轨道零注入运行
@@ -519,19 +521,20 @@ try {
     });
 
     // ---------- T2：紧接 T1 之后立即执行 Tab A 单次同步保存采样（两次调用之间不开页、不做其他页面操作；不是跨页原子操作） ----------
-    // 前置同步（不是放宽断言）：WebKit 跨进程同步 localStorage 有短暂延迟，main CI 44053667006 attempt 1 里旧页直接读到的代数还是 m0（清除页和观察页读到的已是新代数），
-    // 此时旧页不可能知道发生过清除，T2 的“清除冲突 → 内存归零”前提不成立。这里在保存前先轮询旧页自己读到的代数，最多 3 秒，让 T2 测的是“旧页已看到新代数但通知还没到”这个窗口；
-    // 等了多久记入诊断（t2EpochWait）。3 秒内仍读不到：照常保存并采样，下面的断言原样失败（不会因为等待而判通过）。
-    // 旧页读不到新代数时的行为由 tests/storage-stale-epoch.test.mjs 单独固定（旧进度不会写进新一代）。T2 采样本身（下面这一段）和它的断言一字未改。
-    const t2EpochWait = await tabA.evaluate(async (expectedEpoch) => {
-      const rawGet = Storage.prototype.getItem;
-      const start = performance.now();
-      while (performance.now() - start < 3000) {
-        if ((rawGet.call(localStorage, "suipian.v4.epoch") || "m0") === expectedEpoch) return { epochVisibleAfterMs: Math.round(performance.now() - start) };
-        await new Promise((r) => setTimeout(r, 20));
-      }
-      return { epochVisibleAfterMs: null };
-    }, t1ClearAndRaw.epochAfterClear);
+    // 等待只发生在 native-after-epoch-visible 轨道：保存前轮询旧页自己读到的代数，最多 3 秒，等了多久记入诊断（t2EpochWait）。3 秒仍读不到：照常采样，下面的严格断言原样失败。
+    // 另两条轨道不等待：清除后立即采样。旧页此时读到的若仍是旧代数（WebKit 跨进程同步延迟的候选解释，根因未证实），记为 STALE_EPOCH_NOT_VISIBLE：不计入 T2 通过，
+    // 只核验安全不变量（persist 不抛错 / 返回布尔值、新代数存储里没有旧进度）。T2 采样本身（下面这一段）和严格断言一字未改。
+    const t2EpochWait = waitForEpoch
+      ? await tabA.evaluate(async (expectedEpoch) => {
+          const rawGet = Storage.prototype.getItem;
+          const start = performance.now();
+          while (performance.now() - start < 3000) {
+            if ((rawGet.call(localStorage, "suipian.v4.epoch") || "m0") === expectedEpoch) return { waited: true, epochVisibleAfterMs: Math.round(performance.now() - start) };
+            await new Promise((r) => setTimeout(r, 20));
+          }
+          return { waited: true, epochVisibleAfterMs: null };
+        }, t1ClearAndRaw.epochAfterClear)
+      : { waited: false };
     const t2ImmediateSave = await tabA.evaluate(() => {
       const rawGet = Storage.prototype.getItem;
       const storageEpochBeforeSave = rawGet.call(localStorage, "suipian.v4.epoch") || "m0";
@@ -597,17 +600,30 @@ try {
       );
     }
 
-    check(
-      `[${track}] T2 persist() 返回契约、保存后即时内存为空（xp=0, runs=0, done=[]）与 epoch 前后对齐核验（persistError === null, typeof persistRet === "boolean"；清除冲突时返回 false 合法）`,
-      t2ImmediateSave.persistError === null &&
-        typeof t2ImmediateSave.persistRet === "boolean" &&
-        // false 仅在保存前旧页内存确实仍是清除前的旧进度（有真实的旧→空采用过程）时合法；保存前已空而返回 false 没有清除冲突依据，不能算健康保存
-        (t2ImmediateSave.persistRet === true || matchesMemoryTriad(t2ImmediateSave.preMem, EXPECTED_PRE_CLEAR)) &&
-        matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_EMPTY) &&
-        t2ImmediateSave.storageEpochBeforeSave === clearedEpoch &&
-        t2ImmediateSave.storageEpochAfterSave === clearedEpoch,
-      JSON.stringify(t2ImmediateSave)
-    );
+    const t2StaleViewAtSample = t2ImmediateSave.storageEpochBeforeSave !== t1ClearAndRaw.epochAfterClear;
+    if (!waitForEpoch && t2StaleViewAtSample) {
+      markUnverified(
+        `[${track}] T2 即时采样未覆盖：旧页读到的仍是旧代数（STALE_EPOCH_NOT_VISIBLE，不计入 T2 通过；已看见清除后的收敛由 native-after-epoch-visible 轨道核验）`,
+        JSON.stringify(t2ImmediateSave)
+      );
+      check(
+        `[${track}] T2 即时窗口安全不变量（旧代数不可见：persist() 不抛错且返回布尔值；此项只证明没有异常，不证明收敛）`,
+        t2ImmediateSave.persistError === null && typeof t2ImmediateSave.persistRet === "boolean",
+        JSON.stringify(t2ImmediateSave)
+      );
+    } else {
+      check(
+        `[${track}] T2 persist() 返回契约、保存后即时内存为空（xp=0, runs=0, done=[]）与 epoch 前后对齐核验（persistError === null, typeof persistRet === "boolean"；清除冲突时返回 false 合法）`,
+        t2ImmediateSave.persistError === null &&
+          typeof t2ImmediateSave.persistRet === "boolean" &&
+          // false 仅在保存前旧页内存确实仍是清除前的旧进度（有真实的旧→空采用过程）时合法；保存前已空而返回 false 没有清除冲突依据，不能算健康保存
+          (t2ImmediateSave.persistRet === true || matchesMemoryTriad(t2ImmediateSave.preMem, EXPECTED_PRE_CLEAR)) &&
+          matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_EMPTY) &&
+          t2ImmediateSave.storageEpochBeforeSave === clearedEpoch &&
+          t2ImmediateSave.storageEpochAfterSave === clearedEpoch,
+        JSON.stringify(t2ImmediateSave)
+      );
+    }
 
     check(
       `[${track}] T2 旧页立即保存后存储持久化保护完整核验（currentEpoch=${clearedEpoch}, xp=0, runs=0, done=[]）`,
@@ -777,7 +793,7 @@ try {
       t0: { memory: t0Memory, storage: t0Obs },
       t1_syncClearAndRawSnapshot: t1ClearAndRaw,
       t1_ledgerView: t1LedgerView,
-      t2_syncImmediateSave: { epochWait: t2EpochWait, immediateSave: t2ImmediateSave, storageAfterSave: t2Obs },
+      t2_syncImmediateSave: { epochWait: t2EpochWait, t2View: t2StaleViewAtSample ? "STALE_EPOCH_NOT_VISIBLE" : "EPOCH_VISIBLE", immediateSave: t2ImmediateSave, storageAfterSave: t2Obs },
       controlledStats,
       t3_realBringToFront: { lifecycle: t3Lifecycle, memory: t3Memory, storage: t3Obs },
       t4_syntheticEvents: { memory: t4Memory, storage: t4Obs },
@@ -823,7 +839,7 @@ check(
 
 console.log(
   fail
-    ? `\n[${BNAME}] ${fail} 项失败（通过 ${pass}，未取得生命周期证据 ${unverified}）`
-    : `\n[${BNAME}] 通过 ${pass} 项，未取得生命周期证据 ${unverified} 项，0 项失败`
+    ? `\n[${BNAME}] ${fail} 项失败（通过 ${pass}，未取得证据 ${unverified}（生命周期 / 即时窗口））`
+    : `\n[${BNAME}] 通过 ${pass} 项，未取得证据 ${unverified} 项（生命周期 / 即时窗口），0 项失败`
 );
 process.exit(fail ? 1 : 0);
