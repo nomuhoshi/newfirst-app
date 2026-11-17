@@ -68,7 +68,18 @@ async function device(name, { guest = null, viewport = { width: 390, height: 844
   return { name, ctx, page, errors, shot: (n) => shot(page, `acct-${name}-${n}`) };
 }
 const toMe = async (d) => { await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="account"]').tap(); await d.page.waitForSelector("[data-account]"); };
+let meEntryChecked = false;
 async function loginUi(d, email, { choice = null } = {}) {
+  if (!meEntryChecked) { // 2026-11-17 入口页身份卡：游客时主按钮直接打开登录；只验一次
+    meEntryChecked = true;
+    await d.page.getByRole("button", { name: "我的" }).tap();
+    check("我的入口页：配了云端的游客有「登录，换设备接着学」主按钮，且是铜色主按钮", await d.page.evaluate(() => { const b = document.querySelector("[data-me-login]"); return !!b && b.classList.contains("primary") && document.querySelector("[data-me-id]").dataset.meId === "guest"; }));
+    await d.page.locator("[data-me-login]").tap();
+    check("我的入口页：点主按钮直接打开登录弹窗（有邮箱输入框）", (await d.page.locator("[data-email]").count()) === 1);
+    await d.page.getByRole("button", { name: "先不登录" }).tap();
+    check("我的入口页：点「先不登录」关掉弹窗，仍是游客", (await d.page.locator("[data-email]").count()) === 0 && (await d.page.locator('[data-me-id="guest"]').count()) === 1);
+    await d.page.getByRole("button", { name: "学习", exact: true }).tap();
+  }
   await toMe(d);
   await d.page.locator("[data-open-login]").tap();
   await d.page.locator("[data-email]").fill(email);

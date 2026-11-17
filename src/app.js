@@ -14,6 +14,7 @@ import unit2 from "../content/unit2.json";
 import unit3 from "../content/unit3.json";
 import unit4 from "../content/unit4.json";
 import unit5 from "../content/unit5.json";
+import unit6 from "../content/unit6.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
 import { makeRunnerExecutor } from "./judge.js";
@@ -34,7 +35,7 @@ import * as feel from "./feel.js";
 import * as theme from "./theme.js";
 import { KEY_SOUNDS, DEFAULT_STYLE } from "./keysounds.js";
 import {
-  loadState, saveState, readSnapshot, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, HEARTS_MAX, listUnreadable,
+  loadState, saveState, readSnapshot, mergeStored, syncFromStorage, addXp, addRun, getLastSavedAt, clearState, regenHearts, loseHeart, bumpStreak, currentStreak, dayKey, HEARTS_MAX, listUnreadable,
 getLastSaveStatus, stateEpoch, } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
@@ -44,10 +45,10 @@ import { createPreviewInfo } from "./preview-info.js";
 import { cloudTarget } from "./cloud-config.js";
 import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize, encodeCode, decodeCode } from "./progress-file.js";
-import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad, ensureBackupBase, getLastReminderStatus } from "./storage-health.js";
+import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad, ensureBackupBase, getLastReminderStatus, lastExportAt } from "./storage-health.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
-const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5 };
+const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6 };
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;
@@ -103,6 +104,9 @@ const ICONS = {
   cross: "M7 7l10 10M17 7L7 17",
   play: "M8 5.5v13l11-6.5z",
   review: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5",
+  sliders: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
+  download: "M12 4v10M8 10l4 4 4-4M5 19h14",
+  help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7M12 16.8v.2",
 };
 function icon(name, { size = 22, fill = false, cls = "" } = {}) {
   return svg("svg", { viewBox: "0 0 24 24", width: size, height: size, class: "ico " + cls, "aria-hidden": "true",
@@ -1172,7 +1176,6 @@ function renderMe() {
   if (!meSection) {
     const wait = regenHearts(state);
     const doneCount = allLessons().filter((l) => state.done[l.id]).length;
-    const statCard = (ic, value, label) => h("div", { class: "me-card" }, h("b", {}, ic ? (typeof ic === "function" ? ic() : icon(ic, { size: 20 })) : null, value), h("span", { text: label }));
     const themeLabel = { light: "浅色", dark: "深色" }[state.prefs.theme] || "跟随系统";
     const subs = {
       account: sync?.account() ? "已登录，进度会同步到云端" : "登录后，换手机或 iPad 也能接着学",
@@ -1180,16 +1183,49 @@ function renderMe() {
       data: "导出、导入学习记录，清除记录",
       help: "规则、添加到主屏幕、隐私说明",
     };
-    return page(
-      h("div", { class: "me-head" }, mascot(64), h("div", {}, h("h1", { text: "我的学习" }), h("p", { class: "muted", text: sync?.account() ? "记录已关联账号，会同步到云端" : "没登录时，记录只保存在这台设备上" }))),
-      h("div", { class: "me-grid" },
-        statCard("flame", String(currentStreak(state)), "连续天数"),
-        statCard(() => chipIcon(26), String(state.xp), "经验值 XP"),
-        statCard(null, `${doneCount}/${allLessons().length}`, "已完成关卡"),
-        statCard(() => tubeIcon(state.hearts > 0, 26), `${state.hearts}/${HEARTS_MAX}`, wait ? `${fmtWait(wait)}后 +1` : "红心已满"),
-      ),
+    const acc = sync?.account();
+    const canLogin = !!accountUi && cloudApi.configured;
+    // 身份卡：游客时这里是整页唯一的主按钮（登录）；已登录时显示邮箱和同步状态
+    const idCard = h("section", { class: "me-id", "data-me-id": acc ? "account" : "guest" },
+      h("div", { class: "me-id-row" }, mascot(52), h("div", { class: "me-id-text" },
+        h("h1", { text: acc ? (acc.email || "已登录") : "游客" }),
+        h("p", { class: "muted", text: acc ? "换手机或 iPad 登录同一个邮箱就能接着学" : "记录只保存在这台设备上" }))),
+      acc ? accountUi?.accountRow() : null,
+      !acc && canLogin ? button("登录，换设备接着学", () => accountUi.openLogin(), "btn3d primary wide", { "data-me-login": "" }) : null,
+      !acc && canLogin ? h("p", { class: "me-id-note", text: "用邮箱验证码登录，不用设密码" }) : null);
+    // 学习进度卡：关数 + 进度条 + 最近 7 天。只存了“连续天数”和“最后学习日”，所以圆点画的是这一段连续，不是完整日历
+    const total = allLessons().length, streak = currentStreak(state), todayK = dayKey();
+    const doneToday = streak > 0 && state.lastDay === todayK;
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (6 - i));
+      const back = 6 - i; // 距今天几天
+      const lit = streak > 0 && (doneToday ? back < streak : back >= 1 && back <= streak);
+      const kind = lit ? "done" : back === 0 ? "today" : "empty";
+      return h("div", { class: "me-day", "data-day": kind }, h("span", { text: back === 0 ? "今天" : "日一二三四五六"[d.getDay()] }), h("i", { "aria-hidden": "true" }, kind === "done" ? icon("check", { size: 14 }) : null));
+    });
+    const streakLine = streak === 0 ? "今天完成一关，开始连续记录。" : doneToday ? `今天已完成，连续 ${streak} 天。` : `已连续 ${streak} 天。今天完成一关就是第 ${streak + 1} 天。`;
+    const progress = h("section", { class: "me-progress", "data-me-progress": "" },
+      h("div", { class: "me-progress-head" }, h("h2", { text: "学习进度" }), h("span", { class: "muted", text: `已完成关卡 ${doneCount}/${total}` })),
+      h("div", { class: "me-bar", role: "img", "aria-label": `已完成 ${total} 关中的 ${doneCount} 关` }, h("div", { style: `width:${total ? Math.round((doneCount / total) * 100) : 0}%` })),
+      h("div", { class: "me-week", "aria-label": `连续 ${streak} 天` }, ...days),
+      h("p", { class: "muted me-streak-line", text: streakLine }),
+      h("div", { class: "me-mini" },
+        h("span", {}, chipIcon(18), h("b", { text: `${state.xp}` }), " 经验值 XP"),
+        h("span", {}, tubeIcon(state.hearts > 0, 18), h("b", { text: `${state.hearts}/${HEARTS_MAX}` }), wait ? ` 红心 · ${fmtWait(wait)}后 +1` : " 红心已满")));
+    // 备份提醒条：只给游客（已登录有云端）。按钮只是带去「数据与备份」，导出和确认流程仍在那一页
+    const lastExp = lastExportAt();
+    const expDays = lastExp ? Math.floor((Date.now() - lastExp) / 86400000) : -1;
+    const backupStrip = acc ? null : h("section", { class: "me-backup", "data-me-backup": lastExp ? "done" : "never" },
+      icon(lastExp ? "check" : "shield", { size: 22 }),
+      h("div", { class: "me-backup-text" },
+        h("b", { text: lastExp ? (expDays <= 0 ? "今天备份过" : `上次备份 ${expDays} 天前`) : "还没备份过" }),
+        h("small", { text: lastExp ? "备份文件可以在换浏览器后导入" : "清浏览器数据会丢记录" })),
+      button("去备份", () => openMeSection("data"), "btn3d", { "data-me-backup-go": "" }));
+    const rowIcon = { account: "user", settings: "sliders", data: "download", help: "help" };
+    return page(h("div", { class: "me-entry" },
+      idCard, progress, backupStrip,
       h("nav", { class: "me-menu", "aria-label": "我的" },
-        ...ME_SECTIONS.map((s) => button(h("span", { class: "menu-main" }, h("b", { text: s.label }), h("small", { text: subs[s.id] })), () => openMeSection(s.id), "menu-row", { "data-me-menu": s.id }))),
+        ...ME_SECTIONS.map((s) => button(h("span", { class: "menu-in" }, icon(rowIcon[s.id], { size: 22 }), h("span", { class: "menu-main" }, h("b", { text: s.label }), h("small", { text: subs[s.id] }))), () => openMeSection(s.id), "menu-row", { "data-me-menu": s.id })))),
     );
   }
   const label = ME_SECTIONS.find((s) => s.id === meSection).label;
