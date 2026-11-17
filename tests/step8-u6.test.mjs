@@ -32,9 +32,16 @@ await page.goto(BASE); await page.waitForSelector(".pathview");
 check("U1–U5 通关后 U6L1 是当前关，U6L2–L9 锁定（共 9 关，每关 5 题）", unitN.lessons.length === 9 && unitN.lessons.every((l) => l.exercises.length === 5) && await page.evaluate(() => document.querySelector('[data-lesson="U6L1"]')?.classList.contains("current") && ["U6L2", "U6L3", "U6L4", "U6L5", "U6L6", "U6L7", "U6L8", "U6L9"].every((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("locked"))));
 check("第 7 单元仍显示即将推出", (await page.locator(".unit.locked").count()) === 1);
 
+const predictPos = []; // 每道选输出题里正确选项显示在第几个（数据里都在第 0 个；打乱后不能全在第 0 个）
 async function answer(ex, right) {
   if (ex.type === "predict") {
-    const i = right ? ex.options.findIndex((o) => o.correct) : ex.options.findIndex((o) => !o.correct);
+    const cur = await page.evaluate(() => window.__app.currentEx); // 选项在课程里会打乱：按屏幕上实际显示的顺序点，不能用数据里的顺序
+    const i = right ? cur.options.findIndex((o) => o.correct) : cur.options.findIndex((o) => !o.correct);
+    if (right) predictPos.push(cur.options.findIndex((o) => o.correct));
+    // 同一个题面可能对应几道题：按题面 + 代码找屏幕上这道题的数据，核对选项文字、正确标记、解释都跟着选项走（只换位置）
+    const dat = unitN.lessons.flatMap((x) => x.exercises).find((e) => e.type === "predict" && e.prompt === cur.prompt && e.code === cur.code);
+    const same = !!dat && cur.options.length === dat.options.length && cur.options.every((o) => { const d = dat.options.find((x) => x.text === o.text); return d && !!d.correct === !!o.correct && d.why === o.why; });
+    if (!same) check("选项打乱后仍是同一组选项（只换位置）", false, String(cur.prompt).slice(0, 30));
     await page.locator(".choice").nth(i).click();
   } else if (ex.type === "fill") {
     const toks = right ? ex.answer : ex.answer.map((a, i) => (i === 0 ? ex.tokens.find((t) => t !== a) : a)); // 答错：每个空都填，第一个空换成错误词块
@@ -47,9 +54,15 @@ async function answer(ex, right) {
 for (const l of unitN.lessons) {
   // 每关故意答错一次会扣 1 颗红心；多关会扣光，所以每关开始前补满（只改测试状态，不改红心规则）
   await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); });
-  await page.locator(`[data-lesson="${l.id}"]`).click(); await page.locator(".overlay .btn3d.primary").click();
+  // 偶数位的关（L1、L3、L5、L7、L9）从头到尾全部答对，奇数位的关先故意答错一次：两种走法每关都应该拿到 60 XP（5 次答对 × 10 + 通关 10）
+  const allRight = unitN.lessons.indexOf(l) % 2 === 0;
+  const xp0 = await page.evaluate(() => window.__app.getState().xp);
+  await page.locator(`[data-lesson="${l.id}"]`).click();
+  const startLabel = (await page.locator(".overlay .btn3d.primary").textContent()).trim();
+  check(`${l.id}：开始按钮写明 +60 XP（5 题 × 10 + 通关 10）`, startLabel.includes("+60 XP"), startLabel);
+  await page.locator(".overlay .btn3d.primary").click();
   await page.getByRole("button", { name: "继续", exact: true }).click(); // 讲解页
-  const queue = [...l.exercises]; let wrongDone = false, steps = 0, outs = [];
+  const queue = [...l.exercises]; let wrongDone = allRight, steps = 0, outs = [];
   while (queue.length && steps++ < 12) {
     const q = await page.locator("h2.q").textContent();
     const ex = l.exercises.find((e) => e.prompt === q && (e.type !== "predict" || true));
@@ -70,10 +83,15 @@ for (const l of unitN.lessons) {
   }
   for (const [ex, right, out] of outs) if (right) check(`${l.id}：${ex.type} 真实运行结果与 expected 一致`, out.includes(ex.expected.split("\n")[0]), out.slice(0, 80));
   await page.waitForSelector(".finish");
+  const finishXp = (await page.locator(".fs", { hasText: "本关 XP" }).locator("b").first().textContent()).trim();
+  const xpGain = (await page.evaluate(() => window.__app.getState().xp)) - xp0;
+  check(`${l.id}：${allRight ? "全程答对" : "答错一次后答对"}，本关得到恰好 60 XP（结算页显示 +60，存档 XP 增加 60）`, finishXp === "+60" && xpGain === 60, `结算页 ${finishXp}，存档增加 ${xpGain}`);
+  if (allRight) check(`${l.id}：全程答对恰好 5 步、没有扣红心`, steps === 5 && (await page.evaluate(() => window.__app.getState().hearts)) === 5, `步数 ${steps}`);
   if (l.id === "U6L4") await page.screenshot({ path: join(process.env.SHOT_DIR || "/tmp", `u6-finish-${process.argv[2] || "chromium"}.png`) }).catch(() => {});
   await page.locator(".finish [data-continue]").click(); await page.waitForSelector(".pathview");
   check(`${l.id}：通关后标记完成`, await page.evaluate((id) => document.querySelector(`[data-lesson="${id}"]`)?.classList.contains("done"), l.id));
 }
+check("选输出题的正确选项不是全部排在第一个（课程里选项已打乱，U6 共 26 道，答对时记录位置）", predictPos.length === 26 && predictPos.some((i) => i > 0), JSON.stringify(predictPos));
 check("无脚本错误", errors.length === 0, errors.join(" | "));
 await browser.close(); srv.close();
 console.log(`\n共 ${pass + fail} 项，失败 ${fail} 项`);

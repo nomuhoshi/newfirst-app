@@ -33,7 +33,8 @@ check("第 5 单元仍显示即将推出", (await page.locator(".unit.locked").c
 
 async function answer(ex, right) {
   if (ex.type === "predict") {
-    const i = right ? ex.options.findIndex((o) => o.correct) : ex.options.findIndex((o) => !o.correct);
+    const cur = await page.evaluate(() => window.__app.currentEx); // 选项在课程里会打乱：按屏幕上实际显示的顺序点，不能用数据里的顺序
+    const i = right ? cur.options.findIndex((o) => o.correct) : cur.options.findIndex((o) => !o.correct);
     await page.locator(".choice").nth(i).click();
   } else if (ex.type === "fill") {
     const toks = right ? ex.answer : ex.answer.map((a, i) => (i === 0 ? ex.tokens.find((t) => t !== a) : a)); // 答错：每个空都填，第一个空换成错误词块
