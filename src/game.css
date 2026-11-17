@@ -13,6 +13,7 @@
   --g-side: #CFC8B8; --g-hi: rgba(255,255,255,.85); --g-shadow: rgba(23,43,58,.16); /* 立体六角形的侧面、高光、投影 */
   --ic-glass-edge:#6F8799; --ic-glass-a:#FFFFFF; --ic-glass-b:#CFE3F2; --ic-side:#9BB0C0; --ic-plate:#7C8A96; --ic-base1:#56636E; --ic-base2:#2F3A43; --ic-pin:#AEB9C2; --ic-fil:#FF9F2E; --ic-fil-off:#8C969E; --ic-glow:#FFC46B; --ic-c1:#7DBBFF; --ic-c2:#2A7FD4; --ic-cside:#1B5496; --ic-die:#0F2A45; --ic-flow:#5BB8FF; --ic-hi:#FFFFFF; /* 真空管（生命）和芯片（经验值）图标 */
   --g-flow: #2B9BFF; --g-flow-glow: rgba(43,155,255,.75); /* 电路光点：亮蓝 */
+  --m-ink: #172B3A; --m-side: #D2C4A2; --m-shadow: rgba(23,43,58,.16); /* 小码 */
   --g-code-bg: #172B3A; --g-code-fg: #EAF0F3; --g-code-dim: #8FA3B0;
   --g-tk-str: #F3BA87; --g-tk-num: #9CC4E4; --g-tk-fn: #8ED7B8; --g-tk-op: #D5DEE4;
   --g-chip: #243D50; --g-chip-fg: #F3BA87;
@@ -35,6 +36,7 @@
     --g-side: #0D1B24; --g-hi: rgba(255,255,255,.14); --g-shadow: rgba(0,0,0,.5);
     --ic-glass-edge:#9CB6C8; --ic-glass-a:#CFE6F5; --ic-glass-b:#6F8FA6; --ic-side:#496377; --ic-plate:#9AA8B4; --ic-base1:#6A7883; --ic-base2:#3A4650; --ic-pin:#C6D0D8; --ic-fil:#FFB347; --ic-fil-off:#6C7A86; --ic-glow:#FFCF85; --ic-c1:#8CC7FF; --ic-c2:#3C8FE6; --ic-cside:#1E5FA8; --ic-die:#081826; --ic-flow:#6BC4FF; --ic-hi:#FFFFFF;
     --g-flow: #6CD0FF; --g-flow-glow: rgba(77,190,255,.9);
+    --m-ink: #0B1820; --m-side: #C4B694; --m-shadow: rgba(0,0,0,.45);
     --g-code-bg: #0B1820; --g-code-fg: #EAF0F3; --g-code-dim: #7C93A1;
     --g-chip: #1F3646; --g-chip-fg: #F3BA87;
     --fn: #243845;
@@ -53,6 +55,7 @@
   --g-side: #0D1B24; --g-hi: rgba(255,255,255,.14); --g-shadow: rgba(0,0,0,.5);
   --ic-glass-edge:#9CB6C8; --ic-glass-a:#CFE6F5; --ic-glass-b:#6F8FA6; --ic-side:#496377; --ic-plate:#9AA8B4; --ic-base1:#6A7883; --ic-base2:#3A4650; --ic-pin:#C6D0D8; --ic-fil:#FFB347; --ic-fil-off:#6C7A86; --ic-glow:#FFCF85; --ic-c1:#8CC7FF; --ic-c2:#3C8FE6; --ic-cside:#1E5FA8; --ic-die:#081826; --ic-flow:#6BC4FF; --ic-hi:#FFFFFF;
   --g-flow: #6CD0FF; --g-flow-glow: rgba(77,190,255,.9);
+  --m-ink: #0B1820; --m-side: #C4B694; --m-shadow: rgba(0,0,0,.45);
   --g-code-bg: #0B1820; --g-code-fg: #EAF0F3; --g-code-dim: #7C93A1;
   --g-chip: #1F3646; --g-chip-fg: #F3BA87;
   --fn: #243845;
@@ -110,12 +113,12 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .btn3d.wide { width: 100%; margin-top: 10px; }
 .btn3d.grow { flex: 1; }
 
-/* 小码 */
+/* 小码：颜色走主题变量（--m-ink 轮廓与五官、--m-side 厚度、--m-shadow 地面投影） */
 .mascot { flex-shrink: 0; }
-.mascot .m-body { fill: #FFF8EC; stroke: #172B3A; stroke-width: 4; stroke-linejoin: round; }
-.mascot .m-fold { fill: #B75532; stroke: #172B3A; stroke-width: 3; stroke-linejoin: round; }
-.mascot .m-ink { fill: none; stroke: #172B3A; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
-.mascot .m-solid { fill: #172B3A; }
+.mascot .m-fill { fill: var(--m-ink); }
+.mascot .m-line { stroke: var(--m-ink); }
+.mascot .m-side { fill: var(--m-side); }
+.mascot .m-shadow { fill: var(--m-shadow); }
 .mascot .m-spark { fill: none; stroke: #B75532; stroke-width: 3; stroke-linecap: round; }
 
 /* 开场 */

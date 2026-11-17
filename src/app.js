@@ -318,29 +318,51 @@ function hexNode(st, review) {
   return el;
 }
 
-// ---------- 吉祥物“小码”：折角记录卡（暖白主体、墨蓝括号眼睛、铜橙折角、短脚） ----------
+// ---------- 吉祥物“小码”：立体折角记录卡（奶白正面 + 米色厚度，铜色折角，大圆眼，短脚；没有手） ----------
+// 旧调用名 → 新表情：happy=平常，celebrate=答对，companion / sad=答错（红心用完、有错题时），think=想一想
+const MASCOT_MOOD = { happy: "normal", celebrate: "happy", companion: "wrong", sad: "wrong", think: "think" };
+let mascotSeq = 0;
 function mascot(size = 96, mood = "happy") {
-  if (mood === "sad") mood = "companion";
-  const eye = (d) => svg("path", { d, class: "m-ink" });
-  const eyes = {
-    happy: [eye("M36 44Q31 51 36 58"), eye("M64 44Q69 51 64 58")],
-    think: [eye("M37 40Q32 47 37 54"), eye("M66 40Q71 47 66 54")],
-    companion: [eye("M31 50Q36 56 41 50"), eye("M59 50Q64 56 69 50")],
-    celebrate: [eye("M31 54Q36 46 41 54"), eye("M59 54Q64 46 69 54")],
-  }[mood];
-  const mouth = {
-    happy: svg("path", { d: "M42 68Q50 75 58 68", class: "m-ink" }),
-    think: svg("path", { d: "M45 69H57", class: "m-ink" }),
-    companion: svg("path", { d: "M44 68Q50 72 56 68", class: "m-ink" }),
-    celebrate: svg("path", { d: "M42 66Q50 80 58 66z", class: "m-ink m-solid" }),
-  }[mood];
-  return svg("svg", { viewBox: "0 0 100 100", width: size, height: size, class: "mascot", "aria-hidden": "true" },
-    svg("rect", { x: "26", y: "86", width: "14", height: "9", rx: "3", class: "m-solid m-ink" }),
-    svg("rect", { x: "60", y: "86", width: "14", height: "9", rx: "3", class: "m-solid m-ink" }),
-    svg("path", { d: "M22 12H66L90 36V80Q90 90 80 90H22Q12 90 12 80V22Q12 12 22 12Z", class: "m-body" }),
-    svg("path", { d: "M66 12L90 36H76Q66 36 66 26Z", class: "m-fold" }),
-    ...eyes, mouth,
-    mood === "celebrate" ? svg("path", { d: "M14 6v8M10 10h8", class: "m-spark" }) : null,
+  const m = MASCOT_MOOD[mood] || "normal";
+  const gid = `mg${++mascotSeq}`;
+  const cx = 31, ey = 35, dx = 9.5, my = 42.5;
+  const fillInk = { class: "m-fill" }, line = (w) => ({ class: "m-line", "stroke-width": w, "stroke-linecap": "round", "stroke-linejoin": "round", fill: "none" });
+  const eye = (x, px = 0, py = 0, k = 1) => [
+    svg("ellipse", { cx: x + px, cy: ey + py, rx: 2.7 * k, ry: 3.5 * k, ...fillInk }),
+    svg("circle", { cx: x + px + 0.9, cy: ey + py - 1.3, r: 1, fill: "#fff" }),
+  ];
+  const cheeks = [cx - dx - 5.5, cx + dx + 5.5].map((x) => svg("ellipse", { cx: x, cy: ey + 6.5, rx: 3.4, ry: 2.2, fill: "#F08C6A", opacity: ".5" }));
+  const face = {
+    normal: () => [...cheeks, ...eye(cx - dx), ...eye(cx + dx), svg("path", { d: `M${cx - 3.5} ${my}q3.5 3.6 7 0`, ...line(2.6) })],
+    happy: () => [...cheeks,
+      svg("path", { d: `M${cx - dx - 3.6} ${ey + 1.5}q3.6-5.5 7.2 0M${cx + dx - 3.6} ${ey + 1.5}q3.6-5.5 7.2 0`, ...line(2.8) }),
+      svg("path", { d: `M${cx - 5} ${my - 1}h10a5 5 0 0 1-10 0z`, class: "m-fill m-line", "stroke-width": 1.5, "stroke-linejoin": "round" }),
+      svg("ellipse", { cx, cy: my + 2.6, rx: 2.6, ry: 1.5, fill: "#F08C6A" })],
+    wrong: () => [...eye(cx - dx, 0, 1, 0.85), ...eye(cx + dx, 0, 1, 0.85),
+      svg("path", { d: `M${cx - dx - 4} ${ey - 4.5}l7-2.5M${cx + dx + 4} ${ey - 4.5}l-7-2.5`, ...line(2.4) }),
+      svg("path", { d: `M${cx - 4.5} ${my + 1.5}q2.25-3.5 4.5 0t4.5 0`, ...line(2.6) }),
+      svg("path", { d: `M${cx + dx + 7} ${ey - 5}q2.2 3.6 0 5-2.2-1.4 0-5z`, fill: "#8FC8EE" })],
+    think: () => [...eye(cx - dx, 1, -1), ...eye(cx + dx, 1, -1),
+      svg("circle", { cx: cx + 1, cy: my + 1, r: 2, ...line(2.4) }),
+      svg("path", { d: `M${cx - dx - 3.5} ${ey - 7.5}h7`, ...line(2.4) })],
+  }[m]();
+  const O = "M17 12H44L57 25V48a10 10 0 0 1-10 10H17a10 10 0 0 1-10-10V22a10 10 0 0 1 10-10z";
+  const P = "M17 12H44L57 25V42a10 10 0 0 1-10 10H17a10 10 0 0 1-10-10V22a10 10 0 0 1 10-10z";
+  const stop = (o, c) => svg("stop", { offset: o, "stop-color": c });
+  return svg("svg", { viewBox: "-1 2 66 66", width: size, height: size, class: "mascot", fill: "none", "aria-hidden": "true" },
+    svg("defs", {},
+      svg("linearGradient", { id: gid, x1: 0, y1: 12, x2: 0, y2: 52, gradientUnits: "userSpaceOnUse" }, stop(0, "#FFFDF7"), stop(1, "#F9EEDA")),
+      svg("linearGradient", { id: `${gid}f`, x1: 44, y1: 12, x2: 57, y2: 25, gradientUnits: "userSpaceOnUse" }, stop(0, "#D9774F"), stop(1, "#A84A2A"))),
+    svg("ellipse", { cx: 32, cy: 65, rx: 21, ry: 2.8, class: "m-shadow" }),
+    svg("path", { d: "M17 57h9v4.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2zM38 57h9v4.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2z", class: "m-fill" }),
+    svg("path", { d: O, class: "m-side" }),
+    svg("path", { d: P, fill: `url(#${gid})` }),
+    svg("path", { d: "M43 26h14v5c-6-3-10-3-14-5z", fill: "#172B3A", opacity: ".1" }),
+    svg("path", { d: O, class: "m-line", "stroke-width": 3, "stroke-linejoin": "round" }),
+    svg("path", { d: "M44 12v9a4 4 0 0 0 4 4h9z", class: "m-line", fill: `url(#${gid}f)`, "stroke-width": 3, "stroke-linejoin": "round" }),
+    svg("path", { d: "M11 26v-4a6 6 0 0 1 6-6h14", stroke: "#fff", "stroke-width": 2.2, "stroke-linecap": "round", fill: "none" }),
+    ...face,
+    m === "happy" ? svg("path", { d: "M6 3v6M3 6h6", class: "m-spark" }) : null,
   );
 }
 
@@ -1648,7 +1670,7 @@ function renderPracticeSetup(prev) {
   const scope = clearedScope(availableUnits(), state.done);
   if (!scope.length) {
     appEl.replaceChildren(circuit("full"), statsBar(), h("main", { class: "view practice-setup" },
-      mascot(96, "companion"), h("h1", { text: "还不能刷题哦" }),
+      mascot(96, "think"), h("h1", { text: "还不能刷题哦" }),
       h("p", { "data-practice-empty": "", text: "随机练习只用你已经通关的关卡出题。完成第一关后可开始刷题，先去闯一关吧！" }),
       button("回到地图", renderPath, "btn3d primary wide")), tabBar("path"));
     return;
