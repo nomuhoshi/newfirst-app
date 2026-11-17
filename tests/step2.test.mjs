@@ -281,6 +281,24 @@ try {
   // 我的
   await page.getByRole("button", { name: "我的" }).tap();
   check("我的：入口页显示 XP、连续天数、完成关卡、红心，并且只有账号、设置、数据与备份、帮助四个入口", /经验值/.test(await text()) && /已完成关卡/.test(await text()) && (await page.locator("[data-me-menu]").allInnerTexts()).map((t) => t.split("\n")[0]).join("|") === "账号|设置|数据与备份|帮助");
+  // 2026-11-17 入口页重排：身份卡 → 学习进度 → 备份提醒 → 四个入口
+  {
+    const info = await page.evaluate(() => ({
+      id: document.querySelector("[data-me-id]")?.dataset.meId, title: document.querySelector(".me-id h1")?.textContent,
+      days: [...document.querySelectorAll(".me-day")].map((d) => d.dataset.day), last: document.querySelector(".me-day:last-child span")?.textContent,
+      bar: document.querySelector(".me-bar > div")?.style.width, backup: document.querySelector("[data-me-backup]")?.dataset.meBackup,
+      login: document.querySelectorAll("[data-me-login]").length, wide: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      streak: window.__app.getState().streak, lastDay: window.__app.getState().lastDay, done: Object.keys(window.__app.getState().done).length,
+    }));
+    const today = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+    check("我的入口页：游客身份卡写“游客”；没配云端时没有登录按钮", info.id === "guest" && info.title === "游客" && info.login === 0, JSON.stringify(info));
+    check("我的入口页：最近 7 天有 7 个圆点、最后一个是“今天”；今天学过就点亮，点亮个数 = min(连续天数, 7)", info.days.length === 7 && info.last === "今天" && info.lastDay === today && info.days[6] === "done" && info.days.filter((d) => d === "done").length === Math.min(info.streak, 7), JSON.stringify(info));
+    check("我的入口页：进度条宽度按已完成关数算", info.bar === `${Math.round((info.done / 34) * 100)}%` && info.done > 0, JSON.stringify(info));
+    check("我的入口页：游客有备份提醒条（还没备份过），页面不横向滚动", info.backup === "never" && /还没备份过/.test(await text()) && info.wide, JSON.stringify(info));
+    await page.locator("[data-me-backup-go]").tap();
+    check("我的入口页：点「去备份」进到数据与备份页（导出仍在那一页做）", (await page.locator("[data-backup]").count()) === 1 && (await page.locator("[data-me-back]").count()) === 1);
+    await page.locator("[data-me-back]").tap();
+  }
   await page.locator('[data-me-menu="help"]').tap();
   check("我的 → 帮助：有规则", /每 30 分钟恢复/.test(await text()));
   await page.locator("[data-me-back]").tap();
