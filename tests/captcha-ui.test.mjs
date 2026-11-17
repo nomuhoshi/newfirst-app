@@ -219,6 +219,22 @@ for (const captchaEnabled of [true, false]) {
     check(`F4（${tag}）关掉后请求才失败：提示区没有被改写成报错`, !find(s.box(), "data-login-msg").classList.contains("bad"), find(s.box(), "data-login-msg").textContent);
   }
 }
+// G 服务器要求人机验证（captcha_failed），按这份页面有没有带人机验证给不同提示
+for (const captchaEnabled of [true, false]) {
+  const rej = { ok: false, kind: "auth", status: 400, errorCode: "captcha_failed", message: "CANARY captcha verification process failed" };
+  const s = setup({ captchaEnabled, sendResults: [rej, rej] });
+  await sendFrom(launch(s), "a@b.co");
+  const m1 = find(s.box(), "data-login-msg").textContent;
+  if (captchaEnabled) check("G（开）服务器拒绝令牌：提示“没通过…再点一次”（K4，和以前一样）", /人机验证没通过/.test(m1) && /再点一次/.test(m1), m1);
+  else check("G（没开）页面没带人机验证却被服务器要求：提示更新版本，不叫人反复点（K5）", /这个版本还不支持/.test(m1) && /更新到最新版本/.test(m1) && !/再点一次/.test(m1), m1);
+  check(`G（${captchaEnabled ? "开" : "没开"}）不显示服务器原文、不冷却、仍在邮箱页`, !m1.includes("CANARY") && !find(s.box(), "data-send-code").disabled && !!find(s.box(), "data-email"));
+  // 进了输验证码页后的“重新发送”走同一套提示
+  const s2 = setup({ captchaEnabled, sendResults: [{ ok: true }, rej] });
+  await sendFrom(launch(s2), "a@b.co"); NOW += 61_000;
+  const resend = find(s2.box(), "data-resend"); resend.disabled = false; resend.click(); await flush();
+  const m2 = find(s2.box(), "data-login-msg").textContent;
+  check(`G（${captchaEnabled ? "开" : "没开"}）重发被拒：${captchaEnabled ? "K4" : "K5"}`, captchaEnabled ? /人机验证没通过/.test(m2) : /更新到最新版本/.test(m2), m2);
+}
 check("F 全程没有未处理异常", unhandled.length === 0, JSON.stringify(unhandled));
 console.log(`\n${ok} 通过，${bad} 失败`);
 process.exit(bad ? 1 : 0);
