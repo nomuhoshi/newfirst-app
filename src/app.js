@@ -45,6 +45,7 @@ import { createPreviewInfo } from "./preview-info.js";
 import { cloudTarget } from "./cloud-config.js";
 import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize, encodeCode, decodeCode } from "./progress-file.js";
+import { captchaDiagLine } from "./captcha.js";
 import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad, ensureBackupBase, getLastReminderStatus, lastExportAt } from "./storage-health.js";
 import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise } from "./practice.js";
 
@@ -798,6 +799,7 @@ function selfTest() {
       `状态变化：${d.history || "无"}`,
       `网页振动接口：${d.vibrate ? "有" : "没有"}`,
       `最近错误：${d.lastError || "无"}`,
+      captchaDiagLine(), // 人机验证最近一次失败的原因 + 过滤后的错误码（没有失败过就没有这一行）
       extra,
     ].filter(Boolean).join("\n");
   };
