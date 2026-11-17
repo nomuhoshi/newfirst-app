@@ -46,11 +46,51 @@ export function drawRound(pool, size, rand = Math.random) {
   return { items: shuffle(uniq, rand).slice(0, actual), requested: size, actual, short: actual < size };
 }
 
-// 打乱一道题的展示：选项（正确标记和解释跟着选项对象一起移动）、词块、排序题的初始排列。判分数据不变。
+// 排序题：按“代码行文字”判断一个排列是不是正确答案（与 orderArea 的判分口径一致：行文字拼起来等于任一可接受答案的行文字拼起来）
+export function orderIsCorrect(ex, seq) {
+  const text = (a) => a.map((k) => ex.lines[k]).join("\n");
+  const mine = text(seq);
+  return ex.answers.some((a) => text(a) === mine);
+}
+
+// 在 seq 的全部排列里（字典序，最多 ORDER_SCAN_LIMIT 个）找第一个“按行文字核对确实不是任何可接受答案”的排列；没有就返回 null。
+export const ORDER_SCAN_LIMIT = 50000;
+export function findWrongArrangement(ex, seq) {
+  const a = [...seq].sort((x, y) => x - y);
+  for (let count = 0; count < ORDER_SCAN_LIMIT; count++) {
+    if (!orderIsCorrect(ex, a)) return [...a];
+    let i = a.length - 2; while (i >= 0 && a[i] >= a[i + 1]) i--; // 下一个排列
+    if (i < 0) return null;
+    let j = a.length - 1; while (a[j] <= a[i]) j--;
+    [a[i], a[j]] = [a[j], a[i]]; a.splice(i + 1, a.length, ...a.slice(i + 1).reverse());
+  }
+  return null;
+}
+
+// 排序题的初始排列：随机打乱，但绝不能一上来就是正确答案。
+// 先重抽（最多 ORDER_RETRIES 次）；仍命中答案时，先试 “交换相邻两项 / 反转 / 轮转”，再有上限地遍历全部其余排列（findWrongArrangement）；每个候选都重新按行文字与全部 answers 核对，选第一个确认错误的。
+// 只有确实不存在任何错误排列（所有排列都算对，是题库本身的问题）或排列数超过扫描上限时才返回仍然正确的最后一次随机结果——不死循环、不假装修好；
+// 测试用 findWrongArrangement 逐题检查并列出这类题目 ID。
+export const ORDER_RETRIES = 20;
+export function shuffleOrderInitial(ex, rand = Math.random) {
+  let s = ex.shuffled;
+  for (let t = 0; t < ORDER_RETRIES; t++) { s = shuffle(ex.shuffled, rand); if (!orderIsCorrect(ex, s)) return s; }
+  const n = s.length, cands = [];
+  for (let i = 0; i + 1 < n; i++) { const c = [...s]; [c[i], c[i + 1]] = [c[i + 1], c[i]]; cands.push(c); }
+  cands.push([...s].reverse());
+  for (let r = 1; r < n; r++) cands.push([...s.slice(r), ...s.slice(0, r)]);
+  for (const c of cands) if (!orderIsCorrect(ex, c)) return c;
+  return findWrongArrangement(ex, s) || s;
+}
+
+// 打乱一道题的展示：选项（正确标记和解释跟着选项对象一起移动）、词块、排序题的初始排列。判分数据（answer / answers / lines）不变。
+// 关卡和随机练习都用它；每次开始一关 / 一轮只调用一次，同一题重绘、答错后再做时顺序保持不变。
 export function shuffleExercise(ex, rand = Math.random) {
   const copy = JSON.parse(JSON.stringify(ex));
   if (copy.type === "predict") copy.options = shuffle(copy.options, rand);
   else if (copy.type === "fill") copy.tokens = shuffle(copy.tokens, rand);
-  else if (copy.type === "order") copy.shuffled = shuffle(copy.shuffled, rand);
+  else if (copy.type === "order") copy.shuffled = shuffleOrderInitial(copy, rand);
   return copy;
 }
+
+export const SHUFFLED_TYPES = ["predict", "fill", "order"];
