@@ -75,16 +75,17 @@ function runCallback(body, globals) {
   return vm.runInNewContext(`(() => {${body}\n})()`, globals, { timeout: 1000 });
 }
 // epochVisible=false：旧页读到的还是旧代数（本机存储里没有 suipian.v4.epoch = m0），这时它不可能知道发生过清除：persist() 返回 true、内存仍是旧进度、代数保持 m0
-function sampleT2({ throws = false, stale = false, returnValue = false, epochAfter = CLEARED, epochVisible = true } = {}) {
-  const storage = new MemoryStorage(epochVisible ? { "suipian.v4.epoch": CLEARED } : {});
-  let memory = { xp: 50, lessonsCompleted: 1, done: { U1L1: true } };
+// staleBefore / staleAfter：epochVisible=false 时保存前后旧页读到的代数（undefined = 本机存储里没有该键 = m0）；staleReturn：这时 persist() 的返回值；staleMemory：保存前旧页内存
+function sampleT2({ throws = false, stale = false, returnValue = false, epochAfter = CLEARED, epochVisible = true, staleBefore, staleAfter, staleReturn = true, staleMemory } = {}) {
+  const storage = new MemoryStorage(epochVisible ? { "suipian.v4.epoch": CLEARED } : staleBefore !== undefined ? { "suipian.v4.epoch": staleBefore } : {});
+  let memory = staleMemory ?? { xp: 50, lessonsCompleted: 1, done: { U1L1: true } };
   return runCallback(t2Body, {
     Storage: MemoryStorage, localStorage: storage, document: { visibilityState: "hidden" },
     window: { __app: {
       getState: () => memory,
       persist() {
         if (throws) throw new Error("gpt1-synthetic-persist-error");
-        if (!epochVisible) return true; // 看不到清除：保存成功，内存与代数都不变
+        if (!epochVisible) { if (staleAfter !== undefined) storage.setItem("suipian.v4.epoch", staleAfter); return staleReturn; } // 看不到清除：默认保存成功，内存与代数都不变
         if (!stale) memory = { xp: 0, lessonsCompleted: 0, done: {} };
         storage.setItem("suipian.v4.epoch", epochAfter);
         return returnValue;
@@ -155,6 +156,25 @@ test("immediate track: old page still sees the OLD epoch -> STALE_EPOCH_NOT_VISI
   assert.equal(checks.some((c) => c.ok && c.name.includes("返回契约")), false, JSON.stringify(checks));
   assert.ok(checks.filter((c) => c.name.includes(" T2 ")).every((c) => c.ok), "safety invariants and new-epoch storage emptiness must hold");
 });
+
+// 警告只限已证实的旧代数窗口（保存前后都是 preClearEpoch "m0"、保存前内存是旧进度、返回 true、内存未变）。其余一律走严格断言并失败，且不得产生警告。
+for (const [name, opts] of [
+  ["unknown epoch before and after save", { epochVisible: false, staleBefore: "c-unknown-epoch", staleAfter: "c-unknown-epoch" }],
+  ["old epoch before save, a different epoch after save", { epochVisible: false, staleAfter: "c-some-other-epoch" }],
+  ["old epoch before save, cleared epoch after save (epoch changed during persist)", { epochVisible: false, staleAfter: CLEARED }],
+  ["unknown epoch before save, old epoch after save", { epochVisible: false, staleBefore: "c-unknown-epoch", staleAfter: "m0" }],
+  ["old epoch before and after save but persist returned false", { epochVisible: false, staleReturn: false }],
+  ["old epoch before and after save but persist returned a non-boolean", { epochVisible: false, staleReturn: "saved" }],
+  ["old epoch before and after save but memory before save was already empty", { epochVisible: false, staleMemory: { xp: 0, lessonsCompleted: 0, done: {} } }],
+  ["old epoch before and after save but memory before save was some other progress", { epochVisible: false, staleMemory: { xp: 10, lessonsCompleted: 0, done: {} } }],
+]) {
+  test(`immediate track: ${name} must NOT be downgraded to an unverified warning`, async () => {
+    const t2 = sampleT2(opts);
+    const checks = await evaluateGates(t2);
+    assert.equal(checks.unverifiedNames.length, 0, JSON.stringify({ t2, warnings: checks.unverifiedNames }));
+    assertVerdict(checks, "T2", false, t2);
+  });
+}
 
 test("immediate track: STALE_EPOCH_NOT_VISIBLE with old progress leaked into the new epoch must fail", async () => {
   const t2 = sampleT2({ epochVisible: false });

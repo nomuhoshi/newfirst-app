@@ -600,15 +600,23 @@ try {
       );
     }
 
-    const t2StaleViewAtSample = t2ImmediateSave.storageEpochBeforeSave !== t1ClearAndRaw.epochAfterClear;
-    if (!waitForEpoch && t2StaleViewAtSample) {
+    // 警告只限已证实的旧代数窗口：保存前后旧页读到的代数都还是清除前的代数（preClearEpoch）、保存前内存确实还是清除前的旧进度、persist() 返回 true 且内存没有变化。
+    // 读到未知代数、保存前后代数不一致、保存前内存不是旧进度、返回 false 等其余情况一律走下面的严格断言（读不到清除代数时它必然失败）。
+    const t2StaleWindow =
+      t2ImmediateSave.storageEpochBeforeSave === preClearEpoch &&
+      t2ImmediateSave.storageEpochAfterSave === preClearEpoch &&
+      matchesMemoryTriad(t2ImmediateSave.preMem, EXPECTED_PRE_CLEAR) &&
+      t2ImmediateSave.persistError === null &&
+      t2ImmediateSave.persistRet === true &&
+      matchesMemoryTriad(t2ImmediateSave.postMem, EXPECTED_PRE_CLEAR);
+    if (!waitForEpoch && t2StaleWindow) {
       markUnverified(
-        `[${track}] T2 即时采样未覆盖：旧页读到的仍是旧代数（STALE_EPOCH_NOT_VISIBLE，不计入 T2 通过；已看见清除后的收敛由 native-after-epoch-visible 轨道核验）`,
+        `[${track}] T2 即时采样未覆盖：旧页保存前后读到的都是清除前的旧代数（STALE_EPOCH_NOT_VISIBLE，不计入 T2 通过；已看见清除后的收敛由 native-after-epoch-visible 轨道核验）`,
         JSON.stringify(t2ImmediateSave)
       );
       check(
-        `[${track}] T2 即时窗口安全不变量（旧代数不可见：persist() 不抛错且返回布尔值；此项只证明没有异常，不证明收敛）`,
-        t2ImmediateSave.persistError === null && typeof t2ImmediateSave.persistRet === "boolean",
+        `[${track}] T2 即时窗口安全不变量（旧代数不可见：persist() 不抛错、返回 true、旧页内存未变；此项只证明没有异常，不证明收敛）`,
+        t2ImmediateSave.persistError === null && t2ImmediateSave.persistRet === true,
         JSON.stringify(t2ImmediateSave)
       );
     } else {
@@ -793,7 +801,7 @@ try {
       t0: { memory: t0Memory, storage: t0Obs },
       t1_syncClearAndRawSnapshot: t1ClearAndRaw,
       t1_ledgerView: t1LedgerView,
-      t2_syncImmediateSave: { epochWait: t2EpochWait, t2View: t2StaleViewAtSample ? "STALE_EPOCH_NOT_VISIBLE" : "EPOCH_VISIBLE", immediateSave: t2ImmediateSave, storageAfterSave: t2Obs },
+      t2_syncImmediateSave: { epochWait: t2EpochWait, t2View: t2StaleWindow ? "STALE_EPOCH_NOT_VISIBLE" : t2ImmediateSave.storageEpochBeforeSave === t1ClearAndRaw.epochAfterClear ? "EPOCH_VISIBLE" : "EPOCH_MISMATCH", immediateSave: t2ImmediateSave, storageAfterSave: t2Obs },
       controlledStats,
       t3_realBringToFront: { lifecycle: t3Lifecycle, memory: t3Memory, storage: t3Obs },
       t4_syntheticEvents: { memory: t4Memory, storage: t4Obs },
