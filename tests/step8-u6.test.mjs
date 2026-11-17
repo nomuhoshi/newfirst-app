@@ -38,8 +38,10 @@ async function answer(ex, right) {
     const cur = await page.evaluate(() => window.__app.currentEx); // 选项在课程里会打乱：按屏幕上实际显示的顺序点，不能用数据里的顺序
     const i = right ? cur.options.findIndex((o) => o.correct) : cur.options.findIndex((o) => !o.correct);
     if (right) predictPos.push(cur.options.findIndex((o) => o.correct));
-    const same = [...cur.options].map((o) => o.text).sort().join("\u0001") === [...ex.options].map((o) => o.text).sort().join("\u0001");
-    if (!same) check("选项打乱后仍是同一组选项（只换位置）", false, ex.prompt.slice(0, 30));
+    // 同一个题面可能对应几道题：按题面 + 代码找屏幕上这道题的数据，核对选项文字、正确标记、解释都跟着选项走（只换位置）
+    const dat = unitN.lessons.flatMap((x) => x.exercises).find((e) => e.type === "predict" && e.prompt === cur.prompt && e.code === cur.code);
+    const same = !!dat && cur.options.length === dat.options.length && cur.options.every((o) => { const d = dat.options.find((x) => x.text === o.text); return d && !!d.correct === !!o.correct && d.why === o.why; });
+    if (!same) check("选项打乱后仍是同一组选项（只换位置）", false, String(cur.prompt).slice(0, 30));
     await page.locator(".choice").nth(i).click();
   } else if (ex.type === "fill") {
     const toks = right ? ex.answer : ex.answer.map((a, i) => (i === 0 ? ex.tokens.find((t) => t !== a) : a)); // 答错：每个空都填，第一个空换成错误词块
