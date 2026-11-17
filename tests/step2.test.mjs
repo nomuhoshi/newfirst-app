@@ -10,6 +10,7 @@ const unit = JSON.parse(readFileSync(new URL("../content/unit1.json", import.met
 const unit2 = JSON.parse(readFileSync(new URL("../content/unit2.json", import.meta.url)));
 const words = JSON.parse(readFileSync(new URL("../content/words.json", import.meta.url)));
 const course = JSON.parse(readFileSync(new URL("../content/course.json", import.meta.url)));
+const TOTAL_LESSONS = course.units.filter((u) => u.available).reduce((n, u) => n + JSON.parse(readFileSync(new URL(`../content/${u.file}`, import.meta.url))).lessons.length, 0); // 可用关卡总数（随单元接入自动变化，不再写死 34）
 const server = await startDistServer(); // 进程内静态服务器、随机端口、就绪才返回；用完 server.close()（不再留下 vite preview 进程）
 const BASE = server.base;
 
@@ -293,7 +294,7 @@ try {
     const today = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
     check("我的入口页：游客身份卡写“游客”；没配云端时没有登录按钮", info.id === "guest" && info.title === "游客" && info.login === 0, JSON.stringify(info));
     check("我的入口页：最近 7 天有 7 个圆点、最后一个是“今天”；今天学过就点亮，点亮个数 = min(连续天数, 7)", info.days.length === 7 && info.last === "今天" && info.lastDay === today && info.days[6] === "done" && info.days.filter((d) => d === "done").length === Math.min(info.streak, 7), JSON.stringify(info));
-    check("我的入口页：进度条宽度按已完成关数算", info.bar === `${Math.round((info.done / 34) * 100)}%` && info.done > 0, JSON.stringify(info));
+    check("我的入口页：进度条宽度按已完成关数算", info.bar === `${Math.round((info.done / TOTAL_LESSONS) * 100)}%` && info.done > 0, JSON.stringify(info));
     check("我的入口页：游客有备份提醒条（还没备份过），页面不横向滚动", info.backup === "never" && /还没备份过/.test(await text()) && info.wide, JSON.stringify(info));
     await page.locator("[data-me-backup-go]").tap();
     check("我的入口页：点「去备份」进到数据与备份页（导出仍在那一页做）", (await page.locator("[data-backup]").count()) === 1 && (await page.locator("[data-me-back]").count()) === 1);
