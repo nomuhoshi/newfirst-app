@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="index" />
+  <title>隐私说明 · 碎片编程</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #F7F5F0; --fg: #1d2433; --muted: #5b6475; --line: #e3ded3; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #10213a; --fg: #eef1f6; --muted: #aab4c4; --line: #2a3a55; } }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+    main { max-width: 680px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 24px; margin: 8px 0 4px; }
+    h2 { font-size: 18px; margin: 28px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+    p, li { margin: 6px 0; }
+    ul { padding-left: 20px; }
+    .muted { color: var(--muted); font-size: 14px; }
+    a { color: inherit; }
+    .back { display: inline-flex; align-items: center; min-height: 44px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { text-align: left; vertical-align: top; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">← 回到碎片编程</a>
+  <h1>隐私说明</h1>
+  <p class="muted">版本：2026-11-10（第一版发布候选，正式上线前还会更新）</p>
+
+  <p>碎片编程是一个免费的 Python 入门练习网站。我们只收集让它能用所必需的最少信息，没有广告，不做用户画像，不把你的信息卖给或交给任何人用于营销。</p>
+
+  <h2>不登录（游客）时</h2>
+  <ul>
+    <li>你的学习进度（XP、红心、连续天数、完成了哪些关、每关第一次完成的日期、声音和振动设置、写代码题的草稿）<b>只保存在这台设备的浏览器里</b>，不会上传。</li>
+    <li>清除浏览器网站数据、或在“我的”页点“清除学习记录”，这些记录就会从这台设备上删除。</li>
+  </ul>
+
+  <h2>登录后</h2>
+  <p>登录只用邮箱和一次性验证码，不需要设置密码。为了让你在换手机、换 iPad 后接着学，我们会在云端保存：</p>
+  <table>
+    <tr><th>信息</th><th>用途</th></tr>
+    <tr><td>邮箱地址</td><td>发验证码、识别你的账号</td></tr>
+    <tr><td>学习进度：XP、完成次数、完成的关卡和日期、学习日期、红心、声音和振动设置</td><td>多台设备之间同步进度</td></tr>
+    <tr><td>每台设备的随机编号（不含设备型号或个人信息）、导入过的游客记录的校验码</td><td>多台设备同时学习时不重复加分、游客进度不重复导入</td></tr>
+    <tr><td>登录服务自动记录的登录时间和网络地址（IP）</td><td>登录安全（例如防止有人反复请求验证码）。保留多久由登录服务商的日志设置决定，具体期限会在正式上线前补充到这里。</td></tr>
+  </table>
+  <p>写代码题的草稿、运行的 Python 代码都只在你的设备上，不上传。Python 是在你的浏览器里运行的。</p>
+
+  <h2>谁在帮我们处理这些信息</h2>
+  <ul>
+    <li><b>Supabase</b>：提供登录和云端数据库，保存上面表格里的信息。数据存放的地区会在正式上线前补充到这里。</li>
+    <li><b>邮件发送服务</b>：把验证码发到你的邮箱，只用到你的邮箱地址。具体服务商确定后会写在这里。</li>
+    <li><b>GitHub Pages</b>：托管这个网站的网页文件；和所有网站一样，托管方会看到访问请求（例如 IP 地址）。</li>
+  </ul>
+  <p>网站没有使用任何统计、广告或追踪代码。</p>
+
+  <h2>删除你的数据</h2>
+  <ul>
+    <li><b>删除账号</b>：登录后在“我的”页点“删除账号和云端记录”。你的账号和云端学习记录会从我们的数据库里删除，删除后无法恢复。云服务商可能还在它自己的定期备份里留有副本，这些副本按服务商的备份周期被覆盖，我们没法提前清除。</li>
+    <li><b>只删这台设备上的</b>：退出登录后点“清除学习记录”，或清除浏览器的网站数据。</li>
+  </ul>
+
+  <h2>未成年人</h2>
+  <p>账号功能只面向年满 14 周岁的用户。不满 14 周岁的同学可以<b>不登录</b>使用全部课程，学习记录只保存在自己的设备上，不会上传。</p>
+
+  <h2>联系我们</h2>
+  <p>专门的隐私联系邮箱会在正式上线前补充到这里。</p>
+  <p>在那之前，可以在本项目的 GitHub 页面留言：<a href="https://github.com/nomuhoshi/newfirst-app/issues">github.com/nomuhoshi/newfirst-app/issues</a>。<b>那里的内容所有人都能看到，请不要写邮箱地址、验证码或任何个人信息。</b>需要处理具体账号时，我们会在留言里另约私下联系的方式。</p>
+  <p class="muted">这份说明更新时，页面顶部的版本日期会跟着变。</p>
+</main>
+</body>
+</html>
