@@ -128,10 +128,11 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           if (busy || cdLeft(v) > 0) return; busy = true; go.disabled = true; go.textContent = "发送中…"; say("正在发送…", false);
           const r = await sendWithCaptcha(v);
           busy = false;
+          if (finished) return; // 发送途中点了「先不登录」：弹窗已关，迟到的结果不再翻页、不改提示、不起计时
           if (!r.ok) {
-            const d0 = describeSendError(r, { xp: localXp(), fails: 1 });
+            const d0 = describeSendError(r, { xp: localXp(), fails: 1, captchaOn: captcha.enabled });
             s4Fails = d0.id === "S4" ? s4Fails + 1 : 0; // S4 连续失败计数只放内存，成功一次清零
-            const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails }) : d0;
+            const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails, captchaOn: captcha.enabled }) : d0;
             if (d.cooldownMs) setCooldown(d.cooldownMs, v, d.scope);
             sendLabel = d.cooldownLabel;
             if (d.uncertainSent) { email = v; setCooldown(60000, v, "email"); stepCode(); sayFail(d); return; } // 超时：邮件可能已发出，直接去输验证码、先查邮箱，不鼓励马上重发
@@ -187,9 +188,9 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           if (cdLeft(email) > 0 || busy) return;
           busy = true; resend.disabled = true; resend.textContent = "发送中…"; const r = await sendWithCaptcha(email); busy = false;
           if (!r.ok) {
-            const d0 = describeSendError(r, { xp: localXp(), fails: 1 });
+            const d0 = describeSendError(r, { xp: localXp(), fails: 1, captchaOn: captcha.enabled });
             s4Fails = d0.id === "S4" ? s4Fails + 1 : 0;
-            const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails }) : d0;
+            const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails, captchaOn: captcha.enabled }) : d0;
             if (d.cooldownMs) setCooldown(d.cooldownMs, email, d.scope);
             sayFail(d); tick(); return;
           }
@@ -232,7 +233,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           input, feedback,
           ...(captcha.enabled ? [captchaMount] : []),
           h("div", { class: "login-actions" }, go, resend, extra),
-          button("换个邮箱", () => { say(""); stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着
+          button("换个邮箱", () => { if (busy) return; say(""); stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着；重发 / 登录还在处理时不换页（和遮罩、Esc 一致），否则邮箱页的发送按钮会停在“发送中…”
         );
         setTimeout(() => input.focus(), 50);
       }

@@ -157,5 +157,84 @@ async function sendFrom(box, addr) { const input = find(box, "data-email"); inpu
   check("E4 重试成功", !!find(s.box(), "data-code"));
   check("E 全程没有未处理异常", unhandled.length === 0, JSON.stringify(unhandled));
 }
+// F 请求还在路上时离开当前页（2026-11-17 审查发现：“换个邮箱”和“先不登录”没看 busy）。
+//   旧行为：重发 / 登录途中点“换个邮箱”会回到邮箱页，但「发送验证码」按钮停在禁用的“发送中…”，旧请求的结果（“已重新发送”/ 登录报错）还会写到邮箱页上。
+//   新行为：处理中点“换个邮箱”不换页（和点遮罩 / Esc 不能关一致）；“先不登录”仍然可以关（人机验证最长可能等几十秒，要留退路），关掉后迟到的结果不再翻页。
+const btnByText = (root, t) => { if (root instanceof El && root.tag === "button" && root.textContent === t) return root; for (const c of root.children || []) { if (c instanceof El) { const r = btnByText(c, t); if (r) return r; } } return null; };
+const gateOf = () => { let open; const p = new Promise((r) => { open = r; }); return { p, open }; };
+for (const captchaEnabled of [true, false]) {
+  const tag = captchaEnabled ? "开" : "没开";
+  { // F1 重发途中点“换个邮箱”
+    const s = setup({ captchaEnabled });
+    await sendFrom(launch(s), "a@b.co");
+    NOW += 61_000;
+    const g = gateOf(), origSend = s.sync.sendCode;
+    s.sync.sendCode = async (...a) => { await g.p; return origSend(...a); };
+    const resend = find(s.box(), "data-resend"); resend.disabled = false;
+    resend.click(); await flush();
+    check(`F1（${tag}）重发途中：按钮显示“发送中…”`, resend.textContent === "发送中…" && resend.disabled);
+    btnByText(s.box(), "换个邮箱")?.click(); await flush();
+    check(`F1（${tag}）重发途中点“换个邮箱”：不换页，仍在输验证码页`, !!find(s.box(), "data-code") && !find(s.box(), "data-email"));
+    g.open(); await flush();
+    check(`F1（${tag}）请求结束：重发按钮恢复、提示“已重新发送”留在输验证码页`, resend.textContent !== "发送中…" && find(s.box(), "data-login-msg").textContent.includes("已重新发送") && !!find(s.box(), "data-code"), resend.textContent);
+    btnByText(s.box(), "换个邮箱")?.click(); await flush();
+    const go = find(s.box(), "data-send-code");
+    check(`F1（${tag}）结束后再点“换个邮箱”：正常回到邮箱页，按钮是刚重发过的冷却（不是“发送中…”）`, !!go && go.disabled && /后可再发$/.test(go.textContent), go && go.textContent);
+    const inp = find(s.box(), "data-email"); inp.value = "other@b.co"; for (const f of inp.listeners.input || []) f();
+    check(`F1（${tag}）换成别的邮箱：「发送验证码」马上可点`, !go.disabled && go.textContent === "发送验证码", go.textContent);
+  }
+  { // F2 登录（校验验证码）途中点“换个邮箱”
+    const s = setup({ captchaEnabled });
+    await sendFrom(launch(s), "a@b.co");
+    const g = gateOf();
+    s.sync.verify = async () => { await g.p; return { ok: false, kind: "auth", stage: "verify" }; };
+    find(s.box(), "data-code").value = "123456";
+    const go = find(s.box(), "data-verify"); go.click(); await flush();
+    check(`F2（${tag}）登录途中：按钮显示“登录中…”`, go.textContent === "登录中…" && go.disabled);
+    btnByText(s.box(), "换个邮箱")?.click(); await flush();
+    check(`F2（${tag}）登录途中点“换个邮箱”：不换页`, !!find(s.box(), "data-code") && !find(s.box(), "data-email"));
+    g.open(); await flush();
+    check(`F2（${tag}）登录失败的提示留在输验证码页，按钮恢复`, go.textContent === "登录" && !go.disabled && !!find(s.box(), "data-login-msg").textContent && !!find(s.box(), "data-code"));
+  }
+  { // F3 首次发送途中点“先不登录”，请求随后成功
+    const s = setup({ captchaEnabled });
+    const box = launch(s);
+    const g = gateOf(), origSend = s.sync.sendCode;
+    s.sync.sendCode = async (...a) => { await g.p; return origSend(...a); };
+    find(box, "data-email").value = "a@b.co"; find(box, "data-send-code").click(); await flush();
+    btnByText(s.box(), "先不登录")?.click(); await flush();
+    check(`F3（${tag}）发送途中点“先不登录”：可以关（人机验证实例已销毁）`, s.log.some((x) => x[0] === "destroy"));
+    g.open(); await flush();
+    check(`F3（${tag}）关掉后请求才成功：已关的弹窗不再翻到输验证码页`, !find(s.box(), "data-code") && !!find(s.box(), "data-email"));
+    if (captchaEnabled) check("F3（开）令牌照样作废（reset）", s.log.filter((x) => x[0] === "reset").length === 1, JSON.stringify(s.log));
+  }
+  { // F4 首次发送途中点“先不登录”，请求随后失败：不在已关的弹窗上写报错、不起冷却计时
+    const s = setup({ captchaEnabled, sendResults: [{ ok: false, status: 429, errorCode: "over_email_send_rate_limit", kind: "rate-limit" }] });
+    const box = launch(s);
+    const g = gateOf(), origSend = s.sync.sendCode;
+    s.sync.sendCode = async (...a) => { await g.p; return origSend(...a); };
+    find(box, "data-email").value = "a@b.co"; find(box, "data-send-code").click(); await flush();
+    btnByText(s.box(), "先不登录")?.click(); await flush();
+    g.open(); await flush();
+    check(`F4（${tag}）关掉后请求才失败：提示区没有被改写成报错`, !find(s.box(), "data-login-msg").classList.contains("bad"), find(s.box(), "data-login-msg").textContent);
+  }
+}
+// G 服务器要求人机验证（captcha_failed），按这份页面有没有带人机验证给不同提示
+for (const captchaEnabled of [true, false]) {
+  const rej = { ok: false, kind: "auth", status: 400, errorCode: "captcha_failed", message: "CANARY captcha verification process failed" };
+  const s = setup({ captchaEnabled, sendResults: [rej, rej] });
+  await sendFrom(launch(s), "a@b.co");
+  const m1 = find(s.box(), "data-login-msg").textContent;
+  if (captchaEnabled) check("G（开）服务器拒绝令牌：提示“没通过…再点一次”（K4，和以前一样）", /人机验证没通过/.test(m1) && /再点一次/.test(m1), m1);
+  else check("G（没开）页面没带人机验证却被服务器要求：提示更新版本，不叫人反复点（K5）", /这个版本还不支持/.test(m1) && /更新到最新版本/.test(m1) && !/再点一次/.test(m1), m1);
+  check(`G（${captchaEnabled ? "开" : "没开"}）不显示服务器原文、不冷却、仍在邮箱页`, !m1.includes("CANARY") && !find(s.box(), "data-send-code").disabled && !!find(s.box(), "data-email"));
+  // 进了输验证码页后的“重新发送”走同一套提示
+  const s2 = setup({ captchaEnabled, sendResults: [{ ok: true }, rej] });
+  await sendFrom(launch(s2), "a@b.co"); NOW += 61_000;
+  const resend = find(s2.box(), "data-resend"); resend.disabled = false; resend.click(); await flush();
+  const m2 = find(s2.box(), "data-login-msg").textContent;
+  check(`G（${captchaEnabled ? "开" : "没开"}）重发被拒：${captchaEnabled ? "K4" : "K5"}`, captchaEnabled ? /人机验证没通过/.test(m2) : /更新到最新版本/.test(m2), m2);
+}
+check("F 全程没有未处理异常", unhandled.length === 0, JSON.stringify(unhandled));
 console.log(`\n${ok} 通过，${bad} 失败`);
 process.exit(bad ? 1 : 0);
