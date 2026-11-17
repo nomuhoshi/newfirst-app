@@ -324,7 +324,22 @@ function adoptEpoch(S, state, epoch, base) {
   if (!v) return false;
   applyView(state, v, L, { reset: true }); state.prefs = { ...state.prefs, ...prefs };
   LEDGERS.set(state, L); // 视图完整且已采用后才换代，读取失败不能把旧进度绑定到新代。
+  dropStaleOwnTraces(S, L.id, epoch, v);
   return true;
+}
+// WebKit 里旧页可能在别的标签页刚清除后的一小段时间里读到过期的代数（CI main 44053667006 attempt 1），在那段窗口内保存会写出“旧代数标签”的账本和一份带旧进度的兼容镜像。
+// 读取方都会忽略它们（不会复活），但清除的本意是不留旧进度：旧页采用新一代时，把自己名下标着别的代数的账本删掉，再把“带着当前视图里没有的进度”的镜像删掉（镜像只是尽力而为的副本，v4 不读回）。
+// 只动自己的键；别的页面的账本、其他代数的基线都不碰。
+function dropStaleOwnTraces(S, id, epoch, v) {
+  try {
+    const k = K_TAB + id, r = rd(S, k), rec = r.ok && r.v ? parse(r.v) : null;
+    if (rec && rec.v === 4 && typeof rec.epoch === "string" && rec.epoch !== epoch) rm(S, k);
+    const m = rd(S, KEY), mir = m.ok && m.v ? parse(m.v) : null;
+    if (mir && mir.v4mirror === true) {
+      const extra = num(mir.xp) > num(v.xp) || num(mir.lessonsCompleted) > num(v.runs) || Object.keys(mir.done || {}).some((d) => mir.done[d] && !v.done[d]);
+      if (extra) rm(S, KEY);
+    }
+  } catch { /* 清理是尽力而为，失败不影响采用新一代 */ }
 }
 
 
