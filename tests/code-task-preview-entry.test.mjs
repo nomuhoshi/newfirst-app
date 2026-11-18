@@ -20,7 +20,7 @@ const ENGINE = process.argv[2] || process.env.MOBILE_BROWSER || "chromium";
 const engine = ENGINE === "webkit" ? webkit : chromium;
 const OUT = join(ROOT, "iso-p3"), ID = "p3-code", SHA = "94a67e8c1edee0b2d05831640db24a4a166ab3aa", SUB = `/newfirst-app-preview/${ID}/`;
 const CODES_TXT = readFileSync(join(ROOT, "docs/p3-progress-codes.txt"), "utf8");
-const codeOf = (k) => { const m = CODES_TXT.match(new RegExp(`## 进度码 ${k}（[^\\n]*\\n(SPC1\\.[A-Za-z0-9+/=_-]+)`)); return m ? m[1] : null; };
+const codeOf = (k) => { const i = CODES_TXT.indexOf(`## 进度码 ${k}（`); if (i < 0) return null; const m = CODES_TXT.slice(i).match(/^SPC1\.\S+$/m); return m ? m[0] : null; }; // 整行提取：必须包含末尾的 “.校验值”
 const IDS = JSON.parse(readFileSync(join(ROOT, "scripts/code-task-pilot-ids.json"), "utf8"));
 const TASKS = {}; for (let n = 1; n <= 6; n++) for (const l of JSON.parse(readFileSync(join(ROOT, `content/unit${n}.json`))).lessons) for (const p of l.pending || []) TASKS[p.task.id] = { lesson: l.id, task: p.task };
 let pass = 0, fail = 0;
@@ -60,6 +60,17 @@ try {
     await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill(c.match(/.{1,60}/g).join("\n")); await page.locator("[data-code-read]").tap(); await page.waitForSelector("[data-import-confirm]", { timeout: 8000 }).catch(async (e) => { console.log("导入提示：", await page.locator("[data-backup-msg]").innerText()); throw e; });
     const cf = await page.locator("[data-import-confirm]").innerText(); await page.getByRole("button", { name: "确认导入" }).tap(); await page.waitForFunction((n) => Object.keys(window.__app.getState().done).length === n, expectDone);
     return cf; };
+  // 进度码必须是“带校验值的完整码”；损坏校验值的反例：界面必须拒绝（不走没有校验位的旧码兼容路径）
+  { const { decodeCode } = await import(join(ROOT, "src/progress-file.js"));
+    const all = ["A", "B", "C", "D"].map((k) => [k, codeOf(k)]);
+    check("四段进度码都带 “.8 位校验值”，decodeCode 校验通过", all.every(([, c]) => c && /\.[0-9a-f]{8}$/.test(c) && decodeCode(c).ok), JSON.stringify(all.map(([k, c]) => [k, c?.slice(-10)])));
+    const A = codeOf("A"), bad = A.slice(0, -1) + (A.endsWith("0") ? "1" : "0"), noSum = A.slice(0, A.lastIndexOf("."));
+    check("反例：校验值改一位 → decodeCode 拒绝（“校验不通过”）", decodeCode(bad).ok === false && /校验不通过/.test(decodeCode(bad).error), decodeCode(bad).error);
+    check("对照：整段去掉校验值才会走旧码兼容路径（说明上面的拒绝确实来自校验）", decodeCode(noSum).ok === true);
+    await page.evaluate(() => window.__app.renderPath()); await toMe("data"); await page.waitForSelector("[data-backup]");
+    await page.locator("[data-code-paste]").tap(); await page.locator("[data-code-in]").fill(bad.match(/.{1,60}/g).join("\n")); await page.locator("[data-code-read]").tap();
+    const msg = await page.locator("[data-backup-msg]").innerText();
+    check("反例（界面）：粘贴校验值被改过的进度码 → 提示“校验不通过”，不出现确认导入，进度不变", /校验不通过/.test(msg) && (await page.locator("[data-import-confirm]").count()) === 0 && (await stat()).done === 0, msg); }
   const cfA = await importCode("A", 41);
   check("进度码 A 能在界面里读取并导入：41 关已完成，红心 5；地图上第一个没完成的关是 U3L5", /41 个已完成关卡/.test(cfA) && (await stat()).hearts === 5 && (await page.evaluate(() => window.__app.allLessons().find((l) => !window.__app.getState().done[l.id]).id)) === "U3L5", cfA.replace(/\s+/g, " ").slice(0, 100));
   await page.getByRole("button", { name: "我的" }).tap(); await page.locator('[data-me-menu="account"]').tap(); await page.waitForSelector("[data-preview-info]");
@@ -74,7 +85,7 @@ try {
   const code = () => page.evaluate(() => window.__app.currentArea.code());
   const judged = () => page.waitForFunction(() => { const x = document.querySelector("[data-check]"); return (x && x.textContent === "检查" && !x.disabled) || document.querySelector(".feedbar"); }, null, { timeout: 90000 });
 
-  // ---- A：P3-02 / P3-03 / P3-06 ----
+  // ---- A：P3-02 / P3-03 / P3-04 ----
   await start("U3L5"); const a0 = await stat();
   await plain(true); const a1 = await stat();
   check("首次作答：普通题答错扣 1 颗心、XP 不变（说明这一关不是“复习”）", a1.hearts === a0.hearts - 1 && a1.xp === a0.xp, JSON.stringify([a0, a1]));
@@ -100,25 +111,25 @@ try {
   for (let k = 0; k < 2; k++) { await page.evaluate(() => window.__app.currentArea.openHint()); await page.locator(".lsheet button").first().tap(); }
   await page.evaluate(() => window.__app.currentArea.openHint()); await page.getByRole("button", { name: /看参考解法/ }).tap(); await page.waitForFunction(() => /参考解法/.test(document.querySelector(".lsheet")?.innerText || "")); await page.locator(".lsheet button").first().tap();
   await setCode(T6.reference); await page.locator("[data-check]").tap(); await page.waitForSelector("[data-variation]", { timeout: 90000 });
-  check("P3-06 看过解法后原题通过：不结算（XP、红心不变，没有反馈条），出现“变化题”", JSON.stringify(await stat()) === JSON.stringify(b1) && (await page.locator(".feedbar").count()) === 0);
+  check("P3-04 看过解法后原题通过：不结算（XP、红心不变，没有反馈条），出现“变化题”", JSON.stringify(await stat()) === JSON.stringify(b1) && (await page.locator(".feedbar").count()) === 0);
   await setCode(T6.variation.starter); await page.locator("[data-check]").tap(); await judged();
-  check("P3-06 变化题答错：红心不变、不结算，提示“变化题：不扣红心”", JSON.stringify(await stat()) === JSON.stringify(b1) && /变化题：不扣红心/.test(await page.locator("[data-results]").innerText()));
+  check("P3-04 变化题答错：红心不变、不结算，提示“变化题：不扣红心”", JSON.stringify(await stat()) === JSON.stringify(b1) && /变化题：不扣红心/.test(await page.locator("[data-results]").innerText()));
   await setCode(T6.variation.solution); await page.locator("[data-check]").tap(); await page.waitForSelector(".feedbar.ok", { timeout: 90000 }); const b2 = await stat();
-  check("P3-06 变化题答对：结算一次，+10，红心不变", b2.xp - b1.xp === 10 && b2.hearts === b1.hearts);
+  check("P3-04 变化题答对：结算一次，+10，红心不变", b2.xp - b1.xp === 10 && b2.hearts === b1.hearts);
   await next(); for (let g = 0; g < 6 && !(await page.locator(".finish").count()); g++) { await plain(); await next(); }
-  check("P3-06 整关通关：本关 XP 恰好 +50（不因看解法多加）", (await stat()).xp - b0.xp === 50);
+  check("P3-04 整关通关：本关 XP 恰好 +50（不因看解法多加）", (await stat()).xp - b0.xp === 50);
 
-  // ---- B：P3-04（U4L6 超时）----
+  // ---- B：P3-05（U4L6 超时）----
   await importCode("B", 42); await start("U4L6"); await gotoCode("U4L6-M1"); const c0 = await stat(); const T46 = TASKS["U4L6-M1"].task;
   await setCode(T46.code); const t0 = Date.now(); await page.locator("[data-check]").tap(); await judged(); const ms = Date.now() - t0;
   console.log(`  ⏱ [${ENGINE}] U4L6-M1 超时检查实际耗时 ${ms} ms`);
-  check("P3-04 首次作答：超时停止（4.9–10 秒内），不算作答——红心 / XP 不变、没有反馈条，提示“不算作答”", ms >= 4900 && ms <= 10000 && JSON.stringify(await stat()) === JSON.stringify(c0) && (await page.locator(".feedbar").count()) === 0 && /不算作答/.test(await page.locator("[data-results]").innerText()), String(ms));
+  check("P3-05 首次作答：超时停止（4.9–10 秒内），不算作答——红心 / XP 不变、没有反馈条，提示“不算作答”", ms >= 4900 && ms <= 10000 && JSON.stringify(await stat()) === JSON.stringify(c0) && (await page.locator(".feedbar").count()) === 0 && /不算作答/.test(await page.locator("[data-results]").innerText()), String(ms));
   await setCode(T46.reference); await page.locator("[data-check]").tap(); await page.waitForSelector(".feedbar.ok", { timeout: 90000 }); const c1 = await stat();
-  check("P3-04 超时之后同一页面继续判参考答案通过：+10，红心不变", c1.xp - c0.xp === 10 && c1.hearts === c0.hearts);
-  // ---- C：P3-05（U5L2 报错）----
+  check("P3-05 超时之后同一页面继续判参考答案通过：+10，红心不变", c1.xp - c0.xp === 10 && c1.hearts === c0.hearts);
+  // ---- C：P3-06（U5L2 报错）----
   await importCode("C", 42); await start("U5L2"); await gotoCode("U5L2-M1"); const d0 = await stat(); await setCode(TASKS["U5L2-M1"].task.code); await page.locator("[data-check]").tap(); await judged();
   const t52 = await page.locator("[data-results]").innerText();
-  check("P3-05 起始代码：显示“IndexError（第 N 行）”和中文“索引错误：取的位置超出了列表的范围”；首次作答答错扣 1 颗心", /IndexError（第 \d+ 行）/.test(t52) && /索引错误：取的位置超出了列表的范围/.test(t52) && (await stat()).hearts === d0.hearts - 1, t52.replace(/\s+/g, " ").slice(0, 160));
+  check("P3-06 起始代码：显示“IndexError（第 N 行）”和中文“索引错误：取的位置超出了列表的范围”；首次作答答错扣 1 颗心", /IndexError（第 \d+ 行）/.test(t52) && /索引错误：取的位置超出了列表的范围/.test(t52) && (await stat()).hearts === d0.hearts - 1, t52.replace(/\s+/g, " ").slice(0, 160));
   // ---- D：P3-07（U5L5 没有变式）----
   await importCode("D", 42); await start("U5L5"); const e00 = await stat(); await gotoCode("U5L5-W1"); const e0 = await stat();
   await setCode(TASKS["U5L5-W1"].task.reference); await page.locator("[data-check]").tap(); await page.waitForSelector(".feedbar.ok", { timeout: 90000 });
@@ -126,17 +137,29 @@ try {
   await next(); for (let g = 0; g < 6 && !(await page.locator(".finish").count()); g++) { await plain(); await next(); }
   check("P3-07 整关通关 XP 恰好 +50", (await page.locator(".finish").count()) === 1 && (await stat()).xp - e00.xp === 50);
 
-  // ---- P3-08：草稿恢复 / 累计记录 / 刷新不加分 / 重新进入从第 1 题开始（用 C 再来一次 U5L2）----
-  await importCode("C", 42); await start("U5L2"); await gotoCode("U5L2-M1"); const half = 'print("第一单", cups[0])  # 写了一半';
-  await setCode(half); await page.evaluate(() => window.dispatchEvent(new Event("pagehide"))); await page.waitForTimeout(400);
-  const g0 = await stat(); await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.__app && window.__app.getState); const g1 = await stat();
-  check("P3-08 刷新页面：累计记录（XP、红心、已完成关卡数）不变，刷新本身不加分", JSON.stringify(g0) === JSON.stringify(g1), JSON.stringify([g0, g1]));
+  // ---- P3-08：累计数值先取样（在答题页之外）；写半份代码后编辑页保持打开，锁屏 / 切后台再回来检查草稿；再完全关掉重开 ----
+  await importCode("C", 42); await page.evaluate(() => window.__app.renderPath()); const g0 = await stat(); // 取样发生在进入答题页之前
+  await start("U5L2"); await gotoCode("U5L2-M1"); const half = 'print("第一单", cups[0])  # 写了一半';
+  await setCode(half);
+  await page.evaluate(() => { Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); window.dispatchEvent(new Event("pagehide")); }); await page.waitForTimeout(500);
+  await page.evaluate(() => { Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
+  check("P3-08 锁屏 / 切后台再回来：编辑页还开着，写了一半的代码还在（没有离开答题页）", (await code()) === half && (await page.locator("[data-code-task]").count()) === 1, await code());
+  await page.reload({ waitUntil: "domcontentloaded" }); await page.waitForFunction(() => window.__app && window.__app.getState); const g1 = await stat();
+  check("P3-08 完全关掉重开：累计记录 = 进入前取样 + 前 3 题答对的 30 XP（红心、已完成关卡数不变），重开 / 刷新本身不额外加分", g1.xp === g0.xp + 30 && g1.hearts === g0.hearts && g1.done === g0.done, JSON.stringify([g0, g1]));
   await start("U5L2"); const first = await cur();
   check("P3-08 重新进入这一关：从第 1 题重新开始（不是回到代码题）", first.type !== "modify" && first.type !== "write", first.type);
-  await gotoCode("U5L2-M1"); check("P3-08 走到同一道代码题：写了一半的草稿还在", (await code()) === half, await code());
+  await gotoCode("U5L2-M1"); check("P3-08 走到同一道代码题：写了一半的草稿仍在", (await code()) === half, await code());
   check("入口页面没有脚本错误；CSP 没有拦截应用自己的资源", errors.length === 0 && csp.length === 0, JSON.stringify([errors, csp]));
   await ctx.close();
 
+  // ---- 文档编号 / 记录表 / 自动化执行顺序一致：A 的三步（P3-02、P3-03、P3-04）连着做，P3-04 紧接 P3-03 ----
+  const doc = readFileSync(join(ROOT, "docs/60-p3-iphone-code-task-acceptance.md"), "utf8");
+  const heads = [...doc.matchAll(/^\*\*(P3-\d\d)[ （]/gm)].map((m) => m[1]), rows = [...doc.matchAll(/^\| (P3-\d\d) \|/gm)].map((m) => m[1]), want = Array.from({ length: 10 }, (_, i) => "P3-" + String(i + 1).padStart(2, "0"));
+  check("文档：步骤标题编号 P3-01…P3-10 依次出现，记录表同序，二者一致", JSON.stringify(heads) === JSON.stringify(want) && JSON.stringify(rows) === JSON.stringify(want), JSON.stringify([heads, rows]));
+  const blk = (id) => { const i = doc.indexOf(`**${id}`); const n = doc.indexOf("\n**P3-", i + 3); return doc.slice(i, n < 0 ? undefined : n); };
+  check("文档：P3-04 是变式流程且要求紧接 P3-03、中间不清除；P3-02 写明“第 1 题故意答错一次，其余答对”", /变式/.test(blk("P3-04").slice(0, 40)) && /紧接着 P3-03/.test(blk("P3-04")) && /第 1 题故意答错一次/.test(blk("P3-02")) && /红心共少 \*\*2 颗\*\*/.test(blk("P3-03")));
+  check("文档：P3-05 = U4L6 超时（进度码 B）、P3-06 = U5L2 报错（进度码 C）、P3-07 = U5L5（进度码 D），进度码表与之对应", /U4L6/.test(blk("P3-05").slice(0, 60)) && /U5L2/.test(blk("P3-06").slice(0, 60)) && /U5L5|没有变化题/.test(blk("P3-07").slice(0, 60)) && /\| \*\*A\*\* \| U3L5、U3L6 \| P3-02、P3-03、P3-04/.test(doc) && /\| \*\*B\*\* \| U4L6 \| P3-05 \|/.test(doc) && /\| \*\*C\*\* \| U5L2 \| P3-06、P3-08 \|/.test(doc) && /\| \*\*D\*\* \| U5L5 \| P3-07 \|/.test(doc));
+  check("文档：P3-08 先在答题页之外取样、写半份代码后“保持编辑页打开”再锁屏，累计数值 N0 + 30", /N0/.test(blk("P3-08")) && /保持编辑页打开/.test(blk("P3-08")) && /N0 \+ 30/.test(blk("P3-08")));
   // ---- 工作流里的“检查产物”片段：命中禁止字样必须真的失败 ----
   const wf = readFileSync(join(ROOT, ".github/workflows/code-task-preview.yml"), "utf8"), line = wf.split("\n").find((l) => l.includes("产物里出现了密钥字样"));
   const sh = (file) => spawnSync("bash", ["-ec", line.trim().replace("dist/assets/main-*.js", file) + "\necho PASSED-ALL"], { encoding: "utf8" });
