@@ -31,6 +31,13 @@ check("pending 的 type 和 task 的 type 不一致 → 抛错", /类型不对/.
 // 重复 ID
 { const u = JSON.parse(JSON.stringify(UNITS)); const l = lessonOf(u, "U3L5"); l.pending.push(JSON.parse(JSON.stringify(l.pending[0]))); l.pending[1].replaces = 3; check("同一个 ID 出现两次 → 抛错", /重复/.test(throws(() => mergeCodeTasks(u, ["U3L5-M1"])) || "")); }
 
+// 试点清单（scripts/code-task-pilot-ids.json）一次全部启用：每道题恰好替换对应位置，其它关卡不变
+{ const IDS = JSON.parse(readFileSync(new URL("../scripts/code-task-pilot-ids.json", import.meta.url), "utf8")); const MA = mergeCodeTasks(UNITS, IDS); let okAll = true, bad = "";
+  for (const u of Object.values(UNITS)) for (const l of u.lessons) { const m2 = lessonOf(MA, l.id); const p = (l.pending || []).find((q) => IDS.includes(q.task?.id));
+    if (p) { const ok = m2.exercises[p.replaces - 1].id === p.task.id && m2.exercises.every((e, i) => i === p.replaces - 1 || e === l.exercises[i]) && !(m2.pending || []).some((q) => q.task?.id === p.task.id); if (!ok) { okAll = false; bad += l.id + " "; } }
+    else if (m2 !== l) { okAll = false; bad += l.id + "(不该变) "; } }
+  check(`启用清单里全部 ${IDS.length} 道题：每道恰好替换自己的位置、其余题原样、其它关卡同一引用`, okAll && IDS.length >= 8, bad); }
+
 // ---- 随机练习题池 ----
 check("PRACTICE_TYPES 只有三种点选题", JSON.stringify(PRACTICE_TYPES) === JSON.stringify(["predict", "fill", "order"]) && ["modify", "write", "weird", undefined].every((t) => !isPracticeType({ type: t })) && isPracticeType({ type: "fill" }));
 const done = Object.fromEntries(Object.values(UNITS).flatMap((u) => u.lessons.map((l) => [l.id, true])));

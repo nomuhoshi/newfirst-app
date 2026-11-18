@@ -13,6 +13,9 @@ const ENGINE = process.argv[2] || process.env.MOBILE_BROWSER || "chromium";
 const engine = ENGINE === "webkit" ? webkit : chromium;
 const PORT0 = 4431 + (ENGINE === "webkit" ? 10 : 0);
 const unit3 = JSON.parse(readFileSync(join(ROOT, "content/unit3.json")));
+const IDS = JSON.parse(readFileSync(join(ROOT, "scripts/code-task-pilot-ids.json"), "utf8")), IDS_TXT = JSON.stringify(IDS);
+// 全部 pending 题（按 ID 取）：unit1–6
+const ALL_TASKS = {}; for (let n = 1; n <= 6; n++) for (const l of JSON.parse(readFileSync(join(ROOT, `content/unit${n}.json`))).lessons) for (const p of l.pending || []) ALL_TASKS[p.task.id] = { lesson: l.id, replaces: p.replaces, task: p.task };
 const L5 = unit3.lessons.find((l) => l.id === "U3L5"), TASK = L5.pending[0].task;
 const prev = [...JSON.parse(readFileSync(join(ROOT, "content/unit1.json"))).lessons, ...JSON.parse(readFileSync(join(ROOT, "content/unit2.json"))).lessons, ...unit3.lessons.slice(0, 4)].map((l) => l.id);
 let pass = 0, fail = 0;
@@ -58,11 +61,12 @@ async function checkCode(page) { await page.locator("[data-check]").tap(); await
 try {
   // ===== 0. 构建产物层面：试点列表只在 dist-code-tasks 的主脚本里是 [U3L5-M1]；dist / dist-formal 里是空列表 =====
   { const main = (d) => { const dir = join(ROOT, d, "assets"); const f = readdirSync(dir).find((x) => /^main-.*\.js$/.test(x)); return readFileSync(join(dir, f), "utf8"); };
-    const RE = /=\[(`U3L5-M1`)?\],[\w$]+=[\w$]+\(\{U1:/;
+    const RE = /=\[((?:`[^`]+`,?)*)\],[\w$]+=[\w$]+\(\{U1:/;
+    const parse = (mm) => (mm ? "[" + (mm[1].match(/`([^`]+)`/g) || []).map((x) => x.slice(1, -1)).join(",") + "]" : null);
     const m = Object.fromEntries(["dist", "dist-formal", "dist-code-tasks"].map((d) => [d, main(d).match(RE)]));
-    check("构建产物（主脚本）：dist 里代码题试点列表是空数组 []", !!m.dist && m.dist[1] === undefined, String(m.dist));
-    check("构建产物（主脚本）：dist-formal（正式）里代码题试点列表是空数组 []", !!m["dist-formal"] && m["dist-formal"][1] === undefined, String(m["dist-formal"]));
-    check("构建产物（主脚本）：只有 dist-code-tasks 里是 [`U3L5-M1`]", !!m["dist-code-tasks"] && m["dist-code-tasks"][1] === "`U3L5-M1`", String(m["dist-code-tasks"])); }
+    check("构建产物（主脚本）：dist 里代码题试点列表是空数组 []", parse(m.dist) === "[]", String(parse(m.dist)));
+    check("构建产物（主脚本）：dist-formal（正式）里代码题试点列表是空数组 []", parse(m["dist-formal"]) === "[]", String(parse(m["dist-formal"])));
+    check(`构建产物（主脚本）：只有 dist-code-tasks 里是试点题列表（${IDS.length} 道）`, parse(m["dist-code-tasks"]) === "[" + IDS.join(",") + "]", String(parse(m["dist-code-tasks"]))); }
   // ===== 1. 开关：普通测试构建和正式构建里代码题关闭 =====
   for (const [name, port] of [["测试构建 dist", PORT0], ["正式构建 dist-formal", PORT0 + 1]]) {
     const { ctx, page, errors } = await openPage(port);
@@ -74,11 +78,11 @@ try {
   }
   // ===== 2. 试点构建：合并结果 =====
   { const { ctx, page, errors } = await openPage(PORT0 + 2);
-    const r = await page.evaluate(() => { const L = window.__app.allLessons(); const l5 = L.find((x) => x.id === "U3L5"); return { en: window.__app.codeTasksEnabled(), types: l5.exercises.map((e) => e.type), id: l5.exercises[3].id, pend: l5.pending ?? null, l6: L.find((x) => x.id === "U3L6").exercises.map((e) => e.type), l6p: (L.find((x) => x.id === "U3L6").pending || []).length }; });
-    check("试点构建：启用列表是 [U3L5-M1]；U3L5 第 4 题是改代码题 U3L5-M1，前 3 题类型不变，pending 被移出", JSON.stringify(r.en) === '["U3L5-M1"]' && JSON.stringify(r.types) === JSON.stringify(["predict", "fill", "order", "modify"]) && r.id === "U3L5-M1" && r.pend === null, JSON.stringify(r));
+    const r = await page.evaluate(() => { const L = window.__app.allLessons(); const l5 = L.find((x) => x.id === "U3L5"); return { en: window.__app.codeTasksEnabled(), types: l5.exercises.map((e) => e.type), id: l5.exercises[3].id, pend: l5.pending ?? null, l6: L.find((x) => x.id === "U4L6").exercises.map((e) => e.type), l6p: (L.find((x) => x.id === "U4L6").pending || []).length }; });
+    check("试点构建：启用列表 = 试点清单；U3L5 第 4 题是改代码题 U3L5-M1，前 3 题类型不变，pending 被移出", JSON.stringify(r.en) === IDS_TXT && JSON.stringify(r.types) === JSON.stringify(["predict", "fill", "order", "modify"]) && r.id === "U3L5-M1" && r.pend === null, JSON.stringify(r));
     const nCode = await page.evaluate(() => window.__app.allLessons().flatMap((l) => l.exercises).filter((e) => e.type === "modify" || e.type === "write").map((e) => e.id));
-    check("试点构建：整个课程里恰好一道代码题，就是 U3L5-M1", JSON.stringify(nCode) === '["U3L5-M1"]', JSON.stringify(nCode));
-    check("试点构建：其它关卡不受影响（U3L6 仍是 4 道点选题，pending 还在）", r.l6.every((t) => ["predict", "fill", "order"].includes(t)) && r.l6p === 1, JSON.stringify(r.l6));
+    check(`试点构建：整个课程里恰好 ${IDS.length} 道代码题，就是试点清单里的题`, JSON.stringify([...nCode].sort()) === JSON.stringify([...IDS].sort()), JSON.stringify(nCode));
+    check("试点构建：不在清单里的关卡不受影响（U4L6 仍是 4 道点选题，pending 还在）", r.l6.every((t) => ["predict", "fill", "order"].includes(t)) && r.l6p === 1, JSON.stringify(r.l6));
     await ctx.close(); if (errors.length) check("试点构建初始页面无脚本错误", false, errors.join("|")); }
 
   // ===== 3. 整关：全部答对 =====
@@ -194,6 +198,44 @@ try {
     for (let guard = 0; guard < 4 && !(await page.locator(".finish").count()); guard++) { await answerPlain(page); await cont(page); }
     const s5 = await stat(page); check("真实 U3L5 全关：加载失败一次 + 离线一次之后通关，XP 恰好 +50，红心 5 不变", (await page.locator(".finish").count()) === 1 && s5.xp - s0.xp === 50 && s5.hearts === s0.hearts, JSON.stringify([s0, s5]));
     check("加载失败 / 离线流程无脚本错误", errors.length === 0, errors.join("|")); await ctx.close(); }
+
+  // ===== 9. 试点清单里其余每一道题：真实整关（每题两种走法：A 答错一次再答对；B 看参考解法 → 变化题）=====
+  async function walkLesson(lessonId, id, mode) {
+    const { task, replaces } = ALL_TASKS[id]; const start = task.type === "modify" ? task.code : task.starter;
+    const { ctx, page, errors } = await openPage(PORT0 + 2);
+    await page.evaluate((lid) => { const l = window.__app.allLessons().find((x) => x.id === lid); window.__app.startLesson(l); }, lessonId);
+    await page.getByRole("button", { name: "继续", exact: true }).tap(); await page.waitForSelector("[data-check]");
+    const s0 = await stat(page); const log = { codeAt: -1, codeSeen: 0, wrongHeart: null, varOk: null }; let n = 0, wrongDone = false;
+    for (let guard = 0; guard < 12 && !(await page.locator(".finish").count()); guard++) {
+      const ex = await cur(page);
+      if (ex.type === "modify" || ex.type === "write") {
+        log.codeSeen++; if (log.codeAt < 0) log.codeAt = n;
+        if (ex.id !== id) { log.other = ex.id; break; }
+        if (mode === "A" && !wrongDone) { wrongDone = true; const pre = await stat(page); await setCode(page, start); await checkCode(page); await page.waitForSelector(".feedbar.bad"); const s = await stat(page); log.wrongHeart = pre.hearts - s.hearts; log.wrongXp = s.xp - pre.xp; }
+        else if (mode === "B") {
+          const pre = await stat(page);
+          for (let k = 0; k < 2; k++) { await page.evaluate(() => window.__app.currentArea.openHint()); await page.locator(".lsheet button").first().tap(); }
+          await page.evaluate(() => window.__app.currentArea.openHint()); await page.getByRole("button", { name: /看参考解法/ }).tap(); await page.waitForFunction(() => /参考解法/.test(document.querySelector(".lsheet")?.innerText || "")); await page.locator(".lsheet button").first().tap();
+          await setCode(page, task.reference); await page.locator("[data-check]").tap(); await page.waitForSelector("[data-variation]", { timeout: 90000 });
+          const mid = await stat(page); log.midSame = JSON.stringify(mid) === JSON.stringify(pre) && (await page.locator(".feedbar").count()) === 0;
+          await setCode(page, task.variation.starter); await checkCode(page); const sv = await stat(page); log.varWrongSame = JSON.stringify(sv) === JSON.stringify(pre) && (await page.locator(".feedbar").count()) === 0;
+          await setCode(page, task.variation.solution); await checkCode(page); await page.waitForSelector(".feedbar.ok"); const s = await stat(page); log.varXp = s.xp - pre.xp; log.varHearts = s.hearts - pre.hearts;
+        } else { await setCode(page, task.reference); await checkCode(page); await page.waitForSelector(".feedbar.ok"); }
+      } else await answerPlain(page);
+      n++; await cont(page);
+    }
+    const s1 = await stat(page); log.xp = s1.xp - s0.xp; log.hearts = s1.hearts - s0.hearts; log.finish = (await page.locator(".finish").count()) === 1; log.errors = errors.length;
+    await ctx.close(); return log;
+  }
+  for (const id of IDS.filter((x) => x !== "U3L5-M1")) {
+    const { lesson, replaces, task } = ALL_TASKS[id];
+    const A = await walkLesson(lesson, id, "A");
+    check(`${id}（${lesson}）真实整关 A：第 ${replaces} 题是代码题；起始代码答错扣 1 颗心不加 XP，重做答对，通关 XP 恰好 +50、红心 −1`, A.codeAt === replaces - 1 && A.codeSeen === 2 && A.wrongHeart === 1 && A.wrongXp === 0 && A.finish && A.xp === 50 && A.hearts === -1 && A.errors === 0, JSON.stringify(A));
+    if (task.variation) {
+      const B = await walkLesson(lesson, id, "B");
+      check(`${id}（${lesson}）真实整关 B：看参考解法 → 原题通过不结算 → 变化题答错不扣红心 → 变化题答对 +10 → 通关 XP 恰好 +50、红心不变`, B.codeAt === replaces - 1 && B.midSame && B.varWrongSame && B.varXp === 10 && B.varHearts === 0 && B.finish && B.xp === 50 && B.hearts === 0 && B.errors === 0, JSON.stringify(B));
+    }
+  }
 } finally { for (const s of servers) { s.closeAllConnections?.(); s.close(); } await browser.close(); }
 console.log(`\n共 ${pass + fail} 项，失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);
