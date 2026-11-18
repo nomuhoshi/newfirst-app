@@ -15,7 +15,7 @@
 ## 2. 团队与聊天（按网址选标签页，顺序会变）
 - 产品官6号（裁决者，ChatGPT，Pinned）：https://chatgpt.com/c/6af94fc5-3478-83ec-9a89-94af051ef38a
 - code员工（写代码、开 PR，Claude Code，X-2号账号）：https://claude.ai/code/session_01PV3FXvcUP27v4Fo8C8Gju3 —— 接替的是 Claude 程序员 Sonnet（不是 GPT1）。
-- 员工GPT1（独立审查 PR/CI，ChatGPT，Pinned）：旧聊天 https://chatgpt.com/c/6aed60c4-435c-83ee-a8a8-fe54d363feca 已到长度上限。老大 13:57 批准：从它开分支继续，并把 Pinned 换成新分支、取消旧聊天置顶 —— **尚未执行**。
+- 员工GPT1（独立审查 PR/CI，ChatGPT，Pinned）：旧聊天 https://chatgpt.com/c/6aed60c4-435c-83ee-a8a8-fe54d363feca 已到长度上限。**14:01 已分支**：新聊天 https://chatgpt.com/c/6afd3112-56b4-83ee-aecd-f1b4961ed26d（名「员工GPT1」，已 Pin；旧聊天已取消 Pin）。to_gpt1_36（#134 审核）14:01 已在新分支发出，14:08 仍在思考，回复待存 gpt1_reply_35.txt。
 - Gemini（老大 bb0421 Google 账号，聊天名「程序员gemini」）：https://gemini.google.com/app/77c1bf0fc057f157 —— 读不到 GitHub，材料要贴给它。
 - 程序员 Sonnet 旧聊天 https://claude.ai/chat/9befe6f5-90a9-44fc-8e1c-286b5d420e9a 已不用。
 
@@ -37,7 +37,7 @@
 - 老大待办：U6 iPhone 实机走查；#125 设计线的最终截图/手势反馈与答错表情决定（设计线，我们不碰）。
 
 ## 6. 下一步
-1. 核对 Gemini to_gemini_20 是否已发、回复是否已存。
-2. 从员工GPT1 旧聊天最后一条真实回复处「Branch in new chat」→ 新分支改名「员工GPT1」并 Pin，取消旧聊天 Pin → 在新分支发 to_gpt1_36.txt → 存 gpt1_reply_35.txt → 补发 #134 同头 CI 结果。
+1. Gemini 定稿已存 gemini_reply_20.txt（只读、未实测），随 GPT1 审核一起转产品官6号。
+2. 到 GPT1 新分支存 gpt1_reply_35.txt（复制按钮）→ 补告 #134 同头 CI 44236476416 已 success（74c06f8，CLEAN）。
 3. GPT1 审核 + Gemini 方案 → 打包给产品官6号 → 放行即按第 4 节合并核对。
-4. 更新记忆中 GPT1 新网址。
+4. 30 分钟汇报 routine 的运行环境没有 Shell，传话员手动汇报。
