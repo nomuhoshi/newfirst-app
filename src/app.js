@@ -318,7 +318,7 @@ function hexNode(st, review) {
   return el;
 }
 
-// ---------- 吉祥物“小码”：立体折角记录卡（奶白正面 + 米色厚度，铜色折角，大圆眼，短脚；没有手） ----------
+// ---------- 吉祥物“小码”：立体折角记录卡（奶白正面 + 米色厚度，铜色折角，大圆眼，短脚，两只小圆手） ----------
 // 旧调用名 → 新表情：happy=平常，celebrate=答对，companion / sad=答错（红心用完、有错题时），think=想一想
 const MASCOT_MOOD = { happy: "normal", celebrate: "happy", companion: "wrong", sad: "wrong", think: "think" };
 let mascotSeq = 0;
@@ -346,6 +346,14 @@ function mascot(size = 96, mood = "happy") {
       svg("circle", { cx: cx + 1, cy: my + 1, r: 2, ...line(2.4) }),
       svg("path", { d: `M${cx - dx - 3.5} ${ey - 7.5}h7`, ...line(2.4) })],
   }[m]();
+  // 小圆手：没有胳膊，椭圆贴在身体两侧、画在身体后面；位置随表情变（平常垂着、答对举起、答错垂低、想一想右手举到头边挠头）
+  const handPose = {
+    normal: [[3, 47, 20], [61, 47, -20]],
+    happy: [[1.5, 30, -40], [62.5, 30, 40]],
+    wrong: [[3.5, 52, 8], [60.5, 52, -8]],
+    think: [[3, 47, 20], [62.5, 27, 40]],
+  }[m];
+  const hands = handPose.map(([hx, hy, r]) => svg("ellipse", { cx: hx, cy: hy, rx: 4.4, ry: 4.9, transform: `rotate(${r} ${hx} ${hy})`, fill: "#FFF8EC", class: "m-line", "stroke-width": 3 }));
   const O = "M17 12H44L57 25V48a10 10 0 0 1-10 10H17a10 10 0 0 1-10-10V22a10 10 0 0 1 10-10z";
   const P = "M17 12H44L57 25V42a10 10 0 0 1-10 10H17a10 10 0 0 1-10-10V22a10 10 0 0 1 10-10z";
   const stop = (o, c) => svg("stop", { offset: o, "stop-color": c });
@@ -354,6 +362,7 @@ function mascot(size = 96, mood = "happy") {
       svg("linearGradient", { id: gid, x1: 0, y1: 12, x2: 0, y2: 52, gradientUnits: "userSpaceOnUse" }, stop(0, "#FFFDF7"), stop(1, "#F9EEDA")),
       svg("linearGradient", { id: `${gid}f`, x1: 44, y1: 12, x2: 57, y2: 25, gradientUnits: "userSpaceOnUse" }, stop(0, "#D9774F"), stop(1, "#A84A2A"))),
     svg("ellipse", { cx: 32, cy: 65, rx: 21, ry: 2.8, class: "m-shadow" }),
+    ...hands,
     svg("path", { d: "M17 57h9v4.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2zM38 57h9v4.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2z", class: "m-fill" }),
     svg("path", { d: O, class: "m-side" }),
     svg("path", { d: P, fill: `url(#${gid})` }),
@@ -645,7 +654,7 @@ const fmtWait = (ms) => { const m = Math.ceil(ms / 60000); return m >= 60 ? `${M
 function renderOnboarding(i = 0) {
   const steps = [
     { text: "你好，我是小码！", sub: "", mood: "happy" },
-    { text: "我会陪你一关一关学 Python。", sub: "每关只要两三分钟，全部用点的，不用打字。", mood: "companion" },
+    { text: "我会陪你一关一关学 Python。", sub: "每关只要两三分钟，全部用点的，不用打字。", mood: "happy" },
     { text: "卡住了就点我，我会给你提示。", sub: "做题时我在左下角。", mood: "think" },
   ];
   const s = steps[i];

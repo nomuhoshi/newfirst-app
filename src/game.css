@@ -114,7 +114,7 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .btn3d.grow { flex: 1; }
 
 /* 小码：颜色走主题变量（--m-ink 轮廓与五官、--m-side 厚度、--m-shadow 地面投影） */
-.mascot { flex-shrink: 0; }
+.mascot { flex-shrink: 0; overflow: visible; } /* 小手会稍微伸出方框 */
 .mascot .m-fill { fill: var(--m-ink); }
 .mascot .m-line { stroke: var(--m-ink); }
 .mascot .m-side { fill: var(--m-side); }
