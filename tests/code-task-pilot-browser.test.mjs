@@ -78,11 +78,11 @@ try {
   }
   // ===== 2. 试点构建：合并结果 =====
   { const { ctx, page, errors } = await openPage(PORT0 + 2);
-    const r = await page.evaluate(() => { const L = window.__app.allLessons(); const l5 = L.find((x) => x.id === "U3L5"); return { en: window.__app.codeTasksEnabled(), types: l5.exercises.map((e) => e.type), id: l5.exercises[3].id, pend: l5.pending ?? null, l6: L.find((x) => x.id === "U4L6").exercises.map((e) => e.type), l6p: (L.find((x) => x.id === "U4L6").pending || []).length }; });
+    const r = await page.evaluate(() => { const L = window.__app.allLessons(); const l5 = L.find((x) => x.id === "U3L5"); return { en: window.__app.codeTasksEnabled(), types: l5.exercises.map((e) => e.type), id: l5.exercises[3].id, pend: l5.pending ?? null, l6: L.find((x) => x.id === "U1L1").exercises.map((e) => e.type), l6p: L.filter((x) => (x.pending || []).length).length }; });
     check("试点构建：启用列表 = 试点清单；U3L5 第 4 题是改代码题 U3L5-M1，前 3 题类型不变，pending 被移出", JSON.stringify(r.en) === IDS_TXT && JSON.stringify(r.types) === JSON.stringify(["predict", "fill", "order", "modify"]) && r.id === "U3L5-M1" && r.pend === null, JSON.stringify(r));
     const nCode = await page.evaluate(() => window.__app.allLessons().flatMap((l) => l.exercises).filter((e) => e.type === "modify" || e.type === "write").map((e) => e.id));
     check(`试点构建：整个课程里恰好 ${IDS.length} 道代码题，就是试点清单里的题`, JSON.stringify([...nCode].sort()) === JSON.stringify([...IDS].sort()), JSON.stringify(nCode));
-    check("试点构建：不在清单里的关卡不受影响（U4L6 仍是 4 道点选题，pending 还在）", r.l6.every((t) => ["predict", "fill", "order"].includes(t)) && r.l6p === 1, JSON.stringify(r.l6));
+    check("试点构建：没有代码题的关卡不受影响（U1L1 仍是点选题），16 道 pending 题都已合并，没有关卡还留着 pending", r.l6.every((t) => ["predict", "fill", "order"].includes(t)) && r.l6p === 0, JSON.stringify(r.l6));
     await ctx.close(); if (errors.length) check("试点构建初始页面无脚本错误", false, errors.join("|")); }
 
   // ===== 3. 整关：全部答对 =====
@@ -211,7 +211,31 @@ try {
       if (ex.type === "modify" || ex.type === "write") {
         log.codeSeen++; if (log.codeAt < 0) log.codeAt = n;
         if (ex.id !== id) { log.other = ex.id; break; }
-        if (mode === "A" && !wrongDone) { wrongDone = true; const pre = await stat(page); await setCode(page, start); await checkCode(page); await page.waitForSelector(".feedbar.bad"); const s = await stat(page); log.wrongHeart = pre.hearts - s.hearts; log.wrongXp = s.xp - pre.xp; }
+        if (mode === "T") {
+          // 死循环超时题：起始代码必超时。超时那次页面不计入作答（不扣红心、没有反馈条、不加 XP、代码保留），Worker 被终止后能恢复
+          const pre = await stat(page); log.tmo = [];
+          for (let k = 0; k < 2; k++) {                       // 连续两次超时：每次都要能恢复，不是只恢复一次
+            await setCode(page, start); const t0 = Date.now(); await checkCode(page); const ms = Date.now() - t0; const s = await stat(page);
+            const txt = await page.locator("[data-results]").innerText();
+            log.tmo.push({ ms, same: JSON.stringify(s) === JSON.stringify(pre), noFb: (await page.locator(".feedbar").count()) === 0, btn: (await page.locator("[data-check]").innerText()) === "检查" && !(await page.locator("[data-check]").isDisabled()), msg: /运行时间太长/.test(txt) && /不算作答/.test(txt) && /不扣红心/.test(txt), kept: (await page.evaluate(() => window.__app.currentArea.code())) === start });
+          }
+          // 用户点“运行”再中途点“停止”：Worker 被终止，页面不卡
+          await page.locator("[data-run]").tap(); await page.waitForFunction(() => document.querySelector("[data-run]")?.textContent === "停止", null, { timeout: 20000 }); await page.waitForTimeout(800); await page.locator("[data-run]").tap();
+          await page.waitForFunction(() => document.querySelector("[data-run]")?.textContent === "运行" && /已停止/.test(document.querySelector("[data-results]")?.textContent || ""), null, { timeout: 30000 });
+          const sStop = await stat(page); log.stopSame = JSON.stringify(sStop) === JSON.stringify(pre);
+          // 手动停止后立刻：同一页面、同一个 Runner 上跑一段输出可区分的正常代码，必须正常结束并给出这段输出
+          await setCode(page, 'print("STOP-OK", 6 * 7)'); const tOk = Date.now();
+          await page.locator("[data-run]").tap(); await page.waitForFunction(() => document.querySelector("[data-run]")?.textContent === "运行" && /运行结果/.test(document.querySelector("[data-results]")?.textContent || ""), null, { timeout: 30000 });
+          log.afterStopMs = Date.now() - tOk; log.afterStopOut = (await page.locator("[data-results] .ct-out").first().innerText()).trim();
+          log.afterStopSame = JSON.stringify(await stat(page)) === JSON.stringify(pre);
+          await setCode(page, start);
+          // 试运行自己撞上 5 秒上限：提示“不影响答题，不扣红心”，随后能恢复
+          await page.locator("[data-run]").tap(); await page.waitForFunction(() => document.querySelector("[data-run]")?.textContent === "运行" && /运行超过/.test(document.querySelector("[data-results]")?.textContent || ""), null, { timeout: 40000 });
+          log.runTimeoutMsg = /不影响答题，也不扣红心/.test(await page.locator("[data-results]").innerText()); log.runSame = JSON.stringify(await stat(page)) === JSON.stringify(pre);
+          // 恢复：同一个 Runner 上判参考答案，通过并结算 +10
+          await setCode(page, task.reference); const t1 = Date.now(); await checkCode(page); await page.waitForSelector(".feedbar.ok"); log.recoverMs = Date.now() - t1;
+          log.runnerState = await page.evaluate(() => window.__app.runner?.state); const s = await stat(page); log.recoverXp = s.xp - pre.xp; log.recoverHearts = s.hearts - pre.hearts;
+        } else if (mode === "A" && !wrongDone) { wrongDone = true; const pre = await stat(page); await setCode(page, start); await checkCode(page); await page.waitForSelector(".feedbar.bad"); const s = await stat(page); log.wrongHeart = pre.hearts - s.hearts; log.wrongXp = s.xp - pre.xp; }
         else if (mode === "B") {
           const pre = await stat(page);
           for (let k = 0; k < 2; k++) { await page.evaluate(() => window.__app.currentArea.openHint()); await page.locator(".lsheet button").first().tap(); }
@@ -229,6 +253,19 @@ try {
   }
   for (const id of IDS.filter((x) => x !== "U3L5-M1")) {
     const { lesson, replaces, task, nEx } = ALL_TASKS[id], XP = nEx * 10 + 10; // 每题 +10，通关 +10（U6L8 是 5 题 = 60）
+    if (id === "U4L6-M1") {
+      const T = await walkLesson(lesson, id, "T");
+      // 实际耗时写进日志（供复核）。窗口 [4900, 10000] ms 的依据：判题单组上限 5000 ms（不能更早停）；超时后要终止并重启 Worker（本机实测约 2 秒，见“参考答案恢复检查耗时”），本机实测两次约 6.2 / 6.9 s；上限取 10000 ms = 5 s + 重启 + 约 3 s 的 CI 容差，更久说明卡住了，必须失败
+      console.log(`  ⏱ [${ENGINE}] ${id} 超时检查实际耗时：第 1 次 ${T.tmo?.[0]?.ms} ms，第 2 次 ${T.tmo?.[1]?.ms} ms（判题单组上限 5000 ms）`);
+      console.log(`  ⏱ [${ENGINE}] ${id} 手动停止后立刻正常运行：输出 ${JSON.stringify(T.afterStopOut)}，耗时 ${T.afterStopMs} ms；参考答案恢复检查耗时 ${T.recoverMs} ms`);
+      check(`${id}（${lesson}）死循环超时 ×2：每次都在上限停止（耗时在 4900–10000 ms 内，更久 = 卡住 = 失败），不算作答——红心不变、XP 不变、没有反馈条，按钮回到“检查”，提示写明“不算作答、不扣红心”，代码保留`, T.tmo?.length === 2 && T.tmo.every((x) => x.ms >= 4900 && x.ms <= 10000 && x.same && x.noFb && x.btn && x.msg && x.kept), JSON.stringify(T.tmo));
+      check(`${id}（${lesson}）手动“停止”后立刻在同一页面的 Runner 上运行正常代码：正常结束并输出 “STOP-OK 42”，红心 / XP 不变`, T.afterStopOut === "STOP-OK 42" && T.afterStopSame === true && T.afterStopMs < 20000, JSON.stringify([T.afterStopOut, T.afterStopMs, T.afterStopSame]));
+      check(`${id}（${lesson}）运行中点“停止”：Worker 被终止、红心 / XP 不变；试运行撞上 5 秒上限：提示“不影响答题，也不扣红心”`, T.stopSame === true && T.runSame === true && T.runTimeoutMsg === true, JSON.stringify([T.stopSame, T.runSame, T.runTimeoutMsg]));
+      check(`${id}（${lesson}）Worker 终止后恢复：同一页面判参考答案通过，+10，红心不变，Runner 回到就绪`, T.recoverXp === 10 && T.recoverHearts === 0 && ["ready", "idle"].includes(T.runnerState) && T.recoverMs < 60000, JSON.stringify([T.recoverMs, T.runnerState, T.recoverXp, T.recoverHearts]));
+      check(`${id}（${lesson}）超时 + 恢复后通关：第 ${replaces} 题是代码题、只出现 1 次，通关 XP 恰好 +${XP}、红心不变，无脚本错误`, T.codeAt === replaces - 1 && T.codeSeen === 1 && T.finish && T.xp === XP && T.hearts === 0 && T.errors === 0, JSON.stringify([T.codeAt, T.codeSeen, T.finish, T.xp, T.hearts, T.errors]));
+      if (task.variation) { const B = await walkLesson(lesson, id, "B"); check(`${id}（${lesson}）真实整关 B：看参考解法 → 变化题 → 通关 XP 恰好 +${XP}、红心不变`, B.codeAt === replaces - 1 && B.midSame && B.varWrongSame && B.varXp === 10 && B.varHearts === 0 && B.finish && B.xp === XP && B.hearts === 0 && B.errors === 0, JSON.stringify(B)); }
+      continue;
+    }
     const A = await walkLesson(lesson, id, "A");
     check(`${id}（${lesson}）真实整关 A：第 ${replaces} 题是代码题；起始代码答错扣 1 颗心不加 XP，重做答对，通关 XP 恰好 +${XP}、红心 −1`, A.codeAt === replaces - 1 && A.codeSeen === 2 && A.wrongHeart === 1 && A.wrongXp === 0 && A.finish && A.xp === XP && A.hearts === -1 && A.errors === 0 && A.varUi === 0, JSON.stringify(A));
     if (task.variation) {
