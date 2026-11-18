@@ -1,0 +1,89 @@
+# 代码题 P3 真机验收入口：把“指定提交”（默认 94a67e8 = #133 合并提交）原样构建成一个独立测试入口，开启全部 16 道代码题，推到分支 preview-dist-<id>。
+# 只能手动触发；不部署任何网站，不碰正式站和正式 Supabase，不读任何云变量或密钥（纯游客入口：云端关闭，没有账号）。
+# 产物由人工 / 受权限的步骤复制到预览仓库 newfirst-app-preview 的 <id>/ 目录，入口网址 https://nomuhoshi.github.io/newfirst-app-preview/<id>/ 。
+# 绑定提交：checkout 的是 inputs.source_sha（40 位），源码一个字节都不改；构建用的环境变量只有：
+#   PREVIEW_ID（本地存储键前缀 <id>: 和缓存前缀 <id>-suipian-，和正式站同域名下互不读写进度）
+#   CSP_TEST_ORIGIN=1 + CODE_TASKS_TEST_BUILD=1 + CODE_TASKS=清单里的全部题（#130 的隔离保护只允许“测试构建”启用代码题）
+# 注意：CSP_TEST_ORIGIN=1 会让这个入口的 CSP connect-src 多出测试域 fake.supabase.test（假域名，不是真实服务）；仅用于满足“只有测试构建才能启用代码题”的保护，不影响功能。
+name: Code-task P3 preview
+on:
+  workflow_dispatch:
+    inputs:
+      preview_id:
+        description: 预览编号（目录名 / 本地存储键前缀 / 缓存前缀；只允许小写字母、数字、连字符）
+        default: p3-code
+        required: true
+      source_sha:
+        description: 要构建的完整 40 位提交号（默认 = #133 合并提交 94a67e8）
+        default: 94a67e8c1edee0b2d05831640db24a4a166ab3aa
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: code-task-preview-${{ inputs.preview_id }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_ID: ${{ inputs.preview_id }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - name: 校验输入
+        run: |
+          echo "$PREVIEW_ID" | grep -Eq '^[a-z0-9][a-z0-9-]{1,30}$' || { echo "::error::preview_id 只允许小写字母、数字、连字符"; exit 1; }
+          echo "$SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::source_sha 必须是完整 40 位提交号"; exit 1; }
+          [ "$PREVIEW_ID" != "main" ] || { echo "::error::不能用 main 做预览编号"; exit 1; }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 确认源码提交 = 指定提交，并读出试点清单
+        id: ids
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          IDS=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("scripts/code-task-pilot-ids.json","utf8")).join(","))')
+          echo "ids=$IDS" >> "$GITHUB_OUTPUT"
+          echo "试点清单：$IDS（共 $(echo "$IDS" | tr ',' '\n' | wc -l) 道）"
+          test "$(echo "$IDS" | tr ',' '\n' | wc -l)" = "16"
+      - run: npm ci
+      - name: 构建独立测试入口（开启全部代码题）
+        shell: bash
+        env:
+          CSP_TEST_ORIGIN: "1"
+          CODE_TASKS_TEST_BUILD: "1"
+          CODE_TASKS: ${{ steps.ids.outputs.ids }}
+        run: npm run build 2>&1 | tee build.log
+      - name: 核对产物
+        env:
+          IDS: ${{ steps.ids.outputs.ids }}
+        run: |
+          set -e
+          grep -q "代码题试点：$(echo "$IDS" | sed 's/,/、/g')（仅测试构建" build.log
+          grep -q "源码提交：${SOURCE_SHA}" build.log
+          grep -q "测试入口 ${PREVIEW_ID}" build.log
+          grep -q "PREFIX = \"${PREVIEW_ID}-suipian-\"" dist/sw.js
+          grep -rq "${SOURCE_SHA}" dist/assets/main-*.js
+          # 主脚本里的试点列表必须是完整清单（压缩后的写法：=[`id`,`id`…],X=Y({U1:）
+          node -e '
+            const fs=require("fs"),f=fs.readdirSync("dist/assets").find(x=>/^main-.*\.js$/.test(x));
+            const m=fs.readFileSync("dist/assets/"+f,"utf8").match(/=\[((?:`[^`]+`,?)*)\],[\w$]+=[\w$]+\(\{U1:/);
+            const got=m?(m[1].match(/`([^`]+)`/g)||[]).map(x=>x.slice(1,-1)).join(","):null;
+            if(got!==process.env.IDS){console.error("主脚本里的试点列表不对：",got);process.exit(1)}
+            console.log("主脚本里的试点列表 =",got);'
+          # 纯游客入口：没有云项目、没有密钥
+          ! grep -rqE "sb_secret_[A-Za-z0-9]|service_role" dist/assets/main-*.js
+          grep -q "云端：" build.log && echo "$(grep -m1 '云端：' build.log)"
+      - name: 推到 preview-dist-${{ inputs.preview_id }}
+        env:
+          IDS: ${{ steps.ids.outputs.ids }}
+        run: |
+          cd dist
+          echo "${SOURCE_SHA}" > SOURCE_SHA.txt
+          printf '{"sha":"%s","previewId":"%s","codeTasks":"%s","builtAt":"%s","note":"代码题 P3 真机验收入口：仅测试，正式站未开放代码题"}\n' "$SOURCE_SHA" "$PREVIEW_ID" "$IDS" "$(date -u +%FT%TZ)" > PREVIEW_INFO.json
+          git init -q -b dist && git config user.name "ci" && git config user.email "ci@users.noreply.github.com"
+          git add -A && git commit -q -m "code-task P3 preview ${PREVIEW_ID} from ${SOURCE_SHA}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "dist:preview-dist-${PREVIEW_ID}"
