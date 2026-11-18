@@ -6,18 +6,22 @@ export const ROUND_SIZES = [5, 10, 20];
 export const DEFAULT_ROUND = 10;
 
 // 每道题的稳定唯一 ID：关卡 ID + 题号（课程 JSON 里的顺序），例如 "U1L2#3"
+// 随机练习只出这三种点选题。写代码 / 改代码题（modify / write）需要编辑器和 Python 运行器，练习页还不支持，题池里先排除；
+// 其它不认识的题型也一律排除（并通过 onSkip 回调说明），不会被当成排序题渲染。
+export const PRACTICE_TYPES = ["predict", "fill", "order"];
+export const isPracticeType = (ex) => PRACTICE_TYPES.includes(ex?.type);
 export const exerciseId = (lessonId, index) => `${lessonId}#${index}`;
 
 // units: [{ id, title, lessons: [{ id, title, exercises }] }]（只传已上线单元）
 // 返回已通关的单元和关卡（没有已通关关卡的单元不出现）
 export function clearedScope(units, done) {
   return units
-    .map((u) => ({ id: u.id, title: u.title, lessons: u.lessons.filter((l) => done && done[l.id] === true).map((l) => ({ id: l.id, title: l.title, count: l.exercises.length })) }))
+    .map((u) => ({ id: u.id, title: u.title, lessons: u.lessons.filter((l) => done && done[l.id] === true).map((l) => ({ id: l.id, title: l.title, count: l.exercises.filter(isPracticeType).length })).filter((l) => l.count > 0) }))
     .filter((u) => u.lessons.length > 0);
 }
 
 // 题池：selected 是选中的关卡 ID 集合（Set 或数组）。没有通关的关卡即使被选中也不会进题池。
-export function buildPool(units, done, selected) {
+export function buildPool(units, done, selected, onSkip = null) {
   const sel = new Set(selected);
   const pool = [];
   const seen = new Set();
@@ -27,6 +31,7 @@ export function buildPool(units, done, selected) {
       const id = exerciseId(l.id, i);
       if (seen.has(id)) return;
       seen.add(id);
+      if (!isPracticeType(ex)) { onSkip?.({ id, type: ex?.type, known: ["modify", "write"].includes(ex?.type) }); return; }
       pool.push({ id, lessonId: l.id, unitId: u.id, index: i, ex });
     });
   }

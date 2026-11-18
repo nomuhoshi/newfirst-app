@@ -11,3 +11,6 @@ dist-login-sync/
 tests/e2e/failure-*.png
 dist-pages
 dist-formal
+dist-code-tasks
+iso-dist*
+iso-guard

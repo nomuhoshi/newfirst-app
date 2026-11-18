@@ -47,9 +47,12 @@ import { docToState } from "./account-data.js";
 import { buildExport, exportFileName, parseImport, mergeImport, summarize, encodeCode, decodeCode } from "./progress-file.js";
 import { captchaDiagLine } from "./captcha.js";
 import { ensurePersist, firstSeenAt, storageReport, markExported, snoozeExport, exportReminderDue, recordLoad, ensureBackupBase, getLastReminderStatus, lastExportAt } from "./storage-health.js";
-import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise, SHUFFLED_TYPES } from "./practice.js";
+import { mergeCodeTasks } from "./code-task-merge.js";
+import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffleExercise, SHUFFLED_TYPES, isPracticeType } from "./practice.js";
 
-const UNITS = { U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6 };
+// 代码题试点：只合并构建时（CODE_TASKS 环境变量）启用的题；正式构建和普通测试构建的列表是空的，课程和以前完全一样。
+const CODE_TASKS_ENABLED = typeof __CODE_TASKS__ !== "undefined" ? __CODE_TASKS__ : [];
+const UNITS = mergeCodeTasks({ U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6 }, CODE_TASKS_ENABLED);
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;
@@ -1730,6 +1733,7 @@ function renderPracticeExercise(pr) {
   const { i, retry } = pr.queue[0];
   const item = pr.items[i];
   const ex = item.ex;
+  if (!isPracticeType(ex)) { console.warn("随机练习：跳过不支持的题型", item.id, ex?.type); pr.queue.shift(); return renderPracticeExercise(pr); } // 防御：题池已经排除了，万一混进来不能当排序题渲染
   window.__app.currentEx = ex; // 给自动测试用（已打乱的版本）
   window.__app.currentPracticeItem = { id: item.id, retry };
   let submitted = false;
@@ -1737,7 +1741,7 @@ function renderPracticeExercise(pr) {
   const checkBtn = button("检查", () => check(), "btn3d primary grow", { "data-check": "" });
   checkBtn.disabled = true;
   const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
-  const area = ex.type === "predict" ? predictArea(ex, onChange) : ex.type === "fill" ? fillArea(ex, onChange) : orderArea(ex, onChange);
+  const area = ex.type === "predict" ? predictArea(ex, onChange) : ex.type === "fill" ? fillArea(ex, onChange) : orderArea(ex, onChange); // 只有这三种（上面已排除其它题型）
   appEl.replaceChildren(
     circuit("edge"),
     practiceHeader(pr),
@@ -1832,7 +1836,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
 window.addEventListener("storage", (e) => { if (e.key && e.key.includes("suipian.v4.")) refreshFromStorage(); }); // 测试入口里键带前缀，所以用 includes
 
-window.__app = { runForOutput, listenerCount: () => listeners.size, clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
+window.__app = { codeTasksEnabled: () => [...CODE_TASKS_ENABLED], startPractice, runForOutput, listenerCount: () => listeners.size, clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
 // 联网打开一次后，应用外壳和课程内容会缓存在本机，断网也能进入地图和做点选题。Pyodide 不缓存，离线时 Python 运行结果显示提示。
 async function refreshSwInfo() {
