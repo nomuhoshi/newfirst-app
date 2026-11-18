@@ -41,3 +41,8 @@
 2. 到 GPT1 新分支存 gpt1_reply_35.txt（复制按钮）→ 补告 #134 同头 CI 44236476416 已 success（74c06f8，CLEAN）。
 3. GPT1 审核 + Gemini 方案 → 打包给产品官6号 → 放行即按第 4 节合并核对。
 4. 30 分钟汇报 routine 的运行环境没有 Shell，传话员手动汇报。
+
+## 7. 14:40 更新
+- GPT1 新分支回复 gpt1_reply_35：#134 HEAD 74c06f8 判 FAIL（4 项：扣心场景需首次进度码、P3-03 步骤顺序、P3-08 存档预期、workflow 第78行 `! grep` 不中止）。
+- 产品官6号 po6_reply_53：#134 退回 code员工修复（to_code_50 14:38 已发），修后新 HEAD＋同头 CI→GPT1 增量复审→再验真实 preview 构建/PREVIEW_INFO.json/正式 []。Gemini T3 方案原则批准，修订稿 gemini_reply_21（已存）。
+- T3 桌面实测由传话员执行：有头浏览器＋全新隔离 profile，不登录、不手工 dispatch 事件；两条路径（真实切后台、真实后退），按 gemini_reply_21 的记录表填，结果单独报产品官6号。iPhone Safari T3 等老大真机，不计入 #134。
