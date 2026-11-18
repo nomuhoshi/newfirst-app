@@ -15,7 +15,7 @@ const PORT0 = 4431 + (ENGINE === "webkit" ? 10 : 0);
 const unit3 = JSON.parse(readFileSync(join(ROOT, "content/unit3.json")));
 const IDS = JSON.parse(readFileSync(join(ROOT, "scripts/code-task-pilot-ids.json"), "utf8")), IDS_TXT = JSON.stringify(IDS);
 // 全部 pending 题（按 ID 取）：unit1–6
-const ALL_TASKS = {}; for (let n = 1; n <= 6; n++) for (const l of JSON.parse(readFileSync(join(ROOT, `content/unit${n}.json`))).lessons) for (const p of l.pending || []) ALL_TASKS[p.task.id] = { lesson: l.id, replaces: p.replaces, task: p.task };
+const ALL_TASKS = {}; for (let n = 1; n <= 6; n++) for (const l of JSON.parse(readFileSync(join(ROOT, `content/unit${n}.json`))).lessons) for (const p of l.pending || []) ALL_TASKS[p.task.id] = { lesson: l.id, replaces: p.replaces, task: p.task, nEx: l.exercises.length };
 const L5 = unit3.lessons.find((l) => l.id === "U3L5"), TASK = L5.pending[0].task;
 const prev = [...JSON.parse(readFileSync(join(ROOT, "content/unit1.json"))).lessons, ...JSON.parse(readFileSync(join(ROOT, "content/unit2.json"))).lessons, ...unit3.lessons.slice(0, 4)].map((l) => l.id);
 let pass = 0, fail = 0;
@@ -220,7 +220,7 @@ try {
           const mid = await stat(page); log.midSame = JSON.stringify(mid) === JSON.stringify(pre) && (await page.locator(".feedbar").count()) === 0;
           await setCode(page, task.variation.starter); await checkCode(page); const sv = await stat(page); log.varWrongSame = JSON.stringify(sv) === JSON.stringify(pre) && (await page.locator(".feedbar").count()) === 0;
           await setCode(page, task.variation.solution); await checkCode(page); await page.waitForSelector(".feedbar.ok"); const s = await stat(page); log.varXp = s.xp - pre.xp; log.varHearts = s.hearts - pre.hearts;
-        } else { await setCode(page, task.reference); await checkCode(page); await page.waitForSelector(".feedbar.ok"); }
+        } else { await setCode(page, task.reference); await checkCode(page); await page.waitForSelector(".feedbar.ok"); log.varUi = await page.locator("[data-variation]").count(); }
       } else await answerPlain(page);
       n++; await cont(page);
     }
@@ -228,12 +228,12 @@ try {
     await ctx.close(); return log;
   }
   for (const id of IDS.filter((x) => x !== "U3L5-M1")) {
-    const { lesson, replaces, task } = ALL_TASKS[id];
+    const { lesson, replaces, task, nEx } = ALL_TASKS[id], XP = nEx * 10 + 10; // 每题 +10，通关 +10（U6L8 是 5 题 = 60）
     const A = await walkLesson(lesson, id, "A");
-    check(`${id}（${lesson}）真实整关 A：第 ${replaces} 题是代码题；起始代码答错扣 1 颗心不加 XP，重做答对，通关 XP 恰好 +50、红心 −1`, A.codeAt === replaces - 1 && A.codeSeen === 2 && A.wrongHeart === 1 && A.wrongXp === 0 && A.finish && A.xp === 50 && A.hearts === -1 && A.errors === 0, JSON.stringify(A));
+    check(`${id}（${lesson}）真实整关 A：第 ${replaces} 题是代码题；起始代码答错扣 1 颗心不加 XP，重做答对，通关 XP 恰好 +${XP}、红心 −1`, A.codeAt === replaces - 1 && A.codeSeen === 2 && A.wrongHeart === 1 && A.wrongXp === 0 && A.finish && A.xp === XP && A.hearts === -1 && A.errors === 0 && A.varUi === 0, JSON.stringify(A));
     if (task.variation) {
       const B = await walkLesson(lesson, id, "B");
-      check(`${id}（${lesson}）真实整关 B：看参考解法 → 原题通过不结算 → 变化题答错不扣红心 → 变化题答对 +10 → 通关 XP 恰好 +50、红心不变`, B.codeAt === replaces - 1 && B.midSame && B.varWrongSame && B.varXp === 10 && B.varHearts === 0 && B.finish && B.xp === 50 && B.hearts === 0 && B.errors === 0, JSON.stringify(B));
+      check(`${id}（${lesson}）真实整关 B：看参考解法 → 原题通过不结算 → 变化题答错不扣红心 → 变化题答对 +10 → 通关 XP 恰好 +${XP}、红心不变`, B.codeAt === replaces - 1 && B.midSame && B.varWrongSame && B.varXp === 10 && B.varHearts === 0 && B.finish && B.xp === XP && B.hearts === 0 && B.errors === 0, JSON.stringify(B));
     }
   }
 } finally { for (const s of servers) { s.closeAllConnections?.(); s.close(); } await browser.close(); }
