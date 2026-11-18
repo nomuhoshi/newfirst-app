@@ -74,9 +74,10 @@ jobs:
             const got=m?(m[1].match(/`([^`]+)`/g)||[]).map(x=>x.slice(1,-1)).join(","):null;
             if(got!==process.env.IDS){console.error("主脚本里的试点列表不对：",got);process.exit(1)}
             console.log("主脚本里的试点列表 =",got);'
-          # 纯游客入口：没有云项目、没有密钥
-          ! grep -rqE "sb_secret_[A-Za-z0-9]|service_role" dist/assets/main-*.js
-          grep -q "云端：" build.log && echo "$(grep -m1 '云端：' build.log)"
+          # 纯游客入口：没有云项目、没有密钥。注意：`! grep` 即使命中也不会触发 set -e，所以一律写成显式的 if … exit 1
+          if grep -rqE "sb_secret_[A-Za-z0-9]|service_role" dist/assets/main-*.js; then echo "::error::产物里出现了密钥字样"; exit 1; fi
+          if ! grep -qF "云端：关闭（没有给测试云配置）" build.log; then echo "::error::构建日志里不是“云端：关闭（没有给测试云配置）”"; grep -m3 "云端" build.log || true; exit 1; fi
+          echo "$(grep -m1 '云端：' build.log)"
       - name: 推到 preview-dist-${{ inputs.preview_id }}
         env:
           IDS: ${{ steps.ids.outputs.ids }}
