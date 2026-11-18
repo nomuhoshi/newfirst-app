@@ -223,6 +223,12 @@ try {
           await page.locator("[data-run]").tap(); await page.waitForFunction(() => document.querySelector("[data-run]")?.textContent === "停止", null, { timeout: 20000 }); await page.waitForTimeout(800); await page.locator("[data-run]").tap();
           await page.waitForFunction(() => document.querySelector("[data-run]")?.textContent === "运行" && /已停止/.test(document.querySelector("[data-results]")?.textContent || ""), null, { timeout: 30000 });
           const sStop = await stat(page); log.stopSame = JSON.stringify(sStop) === JSON.stringify(pre);
+          // 手动停止后立刻：同一页面、同一个 Runner 上跑一段输出可区分的正常代码，必须正常结束并给出这段输出
+          await setCode(page, 'print("STOP-OK", 6 * 7)'); const tOk = Date.now();
+          await page.locator("[data-run]").tap(); await page.waitForFunction(() => document.querySelector("[data-run]")?.textContent === "运行" && /运行结果/.test(document.querySelector("[data-results]")?.textContent || ""), null, { timeout: 30000 });
+          log.afterStopMs = Date.now() - tOk; log.afterStopOut = (await page.locator("[data-results] .ct-out").first().innerText()).trim();
+          log.afterStopSame = JSON.stringify(await stat(page)) === JSON.stringify(pre);
+          await setCode(page, start);
           // 试运行自己撞上 5 秒上限：提示“不影响答题，不扣红心”，随后能恢复
           await page.locator("[data-run]").tap(); await page.waitForFunction(() => document.querySelector("[data-run]")?.textContent === "运行" && /运行超过/.test(document.querySelector("[data-results]")?.textContent || ""), null, { timeout: 40000 });
           log.runTimeoutMsg = /不影响答题，也不扣红心/.test(await page.locator("[data-results]").innerText()); log.runSame = JSON.stringify(await stat(page)) === JSON.stringify(pre);
@@ -249,7 +255,11 @@ try {
     const { lesson, replaces, task, nEx } = ALL_TASKS[id], XP = nEx * 10 + 10; // 每题 +10，通关 +10（U6L8 是 5 题 = 60）
     if (id === "U4L6-M1") {
       const T = await walkLesson(lesson, id, "T");
-      check(`${id}（${lesson}）死循环超时 ×2：每次都在上限（约 5 秒）停止，不算作答——红心不变、XP 不变、没有反馈条，按钮回到“检查”，提示写明“不算作答、不扣红心”，代码保留`, T.tmo?.length === 2 && T.tmo.every((x) => x.ms >= 4500 && x.ms < 60000 && x.same && x.noFb && x.btn && x.msg && x.kept), JSON.stringify(T.tmo));
+      // 实际耗时写进日志（供复核）。窗口 [4900, 10000] ms 的依据：判题单组上限 5000 ms（不能更早停）；超时后要终止并重启 Worker（本机实测约 2 秒，见“参考答案恢复检查耗时”），本机实测两次约 6.2 / 6.9 s；上限取 10000 ms = 5 s + 重启 + 约 3 s 的 CI 容差，更久说明卡住了，必须失败
+      console.log(`  ⏱ [${ENGINE}] ${id} 超时检查实际耗时：第 1 次 ${T.tmo?.[0]?.ms} ms，第 2 次 ${T.tmo?.[1]?.ms} ms（判题单组上限 5000 ms）`);
+      console.log(`  ⏱ [${ENGINE}] ${id} 手动停止后立刻正常运行：输出 ${JSON.stringify(T.afterStopOut)}，耗时 ${T.afterStopMs} ms；参考答案恢复检查耗时 ${T.recoverMs} ms`);
+      check(`${id}（${lesson}）死循环超时 ×2：每次都在上限停止（耗时在 4900–10000 ms 内，更久 = 卡住 = 失败），不算作答——红心不变、XP 不变、没有反馈条，按钮回到“检查”，提示写明“不算作答、不扣红心”，代码保留`, T.tmo?.length === 2 && T.tmo.every((x) => x.ms >= 4900 && x.ms <= 10000 && x.same && x.noFb && x.btn && x.msg && x.kept), JSON.stringify(T.tmo));
+      check(`${id}（${lesson}）手动“停止”后立刻在同一页面的 Runner 上运行正常代码：正常结束并输出 “STOP-OK 42”，红心 / XP 不变`, T.afterStopOut === "STOP-OK 42" && T.afterStopSame === true && T.afterStopMs < 20000, JSON.stringify([T.afterStopOut, T.afterStopMs, T.afterStopSame]));
       check(`${id}（${lesson}）运行中点“停止”：Worker 被终止、红心 / XP 不变；试运行撞上 5 秒上限：提示“不影响答题，也不扣红心”`, T.stopSame === true && T.runSame === true && T.runTimeoutMsg === true, JSON.stringify([T.stopSame, T.runSame, T.runTimeoutMsg]));
       check(`${id}（${lesson}）Worker 终止后恢复：同一页面判参考答案通过，+10，红心不变，Runner 回到就绪`, T.recoverXp === 10 && T.recoverHearts === 0 && ["ready", "idle"].includes(T.runnerState) && T.recoverMs < 60000, JSON.stringify([T.recoverMs, T.runnerState, T.recoverXp, T.recoverHearts]));
       check(`${id}（${lesson}）超时 + 恢复后通关：第 ${replaces} 题是代码题、只出现 1 次，通关 XP 恰好 +${XP}、红心不变，无脚本错误`, T.codeAt === replaces - 1 && T.codeSeen === 1 && T.finish && T.xp === XP && T.hearts === 0 && T.errors === 0, JSON.stringify([T.codeAt, T.codeSeen, T.finish, T.xp, T.hearts, T.errors]));
