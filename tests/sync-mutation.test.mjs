@@ -232,22 +232,22 @@ try {
       file: "sync.js",
       from: `    const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
+    bumpAcct(); // 同上：本机清理已成功，等云端撤销之前先作废旧同步；撤销失败时下面照旧回滚，回滚后登录态继续用新的代次
     const rv = await revokeCloudSession(session, {`,
       to: `    const rv0 = await revokeCloudSession(session);
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
+    bumpAcct(); // 同上：本机清理已成功，等云端撤销之前先作废旧同步；撤销失败时下面照旧回滚，回滚后登录态继续用新的代次
     const rv = rv0; ({`,
     },
     {
       name: "DB-3.1：强制退出先撤销云端会话、再清本机",
       file: "sync.js",
       from: `      const c = cleanLocal(uid, { clearAuth: true, keepCopy });
-      if (!c.ok) return c.result;
-      if (forceLocal)`,
+      if (!c.ok) return c.result;`,
       to: `      if (!forceLocal) await revokeCloudSession(sess);
       const c = cleanLocal(uid, { clearAuth: true, keepCopy });
-      if (!c.ok) return c.result;
-      if (forceLocal)`,
+      if (!c.ok) return c.result;`,
     },
     {
       name: "DB-3.1：forceLocalLogout 也去联网撤销云端会话（不再是纯本机退出）",
