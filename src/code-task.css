@@ -39,6 +39,14 @@
 /* 内置键盘贴在页面底部（样式沿用 style.css 里的 #keyboard），不随内容滚动 */
 .ct-kb { flex: 0 0 auto; }
 .ios-browser .ct-kb { padding-bottom: 76px; }
+/* iPhone Safari：底部安全空隙（80px）只留给页面最底下的那一块。内置键盘显示时它在底栏下面、自己已经带了 76px，底栏就不再重复留 80px，
+   否则两份空隙加键盘会把 .lesson（题面和编辑器）挤到只剩几十像素，编辑器和检查结果都看不见。 */
+.lessonfoot:has(+ .ct-kb:not([hidden])), .ios-browser .lessonfoot:has(+ .ct-kb:not([hidden])) { padding-top: 8px; padding-bottom: 8px; }
+/* 竖屏矮一点的手机（iPhone SE、Safari 带地址栏时的内容区）：只收紧键盘各行之间的空隙，按键高度保持 44px（触控目标不缩小），给编辑器多留位置 */
+@media (orientation: portrait) and (max-height: 760px) {
+  .ct-kb .kb-row { margin: 2px 0; }
+  .ct-kb { padding-top: 4px; }
+}
 @media (orientation: landscape) and (max-height: 500px) { .ct-editor { max-height: 30dvh; min-height: 80px; } .ct-cmp { grid-template-columns: 1fr; } }
 
 /* 示范（折叠）与变化题提示 */

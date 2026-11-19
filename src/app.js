@@ -1363,7 +1363,8 @@ function renderExercise(run) {
   const outPanel = isCode ? null : h("details", { class: "outpanel" }, h("summary", { text: "运行结果" }), h("pre", { class: "out", text: "" }));
   const checkBtn = button("检查", () => check(), "btn3d primary grow", { "data-check": "" });
   checkBtn.disabled = true;
-  const onChange = () => { if (!submitted) checkBtn.disabled = !area.ready(); };
+  let checking = false; // 代码题正在判题：期间 onChange（运行/停止按钮状态变化也会触发）不能把「检查」重新点亮
+  const onChange = () => { if (!submitted && !checking) checkBtn.disabled = !area.ready(); };
 
   // 各题型的答题区，返回 { node, ready(), lock(), mark(), isCorrect(), why(), whyWrong(), code() }
   const area = isCode ? codeTaskMod.createCodeArea(ex, { exec: codeExec, runner, onChange, ui: { sheet, button }, pythonUnavailable: () => (typeof pythonUnavailableText === "function" ? pythonUnavailableText() : undefined) })
@@ -1401,7 +1402,6 @@ function renderExercise(run) {
   }
 
   // 代码题：先真的运行判题，只有 pass / fail 且结果完整才结算；超时、输出超限、环境不可用、内部错误、取消都不算作答
-  let checking = false;
   async function checkCode() {
     if (checking) return;
     checking = true;
