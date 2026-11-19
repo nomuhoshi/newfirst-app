@@ -166,6 +166,62 @@ for (const [label, inject] of FAULTS) {
   check("重试读取读到格式不对的云端记录（data 类）：失败、不再允许重试、没有登录态", r.ok === false && r.kind === "data" && d.sync.hasVerified() === false && d.sync.account() === null && !d.storage._m.has("suipian.auth"), JSON.stringify({ kind: r.kind }));
 }
 
+// ----- GPT1 19:44 复审 1：读取在途中到期，成功响应也不能再完成登录 -----
+for (const [label, expiresIn, startAt, advance] of [["5 分钟时限", 3600, 299_000, 2_000], ["短会话（令牌只剩 100 秒，最多留 40 秒）", 100, 30_000, 15_000]]) {
+  const S = fakeCloud(), d = device(S); S.expiresIn = expiresIn;
+  seedGuest(d, 50);
+  S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  await d.sync.verify(EMAIL, "123456", d.state);
+  d.clock += startAt;
+  check(`到期前仍有效（${label}）`, d.sync.hasVerified() === true);
+  const before = snap(d.storage);
+  const release = S.hold(/GET \/rest\/v1\/progress/);
+  const p = d.sync.retryRead(d.state); await sleep(30);
+  d.clock += advance; // 读取在途时越过截止时间
+  release(); const r = await within(p, 3000);
+  check(`读取在途时到期（${label}），随后成功响应：不登录、不进游客选择，返回 stage:read + expired + canRetry:false（V6）`, r.settled && r.v.ok === false && r.v.stage === "read" && r.v.expired === true && r.v.canRetry === false && !r.v.needChoice && describeVerifyError(r.v).id === "V6", JSON.stringify(r.settled ? { ok: r.v.ok, expired: r.v.expired, needChoice: r.v.needChoice } : "挂着"));
+  check(`读取在途时到期（${label}）：没有账号、没有 suipian.auth、存储逐字节不变（游客进度还在）、已验证会话已清、验证接口仍 1 次`, d.sync.account() === null && !d.storage._m.has("suipian.auth") && snap(d.storage) === before && d.sync.hasVerified() === false && S.count[VERIFY] === 1 && S.xpOf(EMAIL) === null);
+  const g = S.get(); const r2 = await d.sync.retryRead(d.state);
+  check(`到期后再点重试读取（${label}）：不发请求、仍是 V6`, r2.canRetry === false && S.get() === g && describeVerifyError(r2).id === "V6");
+}
+
+{ // 令牌本身只剩 30 秒（不足 60 秒余量）：首读失败后一开始就不留可重试会话
+  const S = fakeCloud(), d = device(S); S.expiresIn = 30; S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  const r = await d.sync.verify(EMAIL, "123456", d.state);
+  check("令牌只剩 30 秒：首读失败后不留已验证会话（canRetry:false + expired，V6），不拿快过期的令牌重试", r.ok === false && r.canRetry === false && r.expired === true && d.sync.hasVerified() === false && describeVerifyError(r).id === "V6");
+}
+
+// ----- GPT1 19:44 复审 2：退出必须作废待读取会话（含没有登录账号时），在途的旧读取返回后丢弃 -----
+for (const [entry, doLogout] of [["logout({force:true})", (d) => d.sync.logout({ force: true })], ["forceLocalLogout()", (d) => d.sync.forceLocalLogout()], ["logout()", (d) => d.sync.logout()]]) {
+  for (const [label, lateRule] of [["迟到 200", null], ["迟到 500", [500, { msg: "late boom" }]]]) {
+    const S = fakeCloud(), d = device(S); seedGuest(d, 50);
+    S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+    await d.sync.verify(EMAIL, "123456", d.state);
+    const release = S.hold(/GET \/rest\/v1\/progress/);
+    if (lateRule) S.fail(/GET \/rest\/v1\/progress/, ...lateRule);
+    const p = d.sync.retryRead(d.state); await sleep(30);
+    const lo = await within(doLogout(d), 3000);
+    const afterLogout = snap(d.storage);
+    release(); const r = await within(p, 3000); await sleep(30);
+    check(`重试读取在途时 ${entry}（${label}）：退出返回成功；旧读取的结果被丢弃，不恢复账号、不写凭证，游客进度逐字节不变`, lo.settled && lo.v.ok === true && r.settled && r.v.discarded === true && d.sync.account() === null && !d.storage._m.has("suipian.auth") && snap(d.storage) === afterLogout && d.sync.hasVerified() === false && S.xpOf(EMAIL) === null, JSON.stringify({ logout: lo.settled && lo.v.ok, late: r.settled && r.v.discarded }));
+  }
+  { // 退出之后再点重试读取：已失效，不发请求
+    const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+    await d.sync.verify(EMAIL, "123456", d.state);
+    await doLogout(d);
+    const g = S.get(), r = await d.sync.retryRead(d.state);
+    check(`${entry} 之后再点重试读取：已失效（canRetry:false），不发读取请求、不登录`, r.ok === false && r.canRetry === false && S.get() === g && d.sync.account() === null && S.count[VERIFY] === 1);
+  }
+  { // 验证后的首次读取在途时退出
+    const S = fakeCloud(), d = device(S); S.issue();
+    const release = S.hold(/GET \/rest\/v1\/progress/);
+    const p = d.sync.verify(EMAIL, "123456", d.state); await sleep(30);
+    await doLogout(d); const afterLogout = snap(d.storage);
+    release(); const r = await within(p, 3000);
+    check(`验证后首次读取在途时 ${entry}：迟到的成功结果被丢弃，不登录、不写凭证`, r.settled && r.v.discarded === true && d.sync.account() === null && !d.storage._m.has("suipian.auth") && snap(d.storage) === afterLogout && d.sync.hasVerified() === false);
+  }
+}
+
 // ----- 作废边界（Gemini 用例 3 / GPT1：换邮箱、重发、关窗）-----
 for (const [label, act] of [
   ["换邮箱（界面调 clearVerified）", async (d) => { d.sync.clearVerified(); }],

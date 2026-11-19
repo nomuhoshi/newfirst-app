@@ -35,6 +35,9 @@ try {
     ["403 也允许重试到 5 次", "const tries = authClass ? READ_TRIES_AUTH : READ_TRIES_OTHER;", "const tries = READ_TRIES_OTHER;"],
     ["重试成功后不清掉已验证会话", "if (out.ok) { if (verified === v) verified = null; return out; }", "if (out.ok) { return out; }"],
     ["数据类失败仍留着已验证会话", "if (verified === v) verified = null; // 数据", "// 数据"],
+    ["读取返回后不再复查到期（成功响应在到期后仍能登录）", "isCurrent: () => stillOurs() && now() < v.expiresAt", "isCurrent: () => stillOurs()"],
+    ["到期被丢弃时不转成“已失效”结果", "if (stillOurs()) { verified = null; return expiredResult(); } return out;", "return out;"],
+    ["退出不作废待读取会话", "dropVerified(); // 退出（含强制本机退出", "// 退出（含强制本机退出"],
     ["重试读取又调用验证接口（退回旧行为）", "const out = await begin(v.session, baseState ?? v.baseState,", "const vr = await api.verifyCode(v.email, v.code); const out = await begin(vr.session || v.session, baseState ?? v.baseState,"],
     ["验证后读取失败不留已验证会话", "return noteReadFailure(v, out);\n  }\n  // 读失败之后", "return out;\n  }\n  // 读失败之后"],
   ];

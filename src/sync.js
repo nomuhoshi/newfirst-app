@@ -537,10 +537,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (!v) return { ok: false, kind: "auth", stage: "read", canRetry: false, expired: true, message: "已验证的登录已失效，请重新发送验证码" };
     if (now() >= v.expiresAt) { verified = null; return { ok: false, kind: "auth", stage: "read", canRetry: false, expired: true, message: "已验证的登录已失效，请重新发送验证码" }; }
     if (v.inflight) return v.inflight; // 连点：共用同一次读取，不重复处理、不重复计分
+    const expiredResult = () => ({ ok: false, kind: "auth", stage: "read", canRetry: false, expired: true, message: "已验证的登录已失效，请重新发送验证码" });
     const run = (async () => {
       v.reads++;
-      const out = await begin(v.session, baseState ?? v.baseState, { isCurrent: () => verified === v && v.gen === verifyGen });
-      if (out.discarded) return out;
+      // 读取返回后、切账号 / 写凭证之前再复查一次：流程被作废（换邮箱 / 重发 / 关窗 / 退出）→ 丢弃；只是到期 → 作废并按“已失效”返回（成功的响应也不能在到期后完成登录）
+      const stillOurs = () => verified === v && v.gen === verifyGen;
+      const out = await begin(v.session, baseState ?? v.baseState, { isCurrent: () => stillOurs() && now() < v.expiresAt });
+      if (out.discarded) { if (stillOurs()) { verified = null; return expiredResult(); } return out; }
       if (out.ok) { if (verified === v) verified = null; return out; }
       if (out.stage === "read") return noteReadFailure(v, out);
       if (verified === v) verified = null; // 数据 / 本机副本 / 账号冲突等：重读也不会好，作废
@@ -1052,6 +1055,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   async function logout({ force = false, forceLocal = false } = {}) {
+    dropVerified(); // 退出（含强制本机退出，forceLocalLogout 走这里）：待读取的已验证会话作废、流程代次前进——没有登录账号时也要做，在途的旧读取返回后会被丢弃
     if (!userId) return { ok: true };
     const dropping = force || forceLocal;
     const guard = importGuard();
