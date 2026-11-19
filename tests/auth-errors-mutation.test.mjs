@@ -53,6 +53,8 @@ try {
     ["auth-errors.js", "冷却上限被拿掉", "Math.min(3600000, Math.max(10000, ms))", "Math.max(10000, ms)"],
     ["auth-errors.js", "冷却下限被拿掉", "Math.min(3600000, Math.max(10000, ms))", "Math.min(3600000, ms)"],
     ["auth-errors.js", "验证码错误不再单独分类（V1）", 'if (r.stage === "verify" && r.kind === "auth") return "V1";', ""],
+    ["auth-errors.js", "读云端失败（stage:read）不再单独归 V5", 'if (r.stage === "read") return "V5";', ""],
+    ["auth-errors.js", "V5 文案退回“稍后再点登录”", "这个验证码已经用过，请点「重新发送」换一个新的再登录（按钮还在倒计时就等它结束）。", "稍后再点「登录」。"],
     ["auth-errors.js", "验证后读云端被拒也说成验证码错", 'if (r.stage !== "verify" && r.kind === "auth") return "V5";', 'if (r.kind === "auth") return "V1";'],
     ["auth-errors.js", "验证 429 不单独分类（V2）", 'if (r.kind === "rate-limit" || http(r) === 429) return "V2";', ""],
     ["auth-errors.js", "验证断网 / 超时不归 V3", 'if (r.kind === "network") return "V3";', 'if (r.kind === "network") return "V4";'],

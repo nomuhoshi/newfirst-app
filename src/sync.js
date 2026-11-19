@@ -513,7 +513,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       else return { ok: false, kind: "other-account", message: "请先退出当前账号" };
     }
     const remote = await api.getProgress(newSession);
-    if (!remote.ok) return remote;
+    // stage:"read"：验证码这一步已经通过（邮箱验证码是一次性的，已经被用掉），只是随后读云端记录失败、登录没有完成。
+    // 界面据此提示“请重新发送验证码”，不能让用户拿同一个码再点一次登录（那一定会报“验证码错误或已过期”）。
+    if (!remote.ok) return { ...remote, stage: "read" };
     const remoteDoc = remote.row ? normalizeDoc(remote.row.doc) : null;
     if (remoteDoc && !remoteDoc.ok) return { ok: false, kind: "data", code: remoteDoc.code, message: "云端记录：" + remoteDoc.message };
     const L = loadAccount(storage, newSession.userId, { now: now() });

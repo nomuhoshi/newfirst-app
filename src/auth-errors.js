@@ -48,8 +48,9 @@ export const VERIFY_COPY = {
   V2: { text: (c) => `输入得太频繁了，请等 ${fmtWait(c.n)}再试。`, cooldown: "server", fallback: 60000, diag: false },
   V3: { text: () => "网络不稳，登录没有确认。再点一次「登录」；如果提示验证码无效，点「重新发送」换新的。", cooldown: 0, diag: false },
   V4: { text: () => "登录服务暂时出问题，请等几分钟再点「登录」。", cooldown: 0, diag: true },
-  // 规范之外：验证码这一步通过了，但随后读云端记录被拒（401/403）。不能说成“验证码错”，也不能说登录成功。
-  V5: { text: () => "验证码对了，但读取云端记录没成功，没有完成登录。稍后再点「登录」。", cooldown: 0, diag: true },
+  // 规范之外：验证码这一步通过了，但随后读云端记录失败（被拒 / 服务故障 / 断网 / 限流都算）。不能说成“验证码错”，也不能说登录成功；
+  // 邮箱验证码是一次性的，这个码已经被用掉，再点「登录」只会得到“验证码错误或已过期”，所以要明说“换一个新验证码”。
+  V5: { text: () => "验证码对了，但读取云端记录没成功，没有完成登录。这个验证码已经用过，请点「重新发送」换一个新的再登录（按钮还在倒计时就等它结束）。", cooldown: 0, diag: true },
 };
 export const CHOICE_COPY = {
   C1: { text: () => "没有处理完。你的游客进度原样留在这台设备上，可以再试一次。", cooldown: 0, diag: false },
@@ -95,6 +96,7 @@ export function classifySend(r, { preview = IS_PREVIEW, captchaOn } = {}) {
 export function classifyVerify(r) {
   if (!r || r.ok) return "";
   if (r.kind === "config") return "CFG";
+  if (r.stage === "read") return "V5"; // 验证码已通过并被用掉，后面读云端记录失败：任何失败类型都要叫用户换新验证码
   if (r.kind === "network") return "V3";
   if (r.kind === "rate-limit" || http(r) === 429) return "V2";
   if (r.stage === "verify" && r.kind === "auth") return "V1";

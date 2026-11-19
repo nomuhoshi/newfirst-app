@@ -210,6 +210,18 @@ await scenario("V4 登录服务故障（500）", { verify: (r) => json(r, 500, {
   await waitMsg(d, /登录服务暂时出问题/);
   check("V4：不说成验证码错；诊断行 诊断：500；XP 句子；无原文", !/验证码错误/.test(await T(d.page, "[data-login-msg]")) && (await T(d.page, "[data-login-diag]")) === "诊断：500" && (await T(d.page, "[data-login-xp]")) === XP50 && (await noRaw(d.page)));
 });
+// 2026-11-19：验证码这一步成功（验证码已被用掉），随后读云端记录失败：不能叫人再点「登录」，要叫人重新发送
+await scenario("V5 验证码对了但读云端记录失败（503）", { verify: okVerify, getProgress: (r) => json(r, 503, { msg: CAN }) }, async (d) => {
+  await sendTap(d); await d.page.locator("[data-code]").waitFor();
+  const before = await dump(d.page);
+  await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
+  await waitMsg(d, /验证码对了，但读取云端记录没成功/);
+  const m = await T(d.page, "[data-login-msg]");
+  check("V5：说明验证码已用过、请点「重新发送」换新的；不叫人再点「登录」、不说验证码错", /已经用过/.test(m) && /「重新发送」/.test(m) && !/再点「登录」|稍后再点/.test(m) && !/验证码错误/.test(m), m);
+  check("V5：诊断行 诊断：503；没有服务器原文", (await T(d.page, "[data-login-diag]")) === "诊断：503" && (await noRaw(d.page)));
+  check("V5：没有登录成功（弹窗还在、还在输验证码页），本机存储逐字节不变", (await d.page.locator("[data-code]").count()) === 1 && (await dump(d.page)) === before);
+  check("V5：“重新发送”按钮在页面上（倒计时结束后可点）", (await d.page.locator("[data-resend]").count()) === 1);
+});
 await scenario("V3 验证时网络不稳", { verify: (r) => r.abort("connectionreset") }, async (d) => {
   await sendTap(d); await d.page.locator("[data-code]").waitFor();
   await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
