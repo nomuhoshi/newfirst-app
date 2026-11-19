@@ -9,7 +9,9 @@ import { freshState, bumpStreak } from "../src/storage.js";
 import { docToState, sumXp, newId } from "../src/account-data.js";
 
 const results = [];
-const check = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "✅" : "❌"} ${name}${detail ? "  — " + detail : ""}`); };
+let CUR_MODE = ""; // 跑两遍：无锁 / 有 Web Locks（假的独占锁，按名字排队，和真实 navigator.locks 的语义一致）
+const check = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "✅" : "❌"} ${CUR_MODE ? "[" + CUR_MODE + "] " : ""}${name}${detail ? "  — " + detail : ""}`); };
+function fakeLocks() { const tails = new Map(); return { request: async (name, opts, cb) => { const prev = tails.get(name) || Promise.resolve(); let rel; const mine = new Promise((r) => { rel = r; }); tails.set(name, prev.then(() => mine)); await prev; try { return await cb(); } finally { rel(); } } }; }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const within = (p, ms = 2000) => { let t; return Promise.race([p.then((v) => ({ settled: true, v })), new Promise((r) => { t = setTimeout(() => r({ settled: false }), ms); })]).finally(() => clearTimeout(t)); };
 const J = (status, body) => ({ ok: status < 400, status, headers: { get: () => null }, text: async () => (body === undefined ? "" : JSON.stringify(body)) });
@@ -17,18 +19,19 @@ const TODAY = "2026-11-03";
 
 // ---------- 假 Supabase ----------
 function fakeCloud() {
-  const S = { users: new Map(), rows: new Map(), tokens: new Map(), codes: new Set(), n: 0, offline: false, expiresIn: 3600, offlineAfterVerify: false, rules: [], gate: null, count: {}, saveCalls: 0, log: [] };
+  const S = { users: new Map(), rows: new Map(), tokens: new Map(), codes: new Set(), n: 0, offline: false, expiresIn: 3600, offlineAfterVerify: false, rules: [], gates: [], count: {}, saveCalls: 0, log: [] };
   const mkSession = (uid, email) => { const k = ++S.n; const at = `AT-${k}`, rt = `RT-${k}`; S.tokens.set(at, uid); S.tokens.set(rt, uid); return { access_token: at, refresh_token: rt, expires_in: S.expiresIn, user: { id: uid, email } }; };
   S.issue = (code = "123456") => S.codes.add(code); // 模拟“发了一封验证码邮件”
   S.fail = (re, status, body, times = 1) => S.rules.push({ re, status, body, times });
   S.timeout = (re, times = 1) => S.rules.push({ re, stall: true, times }); // 请求一直不回（响应头都没有），被超时中止
   S.get = () => S.count["GET /rest/v1/progress"] || 0;
-  S.hold = (re, failStatus = null) => { let release; const p = new Promise((r) => { release = r; }); S.gate = { re, p, failStatus }; return release; }; // failStatus：放行时这一个请求回这个失败状态（不影响期间别的请求）
+  S.hold = (re, failStatus = null) => { let release; const p = new Promise((r) => { release = r; }); S.gates.push({ re, p, failStatus }); return release; }; // 可以同时挂起多个不同的请求（按先后各挂一个） // failStatus：放行时这一个请求回这个失败状态（不影响期间别的请求）
   S.fetch = async (url, init) => {
     if (S.offline) throw new TypeError("Failed to fetch");
     const u = new URL(url), path = u.pathname, method = init.method || "GET", key = `${method} ${path}`, body = init.body ? JSON.parse(init.body) : null;
     S.count[key] = (S.count[key] || 0) + 1;
-    if (S.gate && S.gate.re.test(key)) { const g = S.gate; S.gate = null; await g.p; if (g.failStatus) { S.log.push(`${key} → ${g.failStatus}（挂起后放行）`); return J(g.failStatus, { msg: "x" }); } }
+    const gi = S.gates.findIndex((x) => x.re.test(key));
+    if (gi >= 0) { const g = S.gates.splice(gi, 1)[0]; await g.p; if (g.failStatus) { S.log.push(`${key} → ${g.failStatus}（挂起后放行）`); return J(g.failStatus, { msg: "x" }); } }
     const rule = S.rules.find((r) => r.times > 0 && r.re.test(key));
     if (rule && rule.stall) { rule.times--; S.log.push(`${key} → 超时`); return new Promise((_, rej) => init.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")))); }
     if (rule) { rule.times--; S.log.push(`${key} → ${rule.status}`); return J(rule.status, rule.body); }
@@ -57,7 +60,7 @@ const snap = (st) => JSON.stringify([...st._m.entries()].sort());
 const mkApi = (S) => createApi({ url: "https://fake.supabase.test", anonKey: "k", fetchFn: S.fetch, timeoutMs: 400, isOnline: () => !S.offline });
 function device(S, storage = fakeStorage()) {
   const dev = { storage, state: freshState(), timers: [], clock: Date.now(), notices: [] };
-  dev.sync = createSync({ storage, api: mkApi(S), schedule: (fn, ms) => { dev.timers.push({ fn, ms }); return dev.timers.length; }, today: () => TODAY, now: () => dev.clock, onState: (doc) => { dev.state = docToState(doc, dev.state); }, onNotice: (k) => dev.notices.push(k) });
+  dev.sync = createSync({ storage, api: mkApi(S), retryLocks: CUR_MODE === "有 Web Locks" ? fakeLocks() : {}, schedule: (fn, ms) => { dev.timers.push({ fn, ms }); return dev.timers.length; }, today: () => TODAY, now: () => dev.clock, onState: (doc) => { dev.state = docToState(doc, dev.state); }, onNotice: (k) => dev.notices.push(k) });
   return dev;
 }
 const finishLesson = (dev, id, xp) => { const s = dev.state; s.xp += xp; s.done[id] = true; s.lessonsCompleted++; bumpStreak(s, new Date(TODAY + "T12:00:00")); return dev.sync.persistLocal(s); };
@@ -82,6 +85,8 @@ async function loggedInA(S, { xp = 40 } = {}) {
   return d;
 }
 
+for (const MODE of ["无锁", "有 Web Locks"]) {
+CUR_MODE = MODE;
 // ===== 1. 挂起读取 → 强制退出 → 放行失败 / 成功：状态保持未登录，不安排重试 =====
 for (const [label, failStatus] of [["503 失败", 503], ["成功", null]]) {
   const S = fakeCloud(), d = await loggedInA(S);
@@ -159,6 +164,106 @@ for (const [label, failStatus] of [["503 失败", 503], ["成功", null]]) {
   check("A→退出→A，旧刷新放行：旧任务 stale；存储里的凭证仍是新会话的（没被旧令牌覆盖）", r.settled && r.v.stale === true && d.storage.getItem("suipian.auth") === authNew && authNew !== null, JSON.stringify(r.v));
 }
 
+// ===== 3c. 强制退出（要等云端撤销）：旧刷新 + 撤销都挂起，先放行旧刷新，再放行撤销 → 最终没有凭证残留 =====
+{
+  const S = fakeCloud(); S.expiresIn = 30;
+  const d = await loggedInA(S);
+  const relRefresh = S.hold(REFRESH);
+  const p = d.sync.syncNow({ manual: true });
+  await tick();
+  const relSignOut = S.hold(/POST \/auth\/v1\/logout/);
+  const lo = d.sync.logout({ force: true });                 // 本机清理完立刻作废旧同步，然后等云端撤销（挂着）
+  await tick();
+  const midAuth = d.storage.getItem("suipian.auth");
+  relRefresh();                                               // 撤销还在等的时候，旧刷新回来
+  const r = await within(p); await tick();
+  const authAfterRefresh = d.storage.getItem("suipian.auth");
+  relSignOut();
+  const lr = await lo; await tick();
+  check("强制退出等云端撤销期间，旧刷新回来：不把刚清掉的凭证写回（撤销之前就已经没有凭证）", midAuth === null && authAfterRefresh === null && r.settled && r.v.stale === true, JSON.stringify([midAuth, authAfterRefresh, r.v]));
+  check("  撤销结束后：退出成功、账号为空、状态为空、没有任何凭证残留", lr.ok === true && d.sync.account() === null && statusOf(d).status === null && d.storage.getItem("suipian.auth") === null && !d.storage._m.has("suipian.auth"), JSON.stringify([lr, statusOf(d)]));
+}
+
+// ===== 3e. 普通退出（等云端撤销）：旧读取回来不得把刚清掉的本机副本写回；撤销失败后回滚，登录态和同步照常 =====
+for (const [label, revokeFails] of [["撤销成功", false], ["撤销失败 → 回滚", true]]) {
+  const S = fakeCloud();
+  const d = device(S);
+  await login(S, d, EMAIL_A);                                // 没有未上传的进度：普通退出不需要先同步
+  const relGet = S.hold(GET);
+  const p = d.sync.syncNow({ manual: true });                // 旧同步停在读取
+  await tick();
+  const relOut = S.hold(/POST \/auth\/v1\/logout/, revokeFails ? 503 : null);
+  const lo = d.sync.logout();                                // 本机清理完，等云端撤销（挂着）
+  await tick();
+  const snapMid = snap(d.storage);
+  relGet();                                                   // 旧读取回来
+  const r = await within(p); await tick();
+  check(`普通退出等云端撤销（${label}）：期间旧读取回来，旧任务 stale，不把刚清掉的本机副本 / 凭证写回`, r.settled && r.v.stale === true && snap(d.storage) === snapMid, JSON.stringify(r.v));
+  relOut();
+  const lr = await lo; await tick();
+  if (!revokeFails) {
+    check("  撤销成功：退出成功，账号为空，状态为空，没有凭证残留", lr.ok === true && d.sync.account() === null && statusOf(d).status === null && d.storage.getItem("suipian.auth") === null, JSON.stringify([lr, statusOf(d)]));
+  } else {
+    check("  撤销失败：退出没完成并回滚，仍是登录 A", lr.ok === false && d.sync.account()?.email === EMAIL_A && d.storage.getItem("suipian.auth") !== null, JSON.stringify(lr));
+    finishLesson(d, "u1-l1", 40);
+    const ns = await d.sync.syncNow({ manual: true });
+    check("  回滚之后新同步照常：成功，云端进度 40 XP，状态 synced", ns.ok === true && S.xpOf(EMAIL_A) === 40 && statusOf(d).status === "synced", JSON.stringify([ns, statusOf(d)]));
+  }
+}
+
+// ===== 3d. 游客导入（保留云端 / 安全合并）：读取 / 写入 / 读回 各自挂起 → 强制退出 → 放行 =====
+async function withPendingImport(S, choice) {
+  const d = device(S);
+  seedGuest(d, 50);
+  S.issue();
+  const v = await d.sync.verify(EMAIL_A, "123456", d.state);
+  if (!v.ok || !v.needChoice) throw new Error("需要选择：" + JSON.stringify(v));
+  S.fail(/create_progress|save_progress/, 503, { msg: "x" }, 5);   // 写云失败 → 专用待办留在本机
+  const f = await d.sync.finishChoice(choice);
+  S.rules.length = 0;
+  const key = [...d.storage._m.keys()].find((k) => k.startsWith("suipian.acct.import."));
+  if (!f.ok || !key) throw new Error("没有留下待办：" + JSON.stringify(f));
+  return { d, key };
+}
+const imports = (st) => [...st._m.keys()].filter((k) => k.startsWith("suipian.acct.import.")).map((k) => k + "=" + st.getItem(k)).join("|");
+const writes = (S) => (S.count["POST /rest/v1/rpc/create_progress"] || 0) + (S.count["POST /rest/v1/rpc/save_progress"] || 0);
+for (const choice of ["cloud", "transfer"]) {
+  const label = choice === "cloud" ? "保留云端" : "安全合并";
+  // 读取阶段挂起：放行后不得再发任何写请求、不得写本机、不得清游客
+  { const S = fakeCloud(); const { d, key } = await withPendingImport(S, choice);
+    const rel = S.hold(GET); const p = d.sync.syncNow({ manual: true }); await tick();
+    await d.sync.forceLocalLogout();
+    const snap0 = snap(d.storage), w0 = writes(S), imp0 = imports(d.storage);
+    rel(); const r = await within(p); await tick();
+    check(`游客导入（${label}）读取挂起 → 强制退出 → 放行：旧任务 stale，没有新增云端写入`, r.settled && r.v.stale === true && writes(S) === w0, JSON.stringify([r.v, w0, writes(S)]));
+    check(`  本机存储逐字节不变（副本、游客记录、待办都没动），待办仍在，状态仍为 null`, snap(d.storage) === snap0 && imports(d.storage) === imp0 && imp0 !== "" && statusOf(d).status === null && d.timers.length <= 1, JSON.stringify(statusOf(d))); }
+  // 写入阶段挂起（请求已经发出，服务端会处理它；这里只看本机）：放行后不读回、不写本机、不清游客
+  { const S = fakeCloud(); const { d } = await withPendingImport(S, choice);
+    const rel = S.hold(/POST \/rest\/v1\/rpc\/(save|create)_progress/); const p = d.sync.syncNow({ manual: true }); await tick();
+    await d.sync.forceLocalLogout();
+    const snap0 = snap(d.storage), gets0 = S.get();
+    rel(); const r = await within(p); await tick();
+    check(`游客导入（${label}）写入挂起 → 强制退出 → 放行：旧任务 stale，不再读回，本机存储不变，游客记录和待办保留，状态仍为 null`, r.settled && r.v.stale === true && S.get() === gets0 && snap(d.storage) === snap0 && statusOf(d).status === null, JSON.stringify([r.v, gets0, S.get()])); }
+  // 读回阶段挂起：放行后不写本机副本、不清游客、不清待办
+  { const S = fakeCloud(); const { d } = await withPendingImport(S, choice);
+    const gets = S.get();
+    // 第 1 次读取放行，第 2 次（读回）挂起：先挂第 1 个，等它被取走后再挂读回
+    const rel1 = S.hold(GET); const p = d.sync.syncNow({ manual: true }); await tick(); const rel2 = S.hold(GET); rel1(); await tick(); await tick();
+    const atReadback = S.get() - gets === 2 && writes(S) >= 1;   // 读取 1 次 + 写入 1 次之后，第 2 次读取（读回）正挂着
+    check(`游客导入（${label}）测试前提：旧任务确实停在“读回”这一步`, atReadback, `读取 ${S.get() - gets} 次，写入 ${writes(S)} 次`);
+    await d.sync.forceLocalLogout();
+    const snap0 = snap(d.storage), imp0 = imports(d.storage);
+    rel2(); const r = await within(p); await tick();
+    check(`游客导入（${label}）读回挂起 → 强制退出 → 放行：旧任务 stale，本机存储不变，待办和游客记录保留，状态仍为 null`, r.settled && r.v.stale === true && snap(d.storage) === snap0 && imports(d.storage) === imp0 && statusOf(d).status === null, JSON.stringify([r.v, statusOf(d)])); }
+  // 退出后待办被另一页改写：旧流程放行后不得把状态改成 import-recovery-required / pending
+  { const S = fakeCloud(); const { d, key } = await withPendingImport(S, choice);
+    const rel = S.hold(/POST \/rest\/v1\/rpc\/(save|create)_progress/); const p = d.sync.syncNow({ manual: true }); await tick();
+    await d.sync.forceLocalLogout();
+    d.storage.setItem(key, d.storage.getItem(key) + " ");     // 另一个页面把这份待办改写了
+    rel(); const r = await within(p); await tick();
+    check(`游客导入（${label}）退出后待办被另一页改写：旧任务 stale，状态不被改成 import-recovery-required，pending 仍为 false`, r.settled && r.v.stale === true && statusOf(d).status === null && statusOf(d).pending === false, JSON.stringify([r.v, statusOf(d)])); }
+}
+
 // ===== 4. A → 退出 → 再登录 A：旧任务（失败 / 成功）不得覆盖新会话的状态、凭证、进度、时间戳 =====
 for (const [label, failStatus] of [["503 失败", 503], ["成功", null]]) {
   const S = fakeCloud(), d = await loggedInA(S);
@@ -167,7 +272,8 @@ for (const [label, failStatus] of [["503 失败", 503], ["成功", null]]) {
   await tick();
   await d.sync.forceLocalLogout();
   const again = await login(S, d, EMAIL_A);               // 同一个账号再登录：新会话
-  const ns = await d.sync.syncNow({ manual: true });       // 新会话自己同步一次
+  const nsW = await within(d.sync.syncNow({ manual: true }), 2000);   // 新会话自己同步一次——旧任务还挂着没放行，新同步也必须能完成（真实 Web Locks 下不能排在旧任务后面）
+  const ns = nsW.settled ? nsW.v : { ok: false, hung: true };
   const mine = { st: statusOf(d), auth: d.storage.getItem("suipian.auth"), acct: A_KEY(d.storage), xp: S.xpOf(EMAIL_A), timers: d.timers.length };
   release();
   const r = await within(p); await tick();
@@ -258,6 +364,8 @@ for (const [label, failStatus, hookRe] of [["503 失败", 503, GET], ["成功", 
   const S = fakeCloud(), d = await loggedInA(S);
   const r = await d.sync.syncNow({ manual: true });
   check("没有退出的普通同步：成功，云端 40 XP", r.ok === true && S.xpOf(EMAIL_A) === 40 && statusOf(d).status === "synced");
+}
+
 }
 
 const bad = results.filter((x) => !x).length;

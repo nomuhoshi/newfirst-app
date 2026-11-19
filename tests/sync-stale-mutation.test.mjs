@@ -23,15 +23,21 @@ try {
   const base = run();
   check("未改源码的对照：代次专项全绿", base.status === 0, (base.stdout + base.stderr).split("\n").slice(-3).join(" | "));
 
+  // 已核实、故意不做变异的冗余防线：拿到锁后的 gen 检查（syncOnce 里 dead() 会立刻拦下，不发请求不写本机）、runPendingImport 返回后的 dead() 检查（写入函数每次 await 后已经检查，stale 结果会原样返回）。
   const MUTS = [
-    ["退出 / 登录时代次不前进（finishLocalLogout）", "bumpAcct(); session = null; userId = null; email = \"\"; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”\n    setStatus(null);\n  }", "session = null; userId = null; email = \"\"; baseline = null; pending = false; waiting = null; lastSyncedAt = null;\n    setStatus(null);\n  }"],
     ["读取返回后不核对代次", "const remote = await api.getProgress(session);\n      if (dead()) return staleResult();", "const remote = await api.getProgress(session);"],
     ["保存返回后不核对代次", "const s = await api.saveProgress(session, remote.row.rev, finalDoc);\n          if (dead()) return staleResult();", "const s = await api.saveProgress(session, remote.row.rev, finalDoc);"],
     ["创建返回后不核对代次", "const c = await api.createProgress(session, copy.doc);\n        if (dead()) return staleResult();", "const c = await api.createProgress(session, copy.doc);"],
     ["刷新令牌返回后不核对代次", "const r = await api.refresh(session);\n    if (gen !== acctGen) return staleResult();", "const r = await api.refresh(session);"],
     ["刷新后 syncOnce 不核对代次", "const t = await ensureToken(gen);\n    if (dead()) return staleResult();", "const t = await ensureToken(gen);"],
     ["旧任务收尾无条件清 running", "finally { if (running === mine) running = null; }", "finally { running = null; }"],
-    ["前进代次时不放掉旧任务占着的 running", "function bumpAcct() { acctGen++; running = null;", "function bumpAcct() { acctGen++;"],
+    ["前进代次时不放掉旧任务占着的 running", "abandonWaiters.clear(); running = null;", "abandonWaiters.clear();"],
+    ["强制退出：本机清完后不立刻作废旧同步", "bumpAcct(); session = null;\n      if (forceLocal)", "session = null;\n      if (forceLocal)"],
+    ["普通退出：本机清完后不立刻作废旧同步", "bumpAcct(); // 同上：本机清理已成功", "// 同上：本机清理已成功"],
+    ["代次前进时不放掉旧任务占着的本机写回锁", "for (const f of [...abandonWaiters]) f(); ", ""],
+    ["游客导入（保留云端）：读最新云端后不核对代次", "let latest = await readLatestCloud(sess);\n    if (dead()) return staleImport();", "let latest = await readLatestCloud(sess);"],
+    ["游客导入（保留云端）：读回后不核对代次", "const rb = await api.getProgress(sess);\n    if (dead()) return staleImport();", "const rb = await api.getProgress(sess);"],
+    ["游客导入（安全合并）：读最新云端后不核对代次", "let current = await readLatestCloud(sess);\n    if (dead()) return staleImport();", "let current = await readLatestCloud(sess);"],
     ["自动同步计时器不带代次", "timer = schedule(() => { if (g !== acctGen) return; timer = null; syncNow(); }, ms);", "timer = schedule(() => { timer = null; syncNow(); }, ms);"],
     ["退避重试计时器不带代次", "retryTimer = schedule(() => { if (g !== acctGen) return; retryTimer = null; syncNow(); }, delay);", "retryTimer = schedule(() => { retryTimer = null; syncNow(); }, delay);"],
   ];
