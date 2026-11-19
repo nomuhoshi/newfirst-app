@@ -41,7 +41,8 @@
 // 比较规则（strict）：统一换行符（\r\n、\r → \n）；两边各允许末尾**一个**换行；
 //   行尾空格、多出来的空行仍然要一致。lenient：额外忽略每行行尾空白和末尾所有空行。
 
-export const JUDGE_LIMITS = { caseMs: 5000, totalMs: 10000, readyCapMs: 30000 };
+// graceMs：执行器自己的计时（等就绪 readyCapMs + 单组 caseMs）都应该已经让它返回；再多等 graceMs 还没有结果，就当“环境不可用”，不再无限等。
+export const JUDGE_LIMITS = { caseMs: 5000, totalMs: 10000, readyCapMs: 30000, graceMs: 5000 };
 
 export const KIND = {
   PASS: "pass",
@@ -148,6 +149,15 @@ _jg_run()
 `;
 }
 
+// 兜底：执行器如果一直不返回（比如工作线程在手机上无声无息地死了），到点就按“环境不可用”处理：不算作答、不扣红心、保留代码、提示重试。
+function withCeiling(p, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject({ unavailable: true, reason: "executor-hung" }), ms);
+    const done = (fn) => (v) => { clearTimeout(timer); fn(v); };
+    Promise.resolve(p).then(done(resolve), done(reject));
+  });
+}
+
 export async function judge({ code, files, entry, tests, checkMode = "output", compare = "strict", limits = {} }, executor, { signal } = {}) {
   const L = { ...JUDGE_LIMITS, ...limits };
   let used = 0; // 学生代码执行时间合计
@@ -176,10 +186,10 @@ export async function judge({ code, files, entry, tests, checkMode = "output", c
     if (checkMode === "call") runFiles[src.entry] = src.files[src.entry] + callHarness(t);
     const readFiles = [...Object.keys(t.expectedFiles || {}), ...(checkMode === "call" ? [JUDGE_RESULT_FILE] : [])];
     try {
-      r = await executor.exec({
+      r = await withCeiling(executor.exec({
         code: runFiles[src.entry], files: runFiles, entry: src.entry, data: t.data ?? null, stdin: t.stdin ?? null, readFiles,
         timeoutMs, signal, readyCapMs: L.readyCapMs,
-      });
+      }), L.readyCapMs + timeoutMs + L.graceMs, signal);
     } catch (e) {
       // 中途环境失败：前面已通过的组也不算数（不完整的结果不结算）
       if (e && e.cancelled) return notAttempt("cancelled", KIND.CANCELLED, base, []);

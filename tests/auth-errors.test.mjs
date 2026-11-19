@@ -103,7 +103,18 @@ check("V4：验证 500 → 登录服务暂时出问题；诊断行 诊断：500�
   [off, to, onl].forEach((d) => seen.verify.add(d.id));
   check("V3：断网 / 超时 / 在线失败 都是 V3；提示再点一次「登录」，不冷却，不显示诊断行", [off, to, onl].every((d) => d.id === "V3" && d.cooldownMs === 0 && d.diag === "" && /再点一次「登录」/.test(d.text)));
   const cr = describeVerifyError({ ok: false, kind: "auth", status: 401, message: "JWT expired" }); seen.verify.add(cr.id);
-  check("V5（规范外补充）：验证码已过、后面读云端记录被拒 → 不说验证码错，带诊断行", cr.id === "V5" && !/验证码错误/.test(cr.text) && cr.diag === "诊断：401");
+  check("V6（规范外补充，旧路径：没有 stage 的 auth 失败）：验证码已用掉、后面凭证 / 读取被拒 → 不说验证码错，要换新码，带诊断行", cr.id === "V6" && !/验证码错误/.test(cr.text) && /「重新发送」/.test(cr.text) && cr.diag === "诊断：401");
+  // 2026-11-19：验证码这一步成功（一次性验证码已被用掉）、随后读云端记录失败（sync 打 stage:"read"）。
+  // 还能重试（canRetry:true，已验证会话还留在内存里）→ V5「重试读取」；不能重试（次数 / 时限 / 会话失效）→ V6 换新验证码。两种都不能说验证码错。
+  const READS = [["503", { ok: false, kind: "server", status: 503, stage: "read" }], ["403 bad_jwt", { ok: false, kind: "auth", status: 403, errorCode: "bad_jwt", stage: "read" }], ["断网", { ok: false, kind: "network", offline: true, stage: "read" }], ["超时", { ok: false, kind: "network", timedOut: true, stage: "read" }], ["429", { ok: false, kind: "rate-limit", status: 429, stage: "read" }]];
+  for (const [label, r] of READS) {
+    const d = describeVerifyError({ ...r, canRetry: true }, { xp: 50 }); seen.verify.add(d.id);
+    check(`V5（读云端失败：${label}，可重试）：提示点「重试读取」、不用重新输验证码；不叫人再点「登录」、不说验证码错、不叫换新码`, d.id === "V5" && /「重试读取」/.test(d.text) && /不用重新输入验证码/.test(d.text) && !/再点「登录」|稍后再点|重新发送/.test(d.text) && !/验证码错误/.test(d.text) && d.cooldownMs === 0, d.id + " " + d.text);
+    const e = describeVerifyError({ ...r, canRetry: false, exhausted: true }, { xp: 50 }); seen.verify.add(e.id);
+    check(`V6（读云端失败：${label}，不能再重试）：说明验证码已用过、请点「重新发送」换新的；不叫人再点「登录」/「重试读取」、不说验证码错`, e.id === "V6" && /已经用过/.test(e.text) && /「重新发送」/.test(e.text) && !/再点「登录」|稍后再点|重试读取/.test(e.text) && !/验证码错误/.test(e.text) && e.cooldownMs === 0, e.id + " " + e.text);
+  }
+  check("读云端失败没有 canRetry 标记 → 保守按“不能重试”（V6），不会出现点了没用的「重试读取」", describeVerifyError({ ok: false, kind: "server", status: 503, stage: "read" }).id === "V6");
+  { const d = describeVerifyError({ ok: false, kind: "server", status: 500, stage: "verify" }); check("对照：验证码这一步本身 5xx（验证码没被用掉）仍是 V4，可以再点「登录」", d.id === "V4" && /再点「登录」/.test(d.text), d.text); }
   const ot = describeVerifyError({ ok: false, kind: "weird", message: "?" }); seen.verify.add(ot.id);
   check("认不出的验证失败 → 按 V4 保守处理", ot.id === "V4");
   const cfg = describeVerifyError(await createApi({ url: "", anonKey: "" }).verifyCode("a@b.co", "1")); seen.verify.add(cfg.id);
