@@ -232,22 +232,20 @@ try {
       file: "sync.js",
       from: `    const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
-    const rv = await revokeCloudSession(session, {`,
+    bumpAcct(); // 同上`,
       to: `    const rv0 = await revokeCloudSession(session);
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
-    const rv = rv0; ({`,
+    bumpAcct(); // 同上`,
     },
     {
       name: "DB-3.1：强制退出先撤销云端会话、再清本机",
       file: "sync.js",
       from: `      const c = cleanLocal(uid, { clearAuth: true, keepCopy });
-      if (!c.ok) return c.result;
-      if (forceLocal)`,
+      if (!c.ok) return c.result;`,
       to: `      if (!forceLocal) await revokeCloudSession(sess);
       const c = cleanLocal(uid, { clearAuth: true, keepCopy });
-      if (!c.ok) return c.result;
-      if (forceLocal)`,
+      if (!c.ok) return c.result;`,
     },
     {
       name: "DB-3.1：forceLocalLogout 也去联网撤销云端会话（不再是纯本机退出）",
@@ -360,7 +358,7 @@ try {
     {
       name: "DB-3.1：bad_jwt 核实前不采用别的标签页刚轮换的令牌",
       file: "sync.js",
-      from: "      adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌",
+      from: "      if (!detached) adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌",
       to: "      // (不采用)",
     },
     {
