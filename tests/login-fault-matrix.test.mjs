@@ -2,6 +2,7 @@
 // 假 Supabase 在 fetch 层：验证码一次性（按 GoTrue 的常见行为建模，未对真实服务验证）、按账号隔离的进度行、令牌表、可注入的故障（离线 / 503 / 401 / 挂起）。
 // 运行：node tests/login-fault-matrix.test.mjs
 import { createSync } from "../src/sync.js";
+import { GUEST_KEY } from "../src/account-store.js";
 import { createApi } from "../src/cloud-api.js";
 import { describeVerifyError } from "../src/auth-errors.js";
 import { freshState, bumpStreak } from "../src/storage.js";
@@ -16,10 +17,12 @@ const TODAY = "2026-11-03";
 
 // ---------- 假 Supabase ----------
 function fakeCloud() {
-  const S = { users: new Map(), rows: new Map(), tokens: new Map(), codes: new Set(), n: 0, offline: false, rules: [], gate: null, count: {}, saveCalls: 0, log: [] };
-  const mkSession = (uid, email) => { const k = ++S.n; const at = `AT-${k}`, rt = `RT-${k}`; S.tokens.set(at, uid); S.tokens.set(rt, uid); return { access_token: at, refresh_token: rt, expires_in: 3600, user: { id: uid, email } }; };
+  const S = { users: new Map(), rows: new Map(), tokens: new Map(), codes: new Set(), n: 0, offline: false, expiresIn: 3600, offlineAfterVerify: false, rules: [], gate: null, count: {}, saveCalls: 0, log: [] };
+  const mkSession = (uid, email) => { const k = ++S.n; const at = `AT-${k}`, rt = `RT-${k}`; S.tokens.set(at, uid); S.tokens.set(rt, uid); return { access_token: at, refresh_token: rt, expires_in: S.expiresIn, user: { id: uid, email } }; };
   S.issue = (code = "123456") => S.codes.add(code); // 模拟“发了一封验证码邮件”
   S.fail = (re, status, body, times = 1) => S.rules.push({ re, status, body, times });
+  S.timeout = (re, times = 1) => S.rules.push({ re, stall: true, times }); // 请求一直不回（响应头都没有），被超时中止
+  S.get = () => S.count["GET /rest/v1/progress"] || 0;
   S.hold = (re) => { let release; const p = new Promise((r) => { release = r; }); S.gate = { re, p }; return release; };
   S.fetch = async (url, init) => {
     if (S.offline) throw new TypeError("Failed to fetch");
@@ -27,12 +30,14 @@ function fakeCloud() {
     S.count[key] = (S.count[key] || 0) + 1;
     if (S.gate && S.gate.re.test(key)) { const g = S.gate; S.gate = null; await g.p; }
     const rule = S.rules.find((r) => r.times > 0 && r.re.test(key));
+    if (rule && rule.stall) { rule.times--; S.log.push(`${key} → 超时`); return new Promise((_, rej) => init.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")))); }
     if (rule) { rule.times--; S.log.push(`${key} → ${rule.status}`); return J(rule.status, rule.body); }
     const bearer = String(init.headers?.Authorization || "").replace(/^Bearer /, "");
     const uid = S.tokens.get(bearer);
     if (path === "/auth/v1/verify") {
       if (!S.codes.has(body.token)) return J(403, { code: 403, error_code: "otp_expired", msg: "Token has expired or is invalid" });
       S.codes.delete(body.token); // 一次性
+      if (S.offlineAfterVerify) { S.offline = true; S.offlineAfterVerify = false; } // 验证通过的这一刻起断网
       if (!S.users.has(body.email)) S.users.set(body.email, newId());
       return J(200, mkSession(S.users.get(body.email), body.email));
     }
@@ -57,38 +62,206 @@ function device(S, storage = fakeStorage()) {
 }
 const finishLesson = (dev, id, xp) => { const s = dev.state; s.xp += xp; s.done[id] = true; s.lessonsCompleted++; bumpStreak(s, new Date(TODAY + "T12:00:00")); return dev.sync.persistLocal(s); };
 async function login(S, dev, email) { S.issue(); const v = await dev.sync.verify(email, "123456", dev.state); if (v.ok && v.state) dev.state = v.state; return v; }
+// 游客记录：没登录时学的进度（storage.js 把它存在 GUEST_KEY 下）；登录时 sync.begin 读它，决定要不要让用户选“怎么处理”
+const seedGuest = (dev, xp, lessons = ["u1-l1"]) => { dev.state = { ...freshState(), onboarded: true, xp, lessonsCompleted: lessons.length, done: Object.fromEntries(lessons.map((k) => [k, true])), streak: 1, lastDay: TODAY }; dev.storage.setItem(GUEST_KEY, JSON.stringify(dev.state)); };
 const acctKeys = (st) => [...st._m.keys()].filter((k) => k.startsWith("suipian.acct.") && !k.includes("import."));
 
-// ===== 缺陷 1：验证码这一步成功（验证码已被用掉），随后读云端记录失败 =====
-for (const [label, rule] of [["503", [503, { msg: "upstream unavailable" }]], ["403 bad_jwt", [403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT" }]]]) {
+// ===== 缺陷 1（GPT1 方案）：验证码这一步成功（验证码已被用掉），随后读云端记录失败 → 保留已验证会话，「重试读取」不再调用验证接口 =====
+const EMAIL = "t@x.com", VERIFY = "POST /auth/v1/verify";
+const FAULTS = [
+  ["503", (S) => S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "upstream unavailable" })],
+  ["403 bad_jwt", (S) => S.fail(/GET \/rest\/v1\/progress/, 403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT" })],
+  ["429", (S) => S.fail(/GET \/rest\/v1\/progress/, 429, { msg: "rate limit" })],
+  ["超时", (S) => S.timeout(/GET \/rest\/v1\/progress/)],
+  ["断网", (S) => { S.offlineAfterVerify = true; }],
+];
+for (const [label, inject] of FAULTS) {
   const S = fakeCloud(), d = device(S);
-  S.issue(); S.fail(/GET \/rest\/v1\/progress/, ...rule);
-  const r1 = await d.sync.verify("t@x.com", "123456", d.state);
-  const x1 = describeVerifyError(r1, { xp: 0 });
-  check(`读云端失败（${label}）：登录没完成，结果带 stage:"read"，界面是 V5（验证码已用过、请重新发送）`, r1.ok === false && r1.stage === "read" && x1.id === "V5" && /已经用过/.test(x1.text) && /「重新发送」/.test(x1.text) && !/再点「登录」|稍后再点/.test(x1.text), JSON.stringify({ stage: r1.stage, id: x1.id }));
-  check(`读云端失败（${label}）：没有留下半个登录态（无账号、无登录凭证、无账号副本）`, d.sync.account() === null && !d.storage._m.has("suipian.auth") && acctKeys(d.storage).length === 0);
-  const r2 = await d.sync.verify("t@x.com", "123456", d.state);
-  const x2 = describeVerifyError(r2, { xp: 0 });
-  check(`按旧文案“再点登录”用同一个码：必定是“验证码错误或已过期”（V1）——所以 V5 必须叫人重新发送`, r2.ok === false && x2.id === "V1", x2.id);
-  S.issue("654321"); // 用户点了“重新发送”，收到新码
-  const r3 = await d.sync.verify("t@x.com", "654321", d.state);
-  check(`重新发送、输入新码：登录成功（${label}）`, r3.ok === true && d.sync.account() !== null && S.count["POST /auth/v1/verify"] === 3, JSON.stringify({ ok: r3.ok }));
+  seedGuest(d, 50); // 游客先学了一关（50 XP）
+  const before = snap(d.storage);
+  S.issue(); inject(S);
+  const r1 = await d.sync.verify(EMAIL, "123456", d.state);
+  const x1 = describeVerifyError(r1, { xp: 50 });
+  check(`读云端失败（${label}）：登录没完成，结果带 stage:"read" + canRetry:true，界面是 V5（点「重试读取」，不叫人再输码）`, r1.ok === false && r1.stage === "read" && r1.canRetry === true && x1.id === "V5" && /「重试读取」/.test(x1.text) && !/验证码错误/.test(x1.text), JSON.stringify({ stage: r1.stage, canRetry: r1.canRetry, id: x1.id }));
+  check(`读云端失败（${label}）：没有切账号、没写登录凭证 / 账号副本，游客进度逐字节不变`, d.sync.account() === null && !d.storage._m.has("suipian.auth") && acctKeys(d.storage).length === 0 && snap(d.storage) === before);
+  check(`读云端失败（${label}）：已验证会话留在内存里（hasVerified），验证接口只调了 1 次`, d.sync.hasVerified() === true && S.count[VERIFY] === 1);
+  S.rules.length = 0; S.offline = false; // 故障恢复
+  const r2 = await d.sync.retryRead(d.state);
+  check(`重试读取（${label}→恢复）：不再调验证接口（仍是 1 次），拿到游客进度的选择步骤（游客 50 XP），还没动账号`, r2.ok === true && r2.needChoice === true && r2.guest.xp === 50 && S.count[VERIFY] === 1 && d.sync.account() === null, JSON.stringify({ ok: r2.ok, needChoice: r2.needChoice, verify: S.count[VERIFY] }));
+  const r3 = await d.sync.finishChoice("transfer");
+  check(`选择「安全合并」后登录完成：云端 50 XP、本机 50 XP，验证接口始终 1 次，已验证会话已清掉`, r3.ok === true && d.sync.account()?.email === EMAIL && S.xpOf(EMAIL) === 50 && sumXp(S.rows.get(S.users.get(EMAIL)).doc) === 50 && S.count[VERIFY] === 1 && d.sync.hasVerified() === false, `云端=${S.xpOf(EMAIL)}`);
 }
-{ // 读云端限流 / 断网 / 超时：同样是 V5
-  for (const [label, setup] of [["429", (S) => S.fail(/GET \/rest\/v1\/progress/, 429, { msg: "rate limit" })], ["断网", (S) => { S.offlineAfterVerify = true; }]]) {
+{ // 无游客进度：重试读取成功 = 直接登录完成
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  const r1 = await d.sync.verify(EMAIL, "123456", d.state);
+  const r2 = await d.sync.retryRead(d.state);
+  check("GPT1 反例：验证码只能成功验证一次；读取先 503、再成功 → 最终登录成功，验证接口只调 1 次", r1.ok === false && r2.ok === true && d.sync.account()?.email === EMAIL && S.count[VERIFY] === 1 && S.count["POST /rest/v1/rpc/create_progress"] === 1, JSON.stringify({ verify: S.count[VERIFY], create: S.count["POST /rest/v1/rpc/create_progress"] }));
+  const g1 = S.get();
+  check("登录完成后凭证已落盘、已验证会话已清掉；再调 retryRead 是“已失效”，不发请求", d.storage._m.has("suipian.auth") && d.sync.hasVerified() === false && (await d.sync.retryRead(d.state)).canRetry === false && S.get() === g1);
+}
+{ // 同邮箱同码从 verify() 再进来：也不再调用验证接口（只重读）
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  await d.sync.verify(EMAIL, "123456", d.state);
+  const r = await d.sync.verify("  T@x.com ", " 123456 ", d.state);
+  check("同一个邮箱（大小写 / 空格不同）+ 同一个码再调 verify：只重读云端、不调验证接口，登录成功", r.ok === true && S.count[VERIFY] === 1 && d.sync.account()?.email === EMAIL, JSON.stringify({ ok: r.ok, verify: S.count[VERIFY] }));
+}
+{ // 超时 / 403 / 断网：重试读取仍失败时不误报验证码错误，也不误报登录成功
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  await d.sync.verify(EMAIL, "123456", d.state);
+  S.timeout(/GET \/rest\/v1\/progress/);
+  const r = await within(d.sync.retryRead(d.state), 3000);
+  const x = r.settled ? describeVerifyError(r.v, { xp: 0 }) : null;
+  check("重试读取又超时：按时返回；仍是 V5（可再试），不是验证码错、不是登录成功，仍没有登录态", r.settled && r.v.ok === false && r.v.canRetry === true && x.id === "V5" && d.sync.account() === null && !d.storage._m.has("suipian.auth"));
+  const r2 = await d.sync.retryRead(d.state);
+  check("再重试：成功，验证接口仍只调 1 次", r2.ok === true && S.count[VERIFY] === 1 && d.sync.account()?.email === EMAIL);
+}
+
+// ----- 重试次数 / 时限（Gemini：403 最多重试 1 次；到期不能死循环）-----
+{
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT" }, 5);
+  const r1 = await d.sync.verify(EMAIL, "123456", d.state);
+  const r2 = await d.sync.retryRead(d.state);
+  const x2 = describeVerifyError(r2, { xp: 0 });
+  check("403：首读 + 1 次重试后不再允许重试（canRetry:false，V6 要求重新发送），共读 2 次", r1.canRetry === true && r2.ok === false && r2.canRetry === false && r2.exhausted === true && x2.id === "V6" && S.get() === 2 && d.sync.hasVerified() === false, JSON.stringify({ canRetry: r2.canRetry, id: x2.id, get: S.get() }));
+  const r3 = await d.sync.retryRead(d.state);
+  check("用完之后再点：不再发任何请求（GET 仍是 2、验证仍是 1）", r3.ok === false && r3.canRetry === false && S.get() === 2 && S.count[VERIFY] === 1);
+}
+{
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" }, 99);
+  let last = await d.sync.verify(EMAIL, "123456", d.state), n = 1;
+  while (last.canRetry === true && n < 20) { last = await d.sync.retryRead(d.state); n++; }
+  check("503 一直不好：最多读 5 次，之后 canRetry:false（V6），不会无限重试", last.canRetry === false && n === 5 && S.get() === 5 && describeVerifyError(last).id === "V6", `读了 ${S.get()} 次`);
+}
+{ // 到期：5 分钟
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  await d.sync.verify(EMAIL, "123456", d.state);
+  d.clock += 4 * 60_000;
+  check("4 分钟时仍有效", d.sync.hasVerified() === true);
+  d.clock += 61_000; // 共 5 分 01 秒
+  const g = S.get();
+  const r = await d.sync.retryRead(d.state);
+  check("超过 5 分钟：已验证会话到期作废，不再发请求；界面是 V6（换新码）；没有登录", r.ok === false && r.expired === true && r.canRetry === false && S.get() === g && describeVerifyError(r).id === "V6" && d.sync.account() === null && d.sync.hasVerified() === false);
+}
+{ // 不超过会话本身的有效期：令牌只剩 100 秒 → 最多留 40 秒
+  const S = fakeCloud(), d = device(S); S.expiresIn = 100; S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  await d.sync.verify(EMAIL, "123456", d.state);
+  check("令牌只剩 100 秒：30 秒时仍有效", (d.clock += 30_000, d.sync.hasVerified()) === true);
+  check("令牌只剩 100 秒：45 秒时已作废（不拿快过期的令牌去读）", (d.clock += 15_000, d.sync.hasVerified()) === false);
+}
+
+{ // 重试读取在途时跨过了时限：这次读失败后不再允许重试
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  await d.sync.verify(EMAIL, "123456", d.state);
+  const release = S.hold(/GET \/rest\/v1\/progress/); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  const p = d.sync.retryRead(d.state); await sleep(30);
+  d.clock += 6 * 60_000; // 读取在途时过了 6 分钟
+  release(); const r = await within(p, 3000);
+  check("重试读取在途时过了 5 分钟、结果又失败：canRetry:false（expired），已验证会话作废，V6", r.settled && r.v.ok === false && r.v.canRetry === false && r.v.expired === true && d.sync.hasVerified() === false && describeVerifyError(r.v).id === "V6");
+}
+{ // 重试时发现云端记录格式不对（重读也不会好）：作废已验证会话，不再给「重试读取」
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  await d.sync.verify(EMAIL, "123456", d.state);
+  S.rows.set(S.users.get(EMAIL), { doc: { broken: true }, rev: 1 });
+  const r = await d.sync.retryRead(d.state);
+  check("重试读取读到格式不对的云端记录（data 类）：失败、不再允许重试、没有登录态", r.ok === false && r.kind === "data" && d.sync.hasVerified() === false && d.sync.account() === null && !d.storage._m.has("suipian.auth"), JSON.stringify({ kind: r.kind }));
+}
+
+// ----- 作废边界（Gemini 用例 3 / GPT1：换邮箱、重发、关窗）-----
+for (const [label, act] of [
+  ["换邮箱（界面调 clearVerified）", async (d) => { d.sync.clearVerified(); }],
+  ["关闭弹窗再打开（clearVerified）", async (d) => { d.sync.clearVerified(); }],
+  ["点「重新发送」（sendCode）", async (d, S) => { await d.sync.sendCode(EMAIL); }],
+  ["换成别的邮箱 + 新码重新验证", async (d, S) => { S.issue("222222"); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" }); await d.sync.verify("other@x.com", "222222", d.state); }],
+]) {
+  const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  const r1 = await d.sync.verify(EMAIL, "123456", d.state);
+  await act(d, S);
+  const g = S.get(), v = S.count[VERIFY];
+  const hadOther = label.startsWith("换成别的邮箱");
+  if (hadOther) {
+    // 新流程自己有一份已验证会话（other@，读取也被 503 了一次）；旧的 t@ 会话必须没了：重试读取只会登录 other@，不会碰 t@
+    const r = await d.sync.retryRead(d.state);
+    check(`作废：${label} → 重试读取登录的是新邮箱 other@，旧邮箱 ${EMAIL} 的会话没被复用（没有它的账号 / 云端行）`, r1.canRetry === true && r.ok === true && d.sync.account()?.email === "other@x.com" && S.xpOf(EMAIL) === null && S.count[VERIFY] === v, JSON.stringify({ ok: r.ok, acct: d.sync.account()?.email }));
+    continue;
+  }
+  const r = await d.sync.retryRead(d.state);
+  check(`作废：${label} → 旧的已验证会话不能再用（retryRead 不发读取请求、不登录 ${EMAIL}）`, r1.canRetry === true && S.get() === g && S.count[VERIFY] === v && r.ok === false && r.canRetry === false && d.sync.account() === null, JSON.stringify({ ok: r.ok, canRetry: r.canRetry }));
+  check(`作废：${label} → hasVerified 为 false，同邮箱同码再调 verify 会重新走验证（码已用掉 → V1）而不是复用旧会话`, d.sync.hasVerified() === false && describeVerifyError(await d.sync.verify(EMAIL, "123456", d.state)).id === "V1" && S.count[VERIFY] === v + 1);
+}
+
+// ----- 迟到响应不串进新流程（Gemini 用例 4）-----
+for (const [label, lateRule] of [["迟到 200", null], ["迟到 500", [500, { msg: "late boom" }]]]) {
+  { // 重试读取在途时关窗
+    const S = fakeCloud(), d = device(S); S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+    await d.sync.verify(EMAIL, "123456", d.state);
+    const before = snap(d.storage);
+    const release = S.hold(/GET \/rest\/v1\/progress/);
+    if (lateRule) S.fail(/GET \/rest\/v1\/progress/, ...lateRule);
+    const p = d.sync.retryRead(d.state); await sleep(30);
+    d.sync.clearVerified(); // 关窗
+    release(); const r = await within(p, 3000);
+    check(`重试读取在途时关窗（${label}）：迟到的结果被丢弃（discarded），不切账号、不写任何存储`, r.settled && r.v.discarded === true && r.v.ok === false && d.sync.account() === null && snap(d.storage) === before, JSON.stringify(r.settled ? { discarded: r.v.discarded } : "挂着"));
+  }
+  { // 首次验证后的读取在途时关窗 / 换邮箱
     const S = fakeCloud(), d = device(S); S.issue();
-    if (label === "断网") { const f = S.fetch; S.fetch = async (u, i) => { const r = await f(u, i); if (String(u).endsWith("/auth/v1/verify")) S.offline = true; return r; }; d.sync = createSync({ storage: d.storage, api: mkApi(S), schedule: () => 0, today: () => TODAY, now: () => d.clock }); } else setup(S);
-    const r = await d.sync.verify("t@x.com", "123456", d.state);
-    const x = describeVerifyError(r, { xp: 0 });
-    check(`读云端失败（${label}）：同样是 V5（不是“再点一次登录”的 V3 / V2）`, r.stage === "read" && x.id === "V5", JSON.stringify({ kind: r.kind, stage: r.stage, id: x.id }));
+    const before = snap(d.storage);
+    const release = S.hold(/GET \/rest\/v1\/progress/);
+    if (lateRule) S.fail(/GET \/rest\/v1\/progress/, ...lateRule);
+    const p = d.sync.verify(EMAIL, "123456", d.state); await sleep(30);
+    d.sync.clearVerified();
+    release(); const r = await within(p, 3000);
+    check(`验证后读取在途时关窗（${label}）：迟到的结果被丢弃，不登录、没有半个登录态，也没有留下待读取会话`, r.settled && r.v.discarded === true && d.sync.account() === null && snap(d.storage) === before && d.sync.hasVerified() === false);
+  }
+  { // 验证请求在途时重发 / 关窗
+    const S = fakeCloud(), d = device(S); S.issue();
+    const before = snap(d.storage);
+    const release = S.hold(/POST \/auth\/v1\/verify/);
+    if (lateRule) S.fail(/POST \/auth\/v1\/verify/, ...lateRule);
+    const p = d.sync.verify(EMAIL, "123456", d.state); await sleep(30);
+    d.sync.clearVerified();
+    release(); const r = await within(p, 3000);
+    check(`验证请求在途时关窗（${label}）：迟到的结果被丢弃，不登录、不弹误导性错误（discarded 结果界面不显示）`, r.settled && r.v.discarded === true && d.sync.account() === null && snap(d.storage) === before);
   }
 }
-{ // 验证码这一步本身失败：不带 stage:"read"，验证码没被用掉的情况保持原提示
+{ // 旧流程的迟到响应不能影响新流程
+  const S = fakeCloud(), d = device(S); S.issue("111111"); S.issue("222222");
+  const release = S.hold(/GET \/rest\/v1\/progress/);
+  const p1 = d.sync.verify("old@x.com", "111111", d.state); await sleep(30);
+  d.sync.clearVerified(); // 换了邮箱
+  const r2 = await d.sync.verify("new@x.com", "222222", d.state); // 新流程完整走完
+  const acct = d.sync.account(), authBefore = d.storage.getItem("suipian.auth");
+  release(); const r1 = await within(p1, 3000);
+  check("旧流程（old@）读云端迟到、新流程（new@）已登录：迟到的旧结果被丢弃，当前账号仍是 new@、凭证没被改写", r2.ok === true && acct?.email === "new@x.com" && r1.settled && r1.v.discarded === true && d.sync.account()?.email === "new@x.com" && d.storage.getItem("suipian.auth") === authBefore && S.xpOf("old@x.com") === null);
+}
+
+// ----- 连点重试、游客合并、重新进入流程不重复计分 -----
+{
+  const S = fakeCloud(), d = device(S);
+  seedGuest(d, 50);
+  S.issue(); S.fail(/GET \/rest\/v1\/progress/, 503, { msg: "x" });
+  await d.sync.verify(EMAIL, "123456", d.state);
+  const [a, b, c] = await Promise.all([d.sync.retryRead(d.state), d.sync.retryRead(d.state), d.sync.retryRead(d.state)]);
+  check("连点 3 次「重试读取」：共用同一次读取（只多读 1 次），结果一致", a.ok && b.ok && c.ok && S.get() === 2 && a.needChoice && b.needChoice && c.needChoice && S.count[VERIFY] === 1, `GET=${S.get()}`);
+  const f = await d.sync.finishChoice("transfer");
+  await d.sync.syncNow({ manual: true }); await d.sync.syncNow({ manual: true });
+  check("游客合并只算一次：云端 50 XP、本机 50 XP（反复同步也不加分）", f.ok === true && S.xpOf(EMAIL) === 50 && d.state.xp === 50, `云端=${S.xpOf(EMAIL)} 本机=${d.state.xp}`);
+  await d.sync.logout(); d.state = freshState();
+  S.issue("999999"); const re = await d.sync.verify(EMAIL, "999999", d.state); await d.sync.syncNow({ manual: true });
+  check("退出后重新进入登录流程（新码）：云端仍是 50 XP，不重复计分", re.ok === true && S.xpOf(EMAIL) === 50 && S.count[VERIFY] === 2, `云端=${S.xpOf(EMAIL)}`);
+}
+
+{ // 读云端限流 / 断网 / 超时的旧断言已并入上面的 FAULTS 循环。对照：验证码这一步本身失败，不带 stage:"read"，验证码没被用掉的情况保持原提示
   const S = fakeCloud(), d = device(S); S.issue(); S.fail(/POST \/auth\/v1\/verify/, 500, { msg: "boom" });
-  const r = await d.sync.verify("t@x.com", "123456", d.state); const x = describeVerifyError(r);
-  check("对照：验证码这一步本身 500（码没用掉）→ V4，仍可再点「登录」", r.stage === "verify" && x.id === "V4" && /再点「登录」/.test(x.text), JSON.stringify({ stage: r.stage, id: x.id }));
-  const r2 = await d.sync.verify("t@x.com", "123456", d.state);
+  const r = await d.sync.verify(EMAIL, "123456", d.state); const x = describeVerifyError(r);
+  check("对照：验证码这一步本身 500（码没用掉）→ V4，仍可再点「登录」，不留已验证会话", r.stage === "verify" && x.id === "V4" && /再点「登录」/.test(x.text) && d.sync.hasVerified() === false, JSON.stringify({ stage: r.stage, id: x.id }));
+  const r2 = await d.sync.verify(EMAIL, "123456", d.state);
   check("对照：随后同一个码再点「登录」成功", r2.ok === true);
+}
+{ // 云端数据本身有问题（重读也不会好）：不留待读取会话
+  const S = fakeCloud(), d = device(S); S.issue();
+  S.rows.set((S.users.set(EMAIL, newId()), S.users.get(EMAIL)), { doc: { broken: true }, rev: 1 });
+  const r = await d.sync.verify(EMAIL, "123456", d.state);
+  check("云端记录格式不对（data 类）：登录失败，不留可重试会话（重读也不会好）", r.ok === false && r.kind === "data" && d.sync.hasVerified() === false && d.sync.account() === null, JSON.stringify({ kind: r.kind }));
 }
 
 // ===== L1 错码 / 过期码后重试恢复 =====

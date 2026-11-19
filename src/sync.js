@@ -56,6 +56,14 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   const COOLDOWN_MS = 60_000;
   let baseline = null, lastError = "", lastDetail = null; // lastDetail：失败的 {kind,status,errorCode,code}，只给界面分类用（界面不显示服务器原文）
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
+  // 已验证、但读云端记录失败的登录：邮箱验证码是一次性的，验证接口已经把它用掉，不能再拿同一个码验证第二次。
+  // 所以把“验证通过拿到的会话”只放内存里短暂留着（不写存储、不当作登录态、不切账号、不清游客进度），用户点「重试读取」时只重读云端，
+  // 不再调用验证接口。绑定邮箱 / userId / 本次流程代次；换邮箱、重发验证码、关窗、退出、到期（≤5 分钟且不超过会话有效期）都会作废；
+  // 迟到的响应靠代次丢弃，不会串进新的登录流程。
+  const VERIFIED_TTL_MS = 5 * 60_000;
+  const READ_TRIES_AUTH = 2;   // 401/403 读不出来：原样重读大概率还是被拒，最多总共读 2 次（首读 + 1 次重试）
+  const READ_TRIES_OTHER = 5;  // 503 / 超时 / 断网等瞬时故障：最多总共读 5 次（同时受 5 分钟时限约束）
+  let verified = null, verifyGen = 0;
 
   // 最近一次状态变化和最近一次“确认已同步”的时间（只在内存里，不写存储；测试入口的信息面板读它，重开页面后从头算）。
   let lastStatusAt = null, lastSyncedAt = null;
@@ -486,6 +494,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   async function sendCode(addr, captchaToken) {
     const blocked = loginBlocked(addr);
     if (blocked) return blocked;
+    dropVerified(); // 重发验证码 = 开始新的一轮：之前“已验证待读取”的会话作废
     // 冷却期内不再调用发信接口。测试只用假接口，这里也不会向任何真实邮箱发验证码。
     if (inCooldown()) return rateLimited();
     const r = await (captchaToken ? api.sendCode(String(addr).trim(), captchaToken) : api.sendCode(String(addr).trim())); // 没有令牌时调用形状和以前完全一致
@@ -494,15 +503,54 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   // 验证码 → 会话；然后看游客记录需不需要用户选择
+  const discarded = () => ({ ok: false, kind: "stale", discarded: true, message: "" });
+  function dropVerified() { verifyGen++; verified = null; }
   async function verify(addr, code, baseState = null) {
     const blocked = loginBlocked(addr);
     if (blocked) return blocked;
+    const mail = normalizedEmail(addr), c = String(code).trim();
+    // 同一个邮箱、同一个码、而且验证已经通过：码已经被用掉，不再调用验证接口，只重试读取（和「重试读取」按钮同一条路）。
+    if (verified && verified.email === mail && verified.code === c && now() < verified.expiresAt) return retryRead(baseState);
+    const gen = ++verifyGen; verified = null; // 新的一轮：旧的待读取会话作废，之后任何迟到的旧响应都按代次丢弃
     const r = await api.verifyCode(String(addr).trim(), code);
+    if (gen !== verifyGen) return discarded(); // 请求在途时换了邮箱 / 重发 / 关窗：迟到的结果不要
     if (!r.ok) return r;
-    return begin(r.session, baseState);
+    const isCurrent = () => gen === verifyGen;
+    const out = await begin(r.session, baseState, { isCurrent });
+    if (out.discarded || out.ok || out.stage !== "read") return out;
+    // 验证码对了、读云端记录没成功：留住已验证会话，让用户重试读取
+    const v = { session: r.session, email: mail, userId: r.session.userId, code: c, gen, baseState, reads: 1, inflight: null, expiresAt: Math.min(now() + VERIFIED_TTL_MS, (Number(r.session.expiresAt) || Infinity) - 60_000) };
+    return noteReadFailure(v, out);
+  }
+  // 读失败之后：还能重试吗？（总次数 / 时限）能就留住会话并带上 canRetry:true，不能就作废并带上 canRetry:false
+  function noteReadFailure(v, r) {
+    const authClass = r.kind === "auth" || r.status === 401 || r.status === 403;
+    const tries = authClass ? READ_TRIES_AUTH : READ_TRIES_OTHER;
+    const expired = now() >= v.expiresAt;
+    if (expired || v.reads >= tries) { if (verified === v || !verified) { verified = null; } return { ...r, canRetry: false, ...(expired ? { expired: true } : { exhausted: true }) }; }
+    verified = v;
+    return { ...r, canRetry: true };
+  }
+  // 「重试读取」：不调用验证接口，只用留着的已验证会话再读一次云端；成功后和正常登录完全一样（游客处理、落盘凭证、同步）。
+  async function retryRead(baseState = null) {
+    const v = verified;
+    if (!v) return { ok: false, kind: "auth", stage: "read", canRetry: false, expired: true, message: "已验证的登录已失效，请重新发送验证码" };
+    if (now() >= v.expiresAt) { verified = null; return { ok: false, kind: "auth", stage: "read", canRetry: false, expired: true, message: "已验证的登录已失效，请重新发送验证码" }; }
+    if (v.inflight) return v.inflight; // 连点：共用同一次读取，不重复处理、不重复计分
+    const run = (async () => {
+      v.reads++;
+      const out = await begin(v.session, baseState ?? v.baseState, { isCurrent: () => verified === v && v.gen === verifyGen });
+      if (out.discarded) return out;
+      if (out.ok) { if (verified === v) verified = null; return out; }
+      if (out.stage === "read") return noteReadFailure(v, out);
+      if (verified === v) verified = null; // 数据 / 本机副本 / 账号冲突等：重读也不会好，作废
+      return out;
+    })();
+    v.inflight = run;
+    try { return await run; } finally { v.inflight = null; }
   }
 
-  async function begin(newSession, baseState) {
+  async function begin(newSession, baseState, { isCurrent = null } = {}) {
     if (!isSessionShape(newSession)) return { ok: false, kind: "auth", message: "登录返回的凭证无效" };
     // 换了 Supabase 项目后旧登录作废：用“同一个邮箱”可以在新项目正常登录，但只加载新项目自己的进度。
     // 旧项目的账号副本和游客记录原样留在本机，既不上传到新项目、也不删除（数据隔离规则）。换成别的邮箱仍要先退出。
@@ -513,8 +561,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       else return { ok: false, kind: "other-account", message: "请先退出当前账号" };
     }
     const remote = await api.getProgress(newSession);
+    if (isCurrent && !isCurrent()) return discarded(); // 读云端期间这一轮登录已被作废（换邮箱 / 重发 / 关窗）：丢弃，不切账号、不写任何东西
     // stage:"read"：验证码这一步已经通过（邮箱验证码是一次性的，已经被用掉），只是随后读云端记录失败、登录没有完成。
-    // 界面据此提示“请重新发送验证码”，不能让用户拿同一个码再点一次登录（那一定会报“验证码错误或已过期”）。
+    // 调用方（verify / retryRead）据此留住已验证会话，界面提示「重试读取」；不能让用户拿同一个码再验证一次（那会报“验证码错误或已过期”）。
     if (!remote.ok) return { ...remote, stage: "read" };
     const remoteDoc = remote.row ? normalizeDoc(remote.row.doc) : null;
     if (remoteDoc && !remoteDoc.ok) return { ok: false, kind: "data", code: remoteDoc.code, message: "云端记录：" + remoteDoc.message };
@@ -1206,7 +1255,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   return {
-    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount,
+    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, retryRead, clearVerified: dropVerified, hasVerified: () => !!verified && now() < verified.expiresAt, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount,
     account: () => (userId ? { userId, email } : null),
     status: () => ({ status, pending, message: lastError, detail: lastDetail, lastStatusAt, lastSyncedAt }),
   };

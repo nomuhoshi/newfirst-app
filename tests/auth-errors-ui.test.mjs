@@ -271,17 +271,57 @@ await scenario("选择弹窗：处理中不能关，失败后可重试，游客�
   check("C1：页面上没有服务器原文；游客进度逐字节不变，XP 仍是 50", (await noRaw(d.page)) && (await d.page.evaluate(() => localStorage.getItem("suipian.progress"))) === guestKey && (await d.page.evaluate(() => window.__app.getState().xp)) === 50);
   const bad = await layoutOk(d.page); check("C1：320px 布局无溢出", bad.length === 0, bad.join("; "));
 });
-// 2026-11-19：验证码这一步成功（验证码已被用掉），随后读云端记录失败：不能叫人再点「登录」，要叫人重新发送
-await scenario("V5 验证码对了但读云端记录失败（503）", { verify: okVerify, getProgress: (r) => json(r, 503, { msg: CAN }) }, async (d) => {
+// 2026-11-19（GPT1 方案）：验证码这一步成功（验证码已被用掉），随后读云端记录失败 → 保留已验证会话，按钮变「重试读取」，重试不再调用验证接口
+const hasVerified = (d) => d.page.evaluate(() => window.__app.sync.hasVerified());
+await scenario("V5 验证码对了、读云端先 503 再成功：点「重试读取」完成登录，验证接口只调 1 次", { verify: okVerify, getProgress: (r, n) => (n < 2 ? json(r, 503, { msg: CAN }) : json(r, 200, [])) }, async (d) => {
   await sendTap(d); await d.page.locator("[data-code]").waitFor();
   const before = await dump(d.page);
   await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
   await waitMsg(d, /验证码对了，但读取云端记录没成功/);
   const m = await T(d.page, "[data-login-msg]");
-  check("V5：说明验证码已用过、请点「重新发送」换新的；不叫人再点「登录」、不说验证码错", /已经用过/.test(m) && /「重新发送」/.test(m) && !/再点「登录」|稍后再点/.test(m) && !/验证码错误/.test(m), m);
-  check("V5：诊断行 诊断：503；没有服务器原文", (await T(d.page, "[data-login-diag]")) === "诊断：503" && (await noRaw(d.page)));
-  check("V5：没有登录成功（弹窗还在、还在输验证码页），本机存储逐字节不变", (await d.page.locator("[data-code]").count()) === 1 && (await dump(d.page)) === before);
-  check("V5：“重新发送”按钮在页面上（倒计时结束后可点）", (await d.page.locator("[data-resend]").count()) === 1);
+  check("V5：提示点「重试读取」、不用重新输入验证码；不叫人再点「登录」、不说验证码错", /「重试读取」/.test(m) && /不用重新输入验证码/.test(m) && !/再点「登录」|稍后再点|重新发送/.test(m) && !/验证码错误/.test(m), m);
+  check("V5：按钮文字变成「重试读取」且可点；诊断行 诊断：503；没有服务器原文", (await T(d.page, "[data-verify]")) === "重试读取" && !(await d.page.locator("[data-verify]").isDisabled()) && (await T(d.page, "[data-login-diag]")) === "诊断：503" && (await noRaw(d.page)));
+  check("V5：没有登录成功（弹窗还在、还在输验证码页），本机存储逐字节不变，验证接口 1 次", (await d.page.locator("[data-code]").count()) === 1 && (await dump(d.page)) === before && d.hits.verify === 1);
+  await d.page.locator("[data-verify]").tap();
+  await d.page.locator('[data-choice="transfer"]').waitFor({ timeout: 15000 });
+  check("点「重试读取」：不再调用验证接口（仍是 1 次），读到云端后进入游客进度选择，游客进度还在", d.hits.verify === 1 && d.hits.get === 2 && (await d.page.evaluate(() => window.__app.getState().xp)) === 50);
+  await d.page.locator('[data-choice="transfer"]').tap();
+  await d.page.waitForFunction(() => !document.querySelector("[data-login]"), null, { timeout: 15000 });
+  check("选择合并后登录完成：已登录、XP 仍是 50、验证接口全程 1 次、已验证会话已清掉", (await d.page.evaluate(() => !!window.__app.sync.account() && window.__app.getState().xp === 50)) && d.hits.verify === 1 && !(await hasVerified(d)));
+});
+await scenario("V5 读云端被拒（403）：只允许重试 1 次，之后叫人换新验证码（V6）", { verify: okVerify, getProgress: (r) => json(r, 403, { code: 403, error_code: "bad_jwt", msg: CAN }) }, async (d) => {
+  await sendTap(d); await d.page.locator("[data-code]").waitFor();
+  await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
+  await waitMsg(d, /验证码对了，但读取云端记录没成功/);
+  check("403 首次失败：V5、按钮「重试读取」", (await T(d.page, "[data-verify]")) === "重试读取" && /「重试读取」/.test(await T(d.page, "[data-login-msg]")));
+  await d.page.locator("[data-verify]").tap();
+  await waitMsg(d, /这个验证码已经用过/);
+  const m = await T(d.page, "[data-login-msg]");
+  check("403 重试仍失败：V6——说明验证码已用过、请点「重新发送」换新的；不再有「重试读取」", /「重新发送」/.test(m) && !/重试读取/.test(m) && (await T(d.page, "[data-verify]")) === "登录" && !(await hasVerified(d)), m);
+  check("403：验证接口仍只调 1 次、读取共 2 次；没有登录；没有服务器原文", d.hits.verify === 1 && d.hits.get === 2 && !(await d.page.evaluate(() => !!window.__app.sync.account())) && (await noRaw(d.page)));
+});
+await scenario("V5 作废：改验证码 / 关窗都会清掉已验证会话", { verify: okVerify, getProgress: (r) => json(r, 503, { msg: CAN }) }, async (d) => {
+  await sendTap(d); await d.page.locator("[data-code]").waitFor();
+  await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
+  await waitMsg(d, /验证码对了，但读取云端记录没成功/);
+  check("V5 之后已验证会话在内存里", await hasVerified(d));
+  await d.page.locator("[data-code]").fill("654321");
+  check("改了验证码：已验证会话作废、按钮回到「登录」、旧提示清掉", !(await hasVerified(d)) && (await T(d.page, "[data-verify]")) === "登录" && !/重试读取/.test(await T(d.page, "[data-login-msg]")));
+  await d.page.locator("[data-verify]").tap();
+  await waitMsg(d, /验证码对了，但读取云端记录没成功/);
+  check("新输的码走正常验证（验证接口第 2 次），再次进入「重试读取」", d.hits.verify === 2 && (await T(d.page, "[data-verify]")) === "重试读取" && (await hasVerified(d)));
+  await d.page.locator("[data-code]").focus(); // 按钮在处理中被禁用过，焦点已回到页面：先把焦点放回弹窗里，Esc 才送得到弹窗
+  await d.page.keyboard.press("Escape");
+  await d.page.waitForFunction(() => !document.querySelector("[data-login]"));
+  check("关窗：已验证会话作废（不会带到下一次打开）", !(await hasVerified(d)) && !(await d.page.evaluate(() => !!window.__app.sync.account())));
+});
+await scenario("V5 换个邮箱：已验证会话作废", { verify: okVerify, getProgress: (r) => json(r, 503, { msg: CAN }) }, async (d) => {
+  await sendTap(d); await d.page.locator("[data-code]").waitFor();
+  await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
+  await waitMsg(d, /验证码对了，但读取云端记录没成功/);
+  await d.page.getByRole("button", { name: "换个邮箱" }).tap();
+  await d.page.locator("[data-email]").waitFor();
+  check("换个邮箱：回到邮箱页、已验证会话作废、没有登录", !(await hasVerified(d)) && !(await d.page.evaluate(() => !!window.__app.sync.account())));
 });
 await scenario("选择后上传失败：登录已完成，提示是中文，没有服务器原文", { verify: okVerify, progress: (r) => json(r, 500, { code: 500, error_code: "unexpected_failure", msg: CAN }) }, async (d) => {
   await toChoice(d);

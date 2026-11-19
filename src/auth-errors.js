@@ -1,6 +1,6 @@
 // 登录弹窗里“发验证码 / 输验证码 / 选择游客进度”失败时的分类、提示文案、诊断行和重试冷却。
 // 纯函数，不碰存储、不联网，所以能直接在 Node 里测。编号对应 docs/design/login-sync-ux-spec.md（DESIGN-AUTH-02）：
-//   S1a–S6 发验证码失败；V1–V4 输验证码失败；C1 选择游客进度失败。V5、CFG 是规范之外补的两类（见各自注释）。
+//   S1a–S6 发验证码失败；V1–V4 输验证码失败；C1 选择游客进度失败。V5、V6、CFG 是规范之外补的几类（见各自注释）。
 //
 // 规则（AUTH-MAIL-01 / 02）：
 //  1. 页面不显示服务器原文。原文只用来“分类”，永远不进界面（msg / message / error_description 都一样）。
@@ -48,9 +48,11 @@ export const VERIFY_COPY = {
   V2: { text: (c) => `输入得太频繁了，请等 ${fmtWait(c.n)}再试。`, cooldown: "server", fallback: 60000, diag: false },
   V3: { text: () => "网络不稳，登录没有确认。再点一次「登录」；如果提示验证码无效，点「重新发送」换新的。", cooldown: 0, diag: false },
   V4: { text: () => "登录服务暂时出问题，请等几分钟再点「登录」。", cooldown: 0, diag: true },
-  // 规范之外：验证码这一步通过了，但随后读云端记录失败（被拒 / 服务故障 / 断网 / 限流都算）。不能说成“验证码错”，也不能说登录成功；
-  // 邮箱验证码是一次性的，这个码已经被用掉，再点「登录」只会得到“验证码错误或已过期”，所以要明说“换一个新验证码”。
-  V5: { text: () => "验证码对了，但读取云端记录没成功，没有完成登录。这个验证码已经用过，请点「重新发送」换一个新的再登录（按钮还在倒计时就等它结束）。", cooldown: 0, diag: true },
+  // 规范之外：验证码这一步通过了，但随后读云端记录失败（被拒 / 服务故障 / 断网 / 限流 / 超时都算）。不能说成“验证码错”，也不能说登录成功。
+  // V5：已验证的会话还留在内存里（几分钟内有效）——点「重试读取」只重读云端，不用再输验证码、不再调用验证接口。
+  // V6：不能再重试了（超过次数 / 超过时限 / 会话已失效）：邮箱验证码是一次性的，这个码已经用掉，只能「重新发送」换新的。
+  V5: { text: () => "验证码对了，但读取云端记录没成功，还没完成登录。点「重试读取」再试一次，不用重新输入验证码。", cooldown: 0, diag: true },
+  V6: { text: () => "验证码对了，但云端记录一直没读成功，这次登录没有完成。这个验证码已经用过，请点「重新发送」换一个新的再登录（按钮还在倒计时就等它结束）。", cooldown: 0, diag: true },
 };
 export const CHOICE_COPY = {
   C1: { text: () => "没有处理完。你的游客进度原样留在这台设备上，可以再试一次。", cooldown: 0, diag: false },
@@ -96,12 +98,12 @@ export function classifySend(r, { preview = IS_PREVIEW, captchaOn } = {}) {
 export function classifyVerify(r) {
   if (!r || r.ok) return "";
   if (r.kind === "config") return "CFG";
-  if (r.stage === "read") return "V5"; // 验证码已通过并被用掉，后面读云端记录失败：任何失败类型都要叫用户换新验证码
+  if (r.stage === "read") return r.canRetry === true ? "V5" : "V6"; // 验证码已通过并被用掉，后面读云端记录失败：还能重试 → 「重试读取」；不能 → 换新验证码
   if (r.kind === "network") return "V3";
   if (r.kind === "rate-limit" || http(r) === 429) return "V2";
   if (r.stage === "verify" && r.kind === "auth") return "V1";
   if (http(r) >= 500) return "V4";
-  if (r.stage !== "verify" && r.kind === "auth") return "V5";
+  if (r.stage !== "verify" && r.kind === "auth") return "V6";
   return "V4"; // 认不出的：按服务故障处理（保守文案 + 诊断行）
 }
 

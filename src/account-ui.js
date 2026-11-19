@@ -95,7 +95,9 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       };
       const localXp = () => { try { const x = getState()?.xp; return Number.isFinite(x) ? x : 0; } catch { return 0; } };
       const sayFail = (d) => say(d.text, true, d);
-      const done = () => { clearInterval(cooldownTimer); finished = true; captcha.destroy(); close(); };
+      const done = () => { clearInterval(cooldownTimer); finished = true; sync.clearVerified?.(); captcha.destroy(); close(); };
+      // 异步调用万一抛异常（不该发生，但发生了不能让“处理中”卡住）：当作“没确认”处理，按钮 / busy 由调用处在 finally 里复位。
+      const guarded = async (fn, fallback = { ok: false, kind: "network", message: "网络连不上，请检查网络后重试" }) => { try { return await fn(); } catch { return fallback; } };
       // 键盘判断（规范 §5.1 第 4 条）：可视高度不到窗口高度的 75% 就算键盘弹出，说明文字缩成一行；有错误时说明整段隐藏。
       const desc = h("p", { class: "login-desc", "data-login-desc": "" });
       const descText = () => {
@@ -183,10 +185,14 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       function stepCode() {
         inStepEmail = false; inStepCode = true; inChoice = false;
         let resends = 0;
+        let retryMode = false; // 验证码已通过、但读云端记录失败：「登录」按钮变成「重试读取」，只重读云端，不再提交验证码
         const input = h("input", { class: "login-input code", type: "text", inputmode: "numeric", pattern: "[0-9]*", autocomplete: "one-time-code", maxlength: "10", placeholder: "验证码", "aria-label": "邮箱验证码", "data-code": "" });
         const resend = button("重新发送", async () => {
           if (cdLeft(email) > 0 || busy) return;
-          busy = true; resend.disabled = true; resend.textContent = "发送中…"; const r = await sendWithCaptcha(email); busy = false;
+          if (retryMode) { retryMode = false; go.textContent = "登录"; } // 重发 = 换新验证码：之前已验证的会话作废（sync.sendCode 里会清）
+          busy = true; resend.disabled = true; resend.textContent = "发送中…";
+          let r; try { r = await guarded(() => sendWithCaptcha(email)); } finally { busy = false; }
+          if (finished) return; // 关窗 / 登录已完成后才回来的迟到结果：不改提示、不起计时
           if (!r.ok) {
             const d0 = describeSendError(r, { xp: localXp(), fails: 1, captchaOn: captcha.enabled });
             s4Fails = d0.id === "S4" ? s4Fails + 1 : 0;
@@ -208,10 +214,14 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         clearInterval(cooldownTimer); cooldownTimer = setInterval(() => { if (!box.isConnected) { clearInterval(cooldownTimer); return; } tick(); }, 1000);
         const go = button("登录", async () => {
           const c = input.value.replace(/\s+/g, "");
-          if (c.length < 4) { say("请输入邮件里的验证码。"); return; }
-          if (busy) return; busy = true; go.disabled = true; go.textContent = "登录中…"; say("正在登录…", false);
-          const r = await sync.verify(email, c, getState());
-          busy = false; go.disabled = false; go.textContent = "登录";
+          if (!retryMode && c.length < 4) { say("请输入邮件里的验证码。"); return; }
+          if (busy) return; busy = true; go.disabled = true; go.textContent = retryMode ? "读取中…" : "登录中…"; say(retryMode ? "正在重试读取…" : "正在登录…", false);
+          // 重试读取：不再调用验证接口（验证码是一次性的，已经用掉）；只用 sync 里留着的已验证会话重读云端。
+          const wasRetry = retryMode;
+          let r; try { r = await guarded(() => (wasRetry ? sync.retryRead(getState()) : sync.verify(email, c, getState())), wasRetry ? { ok: false, kind: "network", stage: "read", canRetry: true, message: "网络连不上，请检查网络后重试" } : undefined); } finally { busy = false; go.disabled = false; go.textContent = retryMode ? "重试读取" : "登录"; }
+          if (finished) return; // 弹窗已经关了：迟到的结果不再翻页、不改提示
+          if (r.discarded) { say(""); tick(); return; } // 这一轮已被换邮箱 / 重发作废：丢掉结果，只清掉“正在…”的提示
+          retryMode = r.ok === false && r.stage === "read" && r.canRetry === true; go.textContent = retryMode ? "重试读取" : "登录";
           if (!r.ok) {
             if (r.kind === "other-account" || r.kind === "data" || r.kind === "local") { say(errorText(r)); tick(); return; }
             const d = describeVerifyError(r, { xp: localXp() });
@@ -225,6 +235,8 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         }, "btn3d primary wide", { "data-verify": "" });
         tick();
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
+        // 改了验证码：说明用户要换一个码，已验证会话作废，按钮回到「登录」
+        input.addEventListener("input", () => { if (retryMode && !busy) { retryMode = false; sync.clearVerified?.(); go.textContent = "登录"; say(""); tick(); } });
         desc.textContent = "";
         captcha.release();
         box.replaceChildren(
@@ -233,7 +245,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           input, feedback,
           ...(captcha.enabled ? [captchaMount] : []),
           h("div", { class: "login-actions" }, go, resend, extra),
-          button("换个邮箱", () => { if (busy) return; say(""); stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着；重发 / 登录还在处理时不换页（和遮罩、Esc 一致），否则邮箱页的发送按钮会停在“发送中…”
+          button("换个邮箱", () => { if (busy) return; sync.clearVerified?.(); say(""); stepEmail(); }, "btn3d ghost wide"), // 冷却是针对上一个邮箱的，换地址后不拦着；重发 / 登录还在处理时不换页（和遮罩、Esc 一致），否则邮箱页的发送按钮会停在“发送中…”
         );
         setTimeout(() => input.focus(), 50);
       }
@@ -284,7 +296,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     }, {
       cls: "login-sheet",
       canClose: () => !busy, // 发送 / 登录 / 处理中不允许点遮罩或按 Esc 关掉
-      onClose: () => { captcha.destroy(); if (inChoice && !finished) { const x = Math.floor(getState()?.xp ?? 0); showToast("已取消登录。" + (x > 0 ? `你的 ${x} XP 还在这台设备上。` : "你的进度原样留在这台设备上。")); } },
+      onClose: () => { sync.clearVerified?.(); captcha.destroy(); if (inChoice && !finished) { const x = Math.floor(getState()?.xp ?? 0); showToast("已取消登录。" + (x > 0 ? `你的 ${x} XP 还在这台设备上。` : "你的进度原样留在这台设备上。")); } },
     });
   }
 
