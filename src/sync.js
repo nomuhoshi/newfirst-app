@@ -30,6 +30,12 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "";
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
+  // 账号会话代次：登录完成 / 恢复 / 退出 / 删除账号时前进。每一轮同步在开始时记下代次，之后每个 await 回来先核对：
+  // 代次变了（中间退出过、或又登录了同一账号 / 别的账号），这一轮就是“旧任务”——结果整体丢弃，不写状态、凭证、进度、待同步标记、时间戳，
+  // 也不安排重试；它的收尾也只能清理自己的 running。前进代次时同时放掉旧任务占着的 running / again / 定时器，新会话能独立同步。
+  let acctGen = 0;
+  const staleResult = () => ({ ok: false, kind: "stale", stale: true, retryable: false, message: "账号已退出或切换，这次同步的结果已丢弃" });
+  function bumpAcct() { acctGen++; running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
   // 本机写回失败与网络退避完全分开；按账号共享最佳努力计数，刷新页面也不能重新开始无限轮询。
   const LOCAL_RETRY_LIMIT = 3;
   let localWritebackFails = 0, localRetryUser = null, localRetryTimer = null, localRetryEpoch = 0, localRetryUnknown = false;
@@ -165,11 +171,12 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     return true;
   }
 
-  async function ensureToken() {
+  async function ensureToken(gen = acctGen) {
     adoptStoredSession();
     if (!isSessionShape(session) || session.userId !== userId) return { ok: false, kind: "auth", message: "需要重新登录" };
     if (session.expiresAt - now() > 60000) return { ok: true };
     const r = await api.refresh(session);
+    if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话，也不能写存储里的凭证
     if (r.ok && isSessionShape(r.session) && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }
     // 刷新失败，可能是另一个标签页刚好抢先刷新了：再看一次存储
     if (!r.ok && r.kind === "auth" && adoptStoredSession() && session.expiresAt - now() > 60000) return { ok: true };
@@ -184,7 +191,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (!L.ok || !L.copy) return null;
     const s = readAuth();
     session = s && s.userId === uid ? s : null;
-    userId = uid; email = session?.email || "";
+    bumpAcct(); userId = uid; email = session?.email || "";
     const state = docToState(L.copy.doc, baseState ? { ...baseState, onboarded: true } : { ...freshState(), onboarded: true }, now());
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
     // 专用待办也算“还有没上传的东西”：不能因为本机副本看起来干净就当成已完成。
@@ -311,7 +318,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   function scheduleSync(ms = 1500) {
     if (!userId || !session || importGuard() || ordinaryAutoBlocked()) return;
     if (timer) return;
-    timer = schedule(() => { timer = null; syncNow(); }, ms);
+    const g = acctGen;
+    timer = schedule(() => { if (g !== acctGen) return; timer = null; syncNow(); }, ms);
   }
 
   // ---------- 同步：读云端 → 合并 → 带版本号写回；被抢先就重来 ----------
@@ -324,16 +332,20 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (!manual && ordinaryAutoBlocked()) return Promise.resolve(localRetryBlocked());
     if (manual) cancelLocalRetry(); // 已排定的旧定时器不得在手动尝试后再重复读取云端。
     if (running) { again = true; return running; }
-    running = (async () => {
+    const gen = acctGen;
+    let mine;
+    mine = running = (async () => {
       try {
         return await withLocalRetryLock(async () => {
+        if (gen !== acctGen) return staleResult(); // 排队等锁期间已退出 / 换账号
         if (!manual) {
           const blocked = autoRetryGuard();
           if (blocked) return blocked;
         }
         let r, joinedRetry = 0, replaced = false;
         for (;;) {
-          again = false; r = await syncOnce({ manual });
+          again = false; r = await syncOnce({ manual, gen });
+          if (r.stale || gen !== acctGen) return staleResult(); // 旧任务：不写状态、不安排重试、不动计数
           if (r.replacedLocal) replaced = true;
           if (r.ok) {
             netFails = 0;
@@ -369,17 +381,19 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         }
         return replaced && r.ok ? { ...r, replacedLocal: true } : r;
         }, manual);
-      } finally { running = null; }
+      } finally { if (running === mine) running = null; } // 旧任务收尾只清自己的 running，不能清掉退出后新开的同步
     })();
-    return running;
+    return mine;
   }
   function scheduleRetry() {
     if (retryTimer || !userId || !session || importGuard() || ordinaryAutoBlocked()) return;
     const delay = [3000, 10000, 30000, 60000][Math.min(netFails, 3)]; netFails++;
-    retryTimer = schedule(() => { retryTimer = null; syncNow(); }, delay);
+    const g = acctGen;
+    retryTimer = schedule(() => { if (g !== acctGen) return; retryTimer = null; syncNow(); }, delay);
   }
 
-  async function syncOnce({ manual = false } = {}) {
+  async function syncOnce({ manual = false, gen = acctGen } = {}) {
+    const dead = () => gen !== acctGen;
     // 必须早于 ensureToken()（它可能发出 refresh 请求）及任何云端读写。
     const initialGuard = importGuard();
     if (initialGuard) return initialGuard;
@@ -394,7 +408,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       setStatus("need-login", miss.message);
       return miss;
     }
-    const t = await ensureToken();
+    const t = await ensureToken(gen);
+    if (dead()) return staleResult();
     if (!t.ok) { noteRateLimit(t); setStatus(statusFromFailure(t), t.message, detailOf(t)); return t.kind === "rate-limit" ? { ...t, retryable: false } : t; }
     // 先重试“游客导入”专用待办，再跑普通同步。否则普通合并可能把云端旧 true 当成最新，
     // 让用户已经做过的选择永远写不上去。
@@ -403,7 +418,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const afterTokenGuard = importGuard(pi);
     if (afterTokenGuard) return afterTokenGuard;
     if (pi.record) {
-      const pr = await runPendingImport(pi.record, session, { notify: true });
+      const pr = await runPendingImport(pi.record, session, { notify: true, dead });
+      if (dead()) return staleResult();
       if (!pr.ok || pr.pending) {
         if (pr.kind === "import-corrupt" || pr.kind === "import-read-failed" || pr.kind === "import-changed") return { ...pr, retryable: false };
         pending = true;
@@ -417,6 +433,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     for (let attempt = 0; attempt < 5; attempt++) {
       const remote = await api.getProgress(session);
+      if (dead()) return staleResult();
       const midFlightGuard = importGuard();
       if (midFlightGuard) return midFlightGuard;
       if (!remote.ok) { noteRateLimit(remote); setStatus(statusFromFailure(remote), remote.message, detailOf(remote)); return remote.kind === "rate-limit" ? { ...remote, retryable: false } : remote; }
@@ -428,6 +445,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         const beforeCreateGuard = importGuard();
         if (beforeCreateGuard) return beforeCreateGuard;
         const c = await api.createProgress(session, copy.doc);
+        if (dead()) return staleResult();
         const afterCreateGuard = importGuard();
         if (afterCreateGuard) return afterCreateGuard;
         if (!c.ok) { noteRateLimit(c); setStatus(statusFromFailure(c), c.message, detailOf(c)); return c.kind === "rate-limit" ? { ...c, retryable: false } : c; }
@@ -443,6 +461,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           const beforeSaveGuard = importGuard();
           if (beforeSaveGuard) return beforeSaveGuard;
           const s = await api.saveProgress(session, remote.row.rev, finalDoc);
+          if (dead()) return staleResult();
           const afterSaveGuard = importGuard();
           if (afterSaveGuard) return afterSaveGuard;
           if (!s.ok) { noteRateLimit(s); setStatus(statusFromFailure(s), s.message, detailOf(s)); return s.kind === "rate-limit" ? { ...s, retryable: false } : s; }
@@ -870,7 +889,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   // 执行一条专用待办：选中“保留云端”或“安全合并”，写云 + 读回确认。成功才清待办。
-  async function runPendingImport(record, sess, { notify = false } = {}) {
+  async function runPendingImport(record, sess, { notify = false, dead = () => false } = {}) {
     const uid = record.userId;
     let expectedRaw;
     try { expectedRaw = storage.getItem(PENDING_IMPORT_PREFIX + uid); }
@@ -885,6 +904,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!d.ok) return { ok: false, kind: "local", message: d.message };
       r = await writeMergeGuest(uid, d.id, record, sess, expectedRaw);
     }
+    if (dead()) return r; // 退出 / 换账号之后才回来：云端和这个账号自己的本机副本已按它的待办处理过，内存状态（pending / baseline / onState）不再动
     if (!r.ok) return r;
     if (r.pending) { pending = true; return r; }
     const finalGuard = pendingIdentityGuard(uid, record, expectedRaw);
@@ -934,7 +954,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!saveAccount(storage, uid, { doc, base, dirty }, { now: now(), expectEmpty: !ctx.copy })) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
     }
     if (!setCurrentAccount(storage, uid)) return { ok: false, kind: "local", message: "无法记录当前账号" };
-    session = ctx.session; userId = uid; email = session.email || ""; writeAuth();
+    bumpAcct(); session = ctx.session; userId = uid; email = session.email || ""; writeAuth();
     const state = docToState(doc, ctx.baseState ? { ...ctx.baseState, onboarded: true } : { ...freshState(), onboarded: true }, now());
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
     let synced = false, guestCleared = false, syncError = "";
@@ -1050,7 +1070,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       localRetryUser = null; localWritebackFails = 0; localRetryUnknown = false;
     }
     clearStale();
-    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”
+    bumpAcct(); session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”
     setStatus(null);
   }
 
@@ -1242,7 +1262,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (!cleaned) {
       // 云端已经删掉。本机清不干净时：停用旧令牌、留下副本、不宣称完全成功。
       disableStoredToken();
-      userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null;
+      bumpAcct(); userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null;
       setStatus("pending-local-cleanup", "账号已在云端删除，但这台设备还没清理完。请不要继续用这个登录。");
       return {
         ok: false,
@@ -1253,7 +1273,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         message: "账号已在云端删除，但这台设备还没清理完。旧登录已停用，请不要继续用。",
       };
     }
-    session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”
+    bumpAcct(); session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”
     writeAuth(); setStatus(null);
     return { ok: true };
   }
