@@ -42,7 +42,8 @@ const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers
 const json = (route, status, body, headers = {}) => route.fulfill({ status, headers: { ...CORS, "content-type": "application/json", ...headers }, body: body === undefined ? "" : JSON.stringify(body) });
 
 // 每个场景的假服务器应答由场景决定：函数 (route) => ...。progress 相关的路由默认返回“云端没有进度”。
-async function device({ xp = 50, otp, verify, progress, getProgress, online = true, fakeVv = false, nav = "login" } = {}) {
+// stall：路径片段列表。命中的请求在页面里直接得到“响应头 200 已到、正文永远不来”的响应（不经过 route，也不响应中止信号 = 最坏情况）
+async function device({ xp = 50, otp, verify, progress, getProgress, online = true, fakeVv = false, nav = "login", stall = [] } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 320, height: 568 }, userAgent: UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
   const hits = { otp: 0, verify: 0, create: 0, save: 0, get: 0 };
   const rows = { n: 0 };
@@ -58,7 +59,8 @@ async function device({ xp = 50, otp, verify, progress, getProgress, online = tr
     return json(route, 404, { message: "no route" });
   });
   const guest = { version: 3, onboarded: true, xp, hearts: 5, heartsAt: Date.now(), streak: 1, lastDay: "2026-11-03", done: xp > 0 ? { U1L1: true } : {}, lessonsCompleted: xp > 0 ? 1 : 0, installTipClosed: false, lastActive: 0, prefs: { sound: true, haptics: true, soundStyle: "J" } };
-  await ctx.addInitScript(([cfg, g, onl, fake, pfx]) => {
+  await ctx.addInitScript(([cfg, g, onl, fake, pfx, stall]) => {
+    if (stall.length) { const of = window.fetch.bind(window); window.__stalled = 0; window.fetch = (input, init) => { const u = String(typeof input === "string" ? input : input?.url || ""); if (stall.some((x) => u.includes(x))) { window.__stalled++; return Promise.resolve(new Response(new ReadableStream({ start() {} }), { status: 200 })); } return of(input, init); }; }
     try { if (!pfx && !localStorage.getItem("suipian.cloudConfig")) localStorage.setItem("suipian.cloudConfig", JSON.stringify(cfg)); if (!localStorage.getItem(pfx + "suipian.progress") && !sessionStorage.getItem("g-done")) { localStorage.setItem(pfx + "suipian.progress", JSON.stringify(g)); sessionStorage.setItem("g-done", "1"); } } catch {}
     if (!onl) Object.defineProperty(navigator, "onLine", { get: () => false, configurable: true });
     if (fake) { // 模拟 iOS：键盘弹出时可视视口变矮，但布局视口不变
@@ -66,7 +68,7 @@ async function device({ xp = 50, otp, verify, progress, getProgress, online = tr
       Object.defineProperties(vv, { height: { get: () => window.__vvh ?? window.innerHeight }, width: { get: () => window.innerWidth }, offsetTop: { value: 0 }, offsetLeft: { value: 0 }, scale: { value: 1 } });
       Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
     }
-  }, [{ url: FAKE, anonKey: "pub-key" }, guest, online, fakeVv, PFX]);
+  }, [{ url: FAKE, anonKey: "pub-key" }, guest, online, fakeVv, PFX, stall]);
   const page = await ctx.newPage();
   const hosts = new Set(); page.on("request", (rq) => { try { hosts.add(new URL(rq.url()).host); } catch {} });
   const errors = []; page.on("pageerror", (e) => errors.push(String(e.message || e)));
@@ -185,6 +187,29 @@ await scenario("S1b 请求超时（服务器一直不回）", { otp: () => new P
   check("超时：“重新发送”被冷却（约 60 秒）锁住，避免马上重复发送", (await d.page.locator("[data-resend]").isDisabled()) && secondsIn(rs) > 50 && secondsIn(rs) <= 60, rs);
   check("超时：服务器只收到 1 次 otp 请求", d.hits.otp === 1, String(d.hits.otp));
   const bad = await layoutOk(d.page); check("超时：320px 布局无溢出（最长的一条文案）", bad.length === 0, bad.join("; ")); await shot(d, "timeout");
+});
+
+// 响应头已到、正文永远不来（2026-11-19 GPT1 验收条件 1–4）：必须和“响应头没到”一样在时限后结束、界面解除处理中状态
+await scenario("S1b 响应头已到、正文挂起（发码）", { stall: ["/auth/v1/otp"] }, async (d) => {
+  const before = await dump(d.page);
+  await sendTap(d);
+  await d.page.locator("[data-code]").waitFor({ timeout: 25000 });
+  const m = await T(d.page, "[data-login-msg]");
+  check("正文挂起·发码：到时跳到输验证码页，文案要求先检查邮箱（可能已发出）", /请求超时，邮件可能已发出。请先检查邮箱/.test(m), m);
+  check("正文挂起·发码：只发出 1 次请求（不自动重发），“重新发送”被冷却锁住", (await d.page.evaluate(() => window.__stalled)) === 1 && (await d.page.locator("[data-resend]").isDisabled()));
+  check("正文挂起·发码：本机存储逐字节不变（进度、游客记录都在）", (await dump(d.page)) === before);
+});
+await scenario("S1b 响应头已到、正文挂起（输验证码登录）", { stall: ["/auth/v1/verify"] }, async (d) => {
+  await sendTap(d); await d.page.locator("[data-code]").waitFor();
+  const before = await dump(d.page);
+  await d.page.locator("[data-code]").fill("123456");
+  await d.page.locator("[data-verify]").tap();
+  check("正文挂起·登录：显示“登录中…”并禁用按钮", (await T(d.page, "[data-verify]")) === "登录中…" && (await d.page.locator("[data-verify]").isDisabled()));
+  await waitMsg(d, /网络不稳，登录没有确认/, 25000);
+  check("正文挂起·登录：到时解除“登录中”——按钮恢复可点、文字回到“登录”", (await T(d.page, "[data-verify]")) === "登录" && !(await d.page.locator("[data-verify]").isDisabled()));
+  check("正文挂起·登录：没有登录成功（弹窗仍在、没有账号卡片）", (await d.page.locator("[data-login]").count()) === 1);
+  check("正文挂起·登录：能退回改邮箱（弹窗不再被“处理中”锁死）", await d.page.locator("[data-code]").count() === 1 && (await d.page.getByRole("button", { name: "换个邮箱" }).tap().then(() => true, () => false)) && (await d.page.locator("[data-email]").count()) === 1);
+  check("正文挂起·登录：本机存储逐字节不变（进度、游客记录都在）", (await dump(d.page)) === before);
 });
 
 // ---------- 输验证码失败（V1–V4）----------

@@ -31,27 +31,37 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
     if (!configured) return { ok: false, kind: "config", message: "云端暂未开通" };
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
     let timedOut = false; // 自己的超时计时器触发的中止，要和断网区分开（超时时邮件可能已经发出）
-    const timer = ctl ? setTimeout(() => { timedOut = true; ctl.abort(); }, timeoutMs) : null;
-    let resp;
+    // 超时覆盖“拿到响应头 + 读完响应体”的全过程：响应头到了、正文却一直不来时（弱网 / 半开连接），也要在时限到时结束，
+    // 否则调用方（登录弹窗、同步）会一直停在“处理中”。计时器只在整个请求结束时（finally）才清掉。
+    let onTimeout = () => {};
+    const timeoutP = new Promise((res) => { onTimeout = res; });
+    const timer = ctl ? setTimeout(() => { timedOut = true; ctl.abort(); onTimeout(); }, timeoutMs) : null;
+    const netFail = () => ({ ok: false, kind: "network", message: "网络连不上，请检查网络后重试", ...(timedOut ? { timedOut: true } : !isOnline() ? { offline: true } : {}) });
     try {
-      resp = await fetchFn(base + path + (query ? "?" + query : ""), {
-        method, signal: ctl?.signal,
-        headers: { apikey: anonKey, Authorization: "Bearer " + (token || anonKey), "Content-Type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-    } catch (e) {
-      return { ok: false, kind: "network", message: "网络连不上，请检查网络后重试", ...(timedOut ? { timedOut: true } : !isOnline() ? { offline: true } : {}) };
+      let resp;
+      try {
+        resp = await fetchFn(base + path + (query ? "?" + query : ""), {
+          method, signal: ctl?.signal,
+          headers: { apikey: anonKey, Authorization: "Bearer " + (token || anonKey), "Content-Type": "application/json" },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+      } catch (e) {
+        return netFail();
+      }
+      let data = null;
+      // 正文读取和超时赛跑：真实 fetch 被中止后 text() 会自己报错，但不依赖这一点（假接口 / 个别浏览器可能不响应中止信号）。
+      const TIMED_OUT = Symbol("timeout");
+      const text = await (ctl ? Promise.race([resp.text().catch(() => ""), timeoutP.then(() => TIMED_OUT)]) : resp.text().catch(() => ""));
+      if (text === TIMED_OUT || timedOut) return netFail();
+      if (text) { try { data = JSON.parse(text); } catch { data = text; } }
+      if (resp.ok) return { ok: true, status: resp.status, data };
+      const msg = (data && (data.msg || data.message || data.error_description || data.error)) || `服务器返回 ${resp.status}`;
+      const kind = resp.status === 429 ? "rate-limit" : resp.status === 401 || resp.status === 403 ? "auth" : "server";
+      const errorCode = data && typeof data === "object" && typeof data.error_code === "string" ? data.error_code : undefined;
+      const oauthError = data && typeof data === "object" && typeof data.error === "string" ? data.error : undefined; // 老版本 / OAuth 风格：{ error: "invalid_grant", error_description }
+      const ra = Number(typeof resp.headers?.get === "function" ? resp.headers.get("retry-after") : NaN); // 只认秒数形式
+      return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}), ...(oauthError ? { oauthError } : {}), ...(Number.isFinite(ra) && ra > 0 ? { retryAfterSec: ra } : {}) };
     } finally { if (timer) clearTimeout(timer); }
-    let data = null;
-    const text = await resp.text().catch(() => "");
-    if (text) { try { data = JSON.parse(text); } catch { data = text; } }
-    if (resp.ok) return { ok: true, status: resp.status, data };
-    const msg = (data && (data.msg || data.message || data.error_description || data.error)) || `服务器返回 ${resp.status}`;
-    const kind = resp.status === 429 ? "rate-limit" : resp.status === 401 || resp.status === 403 ? "auth" : "server";
-    const errorCode = data && typeof data === "object" && typeof data.error_code === "string" ? data.error_code : undefined;
-    const oauthError = data && typeof data === "object" && typeof data.error === "string" ? data.error : undefined; // 老版本 / OAuth 风格：{ error: "invalid_grant", error_description }
-    const ra = Number(typeof resp.headers?.get === "function" ? resp.headers.get("retry-after") : NaN); // 只认秒数形式
-    return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}), ...(oauthError ? { oauthError } : {}), ...(Number.isFinite(ra) && ra > 0 ? { retryAfterSec: ra } : {}) };
   }
 
   const toSession = (d) => d && d.access_token && d.user?.id ? {
