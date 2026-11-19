@@ -58,9 +58,9 @@ function fakeCloud() {
 const fakeStorage = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: (k) => { m.delete(k); }, _m: m }; };
 const snap = (st) => JSON.stringify([...st._m.entries()].sort());
 const mkApi = (S) => createApi({ url: "https://fake.supabase.test", anonKey: "k", fetchFn: S.fetch, timeoutMs: 400, isOnline: () => !S.offline });
-function device(S, storage = fakeStorage()) {
+function device(S, storage = fakeStorage(), locks = null) {
   const dev = { storage, state: freshState(), timers: [], clock: Date.now(), notices: [] };
-  dev.sync = createSync({ storage, api: mkApi(S), retryLocks: CUR_MODE === "有 Web Locks" ? fakeLocks() : {}, schedule: (fn, ms) => { dev.timers.push({ fn, ms }); return dev.timers.length; }, today: () => TODAY, now: () => dev.clock, onState: (doc) => { dev.state = docToState(doc, dev.state); }, onNotice: (k) => dev.notices.push(k) });
+  dev.sync = createSync({ storage, api: mkApi(S), retryLocks: locks || (CUR_MODE === "有 Web Locks" ? fakeLocks() : {}), schedule: (fn, ms) => { dev.timers.push({ fn, ms }); return dev.timers.length; }, today: () => TODAY, now: () => dev.clock, onState: (doc) => { dev.state = docToState(doc, dev.state); }, onNotice: (k) => dev.notices.push(k) });
   return dev;
 }
 const finishLesson = (dev, id, xp) => { const s = dev.state; s.xp += xp; s.done[id] = true; s.lessonsCompleted++; bumpStreak(s, new Date(TODAY + "T12:00:00")); return dev.sync.persistLocal(s); };
@@ -367,6 +367,60 @@ for (const [label, failStatus, hookRe] of [["503 失败", 503, GET], ["成功", 
 }
 
 }
+
+// ===== 9. GPT1 07:19 两处遗漏 =====
+CUR_MODE = "";
+const BADJWT = { code: 403, error_code: "bad_jwt", msg: "invalid JWT" }, LOGOUT = /POST \/auth\/v1\/logout/;
+// 9a. 强制退出的撤销过程内部要刷新（第一次 signOut 回 bad_jwt → refresh 成功 → 再 signOut）：用局部凭证，不能把凭证重新写进存储
+for (const [label, secondFails] of [["第二次撤销成功", false], ["第二次撤销失败", true]]) {
+  const S = fakeCloud(), d = await loggedInA(S);
+  S.fail(LOGOUT, 403, BADJWT, 1); if (secondFails) S.fail(LOGOUT, 503, { msg: "x" }, 1);
+  const lr = await d.sync.logout({ force: true }); await tick();
+  const refreshed = (S.count["POST /auth/v1/token"] || 0) >= 1;
+  check(`强制退出内部刷新（${label}）：确实走了刷新再撤销，退出成功，账号为空，状态为空，没有凭证残留`, refreshed && lr.ok === true && d.sync.account() === null && statusOf(d).status === null && d.storage.getItem("suipian.auth") === null && !d.storage._m.has("suipian.auth"), JSON.stringify([refreshed, lr, statusOf(d), d.storage.getItem("suipian.auth")]));
+  check(`  ${label}：${secondFails ? "带“云端会话可能仍有效”警告" : "没有残留警告"}`, secondFails ? lr.warning === "cloud-session-maybe-valid" : lr.warning === undefined, JSON.stringify(lr));
+}
+// 9b. 普通退出同样的流程：保持回滚保存轮换后的凭证
+{
+  const S = fakeCloud(), d = device(S); await login(S, d, EMAIL_A);
+  const before = d.storage.getItem("suipian.auth");
+  S.fail(LOGOUT, 403, BADJWT, 1); S.fail(LOGOUT, 503, { msg: "x" }, 1);
+  const lr = await d.sync.logout(); await tick();
+  const after = d.storage.getItem("suipian.auth");
+  check("普通退出内部刷新后第二次撤销失败：退出没完成并回滚，仍是登录 A，保存的是轮换后的新凭证（不是旧的）", lr.ok === false && d.sync.account()?.email === EMAIL_A && after !== null && after !== before, JSON.stringify([lr, before === after]));
+  finishLesson(d, "u1-l1", 40);
+  const ns = await d.sync.syncNow({ manual: true });
+  check("  回滚之后同步用新凭证照常成功", ns.ok === true && S.xpOf(EMAIL_A) === 40, JSON.stringify(ns));
+}
+{
+  const S = fakeCloud(), d = device(S); await login(S, d, EMAIL_A);
+  S.fail(LOGOUT, 403, BADJWT, 1);
+  const lr = await d.sync.logout(); await tick();
+  check("普通退出内部刷新后第二次撤销成功：退出成功，没有凭证残留", lr.ok === true && d.sync.account() === null && d.storage.getItem("suipian.auth") === null, JSON.stringify(lr));
+}
+// 9c. 等锁的请求失败（拒绝）迟到：旧任务不得再改退出后 / B 的状态
+function rejectableLocks() {
+  const inner = fakeLocks(); let armed = false; const pend = [];
+  return { arm() { armed = true; }, rejectAll() { pend.splice(0).forEach((f) => f(new Error("lock denied"))); }, request(name, opts, cb) { if (!armed) return inner.request(name, opts, cb); armed = false; return new Promise((_, rej) => pend.push(rej)); } };
+}
+for (const [label, relogin] of [["强制退出之后", false], ["强制退出并登录 B 之后", true]]) {
+  const S = fakeCloud(); const locks = rejectableLocks();
+  const d = device(S, fakeStorage(), locks); await login(S, d, EMAIL_A); finishLesson(d, "u1-l1", 40);
+  locks.arm(); const p = d.sync.syncNow({ manual: true }); await tick();   // 同步在等锁，锁请求还没结果
+  await d.sync.logout({ force: true }); await tick();
+  if (relogin) { const vb = await login(S, d, EMAIL_B); if (!vb.ok) throw new Error("登录 B 失败"); }
+  const st0 = JSON.stringify(statusOf(d)), keys0 = snap(d.storage);
+  locks.rejectAll(); const r = await within(p); await tick();
+  check(`锁请求${label}才被拒绝：旧任务返回 stale，状态 / 本机存储一点没变（不变成 pending、不置 pending=true）`, r.settled && r.v.stale === true && JSON.stringify(statusOf(d)) === st0 && snap(d.storage) === keys0 && (relogin || (statusOf(d).status === null && !statusOf(d).pending)), JSON.stringify([r.v, st0, JSON.stringify(statusOf(d))]));
+}
+{
+  const S = fakeCloud(); const locks = rejectableLocks();
+  const d = device(S, fakeStorage(), locks); await login(S, d, EMAIL_A); finishLesson(d, "u1-l1", 40);
+  locks.arm(); const p = d.sync.syncNow({ manual: true }); await tick();
+  locks.rejectAll(); const r = await within(p); await tick();
+  check("当前会话的锁请求失败：照常报本机错误（kind=local），状态变成 pending，不是 stale", r.settled && r.v.stale !== true && r.v.kind === "local" && statusOf(d).status === "pending" && statusOf(d).pending === true, JSON.stringify([r.v, statusOf(d)]));
+}
+
 
 const bad = results.filter((x) => !x).length;
 console.log(`\n共 ${results.length} 项，失败 ${bad} 项`);

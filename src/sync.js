@@ -60,6 +60,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         });
       } catch (err) {
         if (entered) throw err;
+        if (gen !== acctGen) return staleResult(); // 锁请求迟到拒绝时任务已是旧任务（退出 / 换账号）：不改 localRetryUnknown，不改状态
         localRetryUnknown = true; return localRetryBlocked();
       }
     }
@@ -1061,7 +1062,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   //   sessionState "token-invalid"（bad_jwt）→ 只能说明访问令牌坏了，会话还在不在要核实：refresh 被拒 = 已死；
   //     refresh 还活着 = 拿新令牌再 signOut 一次（刷新会轮换 refresh token，新凭证必须写回存储，onSession 通知调用方更新回滚快照）；
   //   通用 403、路由 404、代理错误、5xx、断网等一律算失败，调用方要回滚并保持登录。
-  async function revokeCloudSession(sess, { onSession } = {}) {
+  async function revokeCloudSession(sess, { onSession, detached = false } = {}) {
     if (!sess || !isSessionShape(sess)) return { ok: true, alreadyInvalid: true };
     const fail = (so) => ({ ok: false, kind: so.kind || "server", message: so.message || "退出云端失败" });
     try {
@@ -1069,14 +1070,16 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!so || so.ok !== false) return { ok: true };
       if (so.sessionState === "gone") return { ok: true, alreadyInvalid: true };
       if (so.sessionState !== "token-invalid") return fail(so);
-      adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌：用最新的核实，别拿旧令牌去撞“已使用”
-      const rf = await api.refresh(isSessionShape(session) ? session : sess);
+      // detached（强制退出）：本机凭证已经清掉，撤销过程只用局部凭证，不读也不写登录态（不 adopt、不 writeAuth、不动 session / email）。
+      if (!detached) adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌：用最新的核实，别拿旧令牌去撞“已使用”
+      const rf = await api.refresh(!detached && isSessionShape(session) ? session : sess);
       // 只有明确证明刷新令牌 / 会话已死（sessionState "dead"）才算已退出；通用 403、路由 404、请求格式错误、429、5xx、断网都算失败。
       if (!rf.ok) return rf.sessionState === "dead" ? { ok: true, alreadyInvalid: true } : fail(rf);
-      if (!isSessionShape(rf.session) || rf.session.userId !== userId) return { ok: false, kind: "auth", message: "登录账号不一致，暂未退出" };
-      session = rf.session; email = session.email || email; writeAuth();
+      if (!isSessionShape(rf.session) || rf.session.userId !== (detached ? sess.userId : userId)) return { ok: false, kind: "auth", message: "登录账号不一致，暂未退出" };
+      const cur = rf.session;
+      if (!detached) { session = cur; email = session.email || email; writeAuth(); }
       if (onSession) onSession();
-      so = await api.signOut(session, "local");
+      so = await api.signOut(cur, "local");
       if (!so || so.ok !== false) return { ok: true };
       if (so.sessionState === "gone") return { ok: true, alreadyInvalid: true };
       return fail(so);
@@ -1148,7 +1151,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       // 本机已经清完：先作废所有在途的旧同步，再去等云端撤销（撤销可能很慢）。否则撤销等待期间，旧同步的迟到刷新会把刚清掉的凭证重新写回。
       bumpAcct(); session = null;
       if (forceLocal) { finishLocalLogout(); return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出（没有联网）。云端会话可能仍有效。" }; }
-      const rv = await revokeCloudSession(sess);
+      const rv = await revokeCloudSession(sess, { detached: true });
       finishLocalLogout();
       if (!rv.ok) return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出。云端会话可能仍有效。" };
       return { ok: true };

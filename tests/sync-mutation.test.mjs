@@ -360,7 +360,7 @@ try {
     {
       name: "DB-3.1：bad_jwt 核实前不采用别的标签页刚轮换的令牌",
       file: "sync.js",
-      from: "      adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌",
+      from: "      if (!detached) adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌",
       to: "      // (不采用)",
     },
     {
