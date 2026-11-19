@@ -41,6 +41,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   const LOCAL_RETRY_LIMIT = 3;
   let localWritebackFails = 0, localRetryUser = null, localRetryTimer = null, localRetryEpoch = 0, localRetryUnknown = false;
   let retryLockHeld = false;
+  let loggingOut = false; // 普通退出：本机已清理、正在等云端撤销。期间新触发的同步直接作废（否则会把刚清掉的本机副本写回）
   const retryLockProvider = retryLocks || (typeof navigator !== "undefined" ? navigator.locks : null);
   const retryLockName = () => `suipian:writeback:${projectNamespace(projectId, legacyProject)}:${userId}`;
   // 锁的等待、占用和释放都绑定“这一轮同步任务”的生命周期：任务一旦成为旧任务（退出 / 换账号，代次前进），立刻放掉锁，
@@ -336,6 +337,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   // 顺序：无账号 → R1 损坏待办硬锁（手动也不能绕过）→ v4 本机写回重试上限（只拦自动）。
   function syncNow({ manual = false } = {}) {
     if (!userId) return Promise.resolve({ ok: false, kind: "no-account" });
+    if (loggingOut) return Promise.resolve(staleResult());
     const guard = importGuard();
     if (guard) return Promise.resolve(guard);
     if (!manual && ordinaryAutoBlocked()) return Promise.resolve(localRetryBlocked());
@@ -624,11 +626,14 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (ctx.resume) {
       // “恢复后重新选择”：弹窗期间令牌可能已被刷新轮换，必须用当前会话，不能把挂起时那份旧令牌写回去。
       if (!session || !userId || userId !== ctx.session.userId) { waiting = null; return { ok: false, kind: "auth", message: "登录状态已变化，请重新操作" }; }
+      const gen0 = acctGen;
       const tk = await ensureToken(); // 先刷新（若需要），再取“刷新之后的当前会话”：后面所有联网和收尾写回都用同一个对象，不会把旧令牌写回存储
+      if (gen0 !== acctGen) return staleImport(); // 刷新期间已退出 / 换账号
       if (!tk.ok) return tk;          // 保留 waiting：用户可以稍后在同一个弹窗里重试
       ctx.session = session;
     }
     const r = await finish(ctx, choice);
+    if (r.stale) return r; // 选择过程中已退出 / 换账号：旧任务整体作废，不碰 waiting（可能已是新登录的），也不回读本机副本
     // 网络 / 读云端失败时保留挂起状态，用户可以在同一个弹窗里重试；成功才清掉。
     if (r.ok) waiting = null;
     else {
@@ -942,6 +947,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   async function finish(ctx, choice) {
+    const gen = acctGen, dead = () => gen !== acctGen; // 这次登录选择的代次：中途退出 / 换账号后，所有联网结果整体作废，不得复活旧账号或覆盖凭证
     const uid = ctx.session.userId;
     const d = getDeviceId(storage), g = getGuestId(storage);
     if (!d.ok) return { ok: false, kind: "local", message: d.message };
@@ -960,7 +966,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         record = { version: 1, userId: uid, guestId: g.id, choice: wantedImport, fingerprint: fp, guestState: clone(ctx.guest.state), guestRaw: ctx.guest.raw, createdAt: now() };
         if (!savePendingImport(storage, uid, record)) return { ok: false, kind: "local", message: "无法保存游客导入待办，登录没有完成" };
       }
-      result = await runPendingImport(record, ctx.session);
+      result = await runPendingImport(record, ctx.session, { dead });
+      if (dead()) return result.stale ? result : staleImport();
       if (!result.ok) return result;
       doc = result.doc; base = result.rev; transferred = wantedImport === "merge";
     } else if (ctx.copy) {
@@ -1098,7 +1105,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   async function logout({ force = false, forceLocal = false } = {}) {
     dropVerified(); // 退出（含强制本机退出，forceLocalLogout 走这里）：待读取的已验证会话作废、流程代次前进——没有登录账号时也要做，在途的旧读取返回后会被丢弃
-    if (!userId) return { ok: true };
+    if (!userId) { bumpAcct(); waiting = null; return { ok: true }; } // 还没登录（正停在“游客记录怎么办”的选择上）：在途的 finishChoice 也要作废，迟到完成不得复活账号
     const dropping = force || forceLocal;
     const guard = importGuard();
     if (guard) {
@@ -1166,7 +1173,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
     bumpAcct(); // 同上：本机清理已成功，等云端撤销之前先作废旧同步；撤销失败时下面照旧回滚，回滚后登录态继续用新的代次
-    const rv = await revokeCloudSession(session, { onSession: () => { try { c.snap.authRaw = storage.getItem(AUTH_KEY); } catch { /* 读不到就保留旧快照 */ } } });
+    loggingOut = true; // 撤销等待期间内存里 session / userId 还在（撤销失败要回滚），新触发的同步一律拒绝
+    let rv;
+    try { rv = await revokeCloudSession(session, { onSession: () => { try { c.snap.authRaw = storage.getItem(AUTH_KEY); } catch { /* 读不到就保留旧快照 */ } } }); }
+    finally { loggingOut = false; }
     if (!rv.ok) {
       const rb = rollbackLocal(uid, c.snap);
       const message = rb.all ? rv.message : `${rv.message}（本机状态恢复不完整，请检查登录状态和学习副本）`;

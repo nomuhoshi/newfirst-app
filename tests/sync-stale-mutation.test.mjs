@@ -40,6 +40,10 @@ try {
     ["游客导入（安全合并）：读最新云端后不核对代次", "let current = await readLatestCloud(sess);\n    if (dead()) return staleImport();", "let current = await readLatestCloud(sess);"],
     ["强制退出的撤销过程仍把轮换凭证写回登录态（不用局部凭证）", "if (!detached) { session = cur; email = session.email || email; writeAuth(); }", "{ session = cur; email = session.email || email; writeAuth(); }"],
     ["锁请求被拒绝时不核对代次（旧任务改 pending / localRetryUnknown）", "if (gen !== acctGen) return staleResult(); // 锁请求迟到拒绝", "// 锁请求迟到拒绝"],
+    ["finish（登录选择）不带代次：导入结果迟到照样完成登录", "result = await runPendingImport(record, ctx.session, { dead });", "result = await runPendingImport(record, ctx.session);"],
+    ["还没登录时退出不作废在途的登录选择", "if (!userId) { bumpAcct(); waiting = null; return { ok: true }; }", "if (!userId) return { ok: true };"],
+    ["普通退出等撤销期间不拦新同步", "if (loggingOut) return Promise.resolve(staleResult());", ""],
+    ["本机写回锁的“持锁”标记不再设置（有 window 时自动同步被误判成没持锁）", "          retryLockHeld = true;\n", ""],
     ["自动同步计时器不带代次", "timer = schedule(() => { if (g !== acctGen) return; timer = null; syncNow(); }, ms);", "timer = schedule(() => { timer = null; syncNow(); }, ms);"],
     ["退避重试计时器不带代次", "retryTimer = schedule(() => { if (g !== acctGen) return; retryTimer = null; syncNow(); }, delay);", "retryTimer = schedule(() => { retryTimer = null; syncNow(); }, delay);"],
   ];

@@ -422,6 +422,64 @@ for (const [label, relogin] of [["强制退出之后", false], ["强制退出并
 }
 
 
+// ===== 10. Gemini 07:26 三条（先用测试确认能否复现） =====
+CUR_MODE = "";
+// 10a. finishChoice（登录选择“游客记录怎么办”）在读取 / 写入 / 读回挂起时强制退出（再登录 B）：迟到完成不得复活 A、不得覆盖凭证
+for (const choice of ["cloud", "transfer"]) for (const point of ["读取", "写入", "读回"]) for (const relogin of [false, true]) {
+  const S = fakeCloud(), d = device(S); seedGuest(d, 50);
+  S.issue(); const v = await d.sync.verify(EMAIL_A, "123456", d.state);
+  if (!v.needChoice) throw new Error("没有走到选择：" + JSON.stringify(v));
+  const guestBefore = d.storage.getItem(GUEST_KEY);
+  let rel;
+  if (point === "读取") rel = S.hold(GET);
+  else if (point === "写入") rel = S.hold(/POST \/rest\/v1\/rpc\/(create|save)_progress/);
+  else { const r1 = S.hold(GET); rel = S.hold(GET); setTimeout(r1, 60); }   // 第一次读最新放行，第二次（读回）挂起
+  const p = d.sync.finishChoice(choice); await sleep(120);
+  await d.sync.forceLocalLogout(); await tick();
+  let uidB = null;
+  if (relogin) { S.issue("654321"); const vb = await d.sync.verify(EMAIL_B, "654321", d.state); if (!vb.needChoice && !vb.ok) throw new Error("登录 B 失败"); }
+  const authMid = d.storage.getItem("suipian.auth");
+  rel(); const r = await within(p, 3000); await tick();
+  const authEnd = d.storage.getItem("suipian.auth"), acct = d.sync.account();
+  const tag = `finishChoice(${choice}) 在${point}挂起 → 强制退出${relogin ? " → 登录 B" : ""}`;
+  check(`${tag}：旧任务不成功（stale / 未完成），游客记录保留，A 不被复活，凭证没被旧任务写回`, r.settled && r.v.ok !== true && d.storage.getItem(GUEST_KEY) === guestBefore && authEnd === authMid && (relogin ? (acct === null || acct.email === EMAIL_B) : acct === null && authEnd === null) , JSON.stringify([r.v?.ok, r.v?.stale, acct, authMid === authEnd, d.storage.getItem(GUEST_KEY) === guestBefore]));
+  if (relogin) {
+    const fb = await d.sync.finishChoice(choice); await tick();
+    const au = JSON.parse(d.storage.getItem("suipian.auth") || "null");
+    check("  旧任务结算之后，B 自己的选择照常完成：登录 B，云端 XP 符合所选方式（保留云端 0 / 合并 50），凭证是 B 的", fb.ok === true && d.sync.account()?.email === EMAIL_B && S.xpOf(EMAIL_B) === (choice === "transfer" ? 50 : 0) && JSON.stringify(au).includes(EMAIL_B), JSON.stringify([fb.ok, d.sync.account(), S.xpOf(EMAIL_B)]));
+  }
+}
+// 10b. 普通退出等云端撤销期间新触发的同步：不能发请求、不能把刚清掉的本机副本写回
+for (const [label, revokeFails] of [["撤销成功", false], ["撤销失败 → 回滚", true]]) {
+  const S = fakeCloud(), d = device(S); await login(S, d, EMAIL_A);
+  const relOut = S.hold(LOGOUT, revokeFails ? 503 : null);
+  const lo = d.sync.logout(); await tick();
+  const reqBefore = (S.count["GET /rest/v1/progress"] || 0) + (S.count["POST /rest/v1/rpc/save_progress"] || 0) + (S.count["POST /rest/v1/rpc/create_progress"] || 0);
+  const snapMid = snap(d.storage);
+  const ns = await within(d.sync.syncNow({ manual: true })); await tick();
+  const reqAfter = (S.count["GET /rest/v1/progress"] || 0) + (S.count["POST /rest/v1/rpc/save_progress"] || 0) + (S.count["POST /rest/v1/rpc/create_progress"] || 0);
+  const snapAfter = snap(d.storage);
+  relOut(); const lr = await lo; await tick();
+  check(`普通退出等撤销期间（${label}）新触发手动同步：不发进度请求、不写本机存储`, ns.settled && reqAfter === reqBefore && snapAfter === snapMid, JSON.stringify([ns.v, reqBefore, reqAfter, snapAfter === snapMid]));
+  if (!revokeFails) check("  撤销成功后：本机没有这个账号的副本残留，账号为空", lr.ok === true && d.sync.account() === null && acctKeys(d.storage).length === 0, JSON.stringify([lr, acctKeys(d.storage)]));
+  else { finishLesson(d, "u1-l1", 40); const n2 = await d.sync.syncNow({ manual: true }); check("  撤销失败回滚后：仍是登录 A，之后同步照常", lr.ok === false && d.sync.account()?.email === EMAIL_A && n2.ok === true && S.xpOf(EMAIL_A) === 40, JSON.stringify([lr.ok, n2])); }
+}
+// 10c. 旧任务放锁（abandon）的 finally 不得把别的账号刚拿到的“持锁”标记清掉（需要 window 才会走到 autoRetryGuard 的锁判断）
+{
+  globalThis.window = {};
+  try {
+    const S = fakeCloud(); const locks = fakeLocks();
+    const d = device(S, fakeStorage(), locks); await login(S, d, EMAIL_A); finishLesson(d, "u1-l1", 40);
+    const relA = S.hold(GET); const pa = d.sync.syncNow({ manual: true }); await tick();   // A 持锁挂在读取
+    await d.sync.forceLocalLogout(); await tick();
+    await login(S, d, EMAIL_B); finishLesson(d, "u1-l1", 30);
+    const relB = S.hold(GET); const pb = d.sync.syncNow({ manual: false }); await tick();  // B 的自动同步持锁挂在读取
+    relA(); await within(pa); await tick(); relB();
+    const rb = await within(pb, 3000); await tick();
+    check("A 放锁之后 B 持锁的自动同步：不被误判成“没有持锁”而本机写回停机；B 同步成功，云端 30 XP", rb.settled && rb.v.ok === true && S.xpOf(EMAIL_B) === 30, JSON.stringify([rb.v, statusOf(d)]));
+  } finally { delete globalThis.window; }
+}
+
 const bad = results.filter((x) => !x).length;
 console.log(`\n共 ${results.length} 项，失败 ${bad} 项`);
 process.exit(bad ? 1 : 0);
