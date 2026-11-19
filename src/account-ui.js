@@ -128,8 +128,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           const v = input.value.trim();
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { say("请输入有效的邮箱地址。"); return; }
           if (busy || cdLeft(v) > 0) return; busy = true; go.disabled = true; go.textContent = "发送中…"; say("正在发送…", false);
-          const r = await sendWithCaptcha(v);
-          busy = false;
+          let r; try { r = await guarded(() => sendWithCaptcha(v)); } finally { busy = false; }
           if (finished) return; // 发送途中点了「先不登录」：弹窗已关，迟到的结果不再翻页、不改提示、不起计时
           if (!r.ok) {
             const d0 = describeSendError(r, { xp: localXp(), fails: 1, captchaOn: captcha.enabled });
@@ -257,8 +256,8 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         // G3：处理中两个按钮都禁用，点遮罩和 Esc 也不会关掉弹窗；C1：失败后恢复可点，游客进度原样留在这台设备上。
         const pick = async (choice) => {
           if (busy) return; busy = true; btns.forEach((b) => { b.disabled = true; }); say("正在上传并核对…", false);
-          const r = await sync.finishChoice(choice);
-          busy = false; btns.forEach((b) => { b.disabled = false; });
+          let r; try { r = await guarded(() => sync.finishChoice(choice)); } finally { busy = false; btns.forEach((b) => { b.disabled = false; }); }
+          if (finished) return;
           if (!r.ok) { sayFail(describeChoiceError(r, { xp: info.guest.xp })); return; }
           success(r);
         };
