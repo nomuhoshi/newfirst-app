@@ -124,6 +124,15 @@ export function createCodeArea(ex, ctx) {
   const onViewport = () => { if (!root.isConnected) { window.visualViewport?.removeEventListener("resize", onViewport); return; } if (view.hasFocus) keepCursorVisible(); };
   window.visualViewport?.addEventListener("resize", onViewport);
 
+  // 把某一块（检查状态 / 结果）滚进 .lesson 的可视范围：编辑器在题面下面，键盘和底栏占掉下半屏后，不滚过去的话“检查中 / 没通过”等提示根本看不到，
+  // 看上去就像卡住了。太高的块优先保证它的顶部可见。
+  function revealInLesson(el) {
+    const sc = root.closest(".lesson"); if (!sc || !el.isConnected) return;
+    const vr = sc.getBoundingClientRect(), r = el.getBoundingClientRect(), pad = 8;
+    if (r.bottom > vr.bottom - pad) sc.scrollTop += Math.min(r.bottom - (vr.bottom - pad), r.top - (vr.top + pad));
+    else if (r.top < vr.top + pad) sc.scrollTop -= (vr.top + pad) - r.top;
+  }
+
   // ---- 编辑器 ----
   const editorHost = h("div", { class: "ct-editor", "aria-label": "代码编辑区", role: "group" });
   const saveNote = h("span", { class: "ct-savenote", text: "代码暂存于此设备" });
@@ -224,7 +233,12 @@ export function createCodeArea(ex, ctx) {
     saver.flush();
     setBusy(true);
     ctrl = new AbortController();
-    say("检查中…", ["正在用几组数据运行你的代码。思考和修改不限时；运行只有安全保护时限。"]);
+    // Python 还没加载好时如实说明在等它（手机上首次加载可能要十几秒），不要只显示“检查中”
+    const sayChecking = () => say(runner.state === "ready" ? "检查中…" : "Python 加载中…", runner.state === "ready"
+      ? ["正在用几组数据运行你的代码。思考和修改不限时；运行只有安全保护时限。"]
+      : ["正在加载 Python（第一次打开要下载，手机上可能要十几秒）。加载好后会自动开始检查，不用重复点。", "最长等 30 秒，到时还没好会提示重试；代码已保留，不扣红心。"]);
+    sayChecking(); revealInLesson(results);
+    const waitTick = runner.state === "ready" ? 0 : setInterval(() => { if (runner.state === "ready") { clearInterval(waitTick); sayChecking(); revealInLesson(results); } }, 300);
     let r;
     try {
       const args = { tests: cur.tests, checkMode: cur.checkMode || "output", compare: cur.compare || "strict" };
@@ -233,16 +247,17 @@ export function createCodeArea(ex, ctx) {
       r = await judge(args, exec, { signal: ctrl.signal });
     } catch {
       r = { status: "internal-error", attempt: false, settle: false, retry: true, totalMs: 0, cases: [{ name: "", hidden: false, ok: false, kind: "internal", ms: 0, message: "判题出了内部问题，这次不算作答，代码已保留，请重试" }] };
-    } finally { setBusy(false); ctrl = null; pyStatus(); }
+    } finally { clearInterval(waitTick); setBusy(false); ctrl = null; pyStatus(); }
     // iPhone 的自动替换可能把直引号变成弯引号：这种语法错误不该扣红心，提示后让学生改
     if (r.status === "fail" && CURLY.test(code) && r.cases.some((c) => c.kind === "error" && c.error?.kind === "SyntaxError")) {
       r = { ...r, status: "curly-quotes", attempt: false, settle: false, retry: true };
       lastResult = r;
       say("代码里有弯引号，这次不算作答", ["Python 只认直引号 \" 或 '，不认弯引号 “ ” ‘ ’。请改成直引号再检查（用内置键盘输入就是直引号）。", "不扣红心，代码已保留。"], "warn");
+      revealInLesson(results);
       return r;
     }
     lastResult = r;
-    renderResult(r);
+    renderResult(r); revealInLesson(results);
     // 看过参考解法：原题通过后不结算，进入变化题；变化题通过才结算原题奖励（一次）；变化题没通过不扣红心
     if (vspec && !cur.isVariation && viewed && r.status === "pass") {
       r = { ...r, attempt: false, settle: false, retry: true, assisted: true };
