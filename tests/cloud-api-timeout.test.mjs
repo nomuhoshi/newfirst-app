@@ -99,16 +99,18 @@ for (const abortAware of [false, true]) {
 function fakeStorage() { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: (k) => { m.delete(k); }, _m: m }; }
 // 内存里的假 Supabase（fetch 层）：验证码 123456；进度行带版本号；可以让“某条请求处理完后，回执正文挂起”
 function fakeCloud() {
-  const S = { row: null, uid: newId(), saveCalls: 0, createCalls: 0, verifyCalls: 0, stall: [], log: [] };
+  const S = { row: null, uid: newId(), saveCalls: 0, createCalls: 0, verifyCalls: 0, getCalls: 0, stall: [], bodyFail: [], log: [] };
   const done = (status, body, path, method) => {
     const i = S.stall.findIndex((m) => m.test(method + " " + path));
     if (i >= 0) { S.stall.splice(i, 1); S.log.push(`${method} ${path} → 回执正文挂起`); return { ok: status < 400, status, headers: { get: () => null }, text: () => new Promise(() => {}) }; }
+    const k = S.bodyFail.findIndex((m) => m.test(method + " " + path));
+    if (k >= 0) { S.bodyFail.splice(k, 1); S.log.push(`${method} ${path} → 读正文时连接断了`); return { ok: status < 400, status, headers: { get: () => null }, text: () => Promise.reject(new TypeError("terminated")) }; }
     return J(status, body);
   };
   S.fetch = async (url, init) => {
     const u = new URL(url), path = u.pathname, method = init.method || "GET", body = init.body ? JSON.parse(init.body) : null;
     if (path === "/auth/v1/verify") { S.verifyCalls++; return body.token === "123456" ? done(200, { access_token: "AT-" + S.verifyCalls, refresh_token: "RT-" + S.verifyCalls, expires_in: 3600, user: { id: S.uid, email: body.email } }, path, method) : J(403, { error_code: "otp_expired", msg: "Token has expired or is invalid" }); }
-    if (path === "/rest/v1/progress") return done(200, S.row ? [{ doc: S.row.doc, rev: S.row.rev }] : [], path, method);
+    if (path === "/rest/v1/progress") { S.getCalls++; return done(200, S.row ? [{ doc: S.row.doc, rev: S.row.rev }] : [], path, method); }
     if (path === "/rest/v1/rpc/create_progress") { S.createCalls++; if (S.row) return done(200, null, path, method); S.row = { doc: body.new_doc, rev: 1 }; return done(200, 1, path, method); }
     if (path === "/rest/v1/rpc/save_progress") { S.saveCalls++; if (!S.row || S.row.rev !== body.expected_rev) return done(200, null, path, method); S.row = { doc: body.new_doc, rev: S.row.rev + 1 }; return done(200, S.row.rev, path, method); }
     return J(404, {});
@@ -158,6 +160,58 @@ const finishLesson = (dev, id, xp) => { const s = dev.state; s.xp += xp; s.done[
   check("再点一次「登录」（这一次服务器正常）：登录成功", r2.settled && r2.v.ok === true && d.sync.account() !== null, JSON.stringify(r2.settled ? { ok: r2.v.ok, kind: r2.v.kind } : "挂着"));
 }
 
+// ---------- 3b. 读正文本身失败（不是超时）：不能被吞成“空正文 = 成功 / 云端没有记录” ----------
+{
+  const failBody = (status) => async () => ({ ok: status < 400, status, headers: { get: () => null }, text: () => Promise.reject(new TypeError("terminated")) });
+  const bad = [];
+  for (const [name, call] of Object.entries(METHODS)) {
+    const r = await within(call(mkApi(createApi, failBody(200))), BOUND);
+    if (!(r.settled && r.v.ok === false && r.v.kind === "network" && r.v.timedOut === undefined)) bad.push(name);
+  }
+  check("200 + 读正文时连接断了：8 个接口方法都返回 network 失败（不是 ok、也不带 timedOut）", bad.length === 0, bad.join("、"));
+  const r503 = await mkApi(createApi, failBody(503)).getProgress(SESS);
+  const r403 = await mkApi(createApi, failBody(403)).getProgress(SESS);
+  check("503 / 403 + 读正文失败：仍按状态码归类（server / auth），不变成 network", r503.ok === false && r503.kind === "server" && r503.status === 503 && r403.ok === false && r403.kind === "auth" && r403.status === 403, JSON.stringify({ r503: r503.kind, r403: r403.kind }));
+  const ok204 = await mkApi(createApi, async () => ({ ok: true, status: 204, headers: { get: () => null }, text: async () => "" })).signOut(SESS);
+  check("对照：真正的空正文（如 204）仍算成功", ok204.ok === true, JSON.stringify(ok204));
+}
+{
+  // 同步里：已有云端记录，首次读的正文断了（原版上 getProgress 本来就会因“行数不对”失败；真正误报 ok 的是 sendCode / signOut / createProgress / saveProgress / deleteAccount，见上一组）——不能当成“云端没有记录”去新建 / 覆盖
+  const S = fakeCloud(), d = device(S);
+  await d.sync.verify("t@x.com", "123456", d.state);
+  finishLesson(d, "u1-l1", 20);
+  check("准备：云端已有进度行（版本 1），本机新学了 20 XP", S.row && S.row.rev === 1 && S.createCalls === 1);
+  S.bodyFail.push(/GET \/rest\/v1\/progress/);
+  const r1 = await within(d.sync.syncNow({ manual: true }), BOUND);
+  check("（回归保护：getProgress 原本就校验行数）读云端时正文读失败：同步失败（不是成功）、没有当成“云端没有记录”去新建、没有写云端", r1.settled && r1.v.ok === false && S.createCalls === 1 && S.saveCalls === 0 && S.row.rev === 1, JSON.stringify({ settled: r1.settled, create: S.createCalls, save: S.saveCalls, rev: S.row?.rev }));
+  check("本机进度还在、状态不是“已同步”", d.state.xp === 20 && d.sync.status().status !== "synced", `status=${d.sync.status().status}`);
+  const r2 = await within(d.sync.syncNow({ manual: true }), BOUND);
+  check("下一次同步正常上传，不重复计分（云端 20 XP、版本 2、save 共 1 次）", r2.settled && r2.v.ok === true && sumXp(S.row.doc) === 20 && S.row.rev === 2 && S.saveCalls === 1, `云端XP=${sumXp(S.row.doc)} rev=${S.row.rev}`);
+}
+{
+  // 登录时：验证码对了、首次读云端的正文断了——登录失败（带 stage:"read"），不创建行、不写登录凭证
+  const S = fakeCloud(), d = device(S);
+  S.row = { doc: { v: 1 }, rev: 1 }; // 云端已有这个账号的记录
+  S.bodyFail.push(/GET \/rest\/v1\/progress/);
+  const r = await within(d.sync.verify("t@x.com", "123456", d.state), BOUND);
+  check("登录：验证码对、首次读正文断了 → 登录失败，没有新建 / 覆盖云端行，没有留下登录态", r.settled && r.v.ok === false && S.createCalls === 0 && S.saveCalls === 0 && d.sync.account() === null && d.storage.getItem("suipian.auth") === null, JSON.stringify(r.settled ? { ok: r.v.ok, kind: r.v.kind } : "挂着"));
+}
+
+// ---------- 3c. Gemini 用例 1：正文卡死后 running 锁释放，并发调用共用同一次请求，之后能再同步 ----------
+{
+  const S = fakeCloud(), d = device(S);
+  await d.sync.verify("t@x.com", "123456", d.state);
+  finishLesson(d, "u1-l1", 20);
+  const g0 = S.getCalls;
+  S.stall.push(/GET \/rest\/v1\/progress/);
+  const p1 = d.sync.syncNow({ manual: true }), p2 = d.sync.syncNow({ manual: true }); // 第二次在第一次还没结束时进来
+  const [a, b] = await Promise.all([within(p1, BOUND), within(p2, BOUND)]);
+  const g1 = S.getCalls;
+  check("正文卡死时两次并发同步：都在时限后返回（不一直挂着）；卡住的那次读取超时后，排队的那次接着完成；读取最多 2 次、不堆积", a.settled && b.settled && g1 - g0 >= 1 && g1 - g0 <= 2 && d.sync.status().status !== "syncing", `GET 增加 ${g1 - g0} 次，status=${d.sync.status().status}，a=${a.settled && a.v.ok}/${a.settled && a.v.kind}，b=${b.settled && b.v.ok}`);
+  const c = await within(d.sync.syncNow({ manual: true }), BOUND);
+  check("running 锁已释放：紧接着的再一次同步发出 1 次新的请求并成功（云端 20 XP，不重复）", c.settled && c.v.ok === true && S.getCalls - g1 === 1 && sumXp(S.row.doc) === 20 && S.saveCalls === 1, `新增 GET ${S.getCalls - g1} 次，云端XP=${sumXp(S.row.doc)}`);
+}
+
 // ---------- 4. 反向验证：把修复拿掉，上面的检查必须红 ----------
 {
   const srcPath = fileURLToPath(new URL("../src/cloud-api.js", import.meta.url));
@@ -165,8 +219,9 @@ const finishLesson = (dev, id, xp) => { const s = dev.state; s.xp += xp; s.done[
   const dir = mkdtempSync(join(tmpdir(), "api-timeout-mut-"));
   const MUTS = [
     ["拿到响应头就清计时器（回到修复前的行为）", "      let data = null;\n", "      clearTimeout(timer);\n      let data = null;\n"],
-    ["读正文不和超时赛跑", "const text = await (ctl ? Promise.race([resp.text().catch(() => \"\"), timeoutP.then(() => TIMED_OUT)]) : resp.text().catch(() => \"\"));", "const text = await resp.text().catch(() => \"\");"],
-    ["正文超时不标 timedOut", "if (text === TIMED_OUT || timedOut) return netFail();", "if (text === TIMED_OUT || timedOut) return { ok: false, kind: \"network\", message: \"x\" };"],
+    ["读正文不和超时赛跑", "const got = await (ctl ? Promise.race([readBody(), timeoutP.then(() => TIMED_OUT)]) : readBody());", "const got = await readBody();"],
+    ["正文超时不标 timedOut", "if (got === TIMED_OUT || timedOut) return netFail();", "if (got === TIMED_OUT || timedOut) return { ok: false, kind: \"network\", message: \"x\" };"],
+    ["读正文失败当成空正文（成功状态码也算成功）", "if (got.failed && resp.ok) return netFail();", ""],
   ];
   let i = 0;
   try {
@@ -175,9 +230,15 @@ const finishLesson = (dev, id, xp) => { const s = dev.state; s.xp += xp; s.done[
       // 第 1 种变异单独处理：把第一处出现替换成 clearTimeout（"let data = null;" 在 req() 里只出现一次）
       const file = join(dir, `mut${i++}.mjs`); writeFileSync(file, src.replace(from, to));
       const M = await import(pathToFileURL(file).href);
-      const o = await bodyStallSweep(M.createApi, name.startsWith("拿到响应头") ? true : false);
-      const failed = Object.values(o).some((v) => !v.ok);
-      check(`变异“${name}”：测试能抓到（至少一个接口方法不再按时返回 timedOut）`, failed, failed ? "已红" : "没红：测试没有覆盖到");
+      let failed;
+      if (name.startsWith("读正文失败")) { // 这一种用“200 + 读正文报错”检测：getProgress 必须仍是 network 失败
+        const r = await mkApi(M.createApi, async () => ({ ok: true, status: 200, headers: { get: () => null }, text: () => Promise.reject(new TypeError("terminated")) })).getProgress(SESS);
+        failed = !(r.ok === false && r.kind === "network");
+      } else {
+        const o = await bodyStallSweep(M.createApi, name.startsWith("拿到响应头") ? true : false);
+        failed = Object.values(o).some((v) => !v.ok);
+      }
+      check(`变异“${name}”：测试能抓到`, failed, failed ? "已红" : "没红：测试没有覆盖到");
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }

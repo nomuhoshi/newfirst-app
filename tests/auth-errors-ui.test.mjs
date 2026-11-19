@@ -212,6 +212,17 @@ await scenario("S1b 响应头已到、正文挂起（输验证码登录）", { s
   check("正文挂起·登录：本机存储逐字节不变（进度、游客记录都在）", (await dump(d.page)) === before);
 });
 
+await scenario("登录调用抛异常：“登录中”也会解除（busy / 按钮在 finally 复位）", {}, async (d) => {
+  await sendTap(d); await d.page.locator("[data-code]").waitFor();
+  const before = await dump(d.page);
+  await d.page.evaluate(() => { const s = window.__app.sync; window.__origVerify = s.verify; s.verify = async () => { throw new Error("boom"); }; });
+  await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
+  await waitMsg(d, /登录没有确认/);
+  check("抛异常·登录：按钮恢复可点、文字回到“登录”（没有卡在“登录中…”）", (await T(d.page, "[data-verify]")) === "登录" && !(await d.page.locator("[data-verify]").isDisabled()));
+  check("抛异常·登录：弹窗没被处理中锁死（能点「换个邮箱」）、没有登录成功", (await d.page.locator("[data-login]").count()) === 1 && (await d.page.getByRole("button", { name: "换个邮箱" }).tap().then(() => true, () => false)) && (await d.page.locator("[data-email]").count()) === 1);
+  check("抛异常·登录：本机存储逐字节不变", (await dump(d.page)) === before);
+});
+
 // ---------- 输验证码失败（V1–V4）----------
 await scenario("V1 验证码错误（403）", { verify: (r) => json(r, 403, { code: 403, error_code: "otp_expired", msg: CAN }) }, async (d) => {
   await sendTap(d); await d.page.locator("[data-code]").waitFor();

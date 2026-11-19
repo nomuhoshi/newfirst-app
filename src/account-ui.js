@@ -96,6 +96,8 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       const localXp = () => { try { const x = getState()?.xp; return Number.isFinite(x) ? x : 0; } catch { return 0; } };
       const sayFail = (d) => say(d.text, true, d);
       const done = () => { clearInterval(cooldownTimer); finished = true; captcha.destroy(); close(); };
+      // 异步调用万一抛异常（不该发生，但发生了不能让“处理中”卡住）：当作网络没确认处理，按钮 / busy 由调用处在 finally 里复位。
+      const guarded = async (fn) => { try { return await fn(); } catch { return { ok: false, kind: "network", message: "网络连不上，请检查网络后重试" }; } };
       // 键盘判断（规范 §5.1 第 4 条）：可视高度不到窗口高度的 75% 就算键盘弹出，说明文字缩成一行；有错误时说明整段隐藏。
       const desc = h("p", { class: "login-desc", "data-login-desc": "" });
       const descText = () => {
@@ -126,8 +128,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           const v = input.value.trim();
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { say("请输入有效的邮箱地址。"); return; }
           if (busy || cdLeft(v) > 0) return; busy = true; go.disabled = true; go.textContent = "发送中…"; say("正在发送…", false);
-          const r = await sendWithCaptcha(v);
-          busy = false;
+          let r; try { r = await guarded(() => sendWithCaptcha(v)); } finally { busy = false; }
           if (finished) return; // 发送途中点了「先不登录」：弹窗已关，迟到的结果不再翻页、不改提示、不起计时
           if (!r.ok) {
             const d0 = describeSendError(r, { xp: localXp(), fails: 1, captchaOn: captcha.enabled });
@@ -186,7 +187,9 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const input = h("input", { class: "login-input code", type: "text", inputmode: "numeric", pattern: "[0-9]*", autocomplete: "one-time-code", maxlength: "10", placeholder: "验证码", "aria-label": "邮箱验证码", "data-code": "" });
         const resend = button("重新发送", async () => {
           if (cdLeft(email) > 0 || busy) return;
-          busy = true; resend.disabled = true; resend.textContent = "发送中…"; const r = await sendWithCaptcha(email); busy = false;
+          busy = true; resend.disabled = true; resend.textContent = "发送中…";
+          let r; try { r = await guarded(() => sendWithCaptcha(email)); } finally { busy = false; }
+          if (finished) return; // 关窗 / 登录已完成后才回来的迟到结果：不改提示、不起计时
           if (!r.ok) {
             const d0 = describeSendError(r, { xp: localXp(), fails: 1, captchaOn: captcha.enabled });
             s4Fails = d0.id === "S4" ? s4Fails + 1 : 0;
@@ -210,8 +213,8 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           const c = input.value.replace(/\s+/g, "");
           if (c.length < 4) { say("请输入邮件里的验证码。"); return; }
           if (busy) return; busy = true; go.disabled = true; go.textContent = "登录中…"; say("正在登录…", false);
-          const r = await sync.verify(email, c, getState());
-          busy = false; go.disabled = false; go.textContent = "登录";
+          let r; try { r = await guarded(() => sync.verify(email, c, getState())); } finally { busy = false; go.disabled = false; go.textContent = "登录"; }
+          if (finished) return; // 弹窗已经关了：迟到的结果不再翻页、不改提示
           if (!r.ok) {
             if (r.kind === "other-account" || r.kind === "data" || r.kind === "local") { say(errorText(r)); tick(); return; }
             const d = describeVerifyError(r, { xp: localXp() });
@@ -245,8 +248,8 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         // G3：处理中两个按钮都禁用，点遮罩和 Esc 也不会关掉弹窗；C1：失败后恢复可点，游客进度原样留在这台设备上。
         const pick = async (choice) => {
           if (busy) return; busy = true; btns.forEach((b) => { b.disabled = true; }); say("正在上传并核对…", false);
-          const r = await sync.finishChoice(choice);
-          busy = false; btns.forEach((b) => { b.disabled = false; });
+          let r; try { r = await guarded(() => sync.finishChoice(choice)); } finally { busy = false; btns.forEach((b) => { b.disabled = false; }); }
+          if (finished) return;
           if (!r.ok) { sayFail(describeChoiceError(r, { xp: info.guest.xp })); return; }
           success(r);
         };

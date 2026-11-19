@@ -50,9 +50,13 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
       }
       let data = null;
       // 正文读取和超时赛跑：真实 fetch 被中止后 text() 会自己报错，但不依赖这一点（假接口 / 个别浏览器可能不响应中止信号）。
+      // 读正文本身失败（连接中途断了等）要和“正文是空的”分开：成功状态码 + 正文读失败 = 没拿到结果，不能当成功（否则 {ok:true,data:null} 会被当成“云端没有记录”）。
       const TIMED_OUT = Symbol("timeout");
-      const text = await (ctl ? Promise.race([resp.text().catch(() => ""), timeoutP.then(() => TIMED_OUT)]) : resp.text().catch(() => ""));
-      if (text === TIMED_OUT || timedOut) return netFail();
+      const readBody = () => resp.text().then((t) => ({ t }), () => ({ failed: true }));
+      const got = await (ctl ? Promise.race([readBody(), timeoutP.then(() => TIMED_OUT)]) : readBody());
+      if (got === TIMED_OUT || timedOut) return netFail();
+      if (got.failed && resp.ok) return netFail();
+      const text = got.failed ? "" : got.t; // 非 2xx 且正文读失败：还是按状态码归类（503 仍是 server）
       if (text) { try { data = JSON.parse(text); } catch { data = text; } }
       if (resp.ok) return { ok: true, status: resp.status, data };
       const msg = (data && (data.msg || data.message || data.error_description || data.error)) || `服务器返回 ${resp.status}`;
