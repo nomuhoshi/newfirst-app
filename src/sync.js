@@ -36,7 +36,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   let acctGen = 0;
   const staleResult = () => ({ ok: false, kind: "stale", stale: true, retryable: false, message: "账号已退出或切换，这次同步的结果已丢弃" });
   const abandonWaiters = new Set(); // 正占着本机写回锁的同步任务：代次前进时立刻让它们放掉锁（任务本身还在等网络，之后的结果会被丢弃）
-  function bumpAcct() { acctGen++; for (const f of [...abandonWaiters]) f(); abandonWaiters.clear(); running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
+  function bumpAcct() { acctGen++; syncCooldownUntil = 0; wakeToken = null; for (const f of [...abandonWaiters]) f(); abandonWaiters.clear(); running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
   // 本机写回失败与网络退避完全分开；按账号共享最佳努力计数，刷新页面也不能重新开始无限轮询。
   const LOCAL_RETRY_LIMIT = 3;
   let localWritebackFails = 0, localRetryUser = null, localRetryTimer = null, localRetryEpoch = 0, localRetryUnknown = false;
@@ -68,8 +68,17 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // Node 单进程测试可直接执行；浏览器没有 Web Locks 时普通自动同步安全停机。
     return fn();
   }
-  let cooldownUntil = 0; // 收到 429 之后的本地冷却截止时间（用注入的 now，测试可以拨快，不会真的发验证码）
-  const COOLDOWN_MS = 60_000;
+  // 收到 429 之后的本地冷却截止时间（用注入的 now，测试可以拨快，不会真的发验证码）。两份，各管各的生命周期：
+  //   cooldownUntil     发验证码 / 登录阶段的 429（还没有账号会话）
+  //   syncCooldownUntil 已登录会话的同步 429（含令牌刷新）——绑定账号会话代次：退出 / 换账号 / 登录完成时（bumpAcct）立刻作废，
+  //                     旧会话的等待不拖住新会话；旧任务回来时已经被代次拦下，不会再改写它。
+  // 等待多久：服务器给了合法的 Retry-After（秒数或 HTTP 日期）就完整照它等——不封顶（头的意思就是“重试前至少等这么久”，
+  // 截短了就是提前打回去），只设最短 5 秒（合法但已过期 / 0 时防止立刻再打）；没给 / 格式不对一律保底 60 秒。
+  // 重复 429 只会把截止时间往后推（取较大值），不会缩短尚未结束的等待。
+  // 到期唤醒（wake）：同步冷却结束时自动发起一次同步（同一会话只有一个，重复 429 延期，退出 / 换账号作废）；
+  // 定时器单次上限约 24.8 天，更长的等待分段重排，每一段到点都先核对截止时间，绝不提前联网。
+  let cooldownUntil = 0, syncCooldownUntil = 0, wakeToken = null;
+  const COOLDOWN_MS = 60_000, COOLDOWN_MIN_MS = 5_000, MAX_TIMER_MS = 2_147_483_647;
   let baseline = null, lastError = "", lastDetail = null; // lastDetail：失败的 {kind,status,errorCode,code}，只给界面分类用（界面不显示服务器原文）
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
   // 已验证、但读云端记录失败的登录：邮箱验证码是一次性的，验证接口已经把它用掉，不能再拿同一个码验证第二次。
@@ -148,11 +157,34 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   const clearStale = () => { try { storage.removeItem(STALE_KEY); } catch {} };
   const detailOf = (r) => (r ? { kind: r.kind, status: r.status, errorCode: r.errorCode, code: r.code } : null);
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
-  const armCooldown = () => { cooldownUntil = now() + COOLDOWN_MS; };
-  const inCooldown = () => now() < cooldownUntil;
-  const rateLimited = () => ({ ok: false, kind: "rate-limit", retryable: false, retryAt: cooldownUntil, message: "发送太频繁了，请等一分钟再试。" });
-  // 任何 429 都进入冷却，并且不允许被当成“网络失败”去短间隔重试。
-  const noteRateLimit = (r) => { if (r && r.kind === "rate-limit") armCooldown(); return r; };
+  const cooldownMsFrom = (r) => {
+    const sec = r && r.retryAfterSec; // cloud-api 已解析好：合法的 Retry-After（秒数 / HTTP 日期）→ 非负整数秒；缺失 / 格式不对 → 没有这个字段
+    return Number.isFinite(sec) && sec >= 0 ? Math.max(COOLDOWN_MIN_MS, Math.ceil(sec * 1000)) : COOLDOWN_MS;
+  };
+  const armCooldown = (r, forSync = false) => {
+    const until = now() + cooldownMsFrom(r);
+    if (forSync) { syncCooldownUntil = Math.max(syncCooldownUntil, until); armWake(); } else cooldownUntil = Math.max(cooldownUntil, until);
+  };
+  function armWake() {
+    if (!userId || !session) return;
+    const g = acctGen, tok = {}; wakeToken = tok; // 新的一次覆盖旧的：旧定时器到点发现令牌不是自己就什么都不做
+    const ms = Math.max(1, Math.min(coolUntil() - now(), MAX_TIMER_MS)); // 实际门禁是两份冷却（发码 / 同步）的较大值：按它排期，不然较长的发码冷却会在唤醒到点时把同步拦下、之后再没人唤醒
+    schedule(() => {
+      if (wakeToken !== tok || g !== acctGen) return;
+      wakeToken = null;
+      if (inCooldown()) { armWake(); return; } // 门禁还没放开（分段等待 / 时钟稍早 / 发码冷却更长）：重排剩余时间，不联网
+      syncNow(); // 自动同步：停机保护（本机写回上限 / 损坏待办）、会话代次、合并重复触发都由 syncNow 照常处理
+    }, ms);
+  }
+  const coolUntil = () => Math.max(cooldownUntil, syncCooldownUntil);
+  const inCooldown = () => now() < coolUntil();
+  const rateLimited = () => {
+    const left = Math.max(0, coolUntil() - now());
+    const wait = left <= COOLDOWN_MS ? "" : left < 3_600_000 ? `约 ${Math.ceil(left / 60_000)} 分钟` : left < 172_800_000 ? `约 ${Math.ceil(left / 3_600_000)} 小时` : left < 31_536_000_000 ? `约 ${Math.ceil(left / 86_400_000)} 天` : "很长一段时间";
+    return { ok: false, kind: "rate-limit", retryable: false, retryAt: coolUntil(), message: wait ? `请求太频繁了，请${wait}后再试。` : "发送太频繁了，请等一分钟再试。" };
+  };
+  // 任何 429 都进入冷却，并且不允许被当成“网络失败”去短间隔重试。noteRateLimit 只在同步任务里用（那里每个 await 之后都已经核对过代次）。
+  const noteRateLimit = (r) => { if (r && r.kind === "rate-limit") armCooldown(r, true); return r; };
   // 已经登录 A 时，不给 B 的邮箱发验证码 / 验证码校验请求：先在本机挡住，避免拿错账号的验证码。
   // 没有有效凭证、但有“换项目后同邮箱接管”的标记时，只放行标记里的同一个邮箱。
   function loginBlocked(addr) {
@@ -434,6 +466,12 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!pr.ok || pr.pending) {
         if (pr.kind === "import-corrupt" || pr.kind === "import-read-failed" || pr.kind === "import-changed") return { ...pr, retryable: false };
         pending = true;
+        if (pr.kind === "rate-limit") { // 导入的读取 / 写入 / 读回收到 429：统一进同步冷却（不走网络短退避），状态保持“待同步”，未完成的待办留在本机
+          noteRateLimit(pr);
+          const limited = rateLimited();
+          setStatus("pending", limited.message);
+          return { ...limited, pendingImport: true };
+        }
         setStatus(pr.kind === "auth" ? "need-login" : "pending", pr.error || pr.message || "游客导入还没同步完，联网后会自动重试");
         return { ok: false, kind: pr.kind || "verify", message: pr.error || pr.message || "游客导入还没同步完", pendingImport: true, retryable: pr.kind !== "local" && pr.kind !== "data" && pr.kind !== "conflict" && pr.kind !== "auth" };
       }
@@ -528,7 +566,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // 冷却期内不再调用发信接口。测试只用假接口，这里也不会向任何真实邮箱发验证码。
     if (inCooldown()) return rateLimited();
     const r = await (captchaToken ? api.sendCode(String(addr).trim(), captchaToken) : api.sendCode(String(addr).trim())); // 没有令牌时调用形状和以前完全一致
-    if (r && r.kind === "rate-limit") armCooldown();
+    if (r && r.kind === "rate-limit") armCooldown(r);
     return r;
   }
 
@@ -775,7 +813,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     let latest = await readLatestCloud(sess);
     if (dead()) return staleImport(); // 旧任务（退出 / 换账号之后才回来）：不再发后续请求，不写本机副本、不清游客、不改状态
     if (!latest.ok) return { ...latest, pending: true };
-    let doc = null, rev = null, uploaded = false, error = "", kind = null, lastBase = null, lastCloud = null;
+    let doc = null, rev = null, uploaded = false, error = "", kind = null, lastBase = null, lastCloud = null, raSec;
     for (let attempt = 0; attempt < 5; attempt++) {
       // 云端还没有记录时，用本机已有副本（如果有）当底，保证重试时代数 / lineage 不变。
       lastCloud = latest.row ? latest.row.doc : (first.copy?.doc ?? null);
@@ -789,13 +827,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!latest.row) {
         const c = await api.createProgress(sess, doc);
         if (dead()) return staleImport();
-        if (!c.ok) { error = c.message || "保存失败"; kind = c.kind; break; }
+        if (!c.ok) { error = c.message || "保存失败"; kind = c.kind; raSec = c.retryAfterSec; break; }
         if (c.rev === null) { latest = await readLatestCloud(sess); if (dead()) return staleImport(); if (!latest.ok) return { ...latest, pending: true }; continue; } // 被抢先创建：重读
         rev = c.rev; uploaded = true; break;
       }
       const s = await api.saveProgress(sess, latest.row.rev, doc);
       if (dead()) return staleImport();
-      if (!s.ok) { error = s.message || "保存失败"; kind = s.kind; break; }
+      if (!s.ok) { error = s.message || "保存失败"; kind = s.kind; raSec = s.retryAfterSec; break; }
       if (s.rev === null) { latest = await readLatestCloud(sess); if (dead()) return staleImport(); if (!latest.ok) return { ...latest, pending: true }; continue; } // CAS 冲突：重读再写
       rev = s.rev; uploaded = true; break;
     }
@@ -808,13 +846,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const localDoc = p.ok ? p.doc : base;
       const dirty = first.copy ? first.copy.dirty : cleanDirty;
       if (!saveLoginCopy(uid, localDoc, lastBase, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-      return { ok: true, doc: localDoc, rev: lastBase, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind, error: error || "保存游客指纹失败" };
+      return { ok: true, doc: localDoc, rev: lastBase, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind, error: error || "保存游客指纹失败", ...(raSec !== undefined ? { retryAfterSec: raSec } : {}) };
     }
     // 上传成功不等于完成：必须重新读回，确认文档一致且新指纹确实在云端。
-    let verified = false, readBack = null, rbKind = null, rbError = "";
+    let verified = false, readBack = null, rbKind = null, rbError = "", rbRa;
     const rb = await api.getProgress(sess);
     if (dead()) return staleImport();
-    if (!rb.ok) { rbKind = rb.kind; rbError = rb.message || "读回失败"; }
+    if (!rb.ok) { rbKind = rb.kind; rbError = rb.message || "读回失败"; rbRa = rb.retryAfterSec; }
     else if (!rb.row) { rbKind = "data"; rbError = "读回时云端记录不见了"; }
     else {
       const n = normalizeDoc(rb.row.doc);
@@ -826,7 +864,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const localDoc = withoutGuestImport(p.ok ? p.doc : doc, guestId, lastCloud);
       const dirty = first.copy ? first.copy.dirty : cleanDirty;
       if (!saveLoginCopy(uid, localDoc, rev, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-      return { ok: true, doc: localDoc, rev, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind: rbKind || "verify", error: rbError || "上传成功，但读回校验失败，游客记录已保留" };
+      return { ok: true, doc: localDoc, rev, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind: rbKind || "verify", ...(rbRa !== undefined ? { retryAfterSec: rbRa } : {}), error: rbError || "上传成功，但读回校验失败，游客记录已保留" };
     }
     if (!saveLoginCopy(uid, readBack, rev, cleanDirty, false)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
     return { ok: true, doc: readBack, rev, synced: true, verified: true, guestCleared: false, saved: true, pending: false, error: "" };
@@ -842,7 +880,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     let current = await readLatestCloud(sess);
     if (dead()) return staleImport();
     if (!current.ok) return { ...current, pending: true };
-    let doc = null, rev = null, uploaded = false, error = "", kind = null, lastBase = null, lastCloud = null;
+    let doc = null, rev = null, uploaded = false, error = "", kind = null, lastBase = null, lastCloud = null, raSec;
     for (let attempt = 0; attempt < 5; attempt++) {
       // 云端没有记录时用本机副本当底（重试保持 lineage）；mergeGuestProgress 对同一份游客快照是幂等的。
       lastCloud = current.row ? current.row.doc : (first.copy?.doc ?? null);
@@ -855,13 +893,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!current.row) {
         const c = await api.createProgress(sess, doc);
         if (dead()) return staleImport();
-        if (!c.ok) { error = c.message || "上传失败"; kind = c.kind; break; }
+        if (!c.ok) { error = c.message || "上传失败"; kind = c.kind; raSec = c.retryAfterSec; break; }
         if (c.rev === null) { current = await readLatestCloud(sess); if (dead()) return staleImport(); if (!current.ok) return { ...current, pending: true }; continue; } // 被抢先创建：重读、重新合并
         rev = c.rev; uploaded = true; break;
       }
       const s = await api.saveProgress(sess, current.row.rev, doc);
       if (dead()) return staleImport();
-      if (!s.ok) { error = s.message || "上传失败"; kind = s.kind; break; }
+      if (!s.ok) { error = s.message || "上传失败"; kind = s.kind; raSec = s.retryAfterSec; break; }
       if (s.rev === null) { current = await readLatestCloud(sess); if (dead()) return staleImport(); if (!current.ok) return { ...current, pending: true }; continue; } // CAS 冲突：重读、重新合并
       rev = s.rev; uploaded = true; break;
     }
@@ -872,13 +910,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const localDoc = withoutGuestImport(doc, guestId, lastCloud);
       const dirty = { hearts: !!first.copy?.dirty.hearts, prefs: !!first.copy?.dirty.prefs, content: true };
       if (!saveLoginCopy(uid, localDoc, lastBase, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-      return { ok: true, doc: localDoc, rev: lastBase, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind, error: error || "合并冲突太多次，请稍后再试" };
+      return { ok: true, doc: localDoc, rev: lastBase, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind, error: error || "合并冲突太多次，请稍后再试", ...(raSec !== undefined ? { retryAfterSec: raSec } : {}) };
     }
     // 上传成功不等于读回一致：必须重新读云端，文档与刚上传的完全一致才删游客。
-    let verified = false, readBack = null, rbKind = null, rbError = "";
+    let verified = false, readBack = null, rbKind = null, rbError = "", rbRa;
     const rb = await api.getProgress(sess);
     if (dead()) return staleImport();
-    if (!rb.ok) { rbKind = rb.kind; rbError = rb.message || "读回失败"; }
+    if (!rb.ok) { rbKind = rb.kind; rbError = rb.message || "读回失败"; rbRa = rb.retryAfterSec; }
     else if (!rb.row) { rbKind = "data"; rbError = "读回时云端记录不见了"; }
     else {
       const n = normalizeDoc(rb.row.doc);
@@ -889,7 +927,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const localDoc = withoutGuestImport(doc, guestId, lastCloud);
       const dirty = { hearts: !!first.copy?.dirty.hearts, prefs: !!first.copy?.dirty.prefs, content: true };
       if (!saveLoginCopy(uid, localDoc, rev, dirty, !first.copy)) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
-      return { ok: true, doc: localDoc, rev, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind: rbKind || "verify", error: rbError || "上传成功，但读回校验失败，游客记录已保留" };
+      return { ok: true, doc: localDoc, rev, synced: false, verified: false, guestCleared: false, saved: true, pending: true, kind: rbKind || "verify", ...(rbRa !== undefined ? { retryAfterSec: rbRa } : {}), error: rbError || "上传成功，但读回校验失败，游客记录已保留" };
     }
     // readback 是异步的；清 dirty 和删游客之前，必须确认待办原文仍与开始时一致。
     const beforeGuestClear = pendingIdentityGuard(uid, record, expectedRaw);
@@ -982,6 +1020,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     if (!setCurrentAccount(storage, uid)) return { ok: false, kind: "local", message: "无法记录当前账号" };
     bumpAcct(); session = ctx.session; userId = uid; email = session.email || ""; writeAuth();
+    if (result && result.kind === "rate-limit") noteRateLimit(result); // 登录时的游客导入读取 / 写入 / 读回被 429：新会话从一开始就带着这段等待（bumpAcct 之后登记，不会被它清掉）
     const state = docToState(doc, ctx.baseState ? { ...ctx.baseState, onboarded: true } : { ...freshState(), onboarded: true }, now());
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
     let synced = false, guestCleared = false, syncError = "";
