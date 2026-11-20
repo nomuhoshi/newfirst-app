@@ -95,9 +95,9 @@ try {
   for (const [label, p] of [["TabA", tabA], ["TabB", tabB]]) {
     p.on("pageerror", (e) => errors.push(`${label} pageerror: ${String(e.message || e)}`));
     // WebKit 的两类已知环境噪音（与本专项验证的登录失权逻辑无关，CI 里 WebKit 首次实跑才暴露）：
-    //   1) 不认识 viewport 的 interactive-widget 键；2) 答题时预加载 pyodide 被跨源访问检查拦下（测试服务器与页面不同源）。
+    //   1) 不认识 viewport 的 interactive-widget 键；2) 答题时预加载 pyodide 在 WebKit 测试环境里加载失败（访问检查拦截 / py-worker 加载阶段拒绝；本专项不验证 Python 判题）。
     // pageerror（脚本异常）一律不放过，其它 console.error 也不放过。
-    const BENIGN = [/^Viewport argument key "interactive-widget" not recognized and ignored\.?$/, /^(Fetch API )?[Cc]annot load http:\/\/localhost:\d+\/pyodide\/\S+ due to access control checks\.?$/];
+    const BENIGN = [/^Viewport argument key "interactive-widget" not recognized and ignored\.?$/, /^(Fetch API )?[Cc]annot load http:\/\/localhost:\d+\/pyodide\/\S+ due to access control checks\.?$/, /^\[py-worker\] Pyodide 加载阶段的未处理拒绝：/];
     p.on("console", (m) => { if (m.type() === "error" && !BENIGN.some((re) => re.test(m.text()))) errors.push(`${label} console.error: ${m.text()}`); });
   }
 
