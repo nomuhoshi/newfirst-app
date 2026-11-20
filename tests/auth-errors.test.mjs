@@ -113,6 +113,13 @@ check("V4：验证 500 → 登录服务暂时出问题；诊断行 诊断：500�
     const e = describeVerifyError({ ...r, canRetry: false, exhausted: true }, { xp: 50 }); seen.verify.add(e.id);
     check(`V6（读云端失败：${label}，不能再重试）：说明验证码已用过、请点「重新发送」换新的；不叫人再点「登录」/「重试读取」、不说验证码错`, e.id === "V6" && /已经用过/.test(e.text) && /「重新发送」/.test(e.text) && !/再点「登录」|稍后再点|重试读取/.test(e.text) && !/验证码错误/.test(e.text) && e.cooldownMs === 0, e.id + " " + e.text);
   }
+  { // V5w：重试读取被 429 限流、还在等待：会话还在、还能重试，但要等倒计时（waitMs）结束
+    const w = describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "read", canRetry: true, waitMs: 45_000, retryAt: 1 }, { xp: 50 }); seen.verify.add(w.id);
+    check("V5w（重试读取被 429 限流）：说明要等 45 秒再点「重试读取」，不用重新输验证码；不说验证码错、不叫换新码；按钮冷却由界面按 waitMs 管（cooldownMs 为 0）", w.id === "V5w" && /45 秒/.test(w.text) && /「重试读取」/.test(w.text) && /不用重新输入验证码/.test(w.text) && !/验证码错误/.test(w.text) && !/重新发送/.test(w.text) && w.cooldownMs === 0, JSON.stringify(w));
+    const w2 = describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "read", canRetry: true, waitMs: 600_000 }, { xp: 0 });
+    check("V5w：长等待按分钟显示（600 秒 → 约 10 分钟）", w2.id === "V5w" && /约 10 分钟/.test(w2.text), w2.text);
+    check("V5w 只在“读取被限流且还有剩余等待”时出现：等待已结束（waitMs 0）或没带 waitMs → 普通 V5；不能再重试 → V6（即使是 429）", describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "read", canRetry: true, waitMs: 0 }).id === "V5" && describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "read", canRetry: true }).id === "V5" && describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "read", canRetry: false, exhausted: true, waitMs: 5000 }).id === "V6");
+  }
   check("读云端失败没有 canRetry 标记 → 保守按“不能重试”（V6），不会出现点了没用的「重试读取」", describeVerifyError({ ok: false, kind: "server", status: 503, stage: "read" }).id === "V6");
   { const d = describeVerifyError({ ok: false, kind: "server", status: 500, stage: "verify" }); check("对照：验证码这一步本身 5xx（验证码没被用掉）仍是 V4，可以再点「登录」", d.id === "V4" && /再点「登录」/.test(d.text), d.text); }
   const ot = describeVerifyError({ ok: false, kind: "weird", message: "?" }); seen.verify.add(ot.id);

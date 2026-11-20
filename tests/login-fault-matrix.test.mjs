@@ -82,10 +82,11 @@ for (const [label, inject] of FAULTS) {
   S.issue(); inject(S);
   const r1 = await d.sync.verify(EMAIL, "123456", d.state);
   const x1 = describeVerifyError(r1, { xp: 50 });
-  check(`读云端失败（${label}）：登录没完成，结果带 stage:"read" + canRetry:true，界面是 V5（点「重试读取」，不叫人再输码）`, r1.ok === false && r1.stage === "read" && r1.canRetry === true && x1.id === "V5" && /「重试读取」/.test(x1.text) && !/验证码错误/.test(x1.text), JSON.stringify({ stage: r1.stage, canRetry: r1.canRetry, id: x1.id }));
+  check(`读云端失败（${label}）：登录没完成，结果带 stage:"read" + canRetry:true，界面是 V5（429 是 V5w：要等倒计时再点「重试读取」；都不叫人再输码）`, r1.ok === false && r1.stage === "read" && r1.canRetry === true && x1.id === (label === "429" ? "V5w" : "V5") && /「重试读取」/.test(x1.text) && !/验证码错误/.test(x1.text), JSON.stringify({ stage: r1.stage, canRetry: r1.canRetry, id: x1.id }));
   check(`读云端失败（${label}）：没有切账号、没写登录凭证 / 账号副本，游客进度逐字节不变`, d.sync.account() === null && !d.storage._m.has("suipian.auth") && acctKeys(d.storage).length === 0 && snap(d.storage) === before);
   check(`读云端失败（${label}）：已验证会话留在内存里（hasVerified），验证接口只调了 1 次`, d.sync.hasVerified() === true && S.count[VERIFY] === 1);
   S.rules.length = 0; S.offline = false; // 故障恢复
+  if (label === "429") d.clock += 61_000; // 429：没有 Retry-After 时保底等 60 秒，等完才能重试读取（等待期间的行为见 retry-read-cooldown.test.mjs）
   const r2 = await d.sync.retryRead(d.state);
   check(`重试读取（${label}→恢复）：不再调验证接口（仍是 1 次），拿到游客进度的选择步骤（游客 50 XP），还没动账号`, r2.ok === true && r2.needChoice === true && r2.guest.xp === 50 && S.count[VERIFY] === 1 && d.sync.account() === null, JSON.stringify({ ok: r2.ok, needChoice: r2.needChoice, verify: S.count[VERIFY] }));
   const r3 = await d.sync.finishChoice("transfer");

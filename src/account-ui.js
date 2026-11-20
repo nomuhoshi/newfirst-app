@@ -185,10 +185,11 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         inStepEmail = false; inStepCode = true; inChoice = false;
         let resends = 0;
         let retryMode = false; // 验证码已通过、但读云端记录失败：「登录」按钮变成「重试读取」，只重读云端，不再提交验证码
+        let readUntil = 0; // 重试读取被 429 限流：这个时间之前「重试读取」禁用并显示倒计时（sync.retryRead 在里面也会挡，两层都不会发请求）
         const input = h("input", { class: "login-input code", type: "text", inputmode: "numeric", pattern: "[0-9]*", autocomplete: "one-time-code", maxlength: "10", placeholder: "验证码", "aria-label": "邮箱验证码", "data-code": "" });
         const resend = button("重新发送", async () => {
           if (cdLeft(email) > 0 || busy) return;
-          if (retryMode) { retryMode = false; go.textContent = "登录"; } // 重发 = 换新验证码：之前已验证的会话作废（sync.sendCode 里会清）
+          if (retryMode) { retryMode = false; readUntil = 0; go.textContent = "登录"; } // 重发 = 换新验证码：之前已验证的会话作废（sync.sendCode 里会清）
           busy = true; resend.disabled = true; resend.textContent = "发送中…";
           let r; try { r = await guarded(() => sendWithCaptcha(email)); } finally { busy = false; }
           if (finished) return; // 关窗 / 登录已完成后才回来的迟到结果：不改提示、不起计时
@@ -207,14 +208,27 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const tick = () => {
           const left = Math.ceil(cdLeft(email) / 1000);
           if (!busy) { resend.disabled = left > 0; resend.textContent = left > 0 ? `重新发送（${left} 秒）` : "重新发送"; }
-          if (!busy && verifyUntil > Date.now() && verifyEmail === norm(email)) go.disabled = true; else if (!busy) go.disabled = false;
+          if (retryMode && !busy) {
+            if (sync.hasVerified && !sync.hasVerified()) { // 已验证的会话到期了（等待跨过了到期时间）：不能再重试；不自动重发验证码，只提示去「重新发送」
+              retryMode = false; readUntil = 0; go.textContent = "登录";
+              sayFail(describeVerifyError({ ok: false, kind: "auth", stage: "read", canRetry: false, expired: true }, { xp: localXp() }));
+            } else if (readUntil > 0 && readUntil <= Date.now()) { // 限流等待结束：恢复普通的「重试读取」提示
+              readUntil = 0; go.textContent = "重试读取";
+              sayFail(describeVerifyError({ ok: false, kind: "other", stage: "read", canRetry: true }, { xp: localXp() }));
+            }
+          }
+          const readLeft = retryMode && readUntil > Date.now() ? Math.ceil((readUntil - Date.now()) / 1000) : 0;
+          if (!busy && retryMode) go.textContent = readLeft > 0 ? `重试读取（${readLeft} 秒）` : "重试读取";
+          if (!busy && (readLeft > 0 || (verifyUntil > Date.now() && verifyEmail === norm(email)))) go.disabled = true; else if (!busy) go.disabled = false;
         };
         tickNow = tick;
         clearInterval(cooldownTimer); cooldownTimer = setInterval(() => { if (!box.isConnected) { clearInterval(cooldownTimer); return; } tick(); }, 1000);
         const go = button("登录", async () => {
           const c = input.value.replace(/\s+/g, "");
           if (!retryMode && c.length < 4) { say("请输入邮件里的验证码。"); return; }
-          if (busy) return; busy = true; go.disabled = true; go.textContent = retryMode ? "读取中…" : "登录中…"; say(retryMode ? "正在重试读取…" : "正在登录…", false);
+          if (busy) return;
+          if (retryMode && readUntil > Date.now()) { tick(); return; } // 限流等待中：不发任何请求
+          busy = true; go.disabled = true; go.textContent = retryMode ? "读取中…" : "登录中…"; say(retryMode ? "正在重试读取…" : "正在登录…", false);
           // 重试读取：不再调用验证接口（验证码是一次性的，已经用掉）；只用 sync 里留着的已验证会话重读云端。
           const wasRetry = retryMode;
           let r; try { r = await guarded(() => (wasRetry ? sync.retryRead(getState()) : sync.verify(email, c, getState())), wasRetry ? { ok: false, kind: "network", stage: "read", canRetry: true, message: "网络连不上，请检查网络后重试" } : undefined); } finally { busy = false; go.disabled = false; go.textContent = retryMode ? "重试读取" : "登录"; }
@@ -224,6 +238,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
           if (!r.ok) {
             if (r.kind === "other-account" || r.kind === "data" || r.kind === "local") { say(errorText(r)); tick(); return; }
             const d = describeVerifyError(r, { xp: localXp() });
+            readUntil = d.id === "V5w" ? Date.now() + r.waitMs : 0;
             if (d.id === "V2") { verifyUntil = Date.now() + d.cooldownMs; verifyEmail = norm(email); if (verifyUntil > cooldownUntil || cdEmail === norm(email)) setCooldown(verifyUntil - Date.now(), email, "email"); }
             sayFail(d); tick();
             if (d.id === "V1") { try { input.focus(); input.select(); } catch {} } // 保留已输入的内容并全选，方便重输
@@ -235,7 +250,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         tick();
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
         // 改了验证码：说明用户要换一个码，已验证会话作废，按钮回到「登录」
-        input.addEventListener("input", () => { if (retryMode && !busy) { retryMode = false; sync.clearVerified?.(); go.textContent = "登录"; say(""); tick(); } });
+        input.addEventListener("input", () => { if (retryMode && !busy) { retryMode = false; readUntil = 0; sync.clearVerified?.(); go.textContent = "登录"; say(""); tick(); } });
         desc.textContent = "";
         captcha.release();
         box.replaceChildren(

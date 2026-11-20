@@ -597,6 +597,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const expired = now() >= v.expiresAt;
     if (expired || v.reads >= tries) { if (verified === v || !verified) { verified = null; } return { ...r, canRetry: false, ...(expired ? { expired: true } : { exhausted: true }) }; }
     verified = v;
+    // 读云端被 429：这一轮会话要等到服务器给的时间之后才能再读（Retry-After 的解析和最短 5 秒 / 保底 60 秒都和普通同步共用 cooldownMsFrom）。
+    // 等待记在已验证会话 v 上：关窗 / 改验证码 / 换邮箱 / 重发 / 退出 / 登录完成都会丢掉 v，等待随之作废，不会带到下一次登录；
+    // 它不延长 v.expiresAt（会话到期照旧作废，等待跨过到期 → 转“不能再重试”），被 429 的这次读取照常记进 reads（不额外多算也不少算）。
+    if (r.kind === "rate-limit" || r.status === 429) {
+      v.waitUntil = Math.max(v.waitUntil || 0, now() + cooldownMsFrom(r));
+      return { ...r, canRetry: true, retryAt: v.waitUntil, waitMs: Math.max(0, v.waitUntil - now()) };
+    }
     return { ...r, canRetry: true };
   }
   // 「重试读取」：不调用验证接口，只用留着的已验证会话再读一次云端；成功后和正常登录完全一样（游客处理、落盘凭证、同步）。
@@ -605,6 +612,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (!v) return { ok: false, kind: "auth", stage: "read", canRetry: false, expired: true, message: "已验证的登录已失效，请重新发送验证码" };
     if (now() >= v.expiresAt) { verified = null; return { ok: false, kind: "auth", stage: "read", canRetry: false, expired: true, message: "已验证的登录已失效，请重新发送验证码" }; }
     if (v.inflight) return v.inflight; // 连点：共用同一次读取，不重复处理、不重复计分
+    // 上一次读取被 429 且等待还没结束：不发请求、不计入读取次数（v.reads 不动）、不改会话到期时间；只把剩余等待报回去。直接调用 / 同一个码再登录都走这里。
+    if (v.waitUntil && now() < v.waitUntil) return { ok: false, kind: "rate-limit", stage: "read", canRetry: true, retryable: false, retryAt: v.waitUntil, waitMs: v.waitUntil - now(), message: "读取太频繁了，请等一会儿再重试读取。" };
     const expiredResult = () => ({ ok: false, kind: "auth", stage: "read", canRetry: false, expired: true, message: "已验证的登录已失效，请重新发送验证码" });
     const run = (async () => {
       v.reads++;
