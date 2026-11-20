@@ -28,10 +28,10 @@ try {
   // “合并时不看账号（只看会话代次）”同样不可区分：换账号一定会让会话代次前进，账号比较是第二道冗余防线。
   // 删除前的“等刷新令牌”有两道互相冗余的防线（ensureToken 的代次检查 + 删除自己的 ours()），单拆任何一道行为不变，所以只做同时拆掉两道的组合变异。
   const MUTS = [
-    ["sync.js", "请求返回后不复查账号 / 会话（迟到的成功清掉新账号的副本和凭证）", "    if (!ours()) return staleDelete(deleteOutcome(r));", "    if (false) return staleDelete(deleteOutcome(r));"],
-    ["sync.js", "等令牌刷新返回后既不复查、刷新也不核对会话代次（刷新期间已换账号，仍替新账号发删除请求）", ["    if (!ours()) return staleDelete(false, {", "    if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号"], ["    if (false) return staleDelete(false, {", "    if (false) return staleResult(); // 刷新期间退出 / 换了账号"]],
-    ["sync.js", "同一会话重复点删除不合并（发出多次删除请求）", "if (deleteOp && deleteOp.gen === acctGen && deleteOp.uid === userId) return deleteOp.promise;", "if (false && deleteOp && deleteOp.gen === acctGen && deleteOp.uid === userId) return deleteOp.promise;"],
-    ["sync.js", "合并时不看会话代次（同号重新登录后的新删除被并进旧删除）", "deleteOp.gen === acctGen && deleteOp.uid === userId) return deleteOp.promise;", "deleteOp.uid === userId) return deleteOp.promise;"],
+    ["sync.js", "请求返回后不复查账号 / 会话（迟到的成功清掉新账号的副本和凭证）", "    if (!v2.ok) return staleDelete(deleteOutcome(r));", "    if (false) return staleDelete(deleteOutcome(r));"],
+    ["sync.js", "等令牌刷新返回后既不复查、刷新也不核对会话代次（刷新期间已换账号，仍替新账号发删除请求）", ["    if (!v1.ok) return staleDelete(false, {", "    if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号"], ["    if (false) return staleDelete(false, {", "    if (false) return staleResult(); // 刷新期间退出 / 换了账号"]],
+    ["sync.js", "同一会话重复点删除不合并（发出多次删除请求）", "if (deleteOp && deleteOp.gen === acctGen && deleteOp.uid === userId && deleteOp.inst === loginInstanceId) return deleteOp.promise;", "if (false && deleteOp && deleteOp.gen === acctGen && deleteOp.uid === userId && deleteOp.inst === loginInstanceId) return deleteOp.promise;"],
+    ["sync.js", "合并时不看会话代次（同号重新登录后的新删除被并进旧删除；会话代次和登录实例号两道互相冗余，同时拆掉）", "deleteOp.gen === acctGen && deleteOp.uid === userId && deleteOp.inst === loginInstanceId) return deleteOp.promise;", "deleteOp.uid === userId) return deleteOp.promise;"],
     ["sync.js", "删除结束后不释放登记（失败后重试被并进旧失败结果）", "op.promise.finally(() => { if (deleteOp === op) deleteOp = null; }).catch(() => {});", ""],
     ["sync.js", "响应丢失 / 超时也当作“云端明确没删”（把结果未知误报成删除失败）", "(r.ok === true ? true : r.kind === \"network\" ? null : false)", "(r.ok === true ? true : false)"],
     ["sync.js", "结果未知时仍说“删除没有完成”（提示文案和结果不符）", "null: \"无法确认旧账号是否已删除；当前登录和本机数据未改动。\" };", "null: \"删除没有完成，云端报错了；这台设备在删除过程中已退出或换了账号，本机没有改动。\" };"],

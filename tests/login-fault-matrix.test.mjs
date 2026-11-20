@@ -397,7 +397,7 @@ for (const [label, code, body] of [["401 session_expired", 401, { code: 401, err
   const w = finishLesson(A, "u1-l2", 10);
   const r = await within(A.sync.syncNow({ manual: true }));
   check("L5 标签 A 切回继续学并同步：不抛错、按时结束、不再向云端写入（云端版本不变）", r.settled && S.rows.get(S.users.get("a@x.com")).rev === rev0 && S.xpOf("a@x.com") === 20, JSON.stringify({ settled: r.settled, ok: r.settled && r.v.ok, persist: w.ok, rev: S.rows.get(S.users.get("a@x.com")).rev }));
-  check("L5 标签 A：同步结果是失败并要求重新登录（不是静默成功 / 卡死）", r.settled && r.v.ok === false && ["need-login", "error", "offline", "pending"].includes(A.sync.status().status) && A.sync.status().status !== "synced", `status=${A.sync.status().status}`);
+  check("L5 标签 A：同步结果是失败并说明没有账号（no-account / sessionLost），旧页退成游客（没有账号、状态不是 synced；不是静默成功 / 卡死）", r.settled && r.v.ok === false && (r.v.kind === "no-account" || r.v.sessionLost === true) && A.sync.account() === null && A.sync.status().status !== "synced", `res=${JSON.stringify(r.settled ? r.v : null)} account=${JSON.stringify(A.sync.account())} status=${A.sync.status().status}`);
 }
 
 // ===== L6 离线写入 → 503 → 恢复：补偿且幂等 =====

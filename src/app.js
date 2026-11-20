@@ -39,7 +39,8 @@ import {
 getLastSaveStatus, stateEpoch, } from "./storage.js";
 import { CLOUD, hostOf, PROD_HOST } from "./cloud-config.js";
 import { createApi } from "./cloud-api.js";
-import { createSync } from "./sync.js";
+import { createSync, AUTH_KEY } from "./sync.js";
+import { SESSION_KEY } from "./account-store.js";
 import { createAccountUi } from "./account-ui.js";
 import { createPreviewInfo } from "./preview-info.js";
 import { cloudTarget } from "./cloud-config.js";
@@ -423,11 +424,25 @@ function replacedFor(view) {
 }
 // 测试入口信息面板（正式构建里 isPreview 为 false，什么都不创建）。getStatus 等在 sync 创建之后才有值，所以用到时再取。
 let previewInfo = null;
+function handleSessionLost() {
+  const l = loadState();
+  state = l.state;
+  notice = l.notice;
+  if (!state.onboarded) { state.onboarded = true; if (!l.readFailed) saveState(state); }
+  feel.setPrefs(state.prefs);
+  theme.useTheme(state.prefs.theme);
+  accountUi?.refreshStatus();
+  previewInfo?.refresh();
+  showToast("登录状态已在其他页面退出或切换，已切回本机游客进度。");
+  if (currentView === "path") renderPath();
+  else if (currentView === "me") renderMe();
+}
 const sync = safeStorage ? createSync({
   storage: safeStorage, api: cloudApi, projectId: hostOf(CLOUD.url) || "cloud-off", legacyProject: PROD_HOST,
   onStatus: () => { accountUi?.refreshStatus(); previewInfo?.refresh(); },
   onNotice: (kind) => { if (kind !== "replaced") return; pendingReplaced = true; if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); },
   onState: (doc) => { state = docToState(doc, state); feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); if (currentView === "path") renderPath(); else if (currentView === "me") renderMe(); }, // 云端带来了别的设备的进度：只在地图 / 我的页刷新，做题中不打断
+  onSessionLost: () => handleSessionLost(),
 }) : null;
 const restored = sync ? sync.restore(state) : null;
 if (restored) { state = restored.state; notice = null; feel.setPrefs(state.prefs); theme.useTheme(state.prefs.theme); }
@@ -436,7 +451,7 @@ const CLEARED_MSG_IMPORT = "其他页面已清除学习记录，本次恢复未�
 function persist() {
   if (sync && sync.account()) {
     const r = sync.persistLocal(state);
-    if (!r.ok) showToast("无法保存进度到这台设备（" + (r.message || "存储不可用") + "），关掉页面后进度可能丢失。");
+    if (!r.ok && !r.sessionLost) showToast("无法保存进度到这台设备（" + (r.message || "存储不可用") + "），关掉页面后进度可能丢失。");
     return !!r.ok;
   }
   if (!saveState(state)) {
@@ -470,7 +485,7 @@ addEventListener("online", () => previewInfo?.refresh());
 addEventListener("offline", () => previewInfo?.refresh());
 if (sync) {
   addEventListener("online", () => { if (sync.account()) sync.syncNow(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && sync.account()) sync.syncNow(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && sync.account()) { const r = sync.reconcileSession(); if (r.ok && r.active) sync.syncNow(); } });
   setInterval(() => { if (document.visibilityState === "visible" && sync.account() && sync.status().pending) sync.syncNow(); }, 60000);
 }
 const allLessons = () => course.units.filter((u) => u.available).flatMap((u) => UNITS[u.id].lessons.map((l) => ({ ...l, unit: u.id })));
@@ -1856,16 +1871,25 @@ if (vv) {
 // 回到前台时刷新红心显示
 // 回到前台 / 从后退缓存恢复 / 别的标签页改了存储：先把存储里更新的进度读进来，再写，避免旧标签页把新进度盖掉
 function refreshFromStorage() {
-  if (sync && sync.account()) return;
+  if (sync && sync.account()) {
+    sync.reconcileSession();
+    if (sync.account()) return;
+  }
   const themeBefore = state.prefs.theme;
   const changed = syncFromStorage(state) || state.prefs.theme !== themeBefore; // 别的标签页只改了外观时，syncFromStorage 不算“有变化”，这里单独算
   theme.useTheme(state.prefs.theme); // 别的标签页选了新外观：这一页也要跟着变（只更新内存里的 prefs 不够，页面外观要重新套用）
   if (changed && currentView === "path" && appEl.querySelector(".statsbar")) renderPath();
   else if (changed && currentView === "me" && appEl.querySelector(".statsbar")) renderMe();
 }
+function isRelevantStorageKey(key) {
+  if (!key) return true; // localStorage.clear()
+  if (key.includes("suipian.v4.")) return true;
+  const baseKey = key.startsWith("proj:") ? key.slice(key.indexOf(":", 5) + 1) : key;
+  return baseKey === SESSION_KEY || baseKey === AUTH_KEY || baseKey.startsWith("suipian.acct.");
+}
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && appEl.querySelector(".statsbar")) { refreshFromStorage(); regenHearts(state); persist(); appEl.querySelector(".statsbar")?.replaceWith(statsBar()); } });
 window.addEventListener("pageshow", (e) => { if (e.persisted) refreshFromStorage(); });
-window.addEventListener("storage", (e) => { if (e.key && e.key.includes("suipian.v4.")) refreshFromStorage(); }); // 测试入口里键带前缀，所以用 includes
+window.addEventListener("storage", (e) => { if (isRelevantStorageKey(e.key)) refreshFromStorage(); });
 
 window.__app = { codeTasksEnabled: () => [...CODE_TASKS_ENABLED], startPractice, runForOutput, listenerCount: () => listeners.size, clearProgress, addXp: (a, id, f) => addXp(state, a, id, f), addRun: () => addRun(state), syncFromStorage: () => syncFromStorage(state), allLessons, startLesson, sync, accountUi, sheet, LIMITS, pythonUnavailableText, swInfo, refreshSwInfo, keysounds: () => import("./keysounds.js"), runner, getState: () => state, setState: (s) => { state = s; feel.setPrefs(s.prefs); }, persist, renderPath, words, feel, getRun: () => currentRun, getPractice: () => currentPractice };
 // ---------- 离线支持（Service Worker）----------
