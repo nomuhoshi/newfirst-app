@@ -24,9 +24,10 @@ try {
   check("未改源码的对照：退出去重专项全绿", base.status === 0, (base.stdout + base.stderr).split("\n").slice(-3).join(" | "));
 
   // 已核实、故意不单独做变异的冗余防线：revokeCloudSession 里“第二次 signOut 之后”的 isCurrent 检查（logout 在 revoke 返回后会再用 owns() 判断一次，结果相同）；
-  // owns() 里的会话代次比较（登录 / 强制退出取代时 logoutOp 已经换成别人，单独的代次比较只在删除账号 / 恢复等不经过 logoutOp 的路径上才是唯一防线，Node 假接口里这些路径同一时刻跑不起来）。
   const MUTS = [
     ["sync.js", "不合并重复退出（连点就发多次云端撤销）", "if (userId && logoutOp && logoutOp.uid === userId &&", "if (false && userId && logoutOp && logoutOp.uid === userId &&"],
+    ["sync.js", "合并时不看会话代次（同号重新登录后，新会话的退出被合并进旧退出一起作废）", "logoutOp.uid === userId && logoutOp.gen === acctGen &&", "logoutOp.uid === userId &&"],
+    ["sync.js", "所有权只看登记、不比较会话代次（删除账号取代在途退出后，旧退出仍当自己是所有者）", "const owns = () => logoutOp === op && acctGen === op.gen;", "const owns = () => logoutOp === op;"],
     ["sync.js", "强制退出在跑时，后来的退出不合并", "(!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise;", "(!dropping)) return logoutOp.promise;"],
     ["sync.js", "强制本机退出不能取代在途的联网强制退出（被合并过去，要等云端撤销）", "(!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise;", "(!dropping || logoutOp.dropping)) return logoutOp.promise;"],
     ["sync.js", "旧退出永远认为自己还是所有者（没有任何旧任务保护）", "const owns = () => logoutOp === op && acctGen === op.gen;", "const owns = () => true;"],

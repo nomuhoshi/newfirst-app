@@ -46,6 +46,7 @@ function fakeCloud() {
       return J(200, mkSession(S.users.get(body.email), body.email));
     }
     if (path === "/auth/v1/token") { const id = S.tokens.get(body.refresh_token); if (!id) return J(400, { code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token" }); const email = [...S.users].find(([, v]) => v === id)[0]; return J(200, mkSession(id, email)); }
+    if (path === "/rest/v1/rpc/delete_my_account") { if (!uid) return J(403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT" }); S.rows.delete(uid); return J(200, null); }
     if (path === "/auth/v1/logout") { if (!uid) return J(403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT" }); S.tokens.delete(bearer); return J(204); }
     if (!uid) return J(403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT" });
     if (path === "/rest/v1/progress") { const r = S.rows.get(uid); return J(200, r ? [{ doc: r.doc, rev: r.rev }] : []); }
@@ -226,6 +227,44 @@ const BADJWT = { code: 403, error_code: "bad_jwt", msg: "invalid JWT" };
   check("10 新会话的退出还在等撤销时旧退出返回：旧退出 stale，新退出的“正在退出”拦截仍在（此时发起的同步被拒绝，不会把刚清掉的本机副本写回）", r.stale === true && sy.stale === true, JSON.stringify([r, sy]));
   relNew(); const rc = await cur; await tick();
   check("10 新会话的退出放行后正常完成，没有账号 / 凭证", rc.ok === true && consistent(d, null), JSON.stringify(rc));
+}
+
+// ===== 11. 同一个账号重新登录之后，新会话的退出必须独立执行，不能被合并进还没返回的旧退出（GPT1 14:47 复审 P2） =====
+for (const oldKind of ["普通退出", "联网强制退出"]) {
+  const S = fakeCloud(); const d = device(S); await login(S, d, EMAIL_A);
+  const relOld = S.hold(LOGOUT);
+  const old = oldKind === "普通退出" ? d.sync.logout() : d.sync.logout({ force: true }); await tick();
+  const v = await login(S, d, EMAIL_A);                            // 旧退出还挂着：直接用新验证码重新登录 A（会话代次已变）
+  const o0 = outs(S);
+  const n1 = d.sync.logout(), n2 = d.sync.logout();                // 新会话连点两次退出
+  await tick();
+  check(`11a 旧${oldKind}还没返回，A 重新登录后新会话退出：不是旧退出的同一个调用，自己发起新的云端撤销（只 1 次）；新会话内连点仍合并`, v.ok === true && n1 !== old && n1 === n2 && outs(S) === o0 + 1, JSON.stringify([v.ok, n1 === old, n1 === n2, outs(S), o0]));
+  const rn = await n1; await tick();
+  check(`11b 新会话的退出成功：真的退出了（没有账号 / 凭证）`, rn.ok === true && consistent(d, null), JSON.stringify(rn));
+  relOld(); const ro = await old; await tick();
+  check(`11c 旧${oldKind}的迟到结果作废（stale），没有再动任何东西；撤销请求共 ${o0 + 1} 次，状态仍是已退出`, ro.stale === true && consistent(d, null) && outs(S) === o0 + 1, JSON.stringify([ro, outs(S)]));
+}
+for (const revokeFails of [false, true]) {                         // 新会话的退出失败：回滚，仍是登录 A；旧退出迟到不影响
+  const S = fakeCloud(); const d = device(S); await login(S, d, EMAIL_A);
+  const relOld = S.hold(LOGOUT);
+  const old = d.sync.logout(); await tick();
+  await login(S, d, EMAIL_A);
+  if (revokeFails) S.fail(LOGOUT, 503, { msg: "x" }, 1);
+  const rn = await d.sync.logout(); await tick();
+  relOld(); const ro = await old; await tick();
+  check(`11d 新会话的退出${revokeFails ? "失败 → 回滚，仍是登录 A" : "成功 → 已退出"}；旧退出迟到只返回 stale，不改结果`, ro.stale === true && (revokeFails ? rn.ok === false && rn.stayed === true && consistent(d, EMAIL_A) : rn.ok === true && consistent(d, null)), JSON.stringify([rn, ro]));
+}
+
+// ===== 12. 删除账号取代在途的退出（只有会话代次能识别：logoutOp 还是自己）：旧退出迟到不影响删除之后再登录的新会话 =====
+for (const revokeFails of [false, true]) {
+  const S = fakeCloud(); const d = device(S); await login(S, d, EMAIL_A);
+  const relOld = S.hold(LOGOUT, revokeFails ? 503 : null);
+  const old = d.sync.logout(); await tick();                        // 本机已清、等云端撤销
+  const del = await d.sync.deleteAccount();
+  const v = await login(S, d, EMAIL_B);
+  const mid = snap(d.storage), midStatus = JSON.stringify(statusOf(d));
+  relOld(); const ro = await old; await tick();
+  check(`12 删除账号取代在途的退出，登录 B 后旧撤销${revokeFails ? "失败" : "成功"}返回：stale，不回滚被删账号、不清 B 的凭证、不改状态`, del.ok === true && v.ok === true && ro.stale === true && snap(d.storage) === mid && JSON.stringify(statusOf(d)) === midStatus && consistent(d, EMAIL_B), JSON.stringify([del, ro]));
 }
 
 // ===== 6. 对照（原有行为不变）：单次普通退出成功 / 失败回滚；强制本机退出；退出后同一个设备重新登录正常 =====

@@ -1158,13 +1158,14 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   //   普通退出重复调用 → 合并成同一个（只撤销一次云端会话，调用方拿到同一个结果）；已有强制退出在跑时，强制 / 普通都合并过去。
   //   强制退出（force / forceLocal）可以取代在途的普通退出（forceLocal 还能取代在途的联网强制退出，它不联网、不等撤销）：取代之后，旧退出的任何迟到结果（撤销成功 / 失败 / 刷新）都不能再动本机和内存——
   //   不撤销新会话、不回滚旧账号、不清新凭证、不改状态，也不会让界面再走一次“已退出”。
+  //   只合并“当前会话”的退出（logoutOp.gen === acctGen）：同一个账号重新登录之后代次已变，在途的旧退出只是过期登记，新会话的退出必须独立执行，不能被合并进旧的、再随旧的一起作废。
   //   所有权 = logoutOp 仍是自己 && 会话代次没被别人推进过（登录 / 删除账号 / 强制退出都会推进代次；自己推进后用 ownBump 同步登记）。
   let logoutOp = null;
   const supersededLogout = () => ({ ok: false, kind: "stale", stale: true, superseded: true, retryable: false, message: "" });
   function logout(opts = {}) {
     const dropping = !!(opts.force || opts.forceLocal);
     const local = !!opts.forceLocal; // 强制本机退出不联网：不能为了合并而去等在途强制退出的云端撤销，所以它取代在途的联网退出
-    if (userId && logoutOp && logoutOp.uid === userId && (!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise; // 合并：同一个会话已有退出在跑
+    if (userId && logoutOp && logoutOp.uid === userId && logoutOp.gen === acctGen && (!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise; // 合并：同一个会话已有退出在跑
     const op = { uid: userId, dropping, local, gen: acctGen, promise: null };
     if (userId) logoutOp = op;
     const promise = logoutImpl(op, opts);
