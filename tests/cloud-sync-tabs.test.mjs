@@ -50,11 +50,12 @@ function setup() {
   check("之后 A 仍然能同步", ra2.ok, A.status().status);
 }
 
-{ // 2. 存储里的凭证属于别的账号时，不能被借用
+{ // 2. 存储里的凭证属于别的账号时，停止请求、保留存储中的新凭证，绝不拿旧令牌继续刷新覆盖
   const { S, A, storage } = setup();
-  storage.setItem(AUTH_KEY, JSON.stringify({ session: { accessToken: "x", refreshToken: "rtX", expiresAt: S.clock + 3600_000, userId: "u2", email: "x@y.z" } }));
+  const otherRaw = JSON.stringify({ session: { accessToken: "x", refreshToken: "rtX", expiresAt: S.clock + 3600_000, userId: "u2", email: "x@y.z" }, instanceId: "inst-u2" });
+  storage.setItem(AUTH_KEY, otherRaw);
   const r = await A.syncNow();
-  check("不借用别的账号的凭证（仍按自己的令牌刷新）", r.ok && S.refreshCalls === 1 && A.account().userId === "u1");
+  check("共享凭证已属他号时停止刷新并清退旧会话（保留存储中的新凭证）", !r.ok && r.sessionLost === true && S.refreshCalls === 0 && A.account() === null && storage.getItem(AUTH_KEY) === otherRaw);
 }
 
 const pass = results.filter(Boolean).length;

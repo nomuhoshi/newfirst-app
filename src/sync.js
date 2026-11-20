@@ -25,10 +25,11 @@ export function scopedStorage(raw, ns) {
   return { getItem: (k) => raw.getItem(scoped(k)), setItem: (k, v) => raw.setItem(scoped(k), v), removeItem: (k) => raw.removeItem(scoped(k)) };
 }
 
-export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, retryLocks = null }) {
+export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, onSessionLost = () => {}, retryLocks = null }) {
   const storage = scopedStorage(rawStorage, projectNamespace(projectId, legacyProject));
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
-  let session = null, userId = null, email = "";
+  let session = null, userId = null, email = "", loginInstanceId = null;
+  const newLoginInstanceId = () => (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${now()}-${Math.random().toString(36).slice(2)}`);
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
   // 账号会话代次：登录完成 / 恢复 / 退出 / 删除账号时前进。每一轮同步在开始时记下代次，之后每个 await 回来先核对：
   // 代次变了（中间退出过、或又登录了同一账号 / 别的账号），这一轮就是“旧任务”——结果整体丢弃，不写状态、凭证、进度、待同步标记、时间戳，
@@ -36,12 +37,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   let acctGen = 0;
   const staleResult = () => ({ ok: false, kind: "stale", stale: true, retryable: false, message: "账号已退出或切换，这次同步的结果已丢弃" });
   const abandonWaiters = new Set(); // 正占着本机写回锁的同步任务：代次前进时立刻让它们放掉锁（任务本身还在等网络，之后的结果会被丢弃）
-  function bumpAcct() { acctGen++; loggingOut = false; syncCooldownUntil = 0; wakeToken = null; for (const f of [...abandonWaiters]) f(); abandonWaiters.clear(); running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
+  function bumpAcct() { acctGen++; loggingOut = false; selfLogoutCleaning = false; syncCooldownUntil = 0; wakeToken = null; for (const f of [...abandonWaiters]) f(); abandonWaiters.clear(); running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
   // 本机写回失败与网络退避完全分开；按账号共享最佳努力计数，刷新页面也不能重新开始无限轮询。
   const LOCAL_RETRY_LIMIT = 3;
   let localWritebackFails = 0, localRetryUser = null, localRetryTimer = null, localRetryEpoch = 0, localRetryUnknown = false;
   let retryLockHeld = false;
   let loggingOut = false; // 普通退出：本机已清理、正在等云端撤销。期间新触发的同步直接作废（否则会把刚清掉的本机副本写回）
+  let selfLogoutCleaning = false; // 本操作自身的退出清理 / 回滚阶段：此期间存储里的会话指针与凭证由自己清理，不算跨标签页失权
   const retryLockProvider = retryLocks || (typeof navigator !== "undefined" ? navigator.locks : null);
   const retryLockName = () => `suipian:writeback:${projectNamespace(projectId, legacyProject)}:${userId}`;
   // 锁的等待、占用和释放都绑定“这一轮同步任务”的生命周期：任务一旦成为旧任务（退出 / 换账号，代次前进），立刻放掉锁，
@@ -116,7 +118,15 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       return r.session;
     } catch { return null; }
   };
-  const writeAuth = () => { try { if (isSessionShape(session)) storage.setItem(AUTH_KEY, JSON.stringify(projectId ? { session, project: projectId } : { session })); else storage.removeItem(AUTH_KEY); } catch {} };
+  const writeAuth = () => {
+    try {
+      if (isSessionShape(session)) {
+        const payload = projectId ? { session, project: projectId } : { session };
+        if (loginInstanceId) payload.instanceId = loginInstanceId;
+        storage.setItem(AUTH_KEY, JSON.stringify(payload));
+      } else storage.removeItem(AUTH_KEY);
+    } catch {}
+  };
   const isUnsent = (c) => !!c && (c.base == null || !!(c.dirty && (c.dirty.hearts || c.dirty.prefs || c.dirty.content)));
   // 损坏/不可读的游客导入待办是硬锁：任何普通同步都不得绕过它。
   // 保持两种错误独立，且不安排自动重试；恢复交由后续专门流程处理。
@@ -189,7 +199,15 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   // 没有有效凭证、但有“换项目后同邮箱接管”的标记时，只放行标记里的同一个邮箱。
   function loginBlocked(addr) {
     const mail = normalizedEmail(addr);
-    if (!userId) return null;
+    if (!userId) {
+      const shared = readCurrentAccount(storage);
+      if (shared.ok && shared.id) {
+        const a = inspectAuth();
+        const cur = a.state === "ours" && a.session.userId === shared.id ? normalizedEmail(a.session.email) : "";
+        if (!cur || !mail || mail !== cur) return { ok: false, kind: "other-account", message: "请先退出当前账号" };
+      }
+      return null;
+    }
     if (isSessionShape(session) && session.userId === userId) {
       const cur = normalizedEmail(session.email || email);
       if (cur && mail && mail !== cur) return { ok: false, kind: "other-account", message: "请先退出当前账号" };
@@ -214,11 +232,22 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   async function ensureToken(gen = acctGen) {
+    const preOwn = checkSessionOwnership();
+    if (!preOwn.ok) {
+      if (preOwn.kind === "lost") { dropLostSession(preOwn.reason); return staleResult(); }
+      return { ok: false, kind: "local", message: "无法确认本机登录状态" };
+    }
     adoptStoredSession();
     if (!isSessionShape(session) || session.userId !== userId) return { ok: false, kind: "auth", message: "需要重新登录" };
     if (session.expiresAt - now() > 60000) return { ok: true };
     const r = await api.refresh(session);
     if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话，也不能写存储里的凭证
+    // 刷新返回后、writeAuth() 写回凭证之前，必须复查共享登录实例所有权，绝不覆盖其他标签页新登录的凭证
+    const postOwn = checkSessionOwnership();
+    if (!postOwn.ok) {
+      if (postOwn.kind === "lost") { dropLostSession(postOwn.reason); return staleResult(); }
+      return { ok: false, kind: "local", message: "无法确认本机登录状态" };
+    }
     if (r.ok && isSessionShape(r.session) && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }
     // 刷新失败，可能是另一个标签页刚好抢先刷新了：再看一次存储
     if (!r.ok && r.kind === "auth" && adoptStoredSession() && session.expiresAt - now() > 60000) return { ok: true };
@@ -232,8 +261,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const L = loadAccount(storage, uid, { now: now() });
     if (!L.ok || !L.copy) return null;
     const s = readAuth();
+    const a = inspectAuth();
     session = s && s.userId === uid ? s : null;
-    bumpAcct(); userId = uid; email = session?.email || "";
+    const restoredInst = session && a.state === "ours" && a.session.userId === uid ? (a.instanceId || null) : null;
+    bumpAcct(); userId = uid; email = session?.email || ""; loginInstanceId = restoredInst;
     const state = docToState(L.copy.doc, baseState ? { ...baseState, onboarded: true } : { ...freshState(), onboarded: true }, now());
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
     // 专用待办也算“还有没上传的东西”：不能因为本机副本看起来干净就当成已完成。
@@ -244,8 +275,64 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   // ---------- 学习进度写入本机副本（app.persist 在登录状态下调用这个）----------
+  // 检查当前内存会话是否仍拥有共享存储里的登录实例所有权；读取失败返回 read-failed，确认被其他页面退出/切换/重登返回 lost。
+  function checkSessionOwnership() {
+    if (!userId) return { ok: true, active: false };
+    if (selfLogoutCleaning) return { ok: true, active: true, selfCleaning: true };
+    const p = readCurrentAccount(storage);
+    if (!p.ok) return { ok: false, kind: "read-failed" };
+    if (p.id !== userId) return { ok: false, kind: "lost", reason: p.id ? "switched-account" : "logged-out", currentId: p.id };
+    const a = inspectAuth();
+    if (a.state === "read-failed") return { ok: false, kind: "read-failed" };
+    if (session !== null) {
+      if (a.state === "absent" || a.state === "inert" || a.state === "other") {
+        return { ok: false, kind: "lost", reason: a.state === "other" ? "other-project" : "auth-cleared", currentId: p.id };
+      }
+      if (a.state === "ours") {
+        if (a.session.userId !== userId) return { ok: false, kind: "lost", reason: "switched-account", currentId: p.id };
+        const storedInst = a.instanceId || null;
+        if (loginInstanceId !== null) {
+          if (storedInst !== loginInstanceId) return { ok: false, kind: "lost", reason: "relogged-in", currentId: p.id };
+        } else if (storedInst !== null) {
+          return { ok: false, kind: "lost", reason: "relogged-in", currentId: p.id };
+        }
+      }
+    } else if (a.state === "ours") {
+      // session === null（如外项目迁移后的 need-login 态或只清理了凭证的半退出态）：只有存储里出现同项目可用凭证才说明另一页已重新登录
+      return { ok: false, kind: "lost", reason: a.session.userId !== userId ? "switched-account" : "relogged-in", currentId: p.id };
+    }
+    return { ok: true, active: true };
+  }
+  // 跨标签页失权后只清理当前标签页内存态并通知上层切换 state，绝不覆盖共享存储里可能属于新登录实例的数据。
+  function dropLostSession(reason = "logged-out") {
+    const lostUserId = userId;
+    dropVerified();
+    bumpAcct();
+    session = null; userId = null; email = ""; loginInstanceId = null; baseline = null; pending = false; waiting = null; lastSyncedAt = null;
+    localRetryUser = null; localWritebackFails = 0; localRetryUnknown = false;
+    setStatus(null);
+    if (lostUserId) {
+      try { onSessionLost({ userId: lostUserId, reason }); } catch {}
+    }
+  }
+  function reconcileSession() {
+    if (!userId) return { ok: true, active: false };
+    const own = checkSessionOwnership();
+    if (own.ok) return { ok: true, active: true };
+    if (own.kind === "read-failed") return { ok: false, kind: "local", message: "无法读取本机登录状态" };
+    dropLostSession(own.reason);
+    return { ok: false, kind: "session-lost", sessionLost: true, reason: own.reason, message: "登录状态已失效或已在其他页面切换" };
+  }
   function persistLocal(state) {
     if (!userId) return { ok: false, code: "no-account" };
+    const own = checkSessionOwnership();
+    if (!own.ok) {
+      if (own.kind === "lost") {
+        dropLostSession(own.reason);
+        return { ok: false, code: "session-lost", kind: "session-lost", sessionLost: true, reason: own.reason, message: "登录状态已失效或已在其他页面切换，未写入旧账号副本" };
+      }
+      return { ok: false, code: "read-failed", message: "无法确认本机登录状态" };
+    }
     const d = getDeviceId(storage);
     if (!d.ok) return { ok: false, code: d.code, message: d.message };
     const L = loadAccount(storage, userId, { now: now() });
@@ -369,7 +456,15 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   // 顺序：无账号 → R1 损坏待办硬锁（手动也不能绕过）→ v4 本机写回重试上限（只拦自动）。
   function syncNow({ manual = false } = {}) {
     if (!userId) return Promise.resolve({ ok: false, kind: "no-account" });
-    if (loggingOut) return Promise.resolve(staleResult());
+    if (loggingOut || selfLogoutCleaning) return Promise.resolve(staleResult());
+    const own = checkSessionOwnership();
+    if (!own.ok) {
+      if (own.kind === "lost") {
+        dropLostSession(own.reason);
+        return Promise.resolve({ ok: false, kind: "session-lost", sessionLost: true, retryable: false, reason: own.reason, message: "登录状态已失效或已在其他页面退出" });
+      }
+      return Promise.resolve({ ok: false, kind: "local", message: "无法确认本机登录状态" });
+    }
     const guard = importGuard();
     if (guard) return Promise.resolve(guard);
     if (!manual && ordinaryAutoBlocked()) return Promise.resolve(localRetryBlocked());
@@ -381,6 +476,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       try {
         return await withLocalRetryLock(async () => {
         if (gen !== acctGen) return staleResult(); // 排队等锁期间已退出 / 换账号
+        const lockOwn = checkSessionOwnership();
+        if (!lockOwn.ok) {
+          if (lockOwn.kind === "lost") { dropLostSession(lockOwn.reason); return staleResult(); }
+          return { ok: false, kind: "local", message: "无法确认本机登录状态" };
+        }
         if (!manual) {
           const blocked = autoRetryGuard();
           if (blocked) return blocked;
@@ -437,6 +537,15 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   async function syncOnce({ manual = false, gen = acctGen } = {}) {
     const dead = () => gen !== acctGen;
+    const lostDuringSync = () => {
+      if (dead()) return staleResult();
+      const own = checkSessionOwnership();
+      if (own.ok) return null;
+      if (own.kind === "lost") { dropLostSession(own.reason); return staleResult(); }
+      return { ok: false, kind: "local", message: "无法确认本机登录状态" };
+    };
+    const initialLost = lostDuringSync();
+    if (initialLost) return initialLost;
     // 必须早于 ensureToken()（它可能发出 refresh 请求）及任何云端读写。
     const initialGuard = importGuard();
     if (initialGuard) return initialGuard;
@@ -452,7 +561,9 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       return miss;
     }
     const t = await ensureToken(gen);
-    if (dead()) return staleResult();
+    if (t.stale) return t;
+    const afterTokenLost = lostDuringSync();
+    if (afterTokenLost) return afterTokenLost;
     if (!t.ok) { noteRateLimit(t); setStatus(statusFromFailure(t), t.message, detailOf(t)); return t.kind === "rate-limit" ? { ...t, retryable: false } : t; }
     // 先重试“游客导入”专用待办，再跑普通同步。否则普通合并可能把云端旧 true 当成最新，
     // 让用户已经做过的选择永远写不上去。
@@ -462,7 +573,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (afterTokenGuard) return afterTokenGuard;
     if (pi.record) {
       const pr = await runPendingImport(pi.record, session, { notify: true, dead });
-      if (dead()) return staleResult();
+      const afterImportLost = lostDuringSync();
+      if (afterImportLost) return afterImportLost;
       if (!pr.ok || pr.pending) {
         if (pr.kind === "import-corrupt" || pr.kind === "import-read-failed" || pr.kind === "import-changed") return { ...pr, retryable: false };
         pending = true;
@@ -482,7 +594,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     for (let attempt = 0; attempt < 5; attempt++) {
       const remote = await api.getProgress(session);
-      if (dead()) return staleResult();
+      const afterGetLost = lostDuringSync();
+      if (afterGetLost) return afterGetLost;
       const midFlightGuard = importGuard();
       if (midFlightGuard) return midFlightGuard;
       if (!remote.ok) { noteRateLimit(remote); setStatus(statusFromFailure(remote), remote.message, detailOf(remote)); return remote.kind === "rate-limit" ? { ...remote, retryable: false } : remote; }
@@ -491,10 +604,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const copy = L.copy;
       let finalDoc, rev, replaced = false, cloudWriteConfirmed = false;
       if (!remote.row) {
+        const beforeCreateLost = lostDuringSync();
+        if (beforeCreateLost) return beforeCreateLost;
         const beforeCreateGuard = importGuard();
         if (beforeCreateGuard) return beforeCreateGuard;
         const c = await api.createProgress(session, copy.doc);
-        if (dead()) return staleResult();
+        const afterCreateLost = lostDuringSync();
+        if (afterCreateLost) return afterCreateLost;
         const afterCreateGuard = importGuard();
         if (afterCreateGuard) return afterCreateGuard;
         if (!c.ok) { noteRateLimit(c); setStatus(statusFromFailure(c), c.message, detailOf(c)); return c.kind === "rate-limit" ? { ...c, retryable: false } : c; }
@@ -507,10 +623,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         finalDoc = m.doc; rev = remote.row.rev;
         if (m.outcome === "remote-newer" && copy.dirty.content) replaced = true;
         if (!docsEquivalent(finalDoc, remote.row.doc)) {
+          const beforeSaveLost = lostDuringSync();
+          if (beforeSaveLost) return beforeSaveLost;
           const beforeSaveGuard = importGuard();
           if (beforeSaveGuard) return beforeSaveGuard;
           const s = await api.saveProgress(session, remote.row.rev, finalDoc);
-          if (dead()) return staleResult();
+          const afterSaveLost = lostDuringSync();
+          if (afterSaveLost) return afterSaveLost;
           const afterSaveGuard = importGuard();
           if (afterSaveGuard) return afterSaveGuard;
           if (!s.ok) { noteRateLimit(s); setStatus(statusFromFailure(s), s.message, detailOf(s)); return s.kind === "rate-limit" ? { ...s, retryable: false } : s; }
@@ -518,6 +637,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           rev = s.rev; cloudWriteConfirmed = true;
         }
       }
+      const beforeWritebackLost = lostDuringSync();
+      if (beforeWritebackLost) return beforeWritebackLost;
       // 同步期间用户可能又学了新内容：把云端结果合并进新的本机副本，下一轮再上传
       const cur = loadAccount(storage, userId, { now: now() });
       const curCopy = cur.ok && cur.copy ? cur.copy : copy;
@@ -559,7 +680,16 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   // ---------- 登录 ----------
   // captchaToken（可选，D 防滥用的准备）：只作为本次请求的参数原样交给 api，不在这里保存、不缓存、不记录；
   // 账号隔离（loginBlocked）和冷却检查都在它之前，被拦下时不会发出任何请求，也不会碰令牌。
+  function captureLoginStart() {
+    const acc = readCurrentAccount(storage);
+    if (!acc.ok) return { ok: false };
+    const a = inspectAuth();
+    if (a.state === "read-failed") return { ok: false };
+    const inst = a.state === "ours" || a.state === "other" ? (a.instanceId || null) : null;
+    return { ok: true, sid: acc.id, instanceId: inst };
+  }
   async function sendCode(addr, captchaToken) {
+    if (userId) reconcileSession();
     const blocked = loginBlocked(addr);
     if (blocked) return blocked;
     dropVerified(); // 重发验证码 = 开始新的一轮：之前“已验证待读取”的会话作废
@@ -574,6 +704,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   const discarded = () => ({ ok: false, kind: "stale", discarded: true, message: "" });
   function dropVerified() { verifyGen++; verified = null; }
   async function verify(addr, code, baseState = null) {
+    if (userId) reconcileSession();
     const blocked = loginBlocked(addr);
     if (blocked) return blocked;
     const mail = normalizedEmail(addr), c = String(code).trim();
@@ -632,6 +763,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   async function begin(newSession, baseState, { isCurrent = null } = {}) {
     if (!isSessionShape(newSession)) return { ok: false, kind: "auth", message: "登录返回的凭证无效" };
+    if (userId) reconcileSession();
     // 换了 Supabase 项目后旧登录作废：用“同一个邮箱”可以在新项目正常登录，但只加载新项目自己的进度。
     // 旧项目的账号副本和游客记录原样留在本机，既不上传到新项目、也不删除（数据隔离规则）。换成别的邮箱仍要先退出。
     let leaveStale = false;
@@ -639,6 +771,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const st = readStale(), mail = normalizedEmail(newSession.email);
       if (!session && st && st.userId === userId && st.email && normalizedEmail(st.email) === mail) leaveStale = true;
       else return { ok: false, kind: "other-account", message: "请先退出当前账号" };
+    }
+    const startSnap = captureLoginStart();
+    if (!startSnap.ok) return { ok: false, kind: "local", message: "无法读取本机登录状态" };
+    if (startSnap.sid && startSnap.sid !== newSession.userId && !leaveStale) {
+      return { ok: false, kind: "other-account", message: "请先退出当前账号" };
     }
     const remote = await api.getProgress(newSession);
     if (isCurrent && !isCurrent()) return discarded(); // 读云端期间这一轮登录已被作废（换邮箱 / 重发 / 关窗）：丢弃，不切账号、不写任何东西
@@ -658,7 +795,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const importStatus = remoteDoc && gid.ok ? guestImportStatus(remoteDoc.doc, gid.id, guest.state) : "new";
     const alreadyImported = importStatus === "same";
     // ctx 里的 remote 只用于“云端有没有数据”的展示；真正写云端前必须重新读最新（弹窗期间别的设备会新增进度）。
-    const ctx = { session: newSession, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, guestHas, baseState, leaveStale };
+    const ctx = { session: newSession, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, guestHas, baseState, leaveStale, expectedLogin: { sid: startSnap.sid, instanceId: startSnap.instanceId } };
     if (guestHas && !L.copy && !alreadyImported) {
       waiting = ctx;
       return { ok: true, needChoice: true, cloudHasData: !!remoteDoc && sumXp(remoteDoc.doc) + Object.keys(remoteDoc.doc.done).length > 0, guest: { xp: guest.state.xp ?? 0, lessons: Object.keys(guest.state.done ?? {}).filter((k) => guest.state.done[k]).length } };
@@ -747,6 +884,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const g = importGuard(); if (g) return g;
     if (running) return { ok: false, kind: "busy", message: "正在同步，请稍后再试" };
     const t = await ensureToken(); if (!t.ok) return t;
+    const startSnap = captureLoginStart();
+    if (!startSnap.ok) return { ok: false, kind: "local", message: "无法读取本机登录状态" };
     const sess = session, uid = userId;
     const remote = await api.getProgress(sess);
     if (!remote.ok) return remote;
@@ -762,7 +901,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const r = await syncNow({ manual: true });
       return { ok: r.ok, noChoiceNeeded: true, alreadyImported: importStatus === "same", sync: r, message: r.ok ? "" : r.message };
     }
-    waiting = { session: sess, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, guestHas, baseState, leaveStale: false, resume: true };
+    waiting = { session: sess, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, guestHas, baseState, leaveStale: false, resume: true, expectedLogin: { sid: startSnap.sid, instanceId: startSnap.instanceId } };
     return { ok: true, needChoice: true, resume: true, cloudHasData: !!remoteDoc && sumXp(remoteDoc.doc) + Object.keys(remoteDoc.doc.done).length > 0,
       guest: { xp: guest.state.xp ?? 0, lessons: Object.keys(guest.state.done ?? {}).filter((k) => guest.state.done[k]).length } };
   }
@@ -996,6 +1135,17 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   async function finish(ctx, choice) {
     const gen = acctGen, dead = () => gen !== acctGen; // 这次登录选择的代次：中途退出 / 换账号后，所有联网结果整体作废，不得复活旧账号或覆盖凭证
     const uid = ctx.session.userId;
+    const checkExpectedSession = () => {
+      if (!ctx.expectedLogin) return null;
+      const cur = captureLoginStart();
+      if (!cur.ok) return { ok: false, kind: "local", message: "无法确认本机登录状态，登录没有完成" };
+      if (cur.sid !== ctx.expectedLogin.sid || cur.instanceId !== ctx.expectedLogin.instanceId) {
+        return { ok: false, kind: "session-changed", message: "其他页面已登录或切换账号，本次登录已取消" };
+      }
+      return null;
+    };
+    const preSessionErr = checkExpectedSession();
+    if (preSessionErr) return preSessionErr;
     const d = getDeviceId(storage), g = getGuestId(storage);
     if (!d.ok) return { ok: false, kind: "local", message: d.message };
     const mergeChoice = choice === "transfer" || choice === "merge";
@@ -1023,12 +1173,15 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     } else {
       doc = ctx.remoteDoc ?? emptyDoc();
     }
+    const commitSessionErr = checkExpectedSession();
+    if (commitSessionErr) return commitSessionErr;
     if (!result || !result.saved) {
       const dirty = ctx.copy ? ctx.copy.dirty : cleanDirty;
       if (!saveAccount(storage, uid, { doc, base, dirty }, { now: now(), expectEmpty: !ctx.copy })) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };
     }
+    const nextInstanceId = newLoginInstanceId();
     if (!setCurrentAccount(storage, uid)) return { ok: false, kind: "local", message: "无法记录当前账号" };
-    bumpAcct(); session = ctx.session; userId = uid; email = session.email || ""; writeAuth();
+    bumpAcct(); session = ctx.session; userId = uid; email = session.email || ""; loginInstanceId = nextInstanceId; writeAuth();
     if (result && result.kind === "rate-limit") noteRateLimit(result); // 登录时的游客导入读取 / 写入 / 读回被 429：新会话从一开始就带着这段等待（bumpAcct 之后登记，不会被它清掉）
     const state = docToState(doc, ctx.baseState ? { ...ctx.baseState, onboarded: true } : { ...freshState(), onboarded: true }, now());
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
@@ -1127,14 +1280,26 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (so.sessionState === "gone") return { ok: true, alreadyInvalid: true };
       if (so.sessionState !== "token-invalid") return fail(so);
       // detached（强制退出）：本机凭证已经清掉，撤销过程只用局部凭证，不读也不写登录态（不 adopt、不 writeAuth、不动 session / email）。
-      if (!detached) adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌：用最新的核实，别拿旧令牌去撞“已使用”
+      const isSameLoginInstance = () => {
+        const a = inspectAuth();
+        if (a.state !== "ours" || a.session.userId !== sess.userId) return false;
+        return loginInstanceId === null ? a.instanceId === null : a.instanceId === loginInstanceId;
+      };
+      if (!detached) {
+        if (!isSameLoginInstance()) return { ok: false, kind: "stale", superseded: true, message: "" };
+        adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌：用最新的核实，别拿旧令牌去撞“已使用”
+      }
       const rf = await api.refresh(!detached && isSessionShape(session) ? session : sess);
       if (isCurrent && !isCurrent()) return { ok: false, kind: "stale", superseded: true, message: "" }; // 同上：刷新返回时已被取代，不能把旧账号轮换出来的令牌写进新会话 / 存储
       // 只有明确证明刷新令牌 / 会话已死（sessionState "dead"）才算已退出；通用 403、路由 404、请求格式错误、429、5xx、断网都算失败。
       if (!rf.ok) return rf.sessionState === "dead" ? { ok: true, alreadyInvalid: true } : fail(rf);
       if (!isSessionShape(rf.session) || rf.session.userId !== (detached ? sess.userId : userId)) return { ok: false, kind: "auth", message: "登录账号不一致，暂未退出" };
       const cur = rf.session;
-      if (!detached) { session = cur; email = session.email || email; writeAuth(); }
+      if (!detached) {
+        // 即使处于 selfLogoutCleaning，写回刷新令牌前也必须核对 AUTH_KEY 仍是同一个登录实例，绝不覆盖新登录的凭证
+        if (!isSameLoginInstance()) return { ok: false, kind: "stale", superseded: true, message: "" };
+        session = cur; email = session.email || email; writeAuth();
+      }
       if (onSession) onSession();
       so = await api.signOut(cur, "local");
       if (isCurrent && !isCurrent()) return { ok: false, kind: "stale", superseded: true, message: "" };
@@ -1178,12 +1343,18 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const ownBump = () => { bumpAcct(); op.gen = acctGen; }; // 自己前进代次：登记新代次，自己仍然是所有者
     dropVerified(); // 退出（含强制本机退出，forceLocalLogout 走这里）：待读取的已验证会话作废、流程代次前进——没有登录账号时也要做，在途的旧读取返回后会被丢弃
     if (!userId) { bumpAcct(); waiting = null; return { ok: true }; } // 还没登录（正停在“游客记录怎么办”的选择上）：在途的 finishChoice 也要作废，迟到完成不得复活账号
+    const preOwn = checkSessionOwnership();
+    if (!preOwn.ok && preOwn.kind === "lost") {
+      dropLostSession(preOwn.reason);
+      return { ok: true, alreadyLoggedOut: true, sessionLost: true, message: "当前账号已在其他页面退出或切换。" };
+    }
     const dropping = force || forceLocal;
     const guard = importGuard();
     if (guard) {
       if (!dropping) return guard; // 普通退出不能把损坏待办当成已完成。
       // 用户明确选择本机强制退出：不调用云端、不删账号副本、游客或损坏待办。
       const uid = userId;
+      selfLogoutCleaning = true;
       const sessionRemoved = setCurrentAccount(storage, null);
       let sessionGone = false;
       try { sessionGone = storage.getItem(SESSION_KEY) === null; } catch {}
@@ -1191,6 +1362,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         const rollback = setCurrentAccount(storage, uid);
         let restored = false;
         try { restored = storage.getItem(SESSION_KEY) === uid; } catch {}
+        if (owns()) selfLogoutCleaning = false;
         return { ok: false, kind: "local", pending: true, rollbackFailed: !rollback || !restored,
           message: restored ? "账号指针删除失败，退出未完成；本机数据仍保留" : "账号指针清理与恢复均失败，请保留本机数据并人工恢复" };
       }
@@ -1203,6 +1375,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         const rollback = setCurrentAccount(storage, uid);
         let restored = false;
         try { restored = storage.getItem(SESSION_KEY) === uid; } catch {}
+        if (owns()) selfLogoutCleaning = false;
         return { ok: false, kind: "local", pending: true, rollbackFailed: !rollback || !restored,
           message: restored ? "本机凭证清理失败，退出未完成；数据仍保留" : "凭证清理失败且账号指针回滚失败，请保留本机数据并人工恢复" };
       }
@@ -1214,6 +1387,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (pending && !dropping) {
       const r = await syncNow();
       if (!owns()) return supersededLogout();
+      if (r.sessionLost) return { ok: true, alreadyLoggedOut: true, sessionLost: true, message: "当前账号已在其他页面退出或切换。" };
       if (!r.ok) return { ok: false, pending: true, kind: r.kind, message: r.message };
     }
     const uid = userId;
@@ -1226,12 +1400,15 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // 没上传的东西还在时，强制退出也保留本机副本；同一个账号再登录会接着上传。
     const keepCopy = dropping && (pending || copyStillUnsent(uid));
     if (dropping) {
+      selfLogoutCleaning = true;
       const c = cleanLocal(uid, { clearAuth: true, keepCopy });
-      if (!c.ok) return c.result;
+      if (!c.ok) { if (owns()) selfLogoutCleaning = false; return c.result; }
       // 本机已经清完：先作废所有在途的旧同步，再去等云端撤销（撤销可能很慢）。否则撤销等待期间，旧同步的迟到刷新会把刚清掉的凭证重新写回。
-      ownBump(); session = null;
+      ownBump(); session = null; selfLogoutCleaning = true;
       if (forceLocal) { finishLocalLogout(); return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出（没有联网）。云端会话可能仍有效。" }; }
-      const rv = await revokeCloudSession(sess, { detached: true, isCurrent: owns });
+      let rv;
+      try { rv = await revokeCloudSession(sess, { detached: true, isCurrent: owns }); }
+      finally { if (owns()) selfLogoutCleaning = false; }
       if (!owns()) return supersededLogout(); // 撤销等待期间被取代（又强制退出过 / 重新登录了）：不再收尾，不碰新会话
       finishLocalLogout();
       if (!rv.ok) return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出。云端会话可能仍有效。" };
@@ -1242,19 +1419,32 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       // access token 快过期就先刷新；刷新被拒 = 会话已经失效，不用再撤销；断网等其他失败 → 不退出（没法撤销云端会话）。
       const t = await ensureToken();
       if (!owns()) return supersededLogout();
+      if (t.stale) return { ok: true, alreadyLoggedOut: true, sessionLost: true, message: "当前账号已在其他页面退出或切换。" };
       // 刷新失败只有“明确证明会话已死”才继续退出（没东西可撤销）；其他失败（权限错误、路由错误、请求格式错误、429、断网、账号不一致）都先不动本机。
       if (!t.ok && t.sessionState !== "dead") return { ok: false, stayed: true, kind: t.kind || "server", pending: copyStillUnsent(uid), message: t.message || "退出云端失败，暂未退出" };
     }
+    selfLogoutCleaning = true;
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
-    if (!c.ok) return c.result;
+    if (!c.ok) { if (owns()) selfLogoutCleaning = false; return c.result; }
     ownBump(); // 同上：本机清理已成功，等云端撤销之前先作废旧同步；撤销失败时下面照旧回滚，回滚后登录态继续用新的代次
-    loggingOut = true; // 撤销等待期间内存里 session / userId 还在（撤销失败要回滚），新触发的同步一律拒绝
+    loggingOut = true; selfLogoutCleaning = true; // 撤销等待期间内存里 session / userId 还在（撤销失败要回滚），新触发的同步一律拒绝
     let rv;
-    try { rv = await revokeCloudSession(session, { isCurrent: owns, onSession: () => { try { c.snap.authRaw = storage.getItem(AUTH_KEY); } catch { /* 读不到就保留旧快照 */ } } }); }
-    finally { if (owns()) loggingOut = false; } // 被取代时标志已由取代者的 bumpAcct 清掉；这里不能把后来新退出设的标志清掉
+    try { rv = await revokeCloudSession(session, { isCurrent: owns, onSession: () => { try { const a = inspectAuth(); if ((a.state === "ours" || a.state === "other") && a.session.userId === uid && (loginInstanceId === null || a.instanceId === loginInstanceId)) c.snap.authRaw = storage.getItem(AUTH_KEY); } catch { /* 读不到就保留旧快照 */ } } }); }
+    finally { if (owns()) { loggingOut = false; selfLogoutCleaning = false; } } // 被取代时标志已由取代者的 bumpAcct 清掉；这里不能把后来新退出设的标志清掉
     if (!owns()) return supersededLogout(); // 旧退出被取代：撤销成功 / 失败都不再回滚、不清凭证、不动状态
+    const afterRevokeCur = readCurrentAccount(storage);
+    const afterRevokeAuth = inspectAuth();
+    const takenOverByOther = (afterRevokeCur.ok && afterRevokeCur.id && afterRevokeCur.id !== uid)
+      || ((afterRevokeAuth.state === "ours" || afterRevokeAuth.state === "other")
+        && (afterRevokeAuth.session.userId !== uid || (loginInstanceId !== null && afterRevokeAuth.instanceId !== loginInstanceId)));
+    if (takenOverByOther) {
+      dropLostSession("switched-account");
+      return { ok: true, alreadyLoggedOut: true, sessionLost: true, message: "退出过程中其他页面已切换账号，本机新账号未受影响。" };
+    }
     if (!rv.ok) {
-      const rb = rollbackLocal(uid, c.snap);
+      selfLogoutCleaning = true;
+      let rb;
+      try { rb = rollbackLocal(uid, c.snap); } finally { if (owns()) selfLogoutCleaning = false; }
       const message = rb.all ? rv.message : `${rv.message}（本机状态恢复不完整，请检查登录状态和学习副本）`;
       return { ok: false, stayed: true, kind: rv.kind, pending: copyStillUnsent(uid), copyRestored: rb.copyRestored, accountRestored: rb.accountRestored, message };
     }
@@ -1287,7 +1477,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     let r; try { r = JSON.parse(raw); } catch { return { state: "inert" }; }
     if (!r || !isSessionShape(r.session)) return { state: "inert" };
     if (projectId && (r.project || legacyProject) !== projectId) return { state: "other" };
-    return { state: "ours", session: r.session, raw };
+    const instanceId = typeof r.instanceId === "string" && r.instanceId ? r.instanceId : null;
+    return { state: "ours", session: r.session, instanceId, raw };
   }
   // 只删“我们检查过的那一份”残留凭证：删之前、写撤销标记之前都再读一次，存储里已经不是这一份（别的标签页刚登录 / 刚刷新令牌）就立刻停。
   // 返回 { ok:true } | { ok:false, changed:true } | { ok:false }。仍有一个同步语句之间的极小空档（浏览器没有跨标签页的原子比较删除），文档里如实写明。
@@ -1368,33 +1559,47 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   const deleteOutcome = (r) => (r.ok === true ? true : r.kind === "network" ? null : false);
   function deleteAccount() {
     if (!userId) return Promise.resolve({ ok: false, kind: "no-account" });
-    if (deleteOp && deleteOp.gen === acctGen && deleteOp.uid === userId) return deleteOp.promise; // 合并：同一个会话的删除已在进行
-    const op = { uid: userId, gen: acctGen, promise: null };
+    if (deleteOp && deleteOp.gen === acctGen && deleteOp.uid === userId && deleteOp.inst === loginInstanceId) return deleteOp.promise; // 合并：同一个登录实例的删除已在进行
+    const op = { uid: userId, gen: acctGen, inst: loginInstanceId, promise: null };
     deleteOp = op;
     op.promise = deleteAccountImpl(op);
     op.promise.finally(() => { if (deleteOp === op) deleteOp = null; }).catch(() => {});
     return op.promise;
   }
   async function deleteAccountImpl(op) {
-    const gen = op.gen, uid = op.uid;
-    const ours = () => gen === acctGen && userId === uid; // 还是发起删除时的那个账号、那一代会话
+    const gen = op.gen, uid = op.uid, inst = op.inst;
+    const verifyDeleteOwnership = () => {
+      if (gen !== acctGen || userId !== uid || loginInstanceId !== inst) return { ok: false, lost: true };
+      const own = checkSessionOwnership();
+      if (own.ok) return { ok: true };
+      if (own.kind === "lost") { dropLostSession(own.reason); return { ok: false, lost: true }; }
+      return { ok: false, lost: false };
+    };
+    const v0 = verifyDeleteOwnership();
+    if (!v0.ok) {
+      if (v0.lost) return { ok: false, kind: "session-lost", sessionLost: true, message: "登录状态已失效或已在其他页面切换，未执行删除" };
+      return { ok: false, kind: "local", message: "无法确认本机登录状态，未执行删除" };
+    }
     const guard = importGuard();
     if (guard) return guard;
     const t = await ensureToken(gen);
-    if (!ours()) return staleDelete(false, { cloudDeleted: false, notSent: true, message: "删除没有发出：这台设备在删除过程中已退出或换了账号。" });
+    const v1 = verifyDeleteOwnership();
+    if (!v1.ok) return staleDelete(false, { cloudDeleted: false, notSent: true, message: "删除没有发出：这台设备在删除过程中已退出或换了账号。" });
     if (!t.ok) return t;
     const afterTokenGuard = importGuard();
     if (afterTokenGuard) return afterTokenGuard;
     const sess = session; // 绑定发起时这一代会话的凭证：之后无论内存里换成谁，都只用它
     const r = await api.deleteAccount(sess);
-    if (!ours()) return staleDelete(deleteOutcome(r)); // 请求在途时本机已退出 / 换了账号：不读“当前账号”、不清任何本机数据，只报告云端结果
+    // 请求在途时本机已退出 / 换账号 / 同号重新登录：绝不清理共享存储中的新登录实例数据，仅报告云端三态结果
+    const v2 = verifyDeleteOwnership();
+    if (!v2.ok) return staleDelete(deleteOutcome(r));
     if (!r.ok) return r;
     let cleaned = false;
     try { cleaned = logoutLocal(storage, uid) && clearPendingImport(storage, uid); } catch { cleaned = false; }
     if (!cleaned) {
       // 云端已经删掉。本机清不干净时：停用旧令牌、留下副本、不宣称完全成功。
       disableStoredToken();
-      bumpAcct(); userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null;
+      bumpAcct(); userId = null; email = ""; loginInstanceId = null; baseline = null; pending = false; waiting = null; lastSyncedAt = null;
       setStatus("pending-local-cleanup", "账号已在云端删除，但这台设备还没清理完。请不要继续用这个登录。");
       return {
         ok: false,
@@ -1405,13 +1610,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         message: "账号已在云端删除，但这台设备还没清理完。旧登录已停用，请不要继续用。",
       };
     }
-    bumpAcct(); session = null; userId = null; email = ""; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”
+    bumpAcct(); session = null; userId = null; email = ""; loginInstanceId = null; baseline = null; pending = false; waiting = null; lastSyncedAt = null; // 退出后不再显示上一个账号的“最近确认同步”
     writeAuth(); setStatus(null);
     return { ok: true };
   }
 
   return {
-    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, retryRead, clearVerified: dropVerified, hasVerified: () => !!verified && now() < verified.expiresAt, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount,
+    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, retryRead, clearVerified: dropVerified, hasVerified: () => !!verified && now() < verified.expiresAt, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount, reconcileSession,
     account: () => (userId ? { userId, email } : null),
     status: () => ({ status, pending, message: lastError, detail: lastDetail, lastStatusAt, lastSyncedAt }),
   };

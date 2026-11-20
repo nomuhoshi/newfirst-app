@@ -64,9 +64,57 @@ const copyOf = (st, proj, uid = "u1") => loadAccount(view(st, proj), uid, { now:
   for (const proj of [TEST, PROD, "cloud-off"]) { const s = mk(st, proj); s.restore(freshState()); }
   check("游客记录原文不变", st.getItem(GUEST_KEY) === g);
 }
-{ // 写凭证时带项目标记
-  const src = (await import("node:fs")).readFileSync(new URL("../src/sync.js", import.meta.url), "utf8");
-  check("写凭证时带项目标记（源码约定）", /JSON\.stringify\(projectId \? \{ session, project: projectId \}/.test(src));
+{ // 写凭证时带项目标记与实例编号，恢复与正常刷新保留实例编号，且外项目凭证不被删除
+  let clock = 1_000_000;
+  const st = mkStorage();
+  const s1 = { accessToken: "at-1", refreshToken: "rt-1", expiresAt: clock + 120_000, userId: "u1", email: "me@example.com" };
+  const s2 = { accessToken: "at-2", refreshToken: "rt-2", expiresAt: clock + 3600_000, userId: "u1", email: "me@example.com" };
+  const runtimeApi = {
+    async sendCode() { return { ok: true }; },
+    async verifyCode() { return { ok: true, session: s1 }; },
+    async refresh() { return { ok: true, session: s2 }; },
+    async getProgress() { return { ok: true, row: null }; },
+    async createProgress() { return { ok: true, rev: 1 }; },
+    async saveProgress() { return { ok: true, rev: 2 }; },
+  };
+  const sync1 = createSync({ storage: st, api: runtimeApi, projectId: TEST, legacyProject: PROD, now: () => clock, today: () => "2026-11-04", schedule: () => 0 });
+  const v = await sync1.verify("me@example.com", "123456", freshState());
+  const rawAfterLogin = view(st, TEST).getItem(AUTH_KEY);
+  const parsedLogin = rawAfterLogin ? JSON.parse(rawAfterLogin) : null;
+  const instAfterLogin = parsedLogin?.instanceId;
+
+  // 新页面恢复同一测试项目会话，实例编号与项目标记保持一致
+  const sync2 = createSync({ storage: st, api: runtimeApi, projectId: TEST, legacyProject: PROD, now: () => clock, today: () => "2026-11-04", schedule: () => 0 });
+  const r2 = sync2.restore(freshState());
+  const rawAfterRestore = view(st, TEST).getItem(AUTH_KEY);
+  const parsedRestore = rawAfterRestore ? JSON.parse(rawAfterRestore) : null;
+
+  // 进入刷新窗口后执行同步刷新，更新令牌但保留同一登录实例编号
+  clock += 80_000;
+  const sy = await sync2.syncNow({ manual: true });
+  const rawAfterRefresh = view(st, TEST).getItem(AUTH_KEY);
+  const parsedRefresh = rawAfterRefresh ? JSON.parse(rawAfterRefresh) : null;
+
+  // 外项目命名空间里的正式库凭证原样保留不被删除
+  const prodRaw = JSON.stringify({ session: sess, project: PROD });
+  st.setItem(AUTH_KEY, prodRaw);
+  const sync3 = createSync({ storage: st, api: runtimeApi, projectId: TEST, legacyProject: PROD, now: () => clock, today: () => "2026-11-04", schedule: () => 0 });
+  sync3.restore(freshState());
+
+  check(
+    "运行时验证写入 project 与 instanceId、恢复及刷新保留实例编号且不删外项目凭证",
+    v.ok === true
+      && parsedLogin?.project === TEST
+      && typeof instAfterLogin === "string" && instAfterLogin.length > 0
+      && r2?.userId === "u1"
+      && parsedRestore?.project === TEST
+      && parsedRestore?.instanceId === instAfterLogin
+      && sy.ok === true
+      && parsedRefresh?.session?.accessToken === "at-2"
+      && parsedRefresh?.project === TEST
+      && parsedRefresh?.instanceId === instAfterLogin
+      && st.getItem(AUTH_KEY) === prodRaw
+  );
 }
 const pass = results.filter(Boolean).length;
 console.log(`\n凭证和账号副本按项目分开：${pass}/${results.length} 通过`);
