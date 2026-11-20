@@ -23,7 +23,22 @@ function classifyRefreshFailure(r) {
   return r.oauthError === "invalid_grant" || /^Invalid Refresh Token/i.test(String(r.message || ""));
 }
 
-export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeoutMs = 15000, isOnline = () => typeof navigator === "undefined" || navigator.onLine !== false }) {
+// Retry-After：delay-seconds（非负整数）或 HTTP-date（…GMT）。返回 { present, valid, sec }：
+//   缺失 / 空串 → present:false；格式不对（负数、小数、乱码、不是 GMT 的日期）→ present:true, valid:false；
+//   合法 → valid:true，sec = 还要等的整数秒（日期已过期 = 0；超大数字按 Number.MAX_SAFE_INTEGER，由调用方夹范围）。
+export function parseRetryAfter(raw, nowMs = Date.now()) {
+  if (raw === null || raw === undefined) return { present: false };
+  const v = String(raw).trim();
+  if (!v) return { present: false };
+  if (/^\d+$/.test(v)) { const n = Number(v); return { present: true, valid: true, sec: Number.isFinite(n) ? Math.min(n, Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER }; }
+  if (v.length <= 40 && /^[A-Za-z]{3}, \d{1,2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(v)) {
+    const t = Date.parse(v);
+    if (Number.isFinite(t)) return { present: true, valid: true, sec: Math.max(0, Math.ceil((t - nowMs) / 1000)) };
+  }
+  return { present: true, valid: false };
+}
+
+export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeoutMs = 15000, now = () => Date.now(), isOnline = () => typeof navigator === "undefined" || navigator.onLine !== false }) {
   const base = String(url || "").replace(/\/+$/, "");
   const configured = !!(base && anonKey);
 
@@ -63,8 +78,8 @@ export function createApi({ url, anonKey, fetchFn = (...a) => fetch(...a), timeo
       const kind = resp.status === 429 ? "rate-limit" : resp.status === 401 || resp.status === 403 ? "auth" : "server";
       const errorCode = data && typeof data === "object" && typeof data.error_code === "string" ? data.error_code : undefined;
       const oauthError = data && typeof data === "object" && typeof data.error === "string" ? data.error : undefined; // 老版本 / OAuth 风格：{ error: "invalid_grant", error_description }
-      const ra = Number(typeof resp.headers?.get === "function" ? resp.headers.get("retry-after") : NaN); // 只认秒数形式
-      return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}), ...(oauthError ? { oauthError } : {}), ...(Number.isFinite(ra) && ra > 0 ? { retryAfterSec: ra } : {}) };
+      const ra = parseRetryAfter(typeof resp.headers?.get === "function" ? resp.headers.get("retry-after") : null, now()); // 秒数或 HTTP 日期；缺失 / 非法都不带 retryAfterSec，调用方走保底等待
+      return { ok: false, kind, status: resp.status, message: String(msg), ...(errorCode ? { errorCode } : {}), ...(oauthError ? { oauthError } : {}), ...(ra.valid ? { retryAfterSec: ra.sec } : {}) };
     } finally { if (timer) clearTimeout(timer); }
   }
 

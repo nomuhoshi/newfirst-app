@@ -36,7 +36,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   let acctGen = 0;
   const staleResult = () => ({ ok: false, kind: "stale", stale: true, retryable: false, message: "账号已退出或切换，这次同步的结果已丢弃" });
   const abandonWaiters = new Set(); // 正占着本机写回锁的同步任务：代次前进时立刻让它们放掉锁（任务本身还在等网络，之后的结果会被丢弃）
-  function bumpAcct() { acctGen++; for (const f of [...abandonWaiters]) f(); abandonWaiters.clear(); running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
+  function bumpAcct() { acctGen++; syncCooldownUntil = 0; for (const f of [...abandonWaiters]) f(); abandonWaiters.clear(); running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
   // 本机写回失败与网络退避完全分开；按账号共享最佳努力计数，刷新页面也不能重新开始无限轮询。
   const LOCAL_RETRY_LIMIT = 3;
   let localWritebackFails = 0, localRetryUser = null, localRetryTimer = null, localRetryEpoch = 0, localRetryUnknown = false;
@@ -68,8 +68,14 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // Node 单进程测试可直接执行；浏览器没有 Web Locks 时普通自动同步安全停机。
     return fn();
   }
-  let cooldownUntil = 0; // 收到 429 之后的本地冷却截止时间（用注入的 now，测试可以拨快，不会真的发验证码）
-  const COOLDOWN_MS = 60_000;
+  // 收到 429 之后的本地冷却截止时间（用注入的 now，测试可以拨快，不会真的发验证码）。两份，各管各的生命周期：
+  //   cooldownUntil     发验证码 / 登录阶段的 429（还没有账号会话）
+  //   syncCooldownUntil 已登录会话的同步 429（含令牌刷新）——绑定账号会话代次：退出 / 换账号 / 登录完成时（bumpAcct）立刻作废，
+  //                     旧会话的等待不拖住新会话；旧任务回来时已经被代次拦下，不会再改写它。
+  // 等待多久：服务器给了合法的 Retry-After（秒数或 HTTP 日期）就照它等，夹在 [5 秒, 1 小时]；没给 / 格式不对一律保底 60 秒。
+  // 重复 429 只会把截止时间往后推（取较大值），不会缩短尚未结束的等待。
+  let cooldownUntil = 0, syncCooldownUntil = 0;
+  const COOLDOWN_MS = 60_000, COOLDOWN_MIN_MS = 5_000, COOLDOWN_MAX_MS = 3_600_000;
   let baseline = null, lastError = "", lastDetail = null; // lastDetail：失败的 {kind,status,errorCode,code}，只给界面分类用（界面不显示服务器原文）
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
   // 已验证、但读云端记录失败的登录：邮箱验证码是一次性的，验证接口已经把它用掉，不能再拿同一个码验证第二次。
@@ -148,11 +154,22 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   const clearStale = () => { try { storage.removeItem(STALE_KEY); } catch {} };
   const detailOf = (r) => (r ? { kind: r.kind, status: r.status, errorCode: r.errorCode, code: r.code } : null);
   const statusFromFailure = (r) => (r.kind === "network" ? "offline" : r.kind === "auth" ? "need-login" : r.kind === "rate-limit" ? "error" : "error");
-  const armCooldown = () => { cooldownUntil = now() + COOLDOWN_MS; };
-  const inCooldown = () => now() < cooldownUntil;
-  const rateLimited = () => ({ ok: false, kind: "rate-limit", retryable: false, retryAt: cooldownUntil, message: "发送太频繁了，请等一分钟再试。" });
-  // 任何 429 都进入冷却，并且不允许被当成“网络失败”去短间隔重试。
-  const noteRateLimit = (r) => { if (r && r.kind === "rate-limit") armCooldown(); return r; };
+  const cooldownMsFrom = (r) => {
+    const sec = r && r.retryAfterSec; // cloud-api 已解析好：合法的 Retry-After（秒数 / HTTP 日期）→ 非负整数秒；缺失 / 格式不对 → 没有这个字段
+    return Number.isFinite(sec) && sec >= 0 ? Math.min(COOLDOWN_MAX_MS, Math.max(COOLDOWN_MIN_MS, Math.ceil(sec * 1000))) : COOLDOWN_MS;
+  };
+  const armCooldown = (r, forSync = false) => {
+    const until = now() + cooldownMsFrom(r);
+    if (forSync) syncCooldownUntil = Math.max(syncCooldownUntil, until); else cooldownUntil = Math.max(cooldownUntil, until);
+  };
+  const coolUntil = () => Math.max(cooldownUntil, syncCooldownUntil);
+  const inCooldown = () => now() < coolUntil();
+  const rateLimited = () => {
+    const left = Math.max(0, coolUntil() - now());
+    return { ok: false, kind: "rate-limit", retryable: false, retryAt: coolUntil(), message: left <= COOLDOWN_MS ? "发送太频繁了，请等一分钟再试。" : `请求太频繁了，请约 ${Math.ceil(left / 60_000)} 分钟后再试。` };
+  };
+  // 任何 429 都进入冷却，并且不允许被当成“网络失败”去短间隔重试。noteRateLimit 只在同步任务里用（那里每个 await 之后都已经核对过代次）。
+  const noteRateLimit = (r) => { if (r && r.kind === "rate-limit") armCooldown(r, true); return r; };
   // 已经登录 A 时，不给 B 的邮箱发验证码 / 验证码校验请求：先在本机挡住，避免拿错账号的验证码。
   // 没有有效凭证、但有“换项目后同邮箱接管”的标记时，只放行标记里的同一个邮箱。
   function loginBlocked(addr) {
@@ -528,7 +545,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // 冷却期内不再调用发信接口。测试只用假接口，这里也不会向任何真实邮箱发验证码。
     if (inCooldown()) return rateLimited();
     const r = await (captchaToken ? api.sendCode(String(addr).trim(), captchaToken) : api.sendCode(String(addr).trim())); // 没有令牌时调用形状和以前完全一致
-    if (r && r.kind === "rate-limit") armCooldown();
+    if (r && r.kind === "rate-limit") armCooldown(r);
     return r;
   }
 
