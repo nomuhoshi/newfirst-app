@@ -359,6 +359,74 @@ await scenario("V5 换个邮箱：已验证会话作废", { verify: okVerify, ge
   await d.page.locator("[data-email]").waitFor();
   check("换个邮箱：回到邮箱页、已验证会话作废、没有登录", !(await hasVerified(d)) && !(await d.page.evaluate(() => !!window.__app.sync.account())));
 });
+// 2026-11-20（GPT1 任务 3）：重试读取被 429 限流 → 按钮显示倒计时并禁用，等待期间不发请求；等待跨过会话到期 → V6（不自动重发验证码）。
+// 页面里的时间用“偏移量”快进（Date.now 加上偏移，应用里所有倒计时 / 到期判断都读它）；浏览器只等真实的几秒。
+const RA = (sec) => ({ "retry-after": String(sec), "access-control-expose-headers": "Retry-After" });
+const shiftClock = (d, ms) => d.page.evaluate((ms) => { if (window.__shiftOff === undefined) { window.__shiftOff = 0; const real = Date.now.bind(Date); Date.now = () => real() + window.__shiftOff; } window.__shiftOff += ms; document.dispatchEvent(new Event("visibilitychange")); }, ms); // 同时模拟“从后台回来”
+const goText = (d) => T(d.page, "[data-verify]");
+const toWait = async (d) => { await sendTap(d); await d.page.locator("[data-code]").waitFor(); await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap(); await waitMsg(d, /云端读取太频繁/); };
+await scenario("V5w 重试读取被 429：按钮倒计时并禁用，等待期间不发请求；等完再点才读取", { verify: okVerify, getProgress: (r, n) => (n < 2 ? json(r, 429, { code: 429, error_code: "over_request_rate_limit", msg: CAN }, RA(7)) : json(r, 200, [])) }, async (d) => {
+  await toWait(d);
+  const m = await T(d.page, "[data-login-msg]");
+  check("V5w：提示“读取太频繁、请等 N 秒再点「重试读取」，不用重新输入验证码”；不说验证码错、不叫换新码、没有服务器原文", /请等 \d+ 秒再点「重试读取」/.test(m) && /不用重新输入验证码/.test(m) && !/验证码错误|重新发送/.test(m) && (await noRaw(d.page)), m);
+  const b0 = await goText(d);
+  check("V5w：按钮写“重试读取（N 秒）”（N ≤ 8）且禁用；弹窗还在；验证接口 1 次、读取 1 次", /^重试读取（[1-8] 秒）$/.test(b0) && (await d.page.locator("[data-verify]").isDisabled()) && (await d.page.locator("[data-code]").count()) === 1 && d.hits.verify === 1 && d.hits.get === 1, b0);
+  await d.page.locator("[data-verify]").evaluate((el) => el.click()); await d.page.locator("[data-code]").press("Enter"); // 禁用按钮 / 回车：都不该发请求
+  const direct = await d.page.evaluate(async () => { const r = await window.__app.sync.retryRead(window.__app.getState()); const v = await window.__app.sync.verify("t@example.com", "123456", window.__app.getState()); return [r.kind, r.stage, r.canRetry, v.kind, v.stage]; });
+  await d.page.waitForTimeout(300);
+  check("V5w：点禁用的按钮 / 回车 / 直接调用 retryRead 和同码 verify，都不发请求（读取仍是 1 次、验证接口仍是 1 次），仍有等待", d.hits.get === 1 && d.hits.verify === 1 && direct.join() === "rate-limit,read,true,rate-limit,read" && (await hasVerified(d)), JSON.stringify([d.hits, direct]));
+  await d.page.waitForFunction(() => document.querySelector("[data-verify]")?.textContent === "重试读取" && !document.querySelector("[data-verify]").disabled, null, { timeout: 15000 });
+  const m2 = await T(d.page, "[data-login-msg]");
+  check("等待结束：按钮恢复「重试读取」且可点，提示换回普通的“点「重试读取」再试一次”；等待期间一共只读取过 1 次", /验证码对了，但读取云端记录没成功/.test(m2) && d.hits.get === 1 && d.hits.verify === 1, m2);
+  await d.page.locator("[data-verify]").tap();
+  await d.page.locator('[data-choice="transfer"]').waitFor({ timeout: 15000 });
+  check("等完再点「重试读取」：读取第 2 次，进入游客进度选择；验证接口始终 1 次；发信接口始终 1 次（没有自动重发）", d.hits.get === 2 && d.hits.verify === 1 && d.hits.otp === 1);
+  await d.page.locator('[data-choice="transfer"]').tap();
+  await d.page.waitForFunction(() => !document.querySelector("[data-login]"), null, { timeout: 15000 });
+  check("选择后登录完成：已登录，XP 仍是 50", await d.page.evaluate(() => !!window.__app.sync.account() && window.__app.getState().xp === 50));
+});
+await scenario("V5w 从后台回来：倒计时按真实时间走（不是从头数）；到点恢复", { verify: okVerify, getProgress: (r, n) => (n < 2 ? json(r, 429, { code: 429, error_code: "over_request_rate_limit", msg: CAN }, RA(120)) : json(r, 200, [])) }, async (d) => {
+  await toWait(d);
+  const b0 = secondsIn(await goText(d));
+  check("初始倒计时约 120 秒", b0 >= 115 && b0 <= 120, String(b0));
+  await shiftClock(d, 100_000);
+  const b1 = secondsIn(await goText(d));
+  check("过了 100 秒（后台回来）：倒计时直接是约 20 秒，按钮仍禁用，期间没有新请求", b1 >= 17 && b1 <= 20 && (await d.page.locator("[data-verify]").isDisabled()) && d.hits.get === 1, String(b1));
+  await shiftClock(d, 30_000);
+  check("再过 30 秒：等待结束，按钮是「重试读取」且可点", (await goText(d)) === "重试读取" && !(await d.page.locator("[data-verify]").isDisabled()));
+  await d.page.locator("[data-verify]").tap();
+  await d.page.locator('[data-choice="transfer"]').waitFor({ timeout: 15000 });
+  check("点「重试读取」成功：读取共 2 次、验证接口 1 次", d.hits.get === 2 && d.hits.verify === 1);
+});
+await scenario("V5w 等待跨过会话到期：转 V6（请重新发送），不自动重发验证码，不再读取", { verify: okVerify, getProgress: (r) => json(r, 429, { code: 429, error_code: "over_request_rate_limit", msg: CAN }, RA(1000)) }, async (d) => {
+  await toWait(d);
+  check("等待 1000 秒、已验证会话只有 5 分钟：先显示倒计时", /^重试读取（\d+ 秒）$/.test(await goText(d)) && (await hasVerified(d)));
+  await shiftClock(d, 310_000);
+  await waitMsg(d, /这个验证码已经用过/);
+  const m = await T(d.page, "[data-login-msg]");
+  check("会话到期：V6——验证码已用过，请点「重新发送」；按钮回到「登录」且没有倒计时字样", /「重新发送」/.test(m) && !/重试读取/.test(m) && (await goText(d)) === "登录" && !(await hasVerified(d)), m);
+  check("没有自动重发验证码（发信接口仍是 1 次）、没有再读取（读取仍是 1 次）、验证接口 1 次、没有登录", d.hits.otp === 1 && d.hits.get === 1 && d.hits.verify === 1 && !(await d.page.evaluate(() => !!window.__app.sync.account())));
+});
+await scenario("V5w 等待期间：改验证码 / 换个邮箱 / 重新发送 / 关窗，都作废旧会话和旧倒计时", { verify: okVerify, getProgress: (r) => json(r, 429, { code: 429, error_code: "over_request_rate_limit", msg: CAN }, RA(300)) }, async (d) => {
+  await toWait(d);
+  await d.page.locator("[data-code]").fill("654321");
+  check("改验证码：已验证会话作废，按钮回到「登录」且可点（没有倒计时）", !(await hasVerified(d)) && (await goText(d)) === "登录" && !(await d.page.locator("[data-verify]").isDisabled()));
+  await d.page.locator("[data-verify]").tap(); await waitMsg(d, /云端读取太频繁/);
+  check("新码走正常验证（验证接口第 2 次），再次进入倒计时", d.hits.verify === 2 && /^重试读取（\d+ 秒）$/.test(await goText(d)));
+  await shiftClock(d, 61_000); // 让“重新发送”的 60 秒冷却结束
+  await d.page.locator("[data-resend]").tap(); await waitMsg(d, /已重新发送/);
+  check("重新发送：发信接口第 2 次；旧会话作废、按钮回到「登录」且可点", d.hits.otp === 2 && !(await hasVerified(d)) && (await goText(d)) === "登录" && !(await d.page.locator("[data-verify]").isDisabled()));
+  await d.page.locator("[data-code]").fill("111111"); await d.page.locator("[data-verify]").tap(); await waitMsg(d, /云端读取太频繁/);
+  await d.page.getByRole("button", { name: "换个邮箱" }).tap(); await d.page.locator("[data-email]").waitFor();
+  check("换个邮箱：回邮箱页，旧会话作废", !(await hasVerified(d)));
+  await shiftClock(d, 61_000); // 刚重发过：等“发送”的 60 秒冷却结束
+  await sendTap(d); await d.page.locator("[data-code]").waitFor();
+  check("同一个邮箱重新发码进入验证码页：按钮是「登录」（旧倒计时没有带过来）且可点", (await goText(d)) === "登录" && !(await d.page.locator("[data-verify]").isDisabled()));
+  await d.page.locator("[data-code]").fill("222222"); await d.page.locator("[data-verify]").tap(); await waitMsg(d, /云端读取太频繁/);
+  await d.page.locator("[data-code]").focus(); await d.page.keyboard.press("Escape");
+  await d.page.waitForFunction(() => !document.querySelector("[data-login]"));
+  check("关窗：旧会话作废，没有登录", !(await hasVerified(d)) && !(await d.page.evaluate(() => !!window.__app.sync.account())));
+});
 await scenario("选择后上传失败：登录已完成，提示是中文，没有服务器原文", { verify: okVerify, progress: (r) => json(r, 500, { code: 500, error_code: "unexpected_failure", msg: CAN }) }, async (d) => {
   await toChoice(d);
   await d.page.locator('[data-choice="transfer"]').tap();

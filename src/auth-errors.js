@@ -52,6 +52,8 @@ export const VERIFY_COPY = {
   // V5：已验证的会话还留在内存里（几分钟内有效）——点「重试读取」只重读云端，不用再输验证码、不再调用验证接口。
   // V6：不能再重试了（超过次数 / 超过时限 / 会话已失效）：邮箱验证码是一次性的，这个码已经用掉，只能「重新发送」换新的。
   V5: { text: () => "验证码对了，但读取云端记录没成功，还没完成登录。点「重试读取」再试一次，不用重新输入验证码。", cooldown: 0, diag: true },
+  // V5w：重试读取时服务器回了 429（限流）：会话还留着、也还能重试，但要等到倒计时结束；等待期间按钮是禁用的，不会发请求、也不消耗读取次数。
+  V5w: { text: (c) => `验证码对了，但云端读取太频繁，被限流了。请等 ${fmtWait(c.n)}再点「重试读取」，不用重新输入验证码。`, cooldown: 0, diag: true },
   V6: { text: () => "验证码对了，但云端记录一直没读成功，这次登录没有完成。这个验证码已经用过，请点「重新发送」换一个新的再登录（按钮还在倒计时就等它结束）。", cooldown: 0, diag: true },
 };
 export const CHOICE_COPY = {
@@ -98,6 +100,7 @@ export function classifySend(r, { preview = IS_PREVIEW, captchaOn } = {}) {
 export function classifyVerify(r) {
   if (!r || r.ok) return "";
   if (r.kind === "config") return "CFG";
+  if (r.stage === "read" && r.canRetry === true && (r.kind === "rate-limit" || http(r) === 429) && r.waitMs > 0) return "V5w"; // 读取被限流、还在等待：倒计时结束前不能重试
   if (r.stage === "read") return r.canRetry === true ? "V5" : "V6"; // 验证码已通过并被用掉，后面读云端记录失败：还能重试 → 「重试读取」；不能 → 换新验证码
   if (r.kind === "network") return "V3";
   if (r.kind === "rate-limit" || http(r) === 429) return "V2";
@@ -120,7 +123,7 @@ const clampMs = (ms) => Math.min(3600000, Math.max(10000, ms));
 
 function build(table, id, r, { xp = 0, fails = 1 } = {}) {
   const e = table[id];
-  const n = serverWaitSec(r) || (id === "S2" || id === "V2" ? 60 : 0);
+  const n = id === "V5w" ? Math.max(1, Math.ceil(r.waitMs / 1000)) : serverWaitSec(r) || (id === "S2" || id === "V2" ? 60 : 0);
   const cd = id === "S4" ? (fails >= 3 ? 300000 : 30000) : e.cooldown === "server" ? clampMs((serverWaitSec(r) ? serverWaitSec(r) + 1 : e.fallback / 1000) * 1000) : e.cooldown || 0;
   return {
     id, design: id, text: e.text({ n, fails, timedOut: r?.timedOut === true }), diag: e.diag ? diagLine(r) : "", xp: (id === "C1" || id === "C1d" ? xpLineSync : xpLine)(xp),
