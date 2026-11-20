@@ -48,7 +48,18 @@ async function fakeSupabase(ctx) {
     if (u.pathname === "/auth/v1/token") { const id = S.tokens.get(body.refresh_token); return id ? json(route, 200, issue(id, [...S.users].find(([, v]) => v === id)?.[0] || "")) : json(route, 400, { msg: "invalid refresh token" }); }
     if (u.pathname === "/auth/v1/logout") return json(route, 204);
     if (!uid) return json(route, 401, { message: "JWT expired" });
-    if (u.pathname === "/rest/v1/progress") return json(route, 200, S.rows.has(uid) ? [S.rows.get(uid)] : []);
+    if (u.pathname === "/rest/v1/progress") {
+      const gate = ctx.__g04Gate;
+      if (gate && !gate.used && gate.uid === uid) {
+        gate.used = true;
+        const rows = S.rows.has(uid) ? [JSON.parse(JSON.stringify(S.rows.get(uid)))] : [];
+        gate.entered.resolve();
+        await gate.release.promise;
+        try { return await json(route, gate.status, gate.status === 200 ? rows : { message: "injected late 503" }); }
+        finally { gate.done.resolve(); }
+      }
+      return json(route, 200, S.rows.has(uid) ? [S.rows.get(uid)] : []);
+    }
     if (u.pathname === "/rest/v1/rpc/create_progress") { if (S.rows.has(uid)) return json(route, 200, null); S.rows.set(uid, { doc: body.new_doc, rev: 1 }); return json(route, 200, 1); }
     if (u.pathname === "/rest/v1/rpc/save_progress") { const r = S.rows.get(uid); if (!r || r.rev !== body.expected_rev) return json(route, 200, null); r.doc = body.new_doc; r.rev++; return json(route, 200, r.rev); }
     if (u.pathname === "/rest/v1/rpc/delete_my_account") { S.rows.delete(uid); return json(route, 200, null); }
@@ -190,6 +201,55 @@ try {
     check("Q.3 存储恢复后再点一次成功（失败没有留下半截状态）", (await getRaw(d.page, pendKey)) === null);
     check("Q.3 没有页面脚本错误", d.errors.length === 0, JSON.stringify(d.errors));
     await d.ctx.close();
+  }
+  // ---- G-LOGIN-04：真实恢复入口读取挂起后，退出并建立 B 的新选择；旧成功 / 失败不影响新选择 ----
+  for (const lateStatus of [200, 503]) {
+    const oldEmail = "g04-old-" + lateStatus + "@example.com";
+    const newEmail = "g04-new-" + lateStatus + "@example.com";
+    const { d, uid } = await corruptedDevice("G04-" + lateStatus, oldEmail);
+    const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
+    const gate = { uid, status: lateStatus, used: false, entered: deferred(), release: deferred(), done: deferred() };
+    d.ctx.__g04Gate = gate;
+    let timer;
+    try {
+      await d.page.evaluate(() => {
+        const sync = window.__app.sync, original = sync.resumeGuestImportChoice.bind(sync);
+        sync.resumeGuestImportChoice = async (...args) => { const r = await original(...args); window.__g04ResumeResult = r; return r; };
+      });
+      await d.page.locator("[data-quarantine]").tap();
+      await d.page.getByRole("button", { name: "备份并继续", exact: true }).tap();
+      try {
+        await Promise.race([gate.entered.promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("G04 恢复读取没有到达门闩")), 10000); })]);
+      } finally { clearTimeout(timer); }
+
+      await d.page.locator("[data-logout]").tap();
+      await d.page.waitForFunction(() => window.__app.sync.account() === null);
+      await toMe(d);
+      await d.page.locator("[data-open-login]").tap();
+      await d.page.locator("[data-email]").fill(newEmail);
+      await d.page.locator("[data-send-code]").tap();
+      await d.page.locator("[data-code]").fill("123456");
+      await d.page.locator("[data-verify]").tap();
+      await d.page.locator("[data-choice=\"transfer\"]").waitFor();
+      const snapshot = () => d.page.evaluate(() => JSON.stringify(Object.entries(localStorage).sort(([a], [b]) => a.localeCompare(b))));
+      const before = await snapshot();
+      gate.release.resolve();
+      await d.page.waitForFunction(() => window.__g04ResumeResult !== undefined);
+      const stale = await d.page.evaluate(() => window.__g04ResumeResult);
+      check("G04 " + lateStatus + " 旧恢复返回顶层 stale", stale.ok === false && stale.stale === true && stale.needChoice !== true && stale.noChoiceNeeded !== true, JSON.stringify(stale));
+      // 新账号登录流程自己的选择框是 [data-choice="transfer"]（保留，恰好 1 个）；[data-import-choice] 是“恢复入口”打开的导入选择框——旧恢复迟到后绝不能打开它（0 个）
+      check("G04 " + lateStatus + " 旧结果不改共享存储，新选择框保留，旧恢复没有打开导入选择框", (await snapshot()) === before && (await d.page.locator("[data-choice=\"transfer\"]").count()) === 1 && (await d.page.locator("[data-import-choice]").count()) === 0);
+      check("G04 " + lateStatus + " 不显示旧恢复成功 / 失败提示", !/待办已处理，但还没能确认云端|云端已经有这份游客进度|^已同步。$/.test(await toast(d)));
+      await d.page.locator("[data-choice=\"transfer\"]").tap();
+      await d.page.waitForFunction(() => !document.querySelector("[data-choice=\"transfer\"]"));
+      check("G04 " + lateStatus + " 新账号的选择仍能完成且只导入一次", (await uidOf(d)) === S.users.get(newEmail) && xpIn(newEmail) === 80 && xpIn(oldEmail) === 0);
+      await syncNow(d); await syncNow(d);
+      check("G04 " + lateStatus + " 后续同步不重复导入，页面无脚本错误", xpIn(newEmail) === 80 && d.errors.length === 0, JSON.stringify(d.errors));
+    } finally {
+      clearTimeout(timer); gate.release.resolve();
+      if (gate.used) await gate.done.promise;
+      await d.ctx.close();
+    }
   }
 } catch (e) {
   check("恢复入口界面测试异常", false, String(e.stack || e).split("\n").slice(0, 4).join(" | "));
