@@ -382,6 +382,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       if (!q.ok) { showToast(safeMessage(q.message, "没有处理成功，原来的待办还在。")); rerender(); return; }
       showToast("损坏的待办已备份并移除。");
       const r = await sync.resumeGuestImportChoice(getState());
+      if (r.stale) return; // G-LOGIN-04：旧恢复结果不再提示、重绘或打开选择框
       if (!r.ok) { showToast("待办已处理，但还没能确认云端：" + errorText(r) + " 点“立即同步”可重试。"); rerender(); return; }
       if (r.needChoice) { rerender(); openImportChoice(r); return; }
       showToast(r.alreadyImported ? "云端已经有这份游客进度，不会重复加分。" : "已同步。"); rerender();

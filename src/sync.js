@@ -83,6 +83,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   const COOLDOWN_MS = 60_000, COOLDOWN_MIN_MS = 5_000, MAX_TIMER_MS = 2_147_483_647;
   let baseline = null, lastError = "", lastDetail = null; // lastDetail：失败的 {kind,status,errorCode,code}，只给界面分类用（界面不显示服务器原文）
   let waiting = null; // 登录中、等待用户选择“游客记录怎么办”
+  let resumeChoiceOp = null; // 恢复选择只接受最后一次操作；旧操作的收尾只能释放自己的登记
   // 已验证、但读云端记录失败的登录：邮箱验证码是一次性的，验证接口已经把它用掉，不能再拿同一个码验证第二次。
   // 所以把“验证通过拿到的会话”只放内存里短暂留着（不写存储、不当作登录态、不切账号、不清游客进度），用户点「重试读取」时只重读云端，
   // 不再调用验证接口。绑定邮箱 / userId / 本次流程代次；换邮箱、重发验证码、关窗、退出、到期（≤5 分钟且不超过会话有效期）都会作废；
@@ -807,6 +808,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   async function finishChoice(choice) {
     const ctx = waiting;
     if (!ctx) return { ok: false, kind: "local", message: "没有等待选择的登录" };
+    resumeChoiceOp = null; // G-LOGIN-04：用户已提交选择，尚在读取的旧恢复不得再替换它
     if (ctx.resume) {
       // “恢复后重新选择”：弹窗期间令牌可能已被刷新轮换，必须用当前会话，不能把挂起时那份旧令牌写回去。
       if (!session || !userId || userId !== ctx.session.userId) { waiting = null; return { ok: false, kind: "auth", message: "登录状态已变化，请重新操作" }; }
@@ -883,27 +885,50 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (!userId || !session) return { ok: false, kind: "auth", message: "需要先登录" };
     const g = importGuard(); if (g) return g;
     if (running) return { ok: false, kind: "busy", message: "正在同步，请稍后再试" };
-    const t = await ensureToken(); if (!t.ok) return t;
-    const startSnap = captureLoginStart();
-    if (!startSnap.ok) return { ok: false, kind: "local", message: "无法读取本机登录状态" };
-    const sess = session, uid = userId;
-    const remote = await api.getProgress(sess);
-    if (!remote.ok) return remote;
-    const remoteDoc = remote.row ? normalizeDoc(remote.row.doc) : null;
-    if (remoteDoc && !remoteDoc.ok) return { ok: false, kind: "data", code: remoteDoc.code, message: "云端记录：" + remoteDoc.message };
-    const L = loadAccount(storage, uid, { now: now() });
-    if (!L.ok) return { ok: false, kind: "local", message: L.message };
-    const guest = readGuest(storage);
-    const guestHas = guest.status === "ok" && guestHasLearning(guest.state);
-    const gid = getGuestId(storage);
-    const importStatus = remoteDoc && gid.ok ? guestImportStatus(remoteDoc.doc, gid.id, guest.state) : "new";
-    if (!guestHas || importStatus === "same") {
-      const r = await syncNow({ manual: true });
-      return { ok: r.ok, noChoiceNeeded: true, alreadyImported: importStatus === "same", sync: r, message: r.ok ? "" : r.message };
+    const op = { gen: acctGen, uid: userId, inst: loginInstanceId, verifyGen, waiting };
+    resumeChoiceOp = op;
+    const guardResumeChoice = () => {
+      // 先判本页操作身份：旧任务不能借复查共享存储去清掉新登录 / 新选择。
+      if (resumeChoiceOp !== op || op.gen !== acctGen || op.uid !== userId || op.inst !== loginInstanceId || op.verifyGen !== verifyGen || op.waiting !== waiting) return staleImport();
+      const own = checkSessionOwnership();
+      if (!own.ok) {
+        if (own.kind === "lost") { dropLostSession(own.reason); return staleImport(); }
+        return { ok: false, kind: "local", message: "无法确认本机登录状态" };
+      }
+      return importGuard();
+    };
+    try {
+      const beforeToken = guardResumeChoice(); if (beforeToken) return beforeToken;
+      const t = await ensureToken(op.gen);
+      const afterToken = guardResumeChoice(); if (afterToken) return afterToken;
+      if (!t.ok) return t;
+      const startSnap = captureLoginStart();
+      if (!startSnap.ok) return { ok: false, kind: "local", message: "无法读取本机登录状态" };
+      const sess = session, uid = op.uid;
+      const remote = await api.getProgress(sess);
+      const afterRead = guardResumeChoice(); if (afterRead) return afterRead;
+      if (!remote.ok) return remote;
+      const remoteDoc = remote.row ? normalizeDoc(remote.row.doc) : null;
+      if (remoteDoc && !remoteDoc.ok) return { ok: false, kind: "data", code: remoteDoc.code, message: "云端记录：" + remoteDoc.message };
+      const L = loadAccount(storage, uid, { now: now() });
+      if (!L.ok) return { ok: false, kind: "local", message: L.message };
+      const guest = readGuest(storage);
+      const guestHas = guest.status === "ok" && guestHasLearning(guest.state);
+      const gid = getGuestId(storage);
+      const importStatus = remoteDoc && gid.ok ? guestImportStatus(remoteDoc.doc, gid.id, guest.state) : "new";
+      const beforeChoice = guardResumeChoice(); if (beforeChoice) return beforeChoice;
+      if (!guestHas || importStatus === "same") {
+        const r = await syncNow({ manual: true });
+        const afterSync = guardResumeChoice(); if (afterSync) return afterSync;
+        if (r.stale) return r;
+        return { ok: r.ok, noChoiceNeeded: true, alreadyImported: importStatus === "same", sync: r, message: r.ok ? "" : r.message };
+      }
+      waiting = { session: sess, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, guestHas, baseState, leaveStale: false, resume: true, expectedLogin: { sid: startSnap.sid, instanceId: startSnap.instanceId } };
+      return { ok: true, needChoice: true, resume: true, cloudHasData: !!remoteDoc && sumXp(remoteDoc.doc) + Object.keys(remoteDoc.doc.done).length > 0,
+        guest: { xp: guest.state.xp ?? 0, lessons: Object.keys(guest.state.done ?? {}).filter((k) => guest.state.done[k]).length } };
+    } finally {
+      if (resumeChoiceOp === op) resumeChoiceOp = null;
     }
-    waiting = { session: sess, remote, remoteDoc: remoteDoc ? remoteDoc.doc : null, copy: L.copy, guest, guestHas, baseState, leaveStale: false, resume: true, expectedLogin: { sid: startSnap.sid, instanceId: startSnap.instanceId } };
-    return { ok: true, needChoice: true, resume: true, cloudHasData: !!remoteDoc && sumXp(remoteDoc.doc) + Object.keys(remoteDoc.doc.done).length > 0,
-      guest: { xp: guest.state.xp ?? 0, lessons: Object.keys(guest.state.done ?? {}).filter((k) => guest.state.done[k]).length } };
   }
 
   // 登录弹窗挂起期间，别的设备可能已经往云端写了新进度。所有实际写入前都必须重新读最新云端，
