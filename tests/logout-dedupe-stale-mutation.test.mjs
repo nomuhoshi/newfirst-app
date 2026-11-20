@@ -28,6 +28,7 @@ try {
     ["sync.js", "不合并重复退出（连点就发多次云端撤销）", "if (userId && logoutOp && logoutOp.uid === userId &&", "if (false && userId && logoutOp && logoutOp.uid === userId &&"],
     ["sync.js", "合并时不看会话代次（同号重新登录后，新会话的退出被合并进旧退出一起作废）", "logoutOp.uid === userId && logoutOp.gen === acctGen &&", "logoutOp.uid === userId &&"],
     ["sync.js", "所有权只看登记、不比较会话代次（删除账号取代在途退出后，旧退出仍当自己是所有者）", "const owns = () => logoutOp === op && acctGen === op.gen;", "const owns = () => logoutOp === op;"],
+    ["sync.js", "旧的令牌刷新迟到返回时不核对会话代次（旧令牌写进同号重新登录的新会话）", "    if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话，也不能写存储里的凭证\n    if (r.ok && isSessionShape(r.session) && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }", "    if (r.ok && isSessionShape(r.session) && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }"],
     ["sync.js", "强制退出在跑时，后来的退出不合并", "(!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise;", "(!dropping)) return logoutOp.promise;"],
     ["sync.js", "强制本机退出不能取代在途的联网强制退出（被合并过去，要等云端撤销）", "(!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise;", "(!dropping || logoutOp.dropping)) return logoutOp.promise;"],
     ["sync.js", "旧退出永远认为自己还是所有者（没有任何旧任务保护）", "const owns = () => logoutOp === op && acctGen === op.gen;", "const owns = () => true;"],

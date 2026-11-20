@@ -41,11 +41,21 @@ const BUILD_CAPTCHA_KEY = typeof __CAPTCHA_SITE_KEY__ !== "undefined" ? __CAPTCH
 
 export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, getState, onSwitchedIn, onSwitchedOut, rerender, makeCaptcha = () => createCaptcha({ siteKey: BUILD_CAPTCHA_KEY }) }) {
   const statusEls = new Set();
-  // 退出 / 切换账号共用一把“处理中”锁：任何一个在跑，两个按钮都禁用，重复点击（或点另一个按钮）不会再发起第二次退出；
-  // 锁在整个界面里只有一份，重新渲染出来的新卡片也沿用它（新按钮一出来就是禁用的）。
-  let logoutBusy = false;
-  const setLogoutBusy = (b) => { logoutBusy = b; try { for (const el of document.querySelectorAll("[data-logout],[data-switch]")) el.disabled = b; } catch {} };
-  const withLogoutLock = async (fn) => { if (logoutBusy) return; setLogoutBusy(true); try { await fn(); } finally { setLogoutBusy(false); } };
+  // 退出 / 切换账号共用一把“处理中”锁：任何一个在跑，退出、切换账号、重新登录、登录入口、删除账号的按钮都禁用（退出还没结束时不让别的账号操作插进来），
+  // 重复点击（或点另一个入口）不会再发起第二次操作；处理函数里还有一层兜底（按钮被绕过禁用也不执行）。
+  // 锁带所有权标记：只有拿到锁的那次操作结束时才能放锁，旧操作的 finally 不会解掉后来的锁；整个界面只有一份，重新渲染出的新卡片首帧就是禁用的。
+  // “退出后接着做的事”（切换账号要打开登录弹窗）由操作返回，放锁之后才执行，不会被自己的锁挡住。
+  const LOGOUT_LOCKED = "[data-logout],[data-switch],[data-relogin],[data-login-link],[data-delete-account]";
+  let logoutLock = null;
+  const setLogoutUi = (b) => { try { for (const el of document.querySelectorAll(LOGOUT_LOCKED)) el.disabled = b; } catch {} };
+  const lockedBtn = (b) => { if (logoutLock) b.disabled = true; return b; };
+  const withLogoutLock = async (fn) => {
+    if (logoutLock) return;
+    const mine = {}; logoutLock = mine; setLogoutUi(true);
+    let after = null;
+    try { after = await fn(); } finally { if (logoutLock === mine) { logoutLock = null; setLogoutUi(false); } }
+    if (typeof after === "function") after();
+  };
   function refreshStatus() {
     const s = sync.status();
     for (const el of [...statusEls]) { if (el.__shown && !el.isConnected) { statusEls.delete(el); continue; } paint(el, s); }
@@ -56,6 +66,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
   // 版面（规范 §5.1）：标题、说明、输入、错误区（输入框正下方）、发送按钮（吸底）、先不登录。
   // 键盘弹出时按钮不能被挡：弹窗高度跟着 --app-h（= visualViewport.height），错误区和按钮放在最先看到的位置。
   function openLogin({ reason = "", email: prefill = "" } = {}) {
+    if (logoutLock) return; // 退出还在处理中：不打开登录弹窗（按钮已禁用，这里是兜底）
     if (!api.configured) { showToast("云端暂未开通，现在只能在这台设备上学习。"); return; }
     let busy = false, inChoice = false, finished = false;
     const captcha = makeCaptcha(); // 每次打开登录弹窗一个；关闭（done / 弹窗被移出页面）时销毁
@@ -399,37 +410,38 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       const xp0 = xpBeforeLogout(), syn0 = syncedBeforeLogout();
       const r = await sync.logout();
       if (r.stale) return; // 这次退出已被别的操作取代（强制退出 / 重新登录）：什么都不做，不再走一次“已退出”
-      if (r.ok) { onSwitchedOut(); showToast(r.warning ? safeMessage(r.message, loggedOutText(xp0, syn0)) : loggedOutText(xp0, syn0)); if (then) then(); return; }
+      if (r.ok) { onSwitchedOut(); showToast(r.warning ? safeMessage(r.message, loggedOutText(xp0, syn0)) : loggedOutText(xp0, syn0)); return then; }
       if (r.stayed) sheetConfirm("云端退出失败", "这台设备仍保持登录。已同步的进度在云端；没同步的留在这台设备上，用同一个账号重新登录会接着上传，XP 会回来。可以稍后再试，或只在这台设备退出（云端会话可能仍有效）。", "只在这台设备退出", () => withLogoutLock(async () => {
         const f = await sync.forceLocalLogout();
         if (f.stale) return;
         if (!f.ok) { showToast(safeMessage(f.message, "还没退出。")); return; }
-        onSwitchedOut(); showToast(f.warning ? safeMessage(f.message, loggedOutText(xp0, syn0)) : loggedOutText(xp0, syn0)); if (then) then();
+        onSwitchedOut(); showToast(f.warning ? safeMessage(f.message, loggedOutText(xp0, syn0)) : loggedOutText(xp0, syn0)); return then;
       }), true);
       else if (r.kind === "import-corrupt" || r.kind === "import-read-failed") sheetConfirm("游客导入待办需要恢复", "云端同步已锁定，继续学习可保存在本机。仅在本机退出会保留游客记录、损坏待办和未上传账号副本；重新登录后仍需专门恢复，云端会话可能仍有效。", "仅在本机退出", () => withLogoutLock(async () => {
         const f = await sync.forceLocalLogout();
         if (f.stale) return;
         if (!f.ok) { showToast(safeMessage(f.message, "还没退出。")); return; }
-        onSwitchedOut(); showToast(safeMessage(f.message, "已在本机退出，数据已保留。")); if (then) then();
+        onSwitchedOut(); showToast(safeMessage(f.message, "已在本机退出，数据已保留。")); return then;
       }), true);
       else if (r.pending) sheetConfirm("有进度还没上传", "现在连不上云端。退出后这些进度会先留在这台设备上，用同一个账号重新登录时会接着上传，XP 会回来；建议联网后再退出。", "仍然退出", () => withLogoutLock(async () => {
         const f = await sync.logout({ force: true });
         if (f.stale) return;
         if (!f.ok) { showToast(safeMessage(f.message, "还没退出。")); return; }
-        onSwitchedOut(); showToast(f.warning ? safeMessage(f.message, loggedOutText(xp0, false)) : loggedOutText(xp0, false)); if (then) then();
+        onSwitchedOut(); showToast(f.warning ? safeMessage(f.message, loggedOutText(xp0, false)) : loggedOutText(xp0, false)); return then;
       }), true);
       else showToast(errorText(r));
     }
     card.append(h("h3", { text: "账号" }), h("p", { class: "acct-email", text: acc.email || "已登录" }), st, ...[recoveryBox()].filter(Boolean),
-      ...(sync.status().status === "need-login" ? [button("重新登录", () => openLogin({ reason: "登录已过期，重新登录后会接着上传。", email: acc.email || "" }), "btn3d primary wide", { "data-relogin": "" })] : []), // Y7
+      ...(sync.status().status === "need-login" ? [lockedBtn(button("重新登录", () => openLogin({ reason: "登录已过期，重新登录后会接着上传。", email: acc.email || "" }), "btn3d primary wide", { "data-relogin": "" }))] : []), // Y7
       (() => { const conflict = sync.status().status === "conflict"; const b = button("立即同步", async () => { const r = await sync.syncNow({ manual: true }); if (!r.ok) showToast(errorText(r)); else rerender(); }, "btn3d wide", { "data-sync-now": "" }); if (conflict) { b.disabled = true; b.title = "同步已暂停：这个账号在别处被覆盖过"; } return b; })(),
-      (() => { const out = button("退出登录", () => doLogout(), "btn3d", { "data-logout": "" }), sw = button("切换账号", () => doLogout(() => openLogin()), "btn3d", { "data-switch": "" }); if (logoutBusy) out.disabled = sw.disabled = true; return h("div", { class: "acct-row" }, out, sw); })(),
-      button("删除账号和云端记录", () => sheetConfirm("删除账号？", "会永久删除这个账号和云端的学习记录，不能恢复。这台设备上也会退出登录。", "永久删除", async () => {
+      (() => { const out = button("退出登录", () => doLogout(), "btn3d", { "data-logout": "" }), sw = button("切换账号", () => doLogout(() => openLogin()), "btn3d", { "data-switch": "" }); lockedBtn(out); lockedBtn(sw); return h("div", { class: "acct-row" }, out, sw); })(),
+      lockedBtn(button("删除账号和云端记录", () => { if (logoutLock) return; sheetConfirm("删除账号？", "会永久删除这个账号和云端的学习记录，不能恢复。这台设备上也会退出登录。", "永久删除", async () => {
+        if (logoutLock) return; // 退出还在处理中：不并行删除
         const r = await sync.deleteAccount();
         if (r.ok) { onSwitchedOut(); showToast("账号已删除。"); }
         else if (r.pendingLocalCleanup) { onSwitchedOut(); showToast(safeMessage(r.message, "账号已在云端删除，但这台设备还没清理完。")); }
         else showToast(errorText(r));
-      }, true), "btn3d danger-ghost wide", { "data-delete-account": "" }));
+      }, true); }, "btn3d danger-ghost wide", { "data-delete-account": "" })));
     paint(st, sync.status());
     return card;
   }
@@ -438,7 +450,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
   function accountRow() {
     if (!api.configured) return null;
     const acc = sync.account();
-    if (!acc) return button("登录 / 注册：换设备也能接着学", () => openLogin(), "acct-link", { "data-login-link": "" });
+    if (!acc) return lockedBtn(button("登录 / 注册：换设备也能接着学", () => openLogin(), "acct-link", { "data-login-link": "" }));
     const st = h("span", { class: "acct-mini", "data-sync-mini": "" }); statusEls.add(st);
     const row = h("div", { class: "acct-row-mini" }, h("span", { text: acc.email || "已登录" }), st);
     paint(st, sync.status());

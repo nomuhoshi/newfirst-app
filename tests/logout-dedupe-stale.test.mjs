@@ -215,6 +215,18 @@ const BADJWT = { code: 403, error_code: "bad_jwt", msg: "invalid JWT" };
   check("9 旧退出停在“先刷新令牌”，被取代并登录 B 后刷新回来：stale（不是“云端退出失败、仍保持登录”），B 的凭证 / 副本不变", r.stale === true && r.superseded === true && !r.stayed && snap(d.storage) === mid && consistent(d, EMAIL_B), JSON.stringify(r));
 }
 
+// ===== 9b. 旧退出停在“先刷新令牌”，被强制本机退出取代后【同号重新登录 A】，旧刷新迟到返回：新会话凭证逐字节不变（GPT1 15:00：默认代次检查已保护，补回归） =====
+for (const oldKind of ["普通退出"]) { // 联网强制退出不先刷新令牌（直接撤销），没有这个等待点
+  const S = fakeCloud(); S.expiresIn = 30;                        // 令牌快过期：退出前要先刷新
+  const d = device(S); await login(S, d, EMAIL_A);
+  const relRf = S.hold(REFRESH);
+  const old = oldKind === "普通退出" ? d.sync.logout() : d.sync.logout({ force: true }); await tick();
+  await d.sync.forceLocalLogout(); await login(S, d, EMAIL_A);
+  const mid = snap(d.storage), authMid = authRaw(d), refreshes0 = S.count["POST /auth/v1/token"] || 0;
+  relRf(); const r = await old; await tick();
+  check(`9b 旧${oldKind}的刷新挂起，被取代后同号重新登录，旧刷新迟到返回：新会话凭证 / 存储逐字节不变，结果 stale`, r.stale === true && authRaw(d) === authMid && snap(d.storage) === mid && consistent(d, EMAIL_A), JSON.stringify(r));
+}
+
 // ===== 10. 旧退出迟到返回时，新会话自己的退出正在等云端撤销：旧退出不能把“正在退出”的拦截清掉 =====
 {
   const S = fakeCloud(); const d = device(S); await login(S, d, EMAIL_A);

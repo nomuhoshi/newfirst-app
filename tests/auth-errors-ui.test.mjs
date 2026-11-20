@@ -471,6 +471,45 @@ await (async () => {
     check("完成后：已退出，登录弹窗只有 1 个（切换账号的回调只执行一次）", (await d.page.locator("[data-login]").count()) === 1 && !(await d.page.evaluate(() => !!window.__app.sync.account())));
   });
 })();
+// GPT1 15:00：退出处理中，重新登录 / 删除账号入口也一起禁用（现有按钮、重新渲染出的新卡片首帧、处理函数兜底）；失败后恢复；确认弹窗里的强制退出只执行一次
+const LOCKED = ["[data-logout]", "[data-switch]", "[data-delete-account]", "[data-relogin]"];
+const lockedState = (d) => d.page.evaluate((sels) => sels.map((s) => { const el = document.querySelector(s); return el ? (el.disabled ? "禁用" : "可点") : "无"; }), LOCKED);
+const reopenAccount = async (d) => { await d.page.locator("[data-me-back]").tap(); await d.page.locator('[data-me-menu="account"]').tap(); await d.page.waitForSelector("[data-account] [data-logout]"); };
+const showNeedLogin = async (d) => { await d.page.evaluate(() => { window.__app.sync.status = (() => { const o = window.__app.sync.status; return () => ({ ...o(), status: "need-login" }); })(); }); await reopenAccount(d); };
+await (async () => {
+  const g = gate();
+  await scenario("退出处理中：退出 / 切换 / 重新登录 / 删除入口全部禁用，新卡片首帧也是禁用，绕过禁用点击也不执行", { xp: 0, verify: okVerify, ...cloudWithRow(), logout: async (r) => { await g.p; return json(r, 204); } }, async (d) => {
+    await loggedInAccountCard(d); await showNeedLogin(d);
+    check("处理前：四个入口都可点（含“重新登录”）", (await lockedState(d)).join() === "可点,可点,可点,可点", (await lockedState(d)).join());
+    await d.page.locator("[data-logout]").tap();
+    await d.page.waitForFunction(() => document.querySelector("[data-logout]")?.disabled === true);
+    check("退出处理中：四个入口都禁用", (await lockedState(d)).join() === "禁用,禁用,禁用,禁用", (await lockedState(d)).join());
+    await d.page.locator("[data-delete-account]").evaluate((el) => { el.disabled = false; el.click(); });
+    await d.page.locator("[data-relogin]").evaluate((el) => { el.disabled = false; el.click(); });
+    await d.page.waitForTimeout(300);
+    check("绕过禁用点“删除账号”“重新登录”：不弹删除确认、不打开登录弹窗（处理函数兜底），没有任何额外请求", (await d.page.locator(".lsheet").count()) === 0 && (await d.page.locator("[data-login]").count()) === 0 && d.hits.logout === 1, JSON.stringify([d.hits, await d.page.locator(".lsheet").count()]));
+    await reopenAccount(d); // 处理中重新渲染出的新卡片（先把上面手动放开的按钮状态丢掉）
+    check("处理中重新渲染（离开再回到账号页）：新卡片首帧就是禁用的", (await lockedState(d)).join() === "禁用,禁用,禁用,无" || (await lockedState(d)).join() === "禁用,禁用,禁用,禁用", (await lockedState(d)).join());
+    g.go(); await d.page.waitForFunction(() => !window.__app.sync.account(), null, { timeout: 15000 });
+    check("放行后退出成功：没有账号，没有额外撤销请求", d.hits.logout === 1);
+  });
+})();
+await scenario("退出失败后：入口全部恢复；重新渲染状态一致；确认弹窗里的强制退出连点也只执行一次", { xp: 0, verify: okVerify, ...cloudWithRow(), logout: (r) => json(r, 503, { msg: CAN }) }, async (d) => {
+  await loggedInAccountCard(d); await showNeedLogin(d);
+  await d.page.locator("[data-logout]").tap();
+  await d.page.getByText("云端退出失败").waitFor({ timeout: 15000 });
+  check("撤销失败、弹出确认：四个入口都恢复可点", (await lockedState(d)).join() === "可点,可点,可点,可点", (await lockedState(d)).join());
+  await d.page.keyboard.press("Escape"); await d.page.waitForTimeout(300); // 先关掉失败弹窗
+  await reopenAccount(d);
+  check("失败后重新渲染：新卡片同样是可点（锁已放，状态一致）", (await lockedState(d)).join() === "可点,可点,可点,可点", (await lockedState(d)).join());
+  await d.page.locator("[data-logout]").tap(); await d.page.getByText("云端退出失败").waitFor({ timeout: 15000 }); // 弹窗再出现
+  await d.page.evaluate(() => { window.__toasts.length = 0; });
+  const btn = d.page.getByRole("button", { name: "只在这台设备退出" });
+  await btn.evaluate((el) => { el.click(); el.click(); }); // 确认按钮连点 / 重复触发
+  await d.page.waitForFunction(() => !window.__app.sync.account(), null, { timeout: 15000 }); await d.page.waitForTimeout(400);
+  const toasts = await d.page.evaluate(() => window.__toasts);
+  check("确认“只在这台设备退出”（连点两次）：只退出一次——已退出提示和回调各 1 次，没有账号，没有再联网撤销（撤销请求仍是 2 次：两次普通退出各一）", toasts.length === 1 && /已在这台设备退出/.test(toasts[0]) && d.hits.logout === 2, JSON.stringify([toasts, d.hits.logout]));
+});
 await scenario("被取代的旧退出返回（stale）：界面什么都不做——没有“已退出”提示、不切走账号、按钮恢复", { nav: "none" }, async (d) => {
   await patchedAccount(d, { status: "synced", xp: 120 });
   await logToasts(d.page); await d.page.evaluate(() => { window.__app.sync.logout = async () => ({ ok: false, kind: "stale", stale: true, superseded: true, retryable: false, message: "" }); });
