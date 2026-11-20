@@ -1357,17 +1357,35 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     try { if (getCurrentAccount(storage)) storage.setItem(SESSION_KEY, ""); } catch {}
   }
 
-  async function deleteAccount() {
-    if (!userId) return { ok: false, kind: "no-account" };
+  // 删除账号：请求发出前就绑定“哪个账号、哪一代会话”，每次异步返回后复查；所有权变了（退出 / 强制退出 / 换账号 / 重新登录）就不再清理本机，
+  // 只如实报告云端结果（cloudDeleted）。云端删除是不可逆的，所以请求绝不能拿别的会话的令牌发出去：令牌刷新返回后先复查，再发。
+  // 同一个会话重复调用合并成同一个（只发一次删除请求）。
+  let deleteOp = null;
+  const staleDelete = (cloudDeleted, extra = {}) => ({ ok: false, kind: "stale", stale: true, superseded: true, retryable: false, cloudDeleted,
+    message: cloudDeleted ? "账号已在云端删除。这台设备在删除过程中已退出或换了账号，本机没有改动。" : "删除没有完成，云端报错了；这台设备在删除过程中已退出或换了账号，本机没有改动。", ...extra });
+  function deleteAccount() {
+    if (!userId) return Promise.resolve({ ok: false, kind: "no-account" });
+    if (deleteOp && deleteOp.gen === acctGen && deleteOp.uid === userId) return deleteOp.promise; // 合并：同一个会话的删除已在进行
+    const op = { uid: userId, gen: acctGen, promise: null };
+    deleteOp = op;
+    op.promise = deleteAccountImpl(op);
+    op.promise.finally(() => { if (deleteOp === op) deleteOp = null; }).catch(() => {});
+    return op.promise;
+  }
+  async function deleteAccountImpl(op) {
+    const gen = op.gen, uid = op.uid;
+    const ours = () => gen === acctGen && userId === uid; // 还是发起删除时的那个账号、那一代会话
     const guard = importGuard();
     if (guard) return guard;
-    const t = await ensureToken();
+    const t = await ensureToken(gen);
+    if (!ours()) return staleDelete(false, { cloudDeleted: false, notSent: true, message: "删除没有发出：这台设备在删除过程中已退出或换了账号。" });
     if (!t.ok) return t;
     const afterTokenGuard = importGuard();
     if (afterTokenGuard) return afterTokenGuard;
-    const r = await api.deleteAccount(session);
+    const sess = session; // 绑定发起时这一代会话的凭证：之后无论内存里换成谁，都只用它
+    const r = await api.deleteAccount(sess);
+    if (!ours()) return staleDelete(r.ok === true); // 请求在途时本机已退出 / 换了账号：不读“当前账号”、不清任何本机数据，只报告云端结果
     if (!r.ok) return r;
-    const uid = userId;
     let cleaned = false;
     try { cleaned = logoutLocal(storage, uid) && clearPendingImport(storage, uid); } catch { cleaned = false; }
     if (!cleaned) {
