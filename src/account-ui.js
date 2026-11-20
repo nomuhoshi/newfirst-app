@@ -438,7 +438,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       lockedBtn(button("删除账号和云端记录", () => { if (logoutLock) return; sheetConfirm("删除账号？", "会永久删除这个账号和云端的学习记录，不能恢复。这台设备上也会退出登录。", "永久删除", async () => {
         if (logoutLock) return; // 退出还在处理中：不并行删除
         const r = await sync.deleteAccount();
-        if (r.stale) { showToast(safeMessage(r.message, r.cloudDeleted ? "账号已在云端删除。这台设备在删除过程中已退出或换了账号，本机没有改动。" : "删除没有完成。")); return; } // 删除期间这台设备已退出 / 换了账号：不走“已删除并退出”的回调，不动现在的账号
+        if (r.stale) { showToast(safeMessage(r.message, r.cloudDeleted === true ? "账号已在云端删除。这台设备在删除过程中已退出或换了账号，本机没有改动。" : r.cloudDeleted === null ? "无法确认旧账号是否已删除；当前登录和本机数据未改动。" : "删除没有完成。")); return; } // 删除期间这台设备已退出 / 换了账号：不走“已删除并退出”的回调，不动现在的账号
         if (r.ok) { onSwitchedOut(); showToast("账号已删除。"); }
         else if (r.pendingLocalCleanup) { onSwitchedOut(); showToast(safeMessage(r.message, "账号已在云端删除，但这台设备还没清理完。")); }
         else showToast(errorText(r));

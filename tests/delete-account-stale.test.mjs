@@ -32,7 +32,14 @@ function fakeCloud() {
     const u = new URL(url), path = u.pathname, method = init.method || "GET", key = `${method} ${path}`, body = init.body ? JSON.parse(init.body) : null;
     S.count[key] = (S.count[key] || 0) + 1;
     const gi = S.gates.findIndex((x) => x.re.test(key));
-    if (gi >= 0) { const g = S.gates.splice(gi, 1)[0]; await g.p; if (g.failStatus) { const fs = g.failStatus; S.log.push(`${key} → ${fs.status ?? fs}（挂起后放行）`); return J(fs.status ?? fs, fs.body ?? { msg: "x" }); } }
+    if (gi >= 0) { const g = S.gates.splice(gi, 1)[0]; await g.p;
+      if (g.failStatus && g.failStatus.lose) { // 服务端已经提交了删除，但响应没回来：drop = 连接断了；body = 状态码 200 但读正文失败；stall = 正文一直不来（超时）
+        const uidL = S.tokens.get(String(init.headers?.Authorization || "").replace(/^Bearer /, "")); if (uidL) S.rows.delete(uidL); S.log.push(`${key} → 服务端已提交，响应丢失（${g.failStatus.lose}）`);
+        if (g.failStatus.lose === "drop") throw new TypeError("Failed to fetch");
+        if (g.failStatus.lose === "body") return { ok: true, status: 200, headers: { get: () => null }, text: async () => { throw new TypeError("body stream error"); } };
+        return { ok: true, status: 200, headers: { get: () => null }, text: () => new Promise(() => {}) };
+      }
+      if (g.failStatus) { const fs = g.failStatus; S.log.push(`${key} → ${fs.status ?? fs}（挂起后放行）`); return J(fs.status ?? fs, fs.body ?? { msg: "x" }); } }
     const rule = S.rules.find((r) => r.times > 0 && r.re.test(key));
     if (rule && rule.stall) { rule.times--; S.log.push(`${key} → 超时`); return new Promise((_, rej) => init.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")))); }
     if (rule) { rule.times--; S.log.push(`${key} → ${rule.status}`); return J(rule.status, rule.body); }
@@ -118,6 +125,23 @@ for (const [who, email] of [["A→B", EMAIL_B], ["A→A", EMAIL_A]]) for (const 
   check(`1 ${who}，删除响应迟到${lateFails ? "失败" : "成功"}：结果如实说明云端${lateFails ? "没有删掉" : "已删除"}（cloudDeleted=${!lateFails}）`, r.cloudDeleted === !lateFails, JSON.stringify(r));
   const sy = await d.sync.syncNow({ manual: true });
   check(`1 ${who}，之后新会话的 30 XP 照常上传（副本没被清掉），云端 ${email} 为 30 XP`, sy.ok === true && S.xpOf(email) === 30, JSON.stringify([sy, S.xpOf(email)]));
+}
+
+// ===== 1b. 删除请求发出后响应丢了（服务端可能已提交）：结果是“未知”，不能说成“删除没有完成” =====
+for (const lose of ["drop", "body", "stall"]) for (const [who, email] of [["A→B", EMAIL_B], ["A→A", EMAIL_A]]) {
+  const S = fakeCloud(); const d = device(S); await login(S, d, EMAIL_A);
+  const rel = S.hold(DEL, { lose });
+  const del = d.sync.deleteAccount(); await tick();
+  await d.sync.forceLocalLogout();
+  const v = await login(S, d, email);
+  finishLesson(d, "u1-l1", 30);
+  const mid = snap(d.storage), midStatus = JSON.stringify(statusOf(d)), midAuth = authRaw(d);
+  rel(); const w = await within(del, 3000); const r = w.v; await tick();
+  check(`1b ${who}，服务端已提交但响应丢失（${lose}）：结果是 stale + cloudDeleted:null（未知），提示“无法确认旧账号是否已删除”，不是“删除没有完成”`, w.settled && v.ok === true && r.stale === true && r.cloudDeleted === null && /无法确认旧账号是否已删除；当前登录和本机数据未改动/.test(r.message) && !/没有完成/.test(r.message), JSON.stringify(r));
+  check(`1b ${who}（${lose}）：新会话原样保留（存储逐字节不变、凭证 / 状态不变）`, snap(d.storage) === mid && authRaw(d) === midAuth && JSON.stringify(statusOf(d)) === midStatus && consistent(d, email), "");
+  check(`1b ${who}（${lose}）：没有自动重删（删除接口仍只有 1 次）`, dels(S) === 1, `删除接口=${dels(S)}`);
+  const sy = await d.sync.syncNow({ manual: true });
+  check(`1b ${who}（${lose}）：之后新会话的 30 XP 照常上传，云端 ${email} 为 30 XP`, sy.ok === true && S.xpOf(email) === 30, JSON.stringify([sy, S.xpOf(email)]));
 }
 
 // ===== 2. 删除请求发出之前（令牌刷新期间）会话已被取代：绝不能发出删除请求（否则会拿新账号的令牌删掉新账号） =====

@@ -520,9 +520,11 @@ const loginAgain = async (d) => { // 退出后在“我的 → 账号”里重�
   if (await d.page.locator('[data-choice="cloud"]').count()) await d.page.locator('[data-choice="cloud"]').tap(); // 游客记录第一次登录时已处理过，通常不会再问
   await d.page.waitForFunction(() => !document.querySelector("[data-login]") && !!window.__app.sync.account(), null, { timeout: 15000 });
 };
-for (const lateFails of [false, true]) await (async () => {
+// 迟到结果三种：成功 / 云端明确报错 / 响应丢了（连接被掐断，服务端可能已提交 → 结果未知）
+for (const outcome of ["ok", "fail", "lost"]) await (async () => {
+  const lateFails = outcome === "fail", lost = outcome === "lost", label = lost ? "丢失（结果未知）" : lateFails ? "失败" : "成功";
   const g = gate();
-  await scenario(`删除账号请求在途时本机退出并重新登录，删除响应迟到${lateFails ? "失败" : "成功"}：只提示云端结果，不清新会话，不走“已删除”回调`, { xp: 0, verify: okVerify, ...cloudWithRow(), del: async (r) => { await g.p; return lateFails ? json(r, 503, { msg: CAN }) : json(r, 200, null); } }, async (d) => {
+  await scenario(`删除账号请求在途时本机退出并重新登录，删除响应迟到${label}：只提示云端结果，不清新会话，不走“已删除”回调`, { xp: 0, verify: okVerify, ...cloudWithRow(), del: async (r) => { await g.p; if (lost) return r.abort("connectionreset"); return lateFails ? json(r, 503, { msg: CAN }) : json(r, 200, null); } }, async (d) => {
     await loggedInAccountCard(d);
     await d.page.locator("[data-delete-account]").tap();
     await d.page.getByRole("button", { name: "永久删除" }).tap();
@@ -535,7 +537,7 @@ for (const lateFails of [false, true]) await (async () => {
     await d.page.evaluate(() => { document.querySelector("[data-account]").dataset.mark = "kept"; }); // 标记当前账号卡：若迟到结果触发了“已退出”回调（重新渲染），标记会丢
     g.go(); await d.page.waitForTimeout(800);
     const toasts = await d.page.evaluate(() => window.__toasts);
-    check(`迟到的删除响应（${lateFails ? "失败" : "成功"}）：只出现一条说明云端结果的提示，没有“账号已删除。”回调提示`, toasts.length === 1 && (lateFails ? /删除没有完成/.test(toasts[0]) : /账号已在云端删除/.test(toasts[0])) && !toasts.includes("账号已删除。"), JSON.stringify(toasts));
+    check(`迟到的删除响应（${label}）：只出现一条说明云端结果的提示，没有“账号已删除。”回调提示${lost ? "，且是“无法确认”而不是“删除没有完成”" : ""}`, toasts.length === 1 && (lost ? /无法确认旧账号是否已删除/.test(toasts[0]) && !/没有完成/.test(toasts[0]) : lateFails ? /删除没有完成/.test(toasts[0]) : /账号已在云端删除/.test(toasts[0])) && !toasts.includes("账号已删除。"), JSON.stringify(toasts));
     check("迟到的删除结果没有触发“已退出”回调：当前账号卡没有被重新渲染（标记还在）", await d.page.evaluate(() => document.querySelector("[data-account]")?.dataset.mark === "kept"));
     check("新会话原样保留：仍是登录状态，本机存储逐字节不变（凭证 / 账号副本 / 账号指针都在），删除接口仍只有 1 次", (await d.page.evaluate(() => !!window.__app.sync.account())) && (await dump(d.page)) === before && d.hits.del === 1);
   });
