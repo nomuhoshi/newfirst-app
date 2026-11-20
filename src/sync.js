@@ -36,7 +36,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   let acctGen = 0;
   const staleResult = () => ({ ok: false, kind: "stale", stale: true, retryable: false, message: "账号已退出或切换，这次同步的结果已丢弃" });
   const abandonWaiters = new Set(); // 正占着本机写回锁的同步任务：代次前进时立刻让它们放掉锁（任务本身还在等网络，之后的结果会被丢弃）
-  function bumpAcct() { acctGen++; syncCooldownUntil = 0; wakeToken = null; for (const f of [...abandonWaiters]) f(); abandonWaiters.clear(); running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
+  function bumpAcct() { acctGen++; loggingOut = false; syncCooldownUntil = 0; wakeToken = null; for (const f of [...abandonWaiters]) f(); abandonWaiters.clear(); running = null; again = false; timer = null; retryTimer = null; netFails = 0; localRetryEpoch++; localRetryTimer = null; }
   // 本机写回失败与网络退避完全分开；按账号共享最佳努力计数，刷新页面也不能重新开始无限轮询。
   const LOCAL_RETRY_LIMIT = 3;
   let localWritebackFails = 0, localRetryUser = null, localRetryTimer = null, localRetryEpoch = 0, localRetryUnknown = false;
@@ -1117,17 +1117,19 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   //   sessionState "token-invalid"（bad_jwt）→ 只能说明访问令牌坏了，会话还在不在要核实：refresh 被拒 = 已死；
   //     refresh 还活着 = 拿新令牌再 signOut 一次（刷新会轮换 refresh token，新凭证必须写回存储，onSession 通知调用方更新回滚快照）；
   //   通用 403、路由 404、代理错误、5xx、断网等一律算失败，调用方要回滚并保持登录。
-  async function revokeCloudSession(sess, { onSession, detached = false } = {}) {
+  async function revokeCloudSession(sess, { onSession, detached = false, isCurrent = null } = {}) {
     if (!sess || !isSessionShape(sess)) return { ok: true, alreadyInvalid: true };
     const fail = (so) => ({ ok: false, kind: so.kind || "server", message: so.message || "退出云端失败" });
     try {
       let so = await api.signOut(sess, "local");
+      if (isCurrent && !isCurrent()) return { ok: false, kind: "stale", superseded: true, message: "" }; // 这次退出已被取代（强制本机退出 / 删除账号 / 又登录了）：后面的刷新、写凭证都不做，免得改到新会话
       if (!so || so.ok !== false) return { ok: true };
       if (so.sessionState === "gone") return { ok: true, alreadyInvalid: true };
       if (so.sessionState !== "token-invalid") return fail(so);
       // detached（强制退出）：本机凭证已经清掉，撤销过程只用局部凭证，不读也不写登录态（不 adopt、不 writeAuth、不动 session / email）。
       if (!detached) adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌：用最新的核实，别拿旧令牌去撞“已使用”
       const rf = await api.refresh(!detached && isSessionShape(session) ? session : sess);
+      if (isCurrent && !isCurrent()) return { ok: false, kind: "stale", superseded: true, message: "" }; // 同上：刷新返回时已被取代，不能把旧账号轮换出来的令牌写进新会话 / 存储
       // 只有明确证明刷新令牌 / 会话已死（sessionState "dead"）才算已退出；通用 403、路由 404、请求格式错误、429、5xx、断网都算失败。
       if (!rf.ok) return rf.sessionState === "dead" ? { ok: true, alreadyInvalid: true } : fail(rf);
       if (!isSessionShape(rf.session) || rf.session.userId !== (detached ? sess.userId : userId)) return { ok: false, kind: "auth", message: "登录账号不一致，暂未退出" };
@@ -1135,6 +1137,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!detached) { session = cur; email = session.email || email; writeAuth(); }
       if (onSession) onSession();
       so = await api.signOut(cur, "local");
+      if (isCurrent && !isCurrent()) return { ok: false, kind: "stale", superseded: true, message: "" };
       if (!so || so.ok !== false) return { ok: true };
       if (so.sessionState === "gone") return { ok: true, alreadyInvalid: true };
       return fail(so);
@@ -1151,7 +1154,28 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     setStatus(null);
   }
 
-  async function logout({ force = false, forceLocal = false } = {}) {
+  // 退出操作的所有权：同一个账号会话同一时间只有一个“退出”在跑。
+  //   普通退出重复调用 → 合并成同一个（只撤销一次云端会话，调用方拿到同一个结果）；已有强制退出在跑时，强制 / 普通都合并过去。
+  //   强制退出（force / forceLocal）可以取代在途的普通退出（forceLocal 还能取代在途的联网强制退出，它不联网、不等撤销）：取代之后，旧退出的任何迟到结果（撤销成功 / 失败 / 刷新）都不能再动本机和内存——
+  //   不撤销新会话、不回滚旧账号、不清新凭证、不改状态，也不会让界面再走一次“已退出”。
+  //   只合并“当前会话”的退出（logoutOp.gen === acctGen）：同一个账号重新登录之后代次已变，在途的旧退出只是过期登记，新会话的退出必须独立执行，不能被合并进旧的、再随旧的一起作废。
+  //   所有权 = logoutOp 仍是自己 && 会话代次没被别人推进过（登录 / 删除账号 / 强制退出都会推进代次；自己推进后用 ownBump 同步登记）。
+  let logoutOp = null;
+  const supersededLogout = () => ({ ok: false, kind: "stale", stale: true, superseded: true, retryable: false, message: "" });
+  function logout(opts = {}) {
+    const dropping = !!(opts.force || opts.forceLocal);
+    const local = !!opts.forceLocal; // 强制本机退出不联网：不能为了合并而去等在途强制退出的云端撤销，所以它取代在途的联网退出
+    if (userId && logoutOp && logoutOp.uid === userId && logoutOp.gen === acctGen && (!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise; // 合并：同一个会话已有退出在跑
+    const op = { uid: userId, dropping, local, gen: acctGen, promise: null };
+    if (userId) logoutOp = op;
+    const promise = logoutImpl(op, opts);
+    op.promise = promise;
+    promise.finally(() => { if (logoutOp === op) logoutOp = null; }).catch(() => {});
+    return promise;
+  }
+  async function logoutImpl(op, { force = false, forceLocal = false } = {}) {
+    const owns = () => logoutOp === op && acctGen === op.gen;
+    const ownBump = () => { bumpAcct(); op.gen = acctGen; }; // 自己前进代次：登记新代次，自己仍然是所有者
     dropVerified(); // 退出（含强制本机退出，forceLocalLogout 走这里）：待读取的已验证会话作废、流程代次前进——没有登录账号时也要做，在途的旧读取返回后会被丢弃
     if (!userId) { bumpAcct(); waiting = null; return { ok: true }; } // 还没登录（正停在“游客记录怎么办”的选择上）：在途的 finishChoice 也要作废，迟到完成不得复活账号
     const dropping = force || forceLocal;
@@ -1189,6 +1213,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     }
     if (pending && !dropping) {
       const r = await syncNow();
+      if (!owns()) return supersededLogout();
       if (!r.ok) return { ok: false, pending: true, kind: r.kind, message: r.message };
     }
     const uid = userId;
@@ -1204,9 +1229,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       const c = cleanLocal(uid, { clearAuth: true, keepCopy });
       if (!c.ok) return c.result;
       // 本机已经清完：先作废所有在途的旧同步，再去等云端撤销（撤销可能很慢）。否则撤销等待期间，旧同步的迟到刷新会把刚清掉的凭证重新写回。
-      bumpAcct(); session = null;
+      ownBump(); session = null;
       if (forceLocal) { finishLocalLogout(); return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出（没有联网）。云端会话可能仍有效。" }; }
-      const rv = await revokeCloudSession(sess, { detached: true });
+      const rv = await revokeCloudSession(sess, { detached: true, isCurrent: owns });
+      if (!owns()) return supersededLogout(); // 撤销等待期间被取代（又强制退出过 / 重新登录了）：不再收尾，不碰新会话
       finishLocalLogout();
       if (!rv.ok) return { ok: true, cloudSessionMaybeValid: true, warning: "cloud-session-maybe-valid", message: "已在这台设备退出。云端会话可能仍有效。" };
       return { ok: true };
@@ -1215,16 +1241,18 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (sess && isSessionShape(sess)) {
       // access token 快过期就先刷新；刷新被拒 = 会话已经失效，不用再撤销；断网等其他失败 → 不退出（没法撤销云端会话）。
       const t = await ensureToken();
+      if (!owns()) return supersededLogout();
       // 刷新失败只有“明确证明会话已死”才继续退出（没东西可撤销）；其他失败（权限错误、路由错误、请求格式错误、429、断网、账号不一致）都先不动本机。
       if (!t.ok && t.sessionState !== "dead") return { ok: false, stayed: true, kind: t.kind || "server", pending: copyStillUnsent(uid), message: t.message || "退出云端失败，暂未退出" };
     }
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
-    bumpAcct(); // 同上：本机清理已成功，等云端撤销之前先作废旧同步；撤销失败时下面照旧回滚，回滚后登录态继续用新的代次
+    ownBump(); // 同上：本机清理已成功，等云端撤销之前先作废旧同步；撤销失败时下面照旧回滚，回滚后登录态继续用新的代次
     loggingOut = true; // 撤销等待期间内存里 session / userId 还在（撤销失败要回滚），新触发的同步一律拒绝
     let rv;
-    try { rv = await revokeCloudSession(session, { onSession: () => { try { c.snap.authRaw = storage.getItem(AUTH_KEY); } catch { /* 读不到就保留旧快照 */ } } }); }
-    finally { loggingOut = false; }
+    try { rv = await revokeCloudSession(session, { isCurrent: owns, onSession: () => { try { c.snap.authRaw = storage.getItem(AUTH_KEY); } catch { /* 读不到就保留旧快照 */ } } }); }
+    finally { if (owns()) loggingOut = false; } // 被取代时标志已由取代者的 bumpAcct 清掉；这里不能把后来新退出设的标志清掉
+    if (!owns()) return supersededLogout(); // 旧退出被取代：撤销成功 / 失败都不再回滚、不清凭证、不动状态
     if (!rv.ok) {
       const rb = rollbackLocal(uid, c.snap);
       const message = rb.all ? rv.message : `${rv.message}（本机状态恢复不完整，请检查登录状态和学习副本）`;
