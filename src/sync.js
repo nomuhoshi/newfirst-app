@@ -168,11 +168,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   function armWake() {
     if (!userId || !session) return;
     const g = acctGen, tok = {}; wakeToken = tok; // 新的一次覆盖旧的：旧定时器到点发现令牌不是自己就什么都不做
-    const ms = Math.max(1, Math.min(syncCooldownUntil - now(), MAX_TIMER_MS));
+    const ms = Math.max(1, Math.min(coolUntil() - now(), MAX_TIMER_MS)); // 实际门禁是两份冷却（发码 / 同步）的较大值：按它排期，不然较长的发码冷却会在唤醒到点时把同步拦下、之后再没人唤醒
     schedule(() => {
       if (wakeToken !== tok || g !== acctGen) return;
       wakeToken = null;
-      if (now() < syncCooldownUntil) { armWake(); return; } // 还没到（分段等待 / 时钟稍早）：重排剩余时间，不联网
+      if (inCooldown()) { armWake(); return; } // 门禁还没放开（分段等待 / 时钟稍早 / 发码冷却更长）：重排剩余时间，不联网
       syncNow(); // 自动同步：停机保护（本机写回上限 / 损坏待办）、会话代次、合并重复触发都由 syncNow 照常处理
     }, ms);
   }

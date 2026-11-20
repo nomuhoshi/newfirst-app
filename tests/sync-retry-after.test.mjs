@@ -447,6 +447,28 @@ const fire = (d, i = d.timers.length - 1) => d.timers[i].fn();
   check("超长等待分段：第一段（≤2^31-1 毫秒）到点后截止时间还远，重排下一段，不发请求", first === 2147483647 && d.timers.length === t0 + 2 && d.timers[t0 + 1].ms >= 1 && d.timers[t0 + 1].ms <= 2147483647 && req(S) === before, JSON.stringify([first, d.timers.slice(t0).map((t) => t.ms)]));
 }
 
+// ===== 13. 发码冷却（较长）和同步冷却叠加：到期唤醒要按实际门禁排期，不能被较长的发码冷却吞掉 =====
+{
+  const S = fakeCloud(); const d = device(S); d.clock = T0; seedGuest(d, 50);
+  S.fail(/POST \/auth\/v1\/otp/, 429, LIM, 1, { "retry-after": "600" });
+  const sc = await d.sync.sendCode("a@x.com");                                   // 重发验证码被 429：发码冷却 600 秒
+  S.issue(); const v = await d.sync.verify(EMAIL_A, "123456", d.state);          // 用仍然有效的旧码登录，需要选择游客记录怎么办
+  const t0 = d.timers.length;
+  S.fail(/create_progress|save_progress/, 429, LIM, 1, { "retry-after": "180" });
+  const f = await d.sync.finishChoice("transfer");                               // 选择转移：导入写入被 429（同步冷却 180 秒）
+  const wakes = d.timers.slice(t0).map((t) => t.ms);
+  check("叠加前提：发码冷却 600 秒 + 导入写入 429（180 秒）：登录成功但待同步，导入待办保留", sc.kind === "rate-limit" && v.needChoice === true && f.ok === true && f.synced === false && imports(d.storage) !== "" && d.storage.getItem(GUEST_KEY) !== null, JSON.stringify([sc.kind, v.needChoice, f.ok, f.synced]));
+  check("  到期唤醒按实际门禁（两份冷却的较大值）排期：600 秒，不是 180 秒", wakes.length === 1 && wakes[0] === 600000, JSON.stringify(wakes));
+  const n0 = req(S) + writes(S), w0 = writes(S);
+  d.clock = T0 + secs(180); fire(d, t0); await tick();                           // 同步冷却到点，但发码冷却还剩 420 秒：唤醒重排，不联网
+  const rearm = d.timers.slice(t0 + 1).map((t) => t.ms);
+  d.clock = T0 + secs(181); const m1 = await d.sync.syncNow({ manual: true }); const a1 = await d.sync.syncNow();
+  d.clock = T0 + secs(599); const m2 = await d.sync.syncNow({ manual: true });
+  check("  第 180 秒唤醒被较长的发码冷却拦下后重排剩余约 420 秒（没有丢）；第 181 / 599 秒手动和自动同步都不发请求", rearm.length === 1 && rearm[0] === 420000 && [m1, a1, m2].every((x) => x.kind === "rate-limit") && req(S) + writes(S) === n0, JSON.stringify([rearm, [m1, a1, m2].map((x) => x.kind), req(S) + writes(S) - n0]));
+  d.clock = T0 + secs(601); fire(d); await sleep(80);                             // 到期：不做任何手动操作
+  check("  第 601 秒到期自动完成：导入完成（游客记录和待办已清），云端 50 XP，状态 synced，导入写入只多一次（成功的那次）", d.storage.getItem(GUEST_KEY) === null && imports(d.storage) === "" && S.xpOf(EMAIL_A) === 50 && statusOf(d).status === "synced" && statusOf(d).pending === false && writes(S) - w0 === 1, JSON.stringify([imports(d.storage), S.xpOf(EMAIL_A), statusOf(d), writes(S) - w0]));
+}
+
 const bad = results.filter((x) => !x).length;
 console.log(`\n共 ${results.length} 项，失败 ${bad} 项`);
 process.exit(bad ? 1 : 0);
