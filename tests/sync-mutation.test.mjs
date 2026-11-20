@@ -164,8 +164,8 @@ try {
     {
       name: "普通退出在 signOut 失败时仍清掉登录",
       file: "sync.js",
-      from: "    if (!rv.ok) {\n      const rb = rollbackLocal(uid, c.snap);",
-      to: "    if (false) {\n      const rb = rollbackLocal(uid, c.snap);",
+      from: "    if (!rv.ok) {\n      selfLogoutCleaning = true;\n      let rb;\n      try { rb = rollbackLocal(uid, c.snap); }",
+      to: "    if (false) {\n      selfLogoutCleaning = true;\n      let rb;\n      try { rb = rollbackLocal(uid, c.snap); }",
     },
     {
       name: "五次冲突后仍盲目重试",
@@ -231,21 +231,21 @@ try {
       name: "DB-3.1：普通退出先撤销云端会话、再清本机（本机失败时云端已不可逆）",
       file: "sync.js",
       from: `    const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
-    if (!c.ok) return c.result;
+    if (!c.ok) { if (owns()) selfLogoutCleaning = false; return c.result; }
     ownBump(); // 同上`,
       to: `    const rv0 = await revokeCloudSession(session);
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
-    if (!c.ok) return c.result;
+    if (!c.ok) { if (owns()) selfLogoutCleaning = false; return c.result; }
     ownBump(); // 同上`,
     },
     {
       name: "DB-3.1：强制退出先撤销云端会话、再清本机",
       file: "sync.js",
       from: `      const c = cleanLocal(uid, { clearAuth: true, keepCopy });
-      if (!c.ok) return c.result;`,
+      if (!c.ok) { if (owns()) selfLogoutCleaning = false; return c.result; }`,
       to: `      if (!forceLocal) await revokeCloudSession(sess);
       const c = cleanLocal(uid, { clearAuth: true, keepCopy });
-      if (!c.ok) return c.result;`,
+      if (!c.ok) { if (owns()) selfLogoutCleaning = false; return c.result; }`,
     },
     {
       name: "DB-3.1：forceLocalLogout 也去联网撤销云端会话（不再是纯本机退出）",
@@ -256,8 +256,8 @@ try {
     {
       name: "DB-3.1：云端 signOut 失败后不回滚本机（副本和指针已删却还停在登录）",
       file: "sync.js",
-      from: "      const rb = rollbackLocal(uid, c.snap);\n      const message = rb.all",
-      to: "      const rb = { all: true, copyRestored: true, accountRestored: true };\n      const message = rb.all",
+      from: "      try { rb = rollbackLocal(uid, c.snap); } finally { if (owns()) selfLogoutCleaning = false; }\n      const message = rb.all",
+      to: "      try { rb = { all: true, copyRestored: true, accountRestored: true }; } finally { if (owns()) selfLogoutCleaning = false; }\n      const message = rb.all",
     },
     {
       name: "DB-3.1：session_not_found 也被当成失败，退出卡死",
@@ -358,8 +358,8 @@ try {
     {
       name: "DB-3.1：bad_jwt 核实前不采用别的标签页刚轮换的令牌",
       file: "sync.js",
-      from: "      if (!detached) adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌",
-      to: "      // (不采用)",
+      from: "        adoptStoredSession(); // 别的标签页可能刚轮换过刷新令牌",
+      to: "        // (不采用)",
     },
     {
       name: "DB-3.1：refresh 的 dead 标记没有透传",
@@ -399,8 +399,8 @@ try {
       name: "R1×退出：凭证清理失败后不回滚账号指针（半退出）",
       file: "sync.js",
       test: "r1-logout-integration.test.mjs",
-      from: "        const rollback = setCurrentAccount(storage, uid);\n        let restored = false;\n        try { restored = storage.getItem(SESSION_KEY) === uid; } catch {}\n        return { ok: false, kind: \"local\", pending: true, rollbackFailed: !rollback || !restored,\n          message: restored ? \"本机凭证清理失败",
-      to: "        const rollback = true;\n        let restored = true;\n        return { ok: false, kind: \"local\", pending: true, rollbackFailed: !rollback || !restored,\n          message: restored ? \"本机凭证清理失败",
+      from: "        const rollback = setCurrentAccount(storage, uid);\n        let restored = false;\n        try { restored = storage.getItem(SESSION_KEY) === uid; } catch {}\n        if (owns()) selfLogoutCleaning = false;\n        return { ok: false, kind: \"local\", pending: true, rollbackFailed: !rollback || !restored,\n          message: restored ? \"本机凭证清理失败",
+      to: "        const rollback = true;\n        let restored = true;\n        if (owns()) selfLogoutCleaning = false;\n        return { ok: false, kind: \"local\", pending: true, rollbackFailed: !rollback || !restored,\n          message: restored ? \"本机凭证清理失败",
     },
     {
       name: "清理残留：账号指针读不出来也当成“没有别的标签页”，照删凭证",

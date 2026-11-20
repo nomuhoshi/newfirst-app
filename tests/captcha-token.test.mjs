@@ -80,7 +80,7 @@ const sess = (userId = "u1", email = "a@example.com") => ({ accessToken: "at", r
   };
   const st = mem();
   const doc = emptyDoc({ gen: 1, lineage: "L-u1" }); doc.done = { U1L1: "2026-11-01" };
-  saveAccount(st, "u1", { doc, base: 2, dirty: { hearts: false, prefs: false, content: true } }, { now: NOW }); setCurrentAccount(st, "u1");
+  saveAccount(st, "u1", { doc, base: 2, dirty: { hearts: false, prefs: false, content: true } }, { now: NOW }); // 不预先写账号指针：只有指针没有凭证的共享存储，现在会被登录前检查挡住（跨标签页登录失权改动）；账号指针由下面这次真实登录写入
   const sy = mkSync(st, api);
   const v = await sy.verify("a@example.com", "123456", freshState());
   const logged = v.needChoice ? await sy.finishChoice("cloud") : v;
