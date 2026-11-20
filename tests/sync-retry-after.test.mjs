@@ -112,6 +112,20 @@ async function limitedDevice(S, header, { rule = GET, lesson = true } = {}) {
   const P = (v) => parseRetryAfter(v, now);
   check("解析：秒数 180 / 0 / 带空格", P("180").sec === 180 && P("0").sec === 0 && P("  30 ").sec === 30 && P("180").valid);
   check("解析：未来日期 → 剩余秒数 120；过期日期 → 0（合法但已过）", P(fut).valid && P(fut).sec === 120 && P(past).valid && P(past).sec === 0);
+  {
+    const f3 = (d3) => [d3.toUTCString(), `${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d3.getUTCDay()]}, ${String(d3.getUTCDate()).padStart(2, "0")}-${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d3.getUTCMonth()]}-${String(d3.getUTCFullYear()).slice(2)} ${d3.toUTCString().slice(17, 25)} GMT`, `${d3.toUTCString().slice(0, 3)} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d3.getUTCMonth()]} ${String(d3.getUTCDate()).padStart(2, " ")} ${d3.toUTCString().slice(17, 25)} ${d3.getUTCFullYear()}`];
+    const three = f3(new Date(now + 180_000));
+    check("解析：三种 HTTP 日期（IMF-fixdate / rfc850 两位年 / asctime 天数补空格）都认，未来 180 秒 → 180", three.every((v) => P(v).valid && P(v).sec === 180), JSON.stringify(three.map((v) => [v, P(v)])));
+    const oldOnes = ["Sun, 06 Nov 1994 08:49:37 GMT", "Sunday, 06-Nov-94 08:49:37 GMT", "Sun Nov  6 08:49:37 1994"];
+    check("  RFC 9110 的三个示例：都合法、都已过期（0 秒）", oldOnes.every((v) => P(v).valid && P(v).sec === 0), JSON.stringify(oldOnes.map(P)));
+    check("  rfc850 两位年：比现在晚 50 年以上的当成最近的过去那一年（76 → 1976 → 已过期；30 → 2030 → 未来）", P("Friday, 20-Nov-76 00:03:00 GMT").sec === 0 && P("Wednesday, 20-Nov-30 00:00:00 GMT").sec > 3e7, JSON.stringify([P("Friday, 20-Nov-76 00:03:00 GMT"), P("Wednesday, 20-Nov-30 00:00:00 GMT")]));
+    const strict = ["Fri, 30 Feb 2027 00:00:00 GMT", "Fri Feb 30 00:03:00 2026", "Friday, 31-Apr-26 00:00:00 GMT", "Fri, 20 Nov 2026 24:00:00 GMT", "Fri, 20 Nov 2026 00:60:00 GMT", "Foo, 20 Nov 2026 00:03:00 GMT", "Fri, 20 Foo 2026 00:03:00 GMT", "Fri Nov 20 00:03:00 PST 2026", "Friday, 20-Nov-2026 00:03:00 GMT", "Fri, 29 Feb 2027 00:00:00 GMT"];
+    check("  严格校验：不存在的日期（2 月 30 日、4 月 31 日、非闰年 2 月 29 日）、24 点、60 分、假星期 / 月份名、带时区名的 asctime → 非法", strict.every((v) => P(v).valid === false), JSON.stringify(strict.map((v) => [v, P(v).valid])));
+    const tzs = ["Asia/Tokyo", "America/Los_Angeles", "UTC", "Pacific/Auckland"]; const oldTz = process.env.TZ;
+    const res = tzs.map((z) => { process.env.TZ = z; return three.map((v) => P(v).sec).join(","); });
+    if (oldTz === undefined) delete process.env.TZ; else process.env.TZ = oldTz;
+    check("  不依赖本地时区：东京 / 洛杉矶 / UTC / 奥克兰下，三种格式解析结果都一样（asctime 也按 UTC）", res.every((r) => r === "180,180,180"), JSON.stringify(res));
+  }
   check("解析：缺失 / 空串 → 没给", P(null).present === false && P(undefined).present === false && P("").present === false && P("   ").present === false);
   check("解析：非法值（负数、小数、乱码、科学计数、非 GMT 日期、半截日期）→ 给了但不合法", ["-5", "1.5", "abc", "1e3", "12 s", "Wed, 99 Foo 2020 00:00:00 GMT", "2026-11-20T00:00:00Z", "Fri, 20 Nov 2026 00:00:00 PST", "Fri, 20 Nov"].every((v) => { const r = P(v); return r.present && r.valid === false; }), JSON.stringify(["-5", "1.5", "abc", "1e3"].map(P)));
   check("解析：超大数字不变成 NaN / Infinity（交给调用方封顶）", Number.isFinite(P("9".repeat(400)).sec) && P("99999999999999").sec >= 99999999999999);
@@ -156,11 +170,19 @@ for (const [label, hdr] of [["缺失", undefined], ["空串", ""], ["乱码 abc"
   const ok = await probe(S, d, [61]);
   check(`Retry-After ${label}：保底等 60 秒（第 59 秒不发请求，第 61 秒恢复）`, first.kind === "rate-limit" && out.every((o) => !o.sent) && ok[0].sent && ok[0].r.ok === true, JSON.stringify([first.kind, out.map((o) => o.sent), ok[0].sent]));
 }
-for (const [label, hdr] of [["99999999", "99999999"], ["400 位数字", "9".repeat(400)]]) {
-  const S = fakeCloud(); const { d } = await limitedDevice(S, hdr);
-  const out = await probe(S, d, [61, 1800, 3599]);
-  const ok = await probe(S, d, [3601]);
-  check(`超大值 ${label}：封顶 1 小时（第 3599 秒仍不发请求，第 3601 秒恢复）`, out.every((o) => !o.sent) && ok[0].sent && ok[0].r.ok === true, JSON.stringify([out.map((o) => o.sent), ok[0].sent]));
+// 长等待一律完整照服务器的来（不封顶）：7200 秒不能在第 3601 秒就放行
+{
+  const S = fakeCloud(); const { d } = await limitedDevice(S, "7200");
+  const out = await probe(S, d, [61, 3599, 3601, 5400, 7199]); const ok = await probe(S, d, [7201]);
+  check("Retry-After 7200：第 61 / 3599 / 3601 / 5400 / 7199 秒都不发请求；第 7201 秒恢复（不再有一小时上限）", out.every((o) => !o.sent && o.r.kind === "rate-limit") && ok[0].sent && ok[0].r.ok === true, JSON.stringify([out.map((o) => [o.t, o.sent]), ok[0].sent]));
+}
+for (const [label, hdr, probes, resume] of [["99999999 秒（约 3 年）", "99999999", [3601, 86400, 99999990], 100000001], ["400 位数字（实际等于永不）", "9".repeat(400), [3601, 1e9, 1e12], null]]) {
+  const S2 = fakeCloud(); const { d } = await limitedDevice(S2, hdr);
+  const out = await probe(S2, d, probes);
+  const timers = d.timers.map((t) => t.ms);
+  check(`超大值 ${label}：一小时、一天以后都不发请求，不被截短`, out.every((o) => !o.sent && o.r.kind === "rate-limit"), JSON.stringify(out.map((o) => [o.t, o.sent])));
+  check("  唤醒计时器单次不超过 2^31-1 毫秒（不会溢出成立刻触发）", timers.length > 0 && timers.every((ms) => ms >= 1 && ms <= 2147483647), JSON.stringify(timers));
+  if (resume) { const ok = await probe(S2, d, [resume]); check("  过了截止时间之后恢复", ok[0].sent && ok[0].r.ok === true); }
 }
 {
   const S = fakeCloud(); const { d } = await limitedDevice(S, "2");
@@ -288,6 +310,141 @@ for (const [label, hdr] of [["99999999", "99999999"], ["400 位数字", "9".repe
   S2.fail(/POST \/auth\/v1\/otp/, 429, LIM, 1, { "retry-after": "180" });
   await d2.sync.sendCode("a@x.com"); d2.clock = T0 + secs(61); const m61 = await d2.sync.sendCode("a@x.com"); d2.clock = T0 + secs(181); const m181 = await d2.sync.sendCode("a@x.com");
   check("发码 429 带 Retry-After 180：同样照服务器的等——第 61 秒被挡，第 181 秒放行", m61.kind === "rate-limit" && m181.ok === true, JSON.stringify([m61.kind, m181]));
+}
+
+// ===== 10. 三种 HTTP 日期都按服务器要求等（rfc850 / asctime 以前被判非法，第 61 秒就恢复请求） =====
+{
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], DAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const fmt = {
+    "IMF-fixdate": (t) => new Date(t).toUTCString(),
+    "rfc850": (t) => { const x = new Date(t); return `${DAY[x.getUTCDay()]}, ${String(x.getUTCDate()).padStart(2, "0")}-${MON[x.getUTCMonth()]}-${String(x.getUTCFullYear()).slice(2)} ${x.toUTCString().slice(17, 25)} GMT`; },
+    "asctime": (t) => { const x = new Date(t); return `${x.toUTCString().slice(0, 3)} ${MON[x.getUTCMonth()]} ${String(x.getUTCDate()).padStart(2, " ")} ${x.toUTCString().slice(17, 25)} ${x.getUTCFullYear()}`; },
+  };
+  for (const [name, f] of Object.entries(fmt)) {
+    // 取整到秒：这些格式只有秒的精度
+    const base = Math.floor(T0 / 1000) * 1000;
+    const S = fakeCloud(); const d = await loggedInA(S); d.clock = base;
+    S.fail(GET, 429, LIM, 1, { "retry-after": f(base + 180_000) });
+    const first = await d.sync.syncNow({ manual: true });
+    const out = await probe(S, d, [1, 61, 120, 179]); const ok = await probe(S, d, [181]);
+    check(`${name} 日期（未来 180 秒）：第 1 / 61 / 120 / 179 秒不发请求，第 181 秒恢复`, first.kind === "rate-limit" && out.every((o) => !o.sent) && ok[0].sent && ok[0].r.ok === true, JSON.stringify([f(base + 180_000), first.kind, out.map((o) => o.sent), ok[0].sent]));
+  }
+}
+
+// ===== 11. 游客导入（待办）里收到 429：和普通同步一样进冷却，不走 3 秒网络退避 =====
+const imports = (st) => [...st._m.keys()].filter((k) => k.startsWith("suipian.acct.import.")).map((k) => k + "=" + st.getItem(k)).join("|");
+async function withPendingImport(S, choice) {
+  const d = device(S); d.clock = T0;
+  seedGuest(d, 50);
+  S.issue();
+  const v = await d.sync.verify(EMAIL_A, "123456", d.state);
+  if (!v.ok || !v.needChoice) throw new Error("需要选择：" + JSON.stringify(v));
+  S.fail(/create_progress|save_progress/, 503, { msg: "x" }, 5);   // 写云失败 → 专用待办留在本机
+  const f = await d.sync.finishChoice(choice);
+  S.rules.length = 0;
+  if (![...d.storage._m.keys()].some((k) => k.startsWith("suipian.acct.import."))) throw new Error("没有留下待办：" + JSON.stringify(f));
+  return d;
+}
+const writes = (S) => (S.count["POST /rest/v1/rpc/create_progress"] || 0) + (S.count["POST /rest/v1/rpc/save_progress"] || 0);
+const R180 = { status: 429, headers: { "retry-after": "180" } };
+for (const choice of ["cloud", "transfer"]) for (const phase of ["读取", "写入", "读回"]) {
+  const label = `${choice === "cloud" ? "保留云端" : "安全合并"}·${phase}`;
+  const S = fakeCloud(); const d = await withPendingImport(S, choice); const t0 = d.timers.length;
+  const imp0 = imports(d.storage), w00 = writes(S);
+  let r;
+  if (phase === "读取") { S.fail(GET, 429, LIM, 1, { "retry-after": "180" }); r = await d.sync.syncNow({ manual: true }); }
+  else if (phase === "写入") { S.fail(/create_progress|save_progress/, 429, LIM, 1, { "retry-after": "180" }); r = await d.sync.syncNow({ manual: true }); }
+  else { const g1 = S.hold(GET), g2 = S.hold(GET, R180); const p = d.sync.syncNow({ manual: true }); await tick(); g1(); await tick(); g2(); r = await p; }
+  const newTimers = d.timers.slice(t0).map((t) => t.ms);
+  const st1 = JSON.stringify(statusOf(d)), pend1 = statusOf(d).pending;
+  const n0 = req(S) + writes(S);
+  d.clock = T0 + secs(1); const m1 = await d.sync.syncNow({ manual: true });
+  d.clock = T0 + secs(4); const m4 = await d.sync.syncNow(); // 原来 3 秒退避的位置
+  d.clock = T0 + secs(61); const m61 = await d.sync.syncNow({ manual: true });
+  check(`导入 ${label} 收到 429（Retry-After 180）：返回 rate-limit（不可重试），状态待同步，待办和游客记录都保留`, r.kind === "rate-limit" && r.retryable === false && pend1 === true && imports(d.storage) !== "" && d.storage.getItem(GUEST_KEY) !== null, JSON.stringify([r.kind, r.retryable, st1, imports(d.storage) === imp0]));
+  check(`  不排 3 秒网络退避（只有 180 秒的到期唤醒）；第 1 / 4 / 61 秒的手动 / 自动同步都不发任何请求`, newTimers.every((ms) => ms > 100_000) && newTimers.length >= 1 && req(S) + writes(S) === n0 && [m1, m4, m61].every((x) => x.kind === "rate-limit"), JSON.stringify([newTimers, req(S) + writes(S) - n0, [m1, m4, m61].map((x) => x.kind)]));
+  d.clock = T0 + secs(181); const ok = await d.sync.syncNow({ manual: true });
+  check(`  到期后导入完成：待办已清（合并时游客记录一并清掉）、云端有数据（${choice === "cloud" ? "保留云端：云端记录存在" : "合并：50 XP"}）；上传次数：${phase === "读取" ? 1 : 2}（被 429 的那次 + 成功的一次，没有多传）`, ok.ok === true && (choice === "cloud" || d.storage.getItem(GUEST_KEY) === null) && imports(d.storage) === "" && S.rows.has(S.users.get(EMAIL_A)) && (choice === "cloud" || S.xpOf(EMAIL_A) >= 50) && writes(S) - w00 === (phase === "读取" ? 1 : 2), JSON.stringify([ok, imports(d.storage), S.xpOf(EMAIL_A), writes(S) - w00]));
+}
+// 登录选择（finishChoice）这一步本身收到 429：新会话带着这段等待
+{
+  const S = fakeCloud(); const d = device(S); d.clock = T0; seedGuest(d, 50); S.issue();
+  const v = await d.sync.verify(EMAIL_A, "123456", d.state);
+  S.fail(/create_progress|save_progress/, 429, LIM, 1, { "retry-after": "180" });
+  const f = await d.sync.finishChoice("transfer");
+  const n0 = req(S) + writes(S);
+  d.clock = T0 + secs(61); const m = await d.sync.syncNow({ manual: true }); const a = await d.sync.syncNow();
+  check("登录选择里导入写入被 429（180 秒）：登录成功但待同步；第 61 秒手动 / 自动同步都不发请求", v.needChoice && f.ok === true && f.synced === false && m.kind === "rate-limit" && a.kind === "rate-limit" && req(S) + writes(S) === n0, JSON.stringify([f.ok, f.synced, m.kind, req(S) + writes(S) - n0]));
+  d.clock = T0 + secs(181); const ok = await d.sync.syncNow({ manual: true });
+  check("  到期后完成导入", ok.ok === true && d.storage.getItem(GUEST_KEY) === null && S.xpOf(EMAIL_A) === 50, JSON.stringify([ok, S.xpOf(EMAIL_A)]));
+}
+
+// ===== 12. 冷却到期自动恢复（不调用手动同步）：同一会话唯一的到期唤醒 =====
+const fire = (d, i = d.timers.length - 1) => d.timers[i].fn();
+{
+  // 12a 180 秒到期，没有任何外部操作：自己恢复，本机 40 XP 上传一次
+  const S = fakeCloud(); const d = await loggedInA(S); d.clock = T0; const t0 = d.timers.length;
+  S.fail(GET, 429, LIM, 1, { "retry-after": "180" });
+  await d.sync.syncNow({ manual: true });
+  const wakes = d.timers.slice(t0).map((t) => t.ms);
+  check("429 之后排了一个到期唤醒（180 秒），没有排网络退避", wakes.length === 1 && wakes[0] === 180000, JSON.stringify(wakes));
+  const c0 = S.xpOf(EMAIL_A); const sv0 = writes(S);
+  d.clock = T0 + secs(100); fire(d, t0); await tick();                 // 唤醒提前到点（时钟还没到）：不联网，重排剩余时间
+  const early = req(S);
+  check("  唤醒提前触发（还没到截止时间）：不发请求，重排剩余时间（约 80 秒）", d.timers.length === t0 + 2 && d.timers[t0 + 1].ms === 80000 && req(S) === early && S.xpOf(EMAIL_A) === c0, JSON.stringify([d.timers.slice(t0).map((t) => t.ms)]));
+  d.clock = T0 + secs(181); fire(d); await sleep(80);                  // 到期：没有任何手动 / 外部同步调用
+  check("  到期唤醒触发：自己完成同步，云端 40 XP，只上传一次，状态 synced", S.xpOf(EMAIL_A) === 40 && writes(S) === sv0 + 1 && statusOf(d).status === "synced" && statusOf(d).pending === false, JSON.stringify([S.xpOf(EMAIL_A), writes(S) - sv0, statusOf(d)]));
+}
+{
+  // 12b 重复 429 延期：旧唤醒作废，只有新的那个管用
+  const S = fakeCloud(); const d = await loggedInA(S); d.clock = T0; const t0 = d.timers.length;
+  S.fail(GET, 429, LIM, 1, { "retry-after": "180" }); await d.sync.syncNow({ manual: true });
+  d.clock = T0 + secs(181); S.fail(GET, 429, LIM, 1, { "retry-after": "120" });
+  fire(d, t0); await sleep(80);                                        // 到期唤醒 → 同步又被 429（120 秒）
+  const second = d.timers.length - 1; const ms2 = d.timers[second].ms;
+  const r1 = req(S);
+  const nT = d.timers.length;
+  fire(d, t0); await tick();                                           // 旧唤醒再触发一次：已作废，不发请求，也不再排新的计时器
+  const nT2 = d.timers.length;
+  d.clock = T0 + secs(181 + 60); fire(d, second); await tick();       // 新唤醒提前触发：还没到，不发请求
+  const r2 = req(S);
+  d.clock = T0 + secs(181 + 121); fire(d, d.timers.length - 1); await sleep(80);
+  check("重复 429 延期：新的 120 秒从这次开始；旧唤醒作废、提前的唤醒不联网；到期后恢复，云端 40 XP", ms2 === 120000 && r2 === r1 && nT2 === nT && S.xpOf(EMAIL_A) === 40, JSON.stringify([ms2, r1, r2, nT, nT2, S.xpOf(EMAIL_A)]));
+}
+{
+  // 12c 唤醒与手动 / 自动触发同时发生：合并成一轮
+  const S = fakeCloud(); const d = await loggedInA(S); d.clock = T0; const t0 = d.timers.length;
+  S.fail(GET, 429, LIM, 1, { "retry-after": "180" }); await d.sync.syncNow({ manual: true });
+  d.clock = T0 + secs(181); const w0 = writes(S), g0 = S.count["GET /rest/v1/progress"] || 0;
+  fire(d, t0); const rs = await Promise.all([d.sync.syncNow({ manual: true }), d.sync.syncNow(), d.sync.syncNow()]); await sleep(60);
+  check("到期时唤醒 + 手动 + 自动同时触发：合并成一轮（一次上传），云端 40 XP", writes(S) === w0 + 1 && (S.count["GET /rest/v1/progress"] || 0) <= g0 + 2 && S.xpOf(EMAIL_A) === 40 && rs.every((r) => r.ok), JSON.stringify([writes(S) - w0, rs.map((r) => r.ok)]));
+}
+{
+  // 12d 退出 / 换号作废：旧会话的唤醒不联网、不动新会话
+  const S = fakeCloud(); const d = await loggedInA(S); d.clock = T0; const t0 = d.timers.length;
+  S.fail(GET, 429, LIM, 1, { "retry-after": "180" }); await d.sync.syncNow({ manual: true });
+  await d.sync.logout({ force: true }); await login(S, d, EMAIL_B); finishLesson(d, "u1-l1", 25);
+  const before = req(S), st0 = JSON.stringify(statusOf(d));
+  d.clock = T0 + secs(181); fire(d, t0); await sleep(60);
+  check("A 被限流后退出并登录 B：A 的到期唤醒到点什么都不做（不联网、不改 B 的状态、不替 B 同步）", req(S) === before && JSON.stringify(statusOf(d)) === st0 && S.xpOf(EMAIL_B) !== 25, JSON.stringify([req(S) - before, st0, JSON.stringify(statusOf(d)), S.xpOf(EMAIL_B)]));
+}
+{
+  // 12e 停机保护：本机写回已连续失败达到上限 → 唤醒也只是被停机保护拦下，不联网
+  const S = fakeCloud(); const d = await loggedInA(S); d.clock = T0; const t0 = d.timers.length;
+  S.fail(GET, 429, LIM, 1, { "retry-after": "180" }); await d.sync.syncNow({ manual: true });
+  d.storage.setItem(`suipian.acct.writebackRetry.${d.sync.account().userId}`, "3");     // 模拟：本机副本写回连续失败 3 次，普通自动同步已停机
+  d.clock = T0 + secs(181); const before = req(S);
+  fire(d, t0); await sleep(60);
+  check("停机保护：本机写回连续失败达上限时，到期唤醒不绕过，不发请求（状态仍是待同步）", req(S) === before && statusOf(d).pending === true && S.xpOf(EMAIL_A) !== 40, JSON.stringify([req(S) - before, statusOf(d), S.xpOf(EMAIL_A)]));
+  const m = await d.sync.syncNow({ manual: true });
+  check("  手动“立即同步”仍可绕过停机保护并成功", m.ok === true && S.xpOf(EMAIL_A) === 40, JSON.stringify(m));
+}
+{
+  // 12f 长等待分段：到点时还没到截止时间就重排，不提前联网
+  const S = fakeCloud(); const { d } = await limitedDevice(S, "99999999"); const t0 = d.timers.length - 1;
+  const first = d.timers[t0].ms;
+  d.clock = T0 + first + 1000; const before = req(S); fire(d, t0); await tick();
+  check("超长等待分段：第一段（≤2^31-1 毫秒）到点后截止时间还远，重排下一段，不发请求", first === 2147483647 && d.timers.length === t0 + 2 && d.timers[t0 + 1].ms >= 1 && d.timers[t0 + 1].ms <= 2147483647 && req(S) === before, JSON.stringify([first, d.timers.slice(t0).map((t) => t.ms)]));
 }
 
 const bad = results.filter((x) => !x).length;

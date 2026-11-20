@@ -23,16 +23,47 @@ function classifyRefreshFailure(r) {
   return r.oauthError === "invalid_grant" || /^Invalid Refresh Token/i.test(String(r.message || ""));
 }
 
-// Retry-After：delay-seconds（非负整数）或 HTTP-date（…GMT）。返回 { present, valid, sec }：
-//   缺失 / 空串 → present:false；格式不对（负数、小数、乱码、不是 GMT 的日期）→ present:true, valid:false；
-//   合法 → valid:true，sec = 还要等的整数秒（日期已过期 = 0；超大数字按 Number.MAX_SAFE_INTEGER，由调用方夹范围）。
+// Retry-After：delay-seconds（非负整数）或 HTTP-date。HTTP-date 按 RFC 9110 接受三种格式，都按 UTC 解释（不依赖本地时区，不用 Date.parse 猜）：
+//   IMF-fixdate  Sun, 06 Nov 1994 08:49:37 GMT
+//   rfc850-date  Sunday, 06-Nov-94 08:49:37 GMT   （两位年份：看起来比现在晚 50 年以上，就当成最近的过去那一年）
+//   asctime-date Sun Nov  6 08:49:37 1994          （没有时区，天数前补空格）
+// 日期严格校验：月份 / 星期名必须是合法名字，日期必须真实存在（2 月 30 日不行），时分秒不超范围。
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+const WD_SHORT = new Set(["sun", "mon", "tue", "wed", "thu", "fri", "sat"]);
+const WD_LONG = new Set(["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]);
+function utcMs(y, mo, d, hh, mi, ss) {
+  if (!(hh <= 23 && mi <= 59 && ss <= 59)) return NaN;
+  const dt = new Date(0);
+  dt.setUTCFullYear(y, mo, d); dt.setUTCHours(hh, mi, ss, 0);
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo && dt.getUTCDate() === d ? dt.getTime() : NaN; // 往回读一遍：2 月 30 日会滚到 3 月，对不上就是假日期
+}
+function parseHttpDate(v, nowMs) {
+  let m, y, mo, d, hh, mi, ss;
+  if ((m = /^([A-Za-z]{3}), (\d{1,2}) ([A-Za-z]{3}) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(v))) {
+    if (!WD_SHORT.has(m[1].toLowerCase())) return NaN;
+    [d, mo, y, hh, mi, ss] = [+m[2], MONTHS[m[3].toLowerCase()], +m[4], +m[5], +m[6], +m[7]];
+  } else if ((m = /^([A-Za-z]{6,9}), (\d{2})-([A-Za-z]{3})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(v))) {
+    if (!WD_LONG.has(m[1].toLowerCase())) return NaN;
+    [d, mo, hh, mi, ss] = [+m[2], MONTHS[m[3].toLowerCase()], +m[5], +m[6], +m[7]];
+    const yy = +m[4]; y = Math.floor(new Date(nowMs).getUTCFullYear() / 100) * 100 + yy;
+    const t = utcMs(y, mo, d, hh, mi, ss);
+    if (Number.isFinite(t) && t > nowMs + 50 * 365.2425 * 86400_000) y -= 100; // 比现在晚 50 年以上 → 最近的过去那一年
+  } else if ((m = /^([A-Za-z]{3}) ([A-Za-z]{3}) ([ \d]\d) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(v))) {
+    if (!WD_SHORT.has(m[1].toLowerCase())) return NaN;
+    [mo, d, hh, mi, ss, y] = [MONTHS[m[2].toLowerCase()], +m[3].trim(), +m[4], +m[5], +m[6], +m[7]];
+  } else return NaN;
+  if (mo === undefined) return NaN;
+  return utcMs(y, mo, d, hh, mi, ss);
+}
+// 返回 { present, valid, sec }：缺失 / 空串 → present:false；格式不对（负数、小数、乱码、不是上面三种日期）→ present:true, valid:false；
+// 合法 → valid:true，sec = 还要等的整数秒（日期已过期 = 0；超大数字按 Number.MAX_SAFE_INTEGER，由调用方决定怎么等）。
 export function parseRetryAfter(raw, nowMs = Date.now()) {
   if (raw === null || raw === undefined) return { present: false };
   const v = String(raw).trim();
   if (!v) return { present: false };
   if (/^\d+$/.test(v)) { const n = Number(v); return { present: true, valid: true, sec: Number.isFinite(n) ? Math.min(n, Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER }; }
-  if (v.length <= 40 && /^[A-Za-z]{3}, \d{1,2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(v)) {
-    const t = Date.parse(v);
+  if (v.length <= 40) {
+    const t = parseHttpDate(v, nowMs);
     if (Number.isFinite(t)) return { present: true, valid: true, sec: Math.max(0, Math.ceil((t - nowMs) / 1000)) };
   }
   return { present: true, valid: false };
