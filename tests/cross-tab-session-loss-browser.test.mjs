@@ -94,13 +94,15 @@ try {
   const tabB = await ctx.newPage();
   for (const [label, p] of [["TabA", tabA], ["TabB", tabB]]) {
     p.on("pageerror", (e) => errors.push(`${label} pageerror: ${String(e.message || e)}`));
-    // WebKit 的两类已知环境噪音（与本专项验证的登录失权逻辑无关，CI 里 WebKit 首次实跑才暴露）：
-    //   1) 不认识 viewport 的 interactive-widget 键；2) 答题时预加载 pyodide 在 WebKit 测试环境里加载失败（访问检查拦截 / py-worker 加载阶段拒绝；本专项不验证 Python 判题）。
-    // pageerror（脚本异常）一律不放过，其它 console.error 也不放过。
-    const BENIGN = [/^Viewport argument key "interactive-widget" not recognized and ignored\.?$/, /^(Fetch API )?[Cc]annot load http:\/\/localhost:\d+\/pyodide\/\S+ due to access control checks\.?$/, /^\[py-worker\] Pyodide 加载阶段的未处理拒绝：/];
+    // 只放过 WebKit 不认识 viewport 的 interactive-widget 键这一条警告（与本专项无关）；
+    // pageerror 和其它 console.error（包括 Pyodide / py-worker 加载失败）一律不放过。
+    const BENIGN = [/^Viewport argument key "interactive-widget" not recognized and ignored\.?$/];
     p.on("console", (m) => { if (m.type() === "error" && !BENIGN.some((re) => re.test(m.text()))) errors.push(`${label} console.error: ${m.text()}`); });
   }
 
+  const pyReqs = []; // 只用于失败时输出诊断：Pyodide 资源请求失败 / 非 2xx
+  tabA.on("requestfailed", (r) => { if (/\/pyodide\//.test(r.url())) pyReqs.push(`FAILED ${r.url()} ${r.failure()?.errorText || ""}`); });
+  tabA.on("response", (r) => { if (/\/pyodide\//.test(r.url()) && !r.ok()) pyReqs.push(`HTTP ${r.status()} ${r.url()}`); });
   await tabA.goto(srv.base, { waitUntil: "domcontentloaded" });
   await tabA.waitForFunction(() => window.__app && window.__app.getState && window.__app.sync);
   await tabB.goto(srv.base, { waitUntil: "domcontentloaded" });
@@ -163,6 +165,7 @@ try {
     return idx;
   });
 
+  const exInfo = await tabA.evaluate(() => { const run = window.__app.getRun(); const ex = run.exercises[run.queue[0]]; return { type: ex.type, code: ex.code || "", correctText: (ex.options.find((o) => o && o.correct === true) || {}).text || "" }; });
   await tabA.locator(".choice").nth(correctIdx).tap();
   const checkBtn = tabA.locator("[data-check]");
   await checkBtn.waitFor({ state: "visible" });
@@ -178,6 +181,18 @@ try {
   assert.equal(postAnswerState.account, null);
   assert.equal(postAnswerState.xp, 25);
   assert.equal(postAnswerState.storedGuest.xp, 25);
+
+  // 答题后应用会真实启动 Python 渲染“运行结果”（XP 在启动执行之前就已保存，所以上面的 15→25 不能证明 Python 正常）。
+  // 刷新前必须等真实输出完成并核对正确输出，否则刷新会打断尚未完成的 Pyodide 加载；加载失败 / 超时让专项失败并输出诊断。
+  const PY_TIMEOUT = 120000;
+  const pyDiag = async (stage) => JSON.stringify({ stage, runnerState: await tabA.evaluate(() => window.__app.runner.state).catch(() => "?"), outText: await tabA.evaluate(() => document.querySelector(".outpanel pre.out")?.textContent ?? null).catch(() => "?"), outClass: await tabA.evaluate(() => document.querySelector(".outpanel pre.out")?.className ?? null).catch(() => "?"), retryButton: await tabA.locator("[data-retry-python]").count().catch(() => "?"), pyodideRequests: pyReqs, errorsSoFar: errors });
+  try {
+    await tabA.waitForFunction(() => { const pre = document.querySelector(".outpanel pre.out"); return !!pre && pre.textContent !== "" && pre.textContent !== "运行中…"; }, null, { timeout: PY_TIMEOUT });
+  } catch (e) { throw new Error(`Python 运行结果超时（${PY_TIMEOUT}ms）：${await pyDiag("wait-output")}`); }
+  const pyOut = await tabA.evaluate(() => { const pre = document.querySelector(".outpanel pre.out"); return { text: pre.textContent, cls: pre.className }; });
+  if (pyOut.cls.includes("offline") || pyOut.cls.includes("error") || (await tabA.locator("[data-retry-python]").count()) > 0) throw new Error(`Python 加载失败或运行出错：${await pyDiag("output-state")}`);
+  assert.equal(exInfo.type, "predict", "第一题应为“选输出”题，运行结果才有确定的预期输出");
+  assert.equal(pyOut.text.trim(), exInfo.correctText.trim(), `真实 Python 输出应等于正确答案：${await pyDiag("output-compare")}`);
 
   // 刷新页面后验证仍是游客态、存档保持 25 XP、且没有恢复 U1 的 120 XP
   await tabA.reload({ waitUntil: "domcontentloaded" });
