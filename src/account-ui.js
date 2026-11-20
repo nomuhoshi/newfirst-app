@@ -45,7 +45,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
   // 重复点击（或点另一个入口）不会再发起第二次操作；处理函数里还有一层兜底（按钮被绕过禁用也不执行）。
   // 锁带所有权标记：只有拿到锁的那次操作结束时才能放锁，旧操作的 finally 不会解掉后来的锁；整个界面只有一份，重新渲染出的新卡片首帧就是禁用的。
   // “退出后接着做的事”（切换账号要打开登录弹窗）由操作返回，放锁之后才执行，不会被自己的锁挡住。
-  const LOGOUT_LOCKED = "[data-logout],[data-switch],[data-relogin],[data-login-link],[data-delete-account]";
+  const LOGOUT_LOCKED = "[data-logout],[data-switch],[data-relogin],[data-login-link],[data-open-login],[data-delete-account]";
   let logoutLock = null;
   const setLogoutUi = (b) => { try { for (const el of document.querySelectorAll(LOGOUT_LOCKED)) el.disabled = b; } catch {} };
   const lockedBtn = (b) => { if (logoutLock) b.disabled = true; return b; };
@@ -346,7 +346,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     }
     if (!acc) {
       card.append(h("h3", { text: "账号" }), h("p", { class: "muted", text: "登录后，进度会保存到云端，换手机或 iPad 也能接着学。" }),
-        button("邮箱登录 / 注册", () => openLogin(), "btn3d primary wide", { "data-open-login": "" }), privacyNote());
+        lockedBtn(button("邮箱登录 / 注册", () => openLogin(), "btn3d primary wide", { "data-open-login": "" })), privacyNote());
       return card;
     }
     const st = h("p", { class: "acct-status", role: "status", "data-sync-status": "" }); statusEls.add(st);
@@ -438,6 +438,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       lockedBtn(button("删除账号和云端记录", () => { if (logoutLock) return; sheetConfirm("删除账号？", "会永久删除这个账号和云端的学习记录，不能恢复。这台设备上也会退出登录。", "永久删除", async () => {
         if (logoutLock) return; // 退出还在处理中：不并行删除
         const r = await sync.deleteAccount();
+        if (r.stale) { showToast(safeMessage(r.message, r.cloudDeleted === true ? "账号已在云端删除。这台设备在删除过程中已退出或换了账号，本机没有改动。" : r.cloudDeleted === null ? "无法确认旧账号是否已删除；当前登录和本机数据未改动。" : "删除没有完成。")); return; } // 删除期间这台设备已退出 / 换了账号：不走“已删除并退出”的回调，不动现在的账号
         if (r.ok) { onSwitchedOut(); showToast("账号已删除。"); }
         else if (r.pendingLocalCleanup) { onSwitchedOut(); showToast(safeMessage(r.message, "账号已在云端删除，但这台设备还没清理完。")); }
         else showToast(errorText(r));

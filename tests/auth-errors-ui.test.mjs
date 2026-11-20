@@ -43,9 +43,9 @@ const json = (route, status, body, headers = {}) => route.fulfill({ status, head
 
 // 每个场景的假服务器应答由场景决定：函数 (route) => ...。progress 相关的路由默认返回“云端没有进度”。
 // stall：路径片段列表。命中的请求在页面里直接得到“响应头 200 已到、正文永远不来”的响应（不经过 route，也不响应中止信号 = 最坏情况）
-async function device({ xp = 50, otp, verify, progress, getProgress, logout, online = true, fakeVv = false, nav = "login", stall = [] } = {}) {
+async function device({ xp = 50, otp, verify, progress, getProgress, logout, del, online = true, fakeVv = false, nav = "login", stall = [] } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 320, height: 568 }, userAgent: UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
-  const hits = { otp: 0, verify: 0, create: 0, save: 0, get: 0, logout: 0 };
+  const hits = { otp: 0, verify: 0, create: 0, save: 0, get: 0, logout: 0, del: 0 };
   const rows = { n: 0 };
   await ctx.route(FAKE + "/**", async (route) => {
     const req = route.request(), u = new URL(req.url());
@@ -55,6 +55,7 @@ async function device({ xp = 50, otp, verify, progress, getProgress, logout, onl
     if (u.pathname === "/rest/v1/progress") { hits.get++; return (getProgress || ((r) => json(r, 200, [])))(route, hits.get); }
     if (u.pathname === "/rest/v1/rpc/create_progress") { hits.create++; return (progress || ((r) => json(r, 200, 1)))(route); }
     if (u.pathname === "/rest/v1/rpc/save_progress") { hits.save++; return json(route, 200, null); }
+    if (u.pathname === "/rest/v1/rpc/delete_my_account") { hits.del++; return (del || ((r) => json(r, 200, null)))(route, hits.del); }
     if (u.pathname === "/auth/v1/logout") { hits.logout++; return (logout || ((r) => json(r, 204)))(route, hits.logout); }
     return json(route, 404, { message: "no route" });
   });
@@ -510,6 +511,37 @@ await scenario("退出失败后：入口全部恢复；重新渲染状态一致�
   const toasts = await d.page.evaluate(() => window.__toasts);
   check("确认“只在这台设备退出”（连点两次）：只退出一次——已退出提示和回调各 1 次，没有账号，没有再联网撤销（撤销请求仍是 2 次：两次普通退出各一）", toasts.length === 1 && /已在这台设备退出/.test(toasts[0]) && d.hits.logout === 2, JSON.stringify([toasts, d.hits.logout]));
 });
+// GPT1 队列第 2 项：删除账号请求在途时本机已退出 / 重新登录，迟到的响应只报告云端结果，不清新会话的本机数据，也不走“已删除并退出”的回调
+const loginAgain = async (d) => { // 退出后在“我的 → 账号”里重新走一遍邮箱登录（游客记录若还会问就选“用全新账号”）
+  await d.page.locator("[data-me-back]").tap(); await d.page.locator('[data-me-menu="account"]').tap();
+  await d.page.locator("[data-open-login]").tap(); await d.page.locator("[data-email]").fill("t@example.com"); await sendTap(d);
+  await d.page.locator("[data-code]").waitFor(); await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
+  await d.page.waitForFunction(() => !!document.querySelector('[data-choice="cloud"]') || (!document.querySelector("[data-login]") && !!window.__app.sync.account()), null, { timeout: 15000 });
+  if (await d.page.locator('[data-choice="cloud"]').count()) await d.page.locator('[data-choice="cloud"]').tap(); // 游客记录第一次登录时已处理过，通常不会再问
+  await d.page.waitForFunction(() => !document.querySelector("[data-login]") && !!window.__app.sync.account(), null, { timeout: 15000 });
+};
+// 迟到结果三种：成功 / 云端明确报错 / 响应丢了（连接被掐断，服务端可能已提交 → 结果未知）
+for (const outcome of ["ok", "fail", "lost"]) await (async () => {
+  const lateFails = outcome === "fail", lost = outcome === "lost", label = lost ? "丢失（结果未知）" : lateFails ? "失败" : "成功";
+  const g = gate();
+  await scenario(`删除账号请求在途时本机退出并重新登录，删除响应迟到${label}：只提示云端结果，不清新会话，不走“已删除”回调`, { xp: 0, verify: okVerify, ...cloudWithRow(), del: async (r) => { await g.p; if (lost) return r.abort("connectionreset"); return lateFails ? json(r, 503, { msg: CAN }) : json(r, 200, null); } }, async (d) => {
+    await loggedInAccountCard(d);
+    await d.page.locator("[data-delete-account]").tap();
+    await d.page.getByRole("button", { name: "永久删除" }).tap();
+    await d.page.waitForFunction(() => true); await d.page.waitForTimeout(300);
+    check("删除请求已发出并挂起（删除接口 1 次）", d.hits.del === 1, JSON.stringify(d.hits));
+    await d.page.evaluate(() => window.__app.sync.forceLocalLogout());       // 删除还没返回：本机先强制退出
+    await loginAgain(d);                                                      // 再登录（同一个账号）
+    await d.page.evaluate(() => { window.__toasts.length = 0; }); // 间谍已在 loggedInAccountCard 里装好，这里只清空，别重复包一层
+    const before = await dump(d.page);
+    await d.page.evaluate(() => { document.querySelector("[data-account]").dataset.mark = "kept"; }); // 标记当前账号卡：若迟到结果触发了“已退出”回调（重新渲染），标记会丢
+    g.go(); await d.page.waitForTimeout(800);
+    const toasts = await d.page.evaluate(() => window.__toasts);
+    check(`迟到的删除响应（${label}）：只出现一条说明云端结果的提示，没有“账号已删除。”回调提示${lost ? "，且是“无法确认”而不是“删除没有完成”" : ""}`, toasts.length === 1 && (lost ? /无法确认旧账号是否已删除/.test(toasts[0]) && !/没有完成/.test(toasts[0]) : lateFails ? /删除没有完成/.test(toasts[0]) : /账号已在云端删除/.test(toasts[0])) && !toasts.includes("账号已删除。"), JSON.stringify(toasts));
+    check("迟到的删除结果没有触发“已退出”回调：当前账号卡没有被重新渲染（标记还在）", await d.page.evaluate(() => document.querySelector("[data-account]")?.dataset.mark === "kept"));
+    check("新会话原样保留：仍是登录状态，本机存储逐字节不变（凭证 / 账号副本 / 账号指针都在），删除接口仍只有 1 次", (await d.page.evaluate(() => !!window.__app.sync.account())) && (await dump(d.page)) === before && d.hits.del === 1);
+  });
+})();
 await scenario("被取代的旧退出返回（stale）：界面什么都不做——没有“已退出”提示、不切走账号、按钮恢复", { nav: "none" }, async (d) => {
   await patchedAccount(d, { status: "synced", xp: 120 });
   await logToasts(d.page); await d.page.evaluate(() => { window.__app.sync.logout = async () => ({ ok: false, kind: "stale", stale: true, superseded: true, retryable: false, message: "" }); });
