@@ -232,11 +232,11 @@ try {
       file: "sync.js",
       from: `    const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
-    bumpAcct(); // 同上`,
+    ownBump(); // 同上`,
       to: `    const rv0 = await revokeCloudSession(session);
     const c = cleanLocal(uid, { clearAuth: false, keepCopy: false });
     if (!c.ok) return c.result;
-    bumpAcct(); // 同上`,
+    ownBump(); // 同上`,
     },
     {
       name: "DB-3.1：强制退出先撤销云端会话、再清本机",

@@ -43,9 +43,9 @@ const json = (route, status, body, headers = {}) => route.fulfill({ status, head
 
 // 每个场景的假服务器应答由场景决定：函数 (route) => ...。progress 相关的路由默认返回“云端没有进度”。
 // stall：路径片段列表。命中的请求在页面里直接得到“响应头 200 已到、正文永远不来”的响应（不经过 route，也不响应中止信号 = 最坏情况）
-async function device({ xp = 50, otp, verify, progress, getProgress, online = true, fakeVv = false, nav = "login", stall = [] } = {}) {
+async function device({ xp = 50, otp, verify, progress, getProgress, logout, online = true, fakeVv = false, nav = "login", stall = [] } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 320, height: 568 }, userAgent: UA, hasTouch: true, isMobile: true, serviceWorkers: "block" });
-  const hits = { otp: 0, verify: 0, create: 0, save: 0, get: 0 };
+  const hits = { otp: 0, verify: 0, create: 0, save: 0, get: 0, logout: 0 };
   const rows = { n: 0 };
   await ctx.route(FAKE + "/**", async (route) => {
     const req = route.request(), u = new URL(req.url());
@@ -55,7 +55,7 @@ async function device({ xp = 50, otp, verify, progress, getProgress, online = tr
     if (u.pathname === "/rest/v1/progress") { hits.get++; return (getProgress || ((r) => json(r, 200, [])))(route, hits.get); }
     if (u.pathname === "/rest/v1/rpc/create_progress") { hits.create++; return (progress || ((r) => json(r, 200, 1)))(route); }
     if (u.pathname === "/rest/v1/rpc/save_progress") { hits.save++; return json(route, 200, null); }
-    if (u.pathname === "/auth/v1/logout") return json(route, 204);
+    if (u.pathname === "/auth/v1/logout") { hits.logout++; return (logout || ((r) => json(r, 204)))(route, hits.logout); }
     return json(route, 404, { message: "no route" });
   });
   const guest = { version: 3, onboarded: true, xp, hearts: 5, heartsAt: Date.now(), streak: 1, lastDay: "2026-11-03", done: xp > 0 ? { U1L1: true } : {}, lessonsCompleted: xp > 0 ? 1 : 0, installTipClosed: false, lastActive: 0, prefs: { sound: true, haptics: true, soundStyle: "J" } };
@@ -426,6 +426,66 @@ await scenario("V5w 等待期间：改验证码 / 换个邮箱 / 重新发送 / 
   await d.page.locator("[data-code]").focus(); await d.page.keyboard.press("Escape");
   await d.page.waitForFunction(() => !document.querySelector("[data-login]"));
   check("关窗：旧会话作废，没有登录", !(await hasVerified(d)) && !(await d.page.evaluate(() => !!window.__app.sync.account())));
+});
+// 2026-11-20（GPT1 第 1 单）：退出 / 切换账号共用处理中锁，重复点击只撤销一次，已退出的收尾（提示 / 回调）只执行一次。
+// 记录每一次 showToast：提示元素是复用的，重复设置同样的文字浏览器不一定产生 DOM 变化，所以改为数 showToast 排的 4 秒清除定时器（每次提示恰好排一个）
+const logToasts = (page) => page.evaluate(() => { window.__toasts = []; const st = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...a) => { if (ms === 4000) window.__toasts.push(document.querySelector(".toast")?.textContent ?? ""); return st(fn, ms, ...a); }; });
+const loggedInAccountCard = async (d) => { // 游客 0 XP：登录直接完成，再打开账号卡
+  await sendTap(d); await d.page.locator("[data-code]").waitFor();
+  await d.page.locator("[data-code]").fill("123456"); await d.page.locator("[data-verify]").tap();
+  await d.page.locator('[data-choice="cloud"]').waitFor({ timeout: 15000 }); await d.page.locator('[data-choice="cloud"]').tap(); // 游客记录（0 XP）也会问一次：选“用全新账号”
+  try { await d.page.waitForFunction(() => !document.querySelector("[data-login]") && !!window.__app.sync.account(), null, { timeout: 15000 }); } catch (e) { throw new Error("登录没完成：" + (await d.page.evaluate(() => JSON.stringify({ login: !!document.querySelector("[data-login]"), acct: window.__app.sync.account(), msg: document.querySelector("[data-login-msg]")?.textContent, body: document.querySelector("[data-login]")?.innerText?.slice(0, 200) })))); }
+  await logToasts(d.page);
+  await d.page.getByRole("button", { name: "我的" }).tap(); await d.page.locator('[data-me-menu="account"]').tap();
+  await d.page.waitForSelector("[data-account] [data-logout]");
+};
+// 有“云端记录”的假服务器：第一次创建成功，之后读得回来（否则登录后会一直是“待上传”，退出会先问“有进度还没上传”）
+const cloudWithRow = () => { const st = { row: null }; return { progress: (r) => { if (st.row) return json(r, 200, null); try { st.row = { doc: JSON.parse(r.request().postData() || "{}").new_doc, rev: 1 }; } catch { st.row = { doc: {}, rev: 1 }; } return json(r, 200, 1); }, getProgress: (r) => json(r, 200, st.row ? [{ doc: st.row.doc, rev: st.row.rev }] : []) }; };
+const gate = () => { let go; const p = new Promise((r) => { go = r; }); return { p, go }; };
+await (async () => {
+  const g = gate();
+  await scenario("退出登录：连点两次 + 点「切换账号」，只撤销一次，两个按钮都禁用，已退出的提示只出现一次", { xp: 0, verify: okVerify, ...cloudWithRow(), logout: async (r) => { await g.p; return json(r, 204); } }, async (d) => {
+    await loggedInAccountCard(d);
+    await d.page.locator("[data-logout]").tap();
+    await d.page.waitForFunction(() => document.querySelector("[data-logout]")?.disabled === true);
+    check("点「退出登录」后：「退出登录」「切换账号」两个按钮都立刻禁用", (await d.page.locator("[data-logout]").isDisabled()) && (await d.page.locator("[data-switch]").isDisabled()));
+    await d.page.locator("[data-logout]").evaluate((el) => { el.disabled = false; el.click(); el.click(); }); // 绕过禁用态，直接再点（模拟极快的连点 / 键盘重复）
+    await d.page.locator("[data-switch]").evaluate((el) => { el.disabled = false; el.click(); });
+    await d.page.waitForTimeout(300);
+    check("连点两次「退出登录」+ 点一次「切换账号」：云端撤销请求只有 1 次，没有打开登录弹窗", d.hits.logout === 1 && (await d.page.locator("[data-login]").count()) === 0, JSON.stringify(d.hits));
+    g.go(); await d.page.waitForFunction(() => !window.__app.sync.account(), null, { timeout: 15000 }); await d.page.waitForTimeout(300);
+    const toasts = await d.page.evaluate(() => window.__toasts);
+    check("放行后：退出成功，“已退出登录”的提示只出现 1 次，撤销请求仍只有 1 次", toasts.filter((x) => /已退出登录/.test(x)).length === 1 && d.hits.logout === 1, JSON.stringify([toasts, d.hits.logout]));
+  });
+})();
+await (async () => {
+  const g = gate();
+  await scenario("切换账号：处理中点「退出登录」被挡；完成后只打开一次登录弹窗", { xp: 0, verify: okVerify, ...cloudWithRow(), logout: async (r) => { await g.p; return json(r, 204); } }, async (d) => {
+    await loggedInAccountCard(d);
+    await d.page.locator("[data-switch]").tap();
+    await d.page.waitForFunction(() => document.querySelector("[data-switch]")?.disabled === true);
+    await d.page.locator("[data-logout]").evaluate((el) => { el.disabled = false; el.click(); });
+    await d.page.waitForTimeout(300);
+    check("处理中点「退出登录」：不发第二次撤销", d.hits.logout === 1, JSON.stringify(d.hits));
+    g.go(); await d.page.locator("[data-login]").waitFor({ timeout: 15000 }); await d.page.waitForTimeout(300);
+    check("完成后：已退出，登录弹窗只有 1 个（切换账号的回调只执行一次）", (await d.page.locator("[data-login]").count()) === 1 && !(await d.page.evaluate(() => !!window.__app.sync.account())));
+  });
+})();
+await scenario("被取代的旧退出返回（stale）：界面什么都不做——没有“已退出”提示、不切走账号、按钮恢复", { nav: "none" }, async (d) => {
+  await patchedAccount(d, { status: "synced", xp: 120 });
+  await logToasts(d.page); await d.page.evaluate(() => { window.__app.sync.logout = async () => ({ ok: false, kind: "stale", stale: true, superseded: true, retryable: false, message: "" }); });
+  await d.page.locator("[data-switch]").tap(); await d.page.waitForTimeout(400);
+  const toasts = await d.page.evaluate(() => window.__toasts);
+  check("旧退出被取代（stale）：没有任何提示、没有打开登录弹窗、账号卡还在，两个按钮可点", toasts.length === 0 && (await d.page.locator("[data-login]").count()) === 0 && (await d.page.locator("[data-account] [data-logout]").count()) === 1 && !(await d.page.locator("[data-logout]").isDisabled()) && !(await d.page.locator("[data-switch]").isDisabled()), JSON.stringify(toasts));
+});
+await scenario("退出失败后按钮恢复：失败提示出现，两个按钮重新可点，再点会重新发起一次撤销", { xp: 0, verify: okVerify, ...cloudWithRow(), logout: (r) => json(r, 503, { msg: CAN }) }, async (d) => {
+  await loggedInAccountCard(d);
+  await d.page.locator("[data-logout]").tap();
+  await d.page.getByText("云端退出失败").waitFor({ timeout: 15000 });
+  check("撤销失败：弹出“云端退出失败”，仍是登录状态，两个按钮恢复可点", (await d.page.evaluate(() => !!window.__app.sync.account())) && !(await d.page.locator("[data-logout]").isDisabled()) && !(await d.page.locator("[data-switch]").isDisabled()) && d.hits.logout === 1, JSON.stringify(d.hits));
+  await d.page.keyboard.press("Escape"); await d.page.waitForTimeout(300);
+  await d.page.locator("[data-logout]").tap(); await d.page.getByText("云端退出失败").waitFor({ timeout: 15000 });
+  check("再点一次：重新发起撤销（共 2 次），不会被上一次的“处理中”卡住", d.hits.logout === 2, JSON.stringify(d.hits));
 });
 await scenario("选择后上传失败：登录已完成，提示是中文，没有服务器原文", { verify: okVerify, progress: (r) => json(r, 500, { code: 500, error_code: "unexpected_failure", msg: CAN }) }, async (d) => {
   await toChoice(d);

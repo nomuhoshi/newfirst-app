@@ -35,7 +35,7 @@ try {
     ["sync.js", "缺失 / 非法没有保底等待", ": COOLDOWN_MS;\n  };", ": 0;\n  };"],
     ["sync.js", "后到的 429 覆盖（缩短）尚未结束的等待", "cooldownUntil = Math.max(cooldownUntil, until);", "cooldownUntil = until;"],
     ["sync.js", "同步的 429 记在登录阶段的冷却上（退出 / 换账号不会作废）", "armCooldown(r, true); return r;", "armCooldown(r); return r;"],
-    ["sync.js", "会话代次前进时不作废同步冷却", "function bumpAcct() { acctGen++; syncCooldownUntil = 0;", "function bumpAcct() { acctGen++;"],
+    ["sync.js", "会话代次前进时不作废同步冷却", "function bumpAcct() { acctGen++; loggingOut = false; syncCooldownUntil = 0;", "function bumpAcct() { acctGen++;"],
     ["sync.js", "同步入口不检查冷却", "    if (inCooldown()) {\n      const limited = rateLimited();", "    if (false) {\n      const limited = rateLimited();"],
     ["sync.js", "旧任务读取返回后不核对代次（旧会话的 429 回来改写新会话的等待）", "const remote = await api.getProgress(session);\n      if (dead()) return staleResult();", "const remote = await api.getProgress(session);"],
     ["cloud-api.js", "不认 rfc850 日期", "if ((m = /^([A-Za-z]{6,9}), (\\d{2})", "if (false && (m = /^([A-Za-z]{6,9}), (\\d{2})"],
