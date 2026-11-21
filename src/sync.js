@@ -620,7 +620,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     setStatus("syncing");
     if (inCooldown()) {
       const limited = rateLimited();
-      setStatus("error", limited.message);
+      setStatus("error", limited.message, detailOf(limited));
       return limited;
     }
     if (!isSessionShape(session) || session.userId !== userId) {

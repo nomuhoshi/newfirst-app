@@ -713,6 +713,38 @@ await (async () => {
   });
 })();
 
+// G10：首次 429 后，在同一段冷却中再次点同步；复用时间偏移，只访问假服务器。
+for (const [retryAfter, elapsed] of [[30, 1], [180, 121]]) {
+  const cloud = cloudWithRow(); let limited = false;
+  await scenario(`G-LOGIN-10 同步冷却 ${retryAfter} 秒，第 ${elapsed} 秒再次同步`, {
+    xp: 0, verify: okVerify, progress: cloud.progress,
+    getProgress: (r) => limited ? json(r, 429, { code: 429, error_code: "over_request_rate_limit", msg: CAN }, RAX(retryAfter)) : cloud.getProgress(r),
+  }, async (d) => {
+    await loggedInAccountCard(d);
+    const before = await d.page.evaluate(() => ({ account: window.__app.sync.account(), status: window.__app.sync.status().status, xp: window.__app.getState().xp, toasts: window.__toasts.length }));
+    if (!before.account || before.status !== "synced") throw new Error("G10 前提失败：未正常登录并同步：" + JSON.stringify(before));
+    const hits = { ...d.hits }; limited = true;
+    await d.page.locator("[data-sync-now]").tap();
+    await d.page.waitForFunction((n) => window.__toasts.length > n, before.toasts);
+    check("G10 首次 429：状态栏为同步限流，且只多一次读取", (await T(d.page, "[data-sync-status]")) === "云端请求太频繁，稍后会自动重试。" && d.hits.get === hits.get + 1);
+    const blockedHits = { ...d.hits }, stored = await dump(d.page);
+    // 只快进时钟。shiftClock() 还会派发 visibilitychange，触发正常的前台保存和重试计数可写探测。
+    await d.page.evaluate((ms) => {
+      const realNow = Date.now.bind(Date);
+      Date.now = () => realNow() + ms;
+    }, elapsed * 1000);
+    const toastCount = await d.page.evaluate(() => window.__toasts.length);
+    await d.page.locator("[data-sync-now]").tap();
+    await d.page.waitForFunction((n) => window.__toasts.length > n, toastCount);
+    const st = await T(d.page, "[data-sync-status]"), toast = await T(d.page, ".toast");
+    check("G10 冷却中再次同步：实际状态栏仍为同步限流，不出现发送 / 验证码 / 固定一分钟", st === "云端请求太频繁，稍后会自动重试。" && !/发送|验证码|一分钟/.test(st), st);
+    check("G10 冷却中再次同步：实际提示条保持 G08 中性文案，页面不显示服务器原文", toast === "云端请求太频繁了，请稍后再试。" && (await noRaw(d.page)), toast);
+    const after = await d.page.evaluate(() => ({ account: window.__app.sync.account(), xp: window.__app.getState().xp }));
+    const stable = { requests: JSON.stringify(d.hits) === JSON.stringify(blockedHits), account: JSON.stringify(after.account) === JSON.stringify(before.account), xp: after.xp === before.xp, storage: (await dump(d.page)) === stored };
+    check("G10 冷却中再次同步：零新增请求，登录、XP 和本机存档逐字节不变", Object.values(stable).every(Boolean), JSON.stringify({ stable, before: blockedHits, after: d.hits }));
+  });
+}
+
 // ---------- 已发布产物的核对（只在 DIST_DIR / FAKE_URL 给定时运行）----------
 if (EXPECT_SHA) {
   await scenario("预览产物：页面显示的源码提交、云项目，且只访问测试项目", { nav: "none", otp: (r) => json(r, 500, { error_code: "unexpected_failure", msg: CAN }) }, async (d) => {
