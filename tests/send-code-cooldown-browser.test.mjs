@@ -68,13 +68,32 @@ const secondsIn = (t) => { const m = /(\d+) 秒/.exec(t); return m ? Number(m[1]
 const noRaw = async (page) => !(await page.evaluate(() => document.body.innerText)).includes(CAN);
 const waitMsg = async (d, re) => { try { await d.page.waitForFunction((src) => new RegExp(src).test(document.querySelector("[data-login-msg]")?.textContent || ""), re.source, { timeout: 15000 }); } catch { throw new Error(`等不到提示 ${re}；当前=「${await T(d.page, "[data-login-msg]")}」`); } };
 const sendTap = (d) => d.page.locator("[data-send-code]").tap();
-// 页面报错：放行 WebKit 的 viewport interactive-widget 警告，以及“与故意返回的 429 一一对应、数量不超过”的资源加载提示；其余 console.error / pageerror 一律算意外
+// 页面报错：只放行完整的 WebKit viewport interactive-widget 警告（含可选末尾句号），以及“与故意返回的 429 一一对应、数量不超过”的资源加载提示；其余 console.error / pageerror 一律算意外
+const INTERACTIVE_WIDGET_RE = /^Viewport argument key "interactive-widget" not recognized and ignored\.?$/;
 const unexpected = (d) => {
-  const rest = d.consoleErrors.filter((t) => !/interactive-widget/.test(t));
+  const rest = d.consoleErrors.filter((t) => !INTERACTIVE_WIDGET_RE.test(t));
   const is429 = (t) => /Failed to load resource.*\b429\b/.test(t);
   const extra429 = Math.max(0, rest.filter(is429).length - n429);
   return [...d.errors, ...rest.filter((t) => !is429(t)), ...(extra429 ? [`多出 ${extra429} 条 429 资源错误（假服务器只返回了 ${n429} 次）`] : [])];
 };
+{
+  const exactNoDot = 'Viewport argument key "interactive-widget" not recognized and ignored';
+  const exactDot = 'Viewport argument key "interactive-widget" not recognized and ignored.';
+  const pos = unexpected({ errors: [], consoleErrors: [exactNoDot, exactDot] });
+  check("G-LOGIN-09 正例：完整 interactive-widget 警告（有/无末尾句号）均放行", pos.length === 0, JSON.stringify(pos));
+
+  const negCases = [
+    "TypeError: interactive-widget handler failed",
+    `prefix: ${exactNoDot}`,
+    `${exactNoDot} (extra suffix)`,
+    `${exactDot}\nSecond line detail`,
+  ];
+  const negConsole = unexpected({ errors: [], consoleErrors: negCases });
+  check("G-LOGIN-09 反例（console.error）：含关键词异常、前后缀与多行文本均保留", negConsole.length === negCases.length && negCases.every((c) => negConsole.includes(c)), JSON.stringify(negConsole));
+
+  const negPageErr = unexpected({ errors: [exactDot], consoleErrors: [] });
+  check("G-LOGIN-09 反例（pageerror）：即使恰好等于已知提示也始终保留", negPageErr.length === 1 && negPageErr[0] === exactDot, JSON.stringify(negPageErr));
+}
 async function scenario(name, otp, fn) {
   n429 = 0;
   const d = await device(otp);
