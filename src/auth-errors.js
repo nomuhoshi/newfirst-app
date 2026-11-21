@@ -18,13 +18,21 @@ export const safeCode = (s) => (typeof s === "string" && /^[a-z0-9_]{3,40}$/.tes
 // 键 = 设计规范里的编号。cooldown：ms 数 / "server"（取服务器给的数字，没有就用 fallback）/ 0 不冷却。diag：该类是否显示诊断行。
 const IS_PREVIEW = typeof __PREVIEW_ID__ !== "undefined" && !!__PREVIEW_ID__;
 const fmtWait = (sec) => (sec <= 90 ? `${sec} 秒` : `约 ${Math.ceil(sec / 60)} 分钟`);
+// 发验证码这条路径的等待文字（G-LOGIN-06）：合法的长等待不截断（分钟 → 小时 → 天），两分钟内保留精确秒数，和界面倒计时对得上。V2 仍用上面的 fmtWait。
+export const fmtSendWait = (sec) => (sec <= 120 ? `${sec} 秒` : sec < 3600 ? `约 ${Math.ceil(sec / 60)} 分钟` : sec < 172800 ? `约 ${Math.ceil(sec / 3600)} 小时` : `约 ${Math.ceil(sec / 86400)} 天`);
 export const SEND_COPY = {
   // 规范之外：云端没配置（登录入口本来就不会出现，防御用）
   CFG: { text: () => "云端暂未开通，现在只能在这台设备上学习。", cooldown: 0, diag: false },
   S1a: { text: () => "没连上网络，验证码没发出去。联网后再点「发送验证码」。", cooldown: 0, diag: false },
   S1b: { text: (c) => (c.timedOut ? "请求超时，邮件可能已发出。请先检查邮箱（含垃圾邮件），收到后在下面输入验证码。" : "网络不稳，没等到回应。验证码可能已经发出，先看看邮箱（含垃圾邮件）。"), cooldown: 0, diag: false },
-  S2: { text: (c) => `刚刚已经发过验证码，请等 ${fmtWait(c.n)}再发。先看看邮箱（含垃圾邮件），验证码还能用。`, cooldown: "server", fallback: 60000, diag: false, secondary: "enter-code" },
-  S3: { text: () => "登录邮件发得太多，暂时发不出验证码。请过一会儿再试，最久可能要等一小时。", cooldown: 300000, diag: false },
+  // S2：邮箱限流码 + 明确的“发送间隔”提示 = 这个邮箱请求得太密。不保证旧验证码还有效，也不替服务器断言“已经发过”。
+  S2: { text: (c) => `这个邮箱请求验证码太频繁了，请等 ${fmtSendWait(c.n)}再发。之前收到的验证码不一定还有效，先看看邮箱（含垃圾邮件）。`, cooldown: "server", fallback: 60000, diag: false, secondary: "enter-code" },
+  // S3：邮箱限流码 + “email rate limit exceeded” = 邮件服务整体限流。等待时间只取自等待头 / 本页门禁，不再自己生成 5 分钟。
+  S3: { text: (c) => `邮件服务暂时限流，这次验证码没发出去。请等 ${fmtSendWait(c.n)}再试。`, cooldown: "server", fallback: 60000, diag: false },
+  // S8：请求限流，原因不明（over_request_rate_limit / 没有已知错误码的 429 / 只有等待数字）。中性文案：不说邮件发没发、不说额度。
+  S8: { text: (c) => `请求太频繁了，暂时发不出验证码。请等 ${fmtSendWait(c.n)}再试。`, cooldown: "server", fallback: 60000, diag: false },
+  // S9：本页的发信冷却还没到期，这次点击在本地被挡住、没有发请求。不是新的服务器拒绝；截止时间沿用原来的。
+  S9: { text: (c) => `还在等待中，请等 ${fmtSendWait(c.n)}再点「发送验证码」。`, cooldown: "server", fallback: 60000, diag: false },
   S4: { text: (c) => "邮件服务暂时出问题，验证码没发出去。不是你的操作有误，过几分钟再试。" + (c.fails >= 3 ? "先继续学习，晚点再登录也行。" : ""), cooldown: 0, diag: true },
   S5: { text: () => "这个邮箱暂时收不到登录验证码。请换一个邮箱试试。", cooldown: 0, diag: true },
   S5t: { text: () => "这个邮箱不在测试名单里。测试入口只允许指定邮箱登录。", cooldown: 0, diag: true },
@@ -80,6 +88,16 @@ export function serverWaitSec(r) {
   const n = secondsFromMessage(r);
   return n > 0 ? Math.min(3600, n) : 0;
 }
+const EMAIL_LIMIT_CODE = "over_email_send_rate_limit";
+const MAIL_QUOTA_RE = /email rate limit exceeded/i; // 邮件服务整体限流
+const SEND_INTERVAL_RE = /can only request this (?:after|once every)\s+\d{1,5}\s*seconds?/i; // 单邮箱发送间隔
+const SEND_LIMIT_IDS = new Set(["S2", "S3", "S8", "S9"]);
+// 发码限流的等待毫秒数：优先用同步层给的实际门禁剩余时间（waitMs）；没有（直接拿原始结果描述）就按 #141 的规则：合法 Retry-After 最短 5 秒，缺失 / 非法 60 秒。不截断。
+function sendWaitMs(r) {
+  if (Number.isFinite(r?.waitMs) && r.waitMs >= 0) return Math.ceil(r.waitMs);
+  const sec = r?.retryAfterSec;
+  return Number.isFinite(sec) && sec >= 0 ? Math.max(5000, Math.ceil(sec * 1000)) : 60000;
+}
 const S5_CODES = new Set(["email_address_not_authorized", "email_address_invalid", "signup_disabled", "otp_disabled"]);
 export function classifySend(r, { preview = IS_PREVIEW, captchaOn } = {}) {
   if (!r || r.ok) return "";
@@ -89,9 +107,14 @@ export function classifySend(r, { preview = IS_PREVIEW, captchaOn } = {}) {
   if (r.kind === "network") return r.offline ? "S1a" : "S1b";
   const st = http(r), code = safeCode(r.errorCode);
   if (code === "captcha_failed") return captchaOn === false ? "K5" : "K4"; // K4 服务器拒绝了令牌（令牌用过 / 过期 / 站点密钥不匹配）；K5 这份页面根本没带人机验证（调用方明确传 captchaOn:false 才算）
-  if (st === 429 || r.kind === "rate-limit" || code === "over_email_send_rate_limit" || code === "over_request_rate_limit") {
-    if (serverWaitSec(r) > 0 || code === "over_request_rate_limit") return "S2";
-    return "S3";
+  if (st === 429 || r.kind === "rate-limit" || code === EMAIL_LIMIT_CODE || code === "over_request_rate_limit") {
+    // G-LOGIN-06：原因只看“错误码 + 原文里的有限匹配”，等待数字（Retry-After / 原文秒数）只决定等多久、不决定原因。
+    if (r.localBlock === true) return "S9"; // 本页冷却门禁在本地挡住、没有发请求
+    if (code === EMAIL_LIMIT_CODE) {
+      if (MAIL_QUOTA_RE.test(msgOf(r))) return "S3";
+      if (SEND_INTERVAL_RE.test(msgOf(r))) return "S2";
+    }
+    return "S8";
   }
   if (S5_CODES.has(code) || /not authorized|Signups not allowed/i.test(msgOf(r))) return preview ? "S5t" : "S5";
   if (st >= 500 || /Error sending .* email/i.test(msgOf(r))) return "S4";
@@ -123,13 +146,14 @@ const clampMs = (ms) => Math.min(3600000, Math.max(10000, ms));
 
 function build(table, id, r, { xp = 0, fails = 1 } = {}) {
   const e = table[id];
-  const n = id === "V5w" ? Math.max(1, Math.ceil(r.waitMs / 1000)) : serverWaitSec(r) || (id === "S2" || id === "V2" ? 60 : 0);
-  const cd = id === "S4" ? (fails >= 3 ? 300000 : 30000) : e.cooldown === "server" ? clampMs((serverWaitSec(r) ? serverWaitSec(r) + 1 : e.fallback / 1000) * 1000) : e.cooldown || 0;
+  const limited = SEND_LIMIT_IDS.has(id), wait = limited ? sendWaitMs(r) : 0;
+  const n = limited ? Math.max(1, Math.ceil(wait / 1000)) : id === "V5w" ? Math.max(1, Math.ceil(r.waitMs / 1000)) : serverWaitSec(r) || (id === "S2" || id === "V2" ? 60 : 0);
+  const cd = id === "S4" ? (fails >= 3 ? 300000 : 30000) : limited ? wait : e.cooldown === "server" ? clampMs((serverWaitSec(r) ? serverWaitSec(r) + 1 : e.fallback / 1000) * 1000) : e.cooldown || 0;
   return {
     id, design: id, text: e.text({ n, fails, timedOut: r?.timedOut === true }), diag: e.diag ? diagLine(r) : "", xp: (id === "C1" || id === "C1d" ? xpLineSync : xpLine)(xp),
-    cooldownMs: cd, scope: id === "S2" || id === "V2" ? "email" : "", uncertainSent: id === "S1b" && r?.timedOut === true, secondary: e.secondary || "",
+    cooldownMs: cd, scope: id === "V2" ? "email" : "", retryAt: limited && Number.isFinite(r?.retryAt) ? r.retryAt : null, uncertainSent: id === "S1b" && r?.timedOut === true, secondary: e.secondary || "",
     // 倒计时按钮上的字样（规范 §2.3 第 6 条）
-    cooldownLabel: id === "S2" ? "可再发" : id === "S3" ? "约 5 分钟后可再试" : id === "S4" ? (fails >= 3 ? "约 5 分钟后可再试" : "30 秒后可再试") : "",
+    cooldownLabel: limited ? "可再发" : id === "S4" ? (fails >= 3 ? "约 5 分钟后可再试" : "30 秒后可再试") : "",
   };
 }
 export const describeSendError = (r, o = {}) => { if (!r || r.ok) return null; const id = classifySend(r, o); return build(CAPTCHA_COPY[id] ? CAPTCHA_COPY : SEND_COPY, id, r, o); };

@@ -47,7 +47,7 @@ check("K1–K5 文案互不相同（2026-11-17 新增 K5，原来断言 4 条，
 }
 check("K 类都说了“验证码没发出去”，不让人以为邮件发了", Object.values(CAPTCHA_COPY).every((e) => e.text().includes("验证码没发出去")));
 // 不影响已有分类
-const keep = [[{ ok: false, kind: "network", offline: true }, "S1a"], [{ ok: false, kind: "network" }, "S1b"], [{ ok: false, status: 429, errorCode: "over_email_send_rate_limit", retryAfterSec: 30 }, "S2"], [{ ok: false, status: 500 }, "S4"], [{ ok: false, status: 400, errorCode: "email_address_invalid" }, "S5"], [{ ok: false, status: 400, errorCode: "something_else" }, "S6"], [{ ok: false, kind: "config" }, "CFG"]];
+const keep = [[{ ok: false, kind: "network", offline: true }, "S1a"], [{ ok: false, kind: "network" }, "S1b"], [{ ok: false, status: 429, errorCode: "over_email_send_rate_limit", retryAfterSec: 30 }, "S8"], [{ ok: false, status: 500 }, "S4"], [{ ok: false, status: 400, errorCode: "email_address_invalid" }, "S5"], [{ ok: false, status: 400, errorCode: "something_else" }, "S6"], [{ ok: false, kind: "config" }, "CFG"]];
 for (const [r, id] of keep) check(`既有分类不变：${JSON.stringify(r)} → ${id}`, classifySend(r) === id);
 check("意外异常（kind=unknown）走 S7：邮件可能已发出，不说“没发出去”，不冷却，不含原文", classifySend({ ok: false, kind: "unknown" }) === "S7" && describeSendError({ ok: false, kind: "unknown", message: "CANARY" }).cooldownMs === 0 && describeSendError({ ok: false, kind: "unknown", message: "CANARY" }).text === "暂时无法确认是否发出，请先检查邮件。" && !JSON.stringify(describeSendError({ ok: false, kind: "unknown", message: "CANARY" })).includes("CANARY"));
 check("CAPTCHA_COPY 与 SEND_COPY 键不重叠", Object.keys(CAPTCHA_COPY).every((k) => !(k in SEND_COPY)));

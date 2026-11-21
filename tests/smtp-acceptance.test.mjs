@@ -84,7 +84,7 @@ try {
     check(name, x.code === 1 && re.test(x.o) && !/CANARY/.test(x.o) && nokey(x.o), x.o); rmSync(T3, { recursive: true, force: true });
   };
   await failCase([500, { error_code: "unexpected_failure", msg: "CANARY Error sending magic link email" }], /S4.*500 · unexpected_failure/, "发信 500：退出码 1，分类为 S4，诊断行带状态码和错误码，不显示服务器原文");
-  await failCase([429, { error_code: "over_email_send_rate_limit", msg: "CANARY after 40 seconds" }], /S2/, "发信 429（服务器给了 40 秒）：分类为 S2");
+  await failCase([429, { error_code: "over_email_send_rate_limit", msg: "CANARY For security purposes, you can only request this after 40 seconds." }], /S2/, "发信 429（邮箱限流码 + 发送间隔提示）：分类为 S2（G-LOGIN-06：原文只用来匹配，不再靠“有秒数”判 S2）");
   await failCase([400, { error_code: "email_address_not_authorized", msg: "CANARY" }], /S5/, "发信 400 无资格：分类为 S5");
   await failCase([422, { error_code: "otp_disabled", msg: "CANARY" }], /S5/, "发信 422 otp_disabled（用户不存在）：分类为 S5");
 

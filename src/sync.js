@@ -762,9 +762,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     if (blocked) return blocked;
     dropVerified(); // 重发验证码 = 开始新的一轮：之前“已验证待读取”的会话作废
     // 冷却期内不再调用发信接口。测试只用假接口，这里也不会向任何真实邮箱发验证码。
-    if (inCooldown()) return rateLimited();
+    // 返回元数据（G-LOGIN-06）：retryAt = 实际门禁截止时间（发码冷却与同步冷却的较大值），waitMs = 此刻剩余等待，localBlock = 这次是否在本地被挡（没发请求）。界面按它们倒计时，不自己重算。
+    const gate = (res, localBlock) => ({ ...res, retryAt: coolUntil(), waitMs: Math.max(0, coolUntil() - now()), localBlock });
+    if (inCooldown()) return gate(rateLimited(), true);
     const r = await (captchaToken ? api.sendCode(String(addr).trim(), captchaToken) : api.sendCode(String(addr).trim())); // 没有令牌时调用形状和以前完全一致
-    if (r && r.kind === "rate-limit") armCooldown(r);
+    if (r && r.kind === "rate-limit") { armCooldown(r); return gate(r, false); }
     return r;
   }
 
