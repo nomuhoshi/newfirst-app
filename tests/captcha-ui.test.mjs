@@ -206,7 +206,8 @@ for (const captchaEnabled of [true, false]) {
     check(`F3（${tag}）发送途中点“先不登录”：可以关（人机验证实例已销毁）`, s.log.some((x) => x[0] === "destroy"));
     g.open(); await flush();
     check(`F3（${tag}）关掉后请求才成功：已关的弹窗不再翻到输验证码页`, !find(s.box(), "data-code") && !!find(s.box(), "data-email"));
-    if (captchaEnabled) check("F3（开）令牌照样作废（reset）", s.log.filter((x) => x[0] === "reset").length === 1, JSON.stringify(s.log));
+    // G07：关闭已通过 destroy 作废组件；迟到请求不能再操作已销毁的组件，改为核验一次销毁且零次关闭后 reset。
+    if (captchaEnabled) check("F3（开）关闭通过 destroy 作废令牌；迟到结果不再 reset 已销毁组件", s.log.filter((x) => x[0] === "destroy").length === 1 && s.log.filter((x) => x[0] === "reset").length === 0, JSON.stringify(s.log));
   }
   { // F4 首次发送途中点“先不登录”，请求随后失败：不在已关的弹窗上写报错、不起冷却计时
     const s = setup({ captchaEnabled, sendResults: [{ ok: false, status: 429, errorCode: "over_email_send_rate_limit", kind: "rate-limit" }] });
