@@ -79,6 +79,7 @@ export function loadAccount(storage, userId, { now = Date.now() } = {}) {
   if (!r.ok) return { ok: false, code: "read-failed", message: "无法读取这个账号的本机副本" };
   const raw = r.value;
   if (raw === null) return { ok: true, copy: null };
+  if (typeof raw !== "string") return { ok: false, code: "read-failed", message: "无法读取这个账号的本机副本" };
   let parsed;
   try { parsed = JSON.parse(raw); } catch { return { ok: false, code: "corrupt", message: "这个账号的本机副本损坏" }; }
   const n = normalizeDoc(parsed?.doc);

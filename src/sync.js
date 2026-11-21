@@ -31,6 +31,10 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   let session = null, userId = null, email = "", loginInstanceId = null;
   const newLoginInstanceId = () => (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${now()}-${Math.random().toString(36).slice(2)}`);
   let status = null, pending = false, running = null, again = false, timer = null, retryTimer = null, netFails = 0;
+  let restoreIssue = null, restoreOwner = null, restoreSeq = 0;
+  // 失败详情只放内存；账号代次前进后自动作废，不改变既有 status() 返回契约。
+  const restoreError = () => (!userId && restoreOwner?.gen === acctGen && restoreIssue ? { ...restoreIssue } : null);
+  const clearRestoreIssue = () => { restoreIssue = null; restoreOwner = null; };
   // 账号会话代次：登录完成 / 恢复 / 退出 / 删除账号时前进。每一轮同步在开始时记下代次，之后每个 await 回来先核对：
   // 代次变了（中间退出过、或又登录了同一账号 / 别的账号），这一轮就是“旧任务”——结果整体丢弃，不写状态、凭证、进度、待同步标记、时间戳，
   // 也不安排重试；它的收尾也只能清理自己的 running。前进代次时同时放掉旧任务占着的 running / again / 定时器，新会话能独立同步。
@@ -256,23 +260,68 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   // ---------- 启动：恢复上次登录的账号（只读本机，不联网）----------
-  function restore(baseState = null) {
-    const uid = getCurrentAccount(storage);
-    if (!uid) return null;
+  const restoreIdentity = (a) => a.state === "ours"
+    ? { state: a.state, userId: a.session.userId, instanceId: a.instanceId || null }
+    : { state: a.state };
+  const sameRestoreIdentity = (a, b) => a.state === b.state && a.userId === b.userId && a.instanceId === b.instanceId;
+  function restoreAttempt(baseState = null, expected = null) {
+    const op = { seq: ++restoreSeq, gen: acctGen, verify: verifyGen, waiting, uid: userId, inst: loginInstanceId };
+    const current = () => op.seq === restoreSeq && op.gen === acctGen && op.verify === verifyGen && op.waiting === waiting && op.uid === userId && op.inst === loginInstanceId;
+    const stale = () => { if (current()) clearRestoreIssue(); return staleResult(); };
+    let uid = expected?.uid || null, identity = expected?.identity || null;
+    const fail = (code, target) => {
+      if (!current()) return staleResult();
+      const retryable = code === "read-failed" || code === "missing";
+      const message = code === "schema-newer" ? "账号本机记录来自更新版本的应用，请更新或刷新应用后再试。原记录未改动。"
+        : code === "corrupt" ? "账号的本机进度副本已损坏，原记录未改动。请保留本机数据，等待处理。"
+        : code === "missing" ? "未找到账号的本机进度副本，请重试恢复，或通过邮箱重新登录读取云端进度。"
+        : "暂时无法读取本机账号记录，请重试恢复。";
+      restoreIssue = { code, target, userId: uid, retryable, message };
+      restoreOwner = { gen: acctGen, uid, identity };
+      return { ok: false, kind: retryable ? "local" : "data", error: restoreError(), message };
+    };
+    const p0 = readCurrentAccount(storage);
+    if (!current()) return staleResult();
+    if (!p0.ok) return fail("read-failed", "session");
+    if (!p0.id || (expected?.uid && p0.id !== expected.uid)) return stale();
+    uid = p0.id;
+    const a0 = inspectAuth();
+    if (!current()) return staleResult();
+    if (a0.state === "read-failed") return fail("read-failed", "auth");
+    const initialIdentity = restoreIdentity(a0);
+    if (expected?.identity && !sameRestoreIdentity(expected.identity, initialIdentity)) return stale();
+    identity = initialIdentity;
+    // readAuth 的外项目迁移提示仍需保留；不用它折叠读取失败，也不改其返回契约。
+    if (a0.state === "other") readAuth();
     const L = loadAccount(storage, uid, { now: now() });
-    if (!L.ok || !L.copy) return null;
-    const s = readAuth();
-    const a = inspectAuth();
-    session = s && s.userId === uid ? s : null;
-    const restoredInst = session && a.state === "ours" && a.session.userId === uid ? (a.instanceId || null) : null;
-    bumpAcct(); userId = uid; email = session?.email || ""; loginInstanceId = restoredInst;
-    const state = docToState(L.copy.doc, baseState ? { ...baseState, onboarded: true } : { ...freshState(), onboarded: true }, now());
+    // 所有副本 / 待办 / state 读取与组装都放在提交前；这些读取也可能触发存储钩子。
+    const pi = L.ok && L.copy ? loadPendingImport(storage, uid) : null;
+    const state = L.ok && L.copy
+      ? docToState(L.copy.doc, baseState ? { ...baseState, onboarded: true } : { ...freshState(), onboarded: true }, now()) : null;
+    const a1 = inspectAuth();
+    const p1 = readCurrentAccount(storage);
+    if (!current()) return staleResult();
+    if (!p1.ok) return fail("read-failed", "session");
+    if (p1.id !== uid) return stale(); // 已确认退出 / 换号时，旧账号的 AUTH 读失败也不能再挂错误。
+    if (a1.state === "read-failed") return fail("read-failed", "auth");
+    if (!sameRestoreIdentity(initialIdentity, restoreIdentity(a1))) return stale();
+    if (!L.ok) return fail(L.code === "schema-newer" ? "schema-newer" : L.code === "read-failed" ? "read-failed" : "corrupt", "account");
+    if (!L.copy) return fail("missing", "account");
+    session = a1.state === "ours" && a1.session.userId === uid ? a1.session : null;
+    bumpAcct(); userId = uid; email = session?.email || ""; loginInstanceId = session ? (a1.instanceId || null) : null;
+    clearRestoreIssue();
     baseline = { xp: state.xp, lessonsCompleted: state.lessonsCompleted };
-    // 专用待办也算“还有没上传的东西”：不能因为本机副本看起来干净就当成已完成。
-    const pi = loadPendingImport(storage, uid);
     pending = isUnsent(L.copy) || !pi.ok || !!pi.record;
     if (!importGuard(pi)) setStatus(session ? "pending" : "need-login");
-    return { userId, email, state };
+    return { ok: true, restored: { userId, email, state } };
+  }
+  function restore(baseState = null) {
+    const r = restoreAttempt(baseState);
+    return r.ok ? r.restored : null; // 既有调用方以 falsy 判断失败，不能改成 truthy 错误对象。
+  }
+  function retryRestore(baseState = null) {
+    if (userId || !restoreError()) return staleResult();
+    return restoreAttempt(baseState, restoreOwner);
   }
 
   // ---------- 学习进度写入本机副本（app.persist 在登录状态下调用这个）----------
@@ -316,8 +365,26 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       try { onSessionLost({ userId: lostUserId, reason }); } catch {}
     }
   }
+  function reconcileRestoreIssue() {
+    if (restoreError()) {
+      const owner = restoreOwner;
+      const current = () => !userId && restoreOwner === owner && owner.gen === acctGen;
+      const p = readCurrentAccount(storage);
+      if (!current()) return staleResult();
+      if (!p.ok) return { ok: false, kind: "local", message: "无法读取本机登录状态" };
+      let changed = !p.id || !!(owner.uid && p.id !== owner.uid);
+      if (!changed && owner.identity) {
+        const a = inspectAuth();
+        if (!current()) return staleResult();
+        if (a.state === "read-failed") return { ok: false, kind: "local", message: "无法读取本机登录状态" };
+        changed = !sameRestoreIdentity(owner.identity, restoreIdentity(a));
+      }
+      if (changed) { clearRestoreIssue(); return { ok: true, active: false, restoreChanged: true }; }
+    }
+    return { ok: true, active: false };
+  }
   function reconcileSession() {
-    if (!userId) return { ok: true, active: false };
+    if (!userId) return reconcileRestoreIssue();
     const own = checkSessionOwnership();
     if (own.ok) return { ok: true, active: true };
     if (own.kind === "read-failed") return { ok: false, kind: "local", message: "无法读取本机登录状态" };
@@ -1641,7 +1708,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   return {
-    restore, persistLocal, syncNow, scheduleSync, sendCode, verify, retryRead, clearVerified: dropVerified, hasVerified: () => !!verified && now() < verified.expiresAt, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount, reconcileSession,
+    restore, retryRestore, restoreError, persistLocal, syncNow, scheduleSync, sendCode, verify, retryRead, clearVerified: dropVerified, hasVerified: () => !!verified && now() < verified.expiresAt, finishChoice, logout, forceLocalLogout, hasLeftoverAuth, retryAuthCleanup, pendingRecoveryInfo, quarantinePendingImport, resumeGuestImportChoice, deleteAccount, reconcileSession,
     account: () => (userId ? { userId, email } : null),
     status: () => ({ status, pending, message: lastError, detail: lastDetail, lastStatusAt, lastSyncedAt }),
   };
