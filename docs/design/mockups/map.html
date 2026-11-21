@@ -1,0 +1,148 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>地图 · 编程实验室</title><link rel="stylesheet" href="base.css"><style>
+.hud{flex:none;display:flex;align-items:center;gap:8px;padding:6px 16px 10px}
+.brand{display:flex;align-items:center;gap:8px;font:800 17px/1 var(--font);margin-right:auto;white-space:nowrap}
+.brand b{display:none}@media(min-width:900px){.brand b{display:inline}}
+.hud{gap:6px}.hud .chip{padding:0 10px}
+.brand svg{width:22px;height:30px;color:var(--ink)}
+.hud .chip svg{width:16px;height:16px}
+.c-streak svg{color:var(--copper)} .c-xp svg{color:var(--glow)}
+.c-tube{gap:6px;padding:0 10px}
+.scroll{flex:1;overflow:hidden;padding:0 16px}
+.wrap{max-width:600px;margin:0 auto}
+/* 继续学什么 */
+.hero{position:relative;overflow:hidden;background:var(--navy);color:var(--on-navy);border-radius:20px;padding:18px 18px 18px;border:1.5px solid var(--navy-2);box-shadow:0 4px 0 rgba(13,19,34,.18)}
+.dark .hero{border-color:rgba(232,147,90,.55);box-shadow:0 0 0 4px rgba(232,147,90,.08),0 4px 0 rgba(0,0,0,.4)}
+.hero .pcb{position:absolute;right:-24px;top:-14px;width:170px;height:128px;opacity:.9}
+.hero .eyebrow{font:800 13px/1 var(--font);letter-spacing:1px;color:var(--filament);display:flex;align-items:center;gap:6px}
+.hero .eyebrow i{width:8px;height:8px;border-radius:50%;background:var(--glow);box-shadow:0 0 0 3px rgba(242,163,58,.25),0 0 10px var(--glow)}
+.hero h2{margin:8px 0 2px;font:800 28px/1.25 var(--font)}
+.hero p{color:var(--on-navy-muted);font:400 15px/1.5 var(--font)}
+.hero .meta{display:flex;align-items:center;gap:10px;margin:12px 0 14px;font:600 13px/1 var(--font);color:var(--on-navy-muted)}
+.bar{flex:1;height:8px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}
+.bar b{display:block;height:100%;width:33%;background:linear-gradient(90deg,var(--trace-on),var(--glow));border-radius:4px}
+.hero .btn{position:relative}
+.hero .cost{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;font:600 13px/1 var(--font);color:var(--on-navy-muted)}
+.hero .cost svg{width:11px;height:16px;color:var(--on-navy-muted)}
+.practice{display:flex;align-items:center;gap:10px;margin:8px 0 0;padding:0 4px;height:44px;color:var(--muted);font:600 13px/1.4 var(--font)}
+.practice.login{margin-top:0;color:var(--copper-text);border-top:1.5px dashed var(--line)}
+.practice svg{width:16px;height:16px;flex:none}
+/* 单元站牌 + 电路主干 */
+.unit{margin-top:14px}
+.unit-head{display:flex;align-items:flex-end;gap:12px;padding:0 4px 10px}
+.unit-head .no{font:800 13px/1 var(--font);letter-spacing:1px;color:var(--copper-text)}
+.unit-head h3{font:800 22px/1.3 var(--font);margin-top:4px}
+.unit-head .count{margin-left:auto;font:800 13px/1 var(--font);color:var(--muted);padding-bottom:6px}
+.trunk{position:relative;padding:4px 0}
+.trunk::before{content:"";position:absolute;left:31px;top:0;bottom:0;width:4px;border-radius:2px;background:var(--trace-off)}
+.trunk .lit{position:absolute;left:31px;top:0;width:4px;height:var(--lit);border-radius:2px;background:var(--trace-on);box-shadow:0 0 8px rgba(242,163,58,.45)}
+.row{position:relative;display:flex;align-items:center;gap:14px;height:60px;padding:0 12px 0 10px;border-radius:var(--r-m)}
+.pad{position:relative;z-index:1;width:46px;height:46px;flex:none;border-radius:50%;display:grid;place-items:center}
+.pad svg{width:20px;height:20px}
+.done .pad{background:var(--trace-on);color:#fff;box-shadow:0 0 0 5px var(--bg),0 3px 0 5px var(--bg)}
+.done .pad::after{content:"";position:absolute;inset:-1px;border-radius:50%;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.locked .pad{background:var(--surface);border:3px solid var(--trace-off);color:var(--muted);box-shadow:0 0 0 5px var(--bg)}
+.locked .pad svg{width:16px;height:16px;opacity:.7}
+.row .name{font:600 17px/1.3 var(--font)}
+.row .sub{font:400 13px/1.4 var(--font);color:var(--muted)}
+.done .name{color:var(--muted)}
+.done .tag{margin-left:auto;color:var(--ok-text);font:800 13px/1;display:flex;gap:4px;align-items:center}
+.done .tag svg{width:14px;height:14px}
+.locked .name{color:var(--muted)}
+.cur{height:76px;margin:6px 0;background:var(--surface);border:2px solid var(--copper);box-shadow:0 3px 0 var(--copper-soft)}
+.cur .pad{width:52px;height:52px;margin-left:-3px;background:var(--copper);color:#fff;box-shadow:0 0 0 4px var(--bg),0 0 0 7px rgba(242,163,58,.35),0 0 18px 6px rgba(242,163,58,.35)}
+.cur .pad svg{width:22px;height:22px;margin-left:3px}
+.cur .name{font-weight:800}
+.cur .here{margin-left:auto}
+.unit.next .unit-head{opacity:.7}
+.unit.next .trunk::before{background:repeating-linear-gradient(var(--trace-off) 0 8px,transparent 8px 14px)}
+/* tabbar */
+.tabbar{flex:none;height:84px;padding:8px 40px 26px;display:flex;justify-content:space-around;background:var(--surface);border-top:1.5px solid var(--line)}
+.tab{width:120px;display:flex;flex-direction:column;align-items:center;gap:4px;font:600 13px/1 var(--font);color:var(--muted)}
+.tab span{width:64px;height:32px;border-radius:var(--r-full);display:grid;place-items:center}
+.tab svg{width:24px;height:24px}
+.tab.on{color:var(--copper-text)} .tab.on span{background:var(--copper-soft)}
+.side{display:none}
+/* ===== iPad：≥ 900px 宽 → 侧栏导航 + 两栏 ===== */
+@media (min-width:900px){
+  .screen{flex-direction:row}
+  .tabbar{display:none}
+  .rail{display:flex!important}
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .ios{position:absolute;left:0;right:0;top:0;height:28px;padding:0 24px 4px;font-size:13px}
+  .hud{padding:36px 32px 12px}
+  .cols{flex:1;display:grid;grid-template-columns:400px minmax(0,560px);gap:32px;justify-content:center;padding:0 32px;overflow:hidden}
+  .scroll{padding:0}
+  .side{display:block}
+  .side .card{padding:16px;margin-top:16px}
+}
+.rail{display:none;width:88px;flex:none;flex-direction:column;align-items:center;gap:8px;padding-top:44px;background:var(--surface);border-right:1.5px solid var(--line)}
+.rail .tab{width:72px}
+.rail .logo{width:28px;height:38px;margin-bottom:18px;color:var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.stat{padding:14px 12px;border-radius:var(--r-m);background:var(--surface-2)}
+.stat b{display:block;font:800 22px/1.2 var(--font)}
+.stat small{font:600 13px/1.4 var(--font);color:var(--muted)}
+.side h4{font:800 17px/1.3 var(--font)}
+</style></head><body>
+<div class="screen">
+ <nav class="rail"><svg class="logo"><use href="#tube-on"/></svg>
+  <div class="tab on"><span><svg><use href="#i-home"/></svg></span>学习</div>
+  <div class="tab"><span><svg><use href="#i-user"/></svg></span>我的</div></nav>
+ <div class="main" style="display:flex;flex-direction:column;flex:1;min-height:0">
+ <div class="ios"><span>9:41</span><i></i></div>
+ <header class="hud">
+  <div class="brand" aria-label="碎片编程"><svg><use href="#tube-on"/></svg><b>碎片编程</b></div>
+  <span class="chip c-streak" aria-label="连续 3 天"><svg><use href="#i-flame"/></svg>3<small>天</small></span>
+  <span class="chip c-xp" aria-label="经验 120"><svg><use href="#i-bolt"/></svg>120<small>XP</small></span>
+  <span class="chip c-tube" data-tubes="4" aria-label="体力 4/5"></span>
+ </header>
+ <div class="cols" style="flex:1;min-height:0;display:block;overflow:hidden">
+ <aside class="side-col">
+ <div class="scroll" style="overflow:visible">
+ <div class="wrap">
+  <section class="hero">
+   <svg class="pcb" viewBox="0 0 200 150" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="rgba(255,255,255,.10)" stroke-width="2"><path d="M200 30H140l-20 20H90"/><path d="M200 70h-40l-14 14H118"/><path d="M200 110h-70l-20-20H96"/><path d="M150 0v18l12 12"/></g>
+    <g fill="rgba(255,255,255,.14)"><circle cx="90" cy="50" r="4"/><circle cx="118" cy="84" r="4"/><circle cx="96" cy="90" r="4"/></g>
+    <g transform="translate(104 34) scale(1.05)" color="rgba(255,255,255,.55)"><use href="#tube-on" width="46" height="66"/></g>
+   </svg>
+   <div class="eyebrow"><i></i>继续学习 · 第 1 单元 第 3 关</div>
+   <h2>顾客改单</h2>
+   <p>给变量重新赋值，让点单屏跟着改 · 约 4 分钟</p>
+   <div class="meta"><span>单元进度</span><div class="bar"><b></b></div><span>2 / 6</span></div>
+   <button class="btn btn-primary"><svg width="20" height="20"><use href="#i-play"/></svg>继续学习</button>
+   <div class="cost"><svg><use href="#tube-on"/></svg>开始一轮消耗 1 格体力 · 中途退出再进不重复扣</div>
+  </section>
+  <div class="practice"><svg><use href="#i-reset"/></svg>随机练习：复习做过的题（免费，无 XP）<svg style="margin-left:auto"><use href="#i-right"/></svg></div>
+  <div class="practice login"><svg><use href="#i-user"/></svg>登录 / 注册：换设备也能接着学<svg style="margin-left:auto"><use href="#i-right"/></svg></div>
+  <div class="side">
+   <div class="card"><h4>今天</h4>
+    <div class="stats"><div class="stat"><b>3</b><small>连续天数</small></div><div class="stat"><b>120</b><small>总 XP</small></div><div class="stat"><b>2</b><small>已通关</small></div></div></div>
+   <div class="card" style="display:flex;align-items:center;gap:12px"><span class="chip c-tube" data-tubes="4" style="border:0;background:var(--surface-2)"></span><span class="t-cap muted">下一格体力 18 分钟后恢复</span></div>
+  </div>
+ </div></div></aside>
+ <div class="scroll map-col"><div class="wrap">
+  <section class="unit">
+   <div class="unit-head"><div><div class="no">UNIT 01</div><h3>奶茶店点单屏</h3></div><span class="count">2 / 6 关</span></div>
+   <div class="trunk" style="--lit:158px"><div class="lit"></div>
+    <div class="row done"><div class="pad"><svg><use href="#i-check"/></svg></div><div><div class="name">让屏幕说话</div><div class="sub">print 输出</div></div><span class="tag"><svg><use href="#i-check"/></svg>已通关</span></div>
+    <div class="row done"><div class="pad"><svg><use href="#i-check"/></svg></div><div><div class="name">记住顾客</div><div class="sub">变量</div></div><span class="tag"><svg><use href="#i-check"/></svg>已通关</span></div>
+    <div class="row cur"><div class="pad"><svg><use href="#i-play"/></svg></div><div><div class="name">顾客改单</div><div class="sub">重新赋值 · 6 题</div></div><span class="here badge badge-copper">当前</span></div>
+    <div class="row locked"><div class="pad"><svg><use href="#i-lock"/></svg></div><div><div class="name">算价格</div><div class="sub">加减乘除</div></div></div>
+    <div class="row locked"><div class="pad"><svg><use href="#i-lock"/></svg></div><div><div class="name">加一杯</div><div class="sub">+= 累加</div></div></div>
+    <div class="row locked"><div class="pad"><svg><use href="#i-lock"/></svg></div><div><div class="name">结账小票</div><div class="sub">单元复盘</div></div></div>
+   </div>
+  </section>
+  <section class="unit next">
+   <div class="unit-head"><div><div class="no">UNIT 02</div><h3>文字与长度</h3></div><span class="count">字符串、len</span></div>
+   <div class="trunk"><div class="row locked"><div class="pad"><svg><use href="#i-lock"/></svg></div><div><div class="name">第一关</div><div class="sub">完成第 1 单元后解锁</div></div></div></div>
+  </section>
+ </div></div>
+ </div>
+ <nav class="tabbar"><div class="tab on"><span><svg><use href="#i-home"/></svg></span>学习</div><div class="tab"><span><svg><use href="#i-user"/></svg></span>我的</div></nav>
+ </div>
+</div>
+<script src="common.js"></script>
+<style>@media (min-width:900px){.cols{display:grid!important}.side-col .scroll{overflow:visible}} @media (max-width:899px){.side-col .practice{margin-bottom:0}}</style>
+</body></html>

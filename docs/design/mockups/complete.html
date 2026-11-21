@@ -1,0 +1,51 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>通关 · 编程实验室</title><link rel="stylesheet" href="base.css"><style>
+.body{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 20px 0;text-align:center}
+.wrap{max-width:480px;width:100%;margin:0 auto;display:flex;flex-direction:column;align-items:center}
+.stage{position:relative;width:300px;height:250px;margin-top:6px}
+.stage svg{position:absolute;inset:0}
+.halo{position:absolute;left:50%;top:44%;width:190px;height:190px;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,210,122,.55),rgba(242,163,58,.18) 45%,transparent 70%)}
+.eyebrow{font:800 13px/1 var(--font);letter-spacing:1px;color:var(--copper-text);margin-top:4px}
+h1{margin:8px 0 6px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;margin-top:22px}
+.stat{padding:14px 8px 12px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.stat b{font:800 28px/1.15 var(--font)}
+.stat small{font:600 13px/1.4 var(--font);color:var(--muted)}
+.stat.xp b{color:var(--copper-text)}
+.note{margin-top:14px;width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:var(--r-m);background:var(--surface-2);text-align:left;font:400 15px/1.5 var(--font)}
+.note svg{width:20px;height:20px;color:var(--copper);flex:none}
+.next{margin-top:10px;width:100%;display:flex;align-items:center;gap:10px;height:56px;padding:0 14px;text-align:left}
+.next .t-cap{color:var(--muted)} .next b{font:600 17px/1.3 var(--font)} .next svg{margin-left:auto;width:20px;height:20px;color:var(--muted)}
+.foot{flex:none;padding:12px 20px 34px;display:flex;flex-direction:column;gap:6px;align-items:center}
+.foot .btn{max-width:480px}
+</style></head><body>
+<div class="screen">
+ <div class="ios"><span>9:41</span><i></i></div>
+ <main class="body"><div class="wrap">
+  <div class="stage">
+   <div class="halo"></div>
+   <svg viewBox="0 0 300 250" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="var(--trace-on)" stroke-width="4">
+     <path d="M0 196H70l24-24h18"/><path d="M300 196H230l-24-24h-18"/><path d="M20 120h44l14 14h22"/><path d="M280 120h-44l-14 14h-22"/>
+     <path d="M40 40l26 26v22"/><path d="M260 40l-26 26v22"/>
+    </g>
+    <g fill="var(--trace-on)"><circle cx="112" cy="172" r="6"/><circle cx="188" cy="172" r="6"/><circle cx="100" cy="134" r="6"/><circle cx="200" cy="134" r="6"/><circle cx="66" cy="88" r="6"/><circle cx="234" cy="88" r="6"/></g>
+    <g fill="var(--filament)"><circle cx="40" cy="196" r="3.5"/><circle cx="262" cy="196" r="3.5"/><circle cx="44" cy="120" r="3"/><circle cx="252" cy="120" r="3"/></g>
+    <g fill="var(--glow)"><path d="M150 14l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/><path d="M92 30l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path d="M214 24l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></g>
+    <use href="#tube-on" x="108" y="36" width="84" height="122" style="color:var(--ink)"/>
+    <rect x="96" y="196" width="108" height="10" rx="5" fill="var(--line-strong)"/>
+   </svg>
+  </div>
+  <div class="eyebrow">第 1 单元 · 第 3 关 通关</div>
+  <h1 class="t-display">顾客改单 · 全部点亮！</h1>
+  <p class="t-sub muted">6 题全对，一次就过。</p>
+  <div class="stats">
+   <div class="card stat xp"><b>+70</b><small>本关 XP</small></div>
+   <div class="card stat"><b>100%</b><small>正确率</small></div>
+   <div class="card stat"><b>4 天</b><small>连续学习</small></div>
+  </div>
+  <div class="note"><svg><use href="#i-flame"/></svg>今天的学习目标完成了，明天来一关就能保持连续。</div>
+  <div class="card next"><div><div class="t-cap">下一关</div><b>算价格</b></div><svg><use href="#i-right"/></svg></div>
+ </div></main>
+ <footer class="foot"><button class="btn btn-primary">继续</button><button class="btn btn-ghost">回顾本关错题与解析</button></footer>
+</div><script src="common.js"></script></body></html>

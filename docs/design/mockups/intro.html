@@ -1,0 +1,47 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>关卡介绍 · 记住顾客 · 编程实验室</title><link rel="stylesheet" href="base.css"><style>
+.chip.c-tube{gap:6px;padding:0 10px;height:32px}
+.body{flex:1;min-height:0;overflow:auto;padding:8px 20px 16px;-webkit-overflow-scrolling:touch}
+.wrap{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.head .concept{font:800 13px/1.4 var(--font);color:var(--copper-text);letter-spacing:.5px}
+.head h1{margin:8px 0 0}
+.bezel{background:var(--code-bg);border-radius:var(--r-m);padding:14px 16px 16px;border:1.5px solid transparent;box-shadow:0 0 0 1.5px rgba(180,86,31,.28),0 8px 24px rgba(13,19,34,.18)}
+.dark .bezel{border-color:var(--line);box-shadow:0 0 0 1.5px rgba(232,147,90,.28)}
+.bezel .tag{font:800 13px/1 var(--font);color:var(--filament);margin-bottom:10px;letter-spacing:.8px}
+.bezel .cl{display:flex;align-items:baseline;font:400 17px/1.7 var(--mono);color:var(--code-fg);white-space:pre}
+.bezel .cl .ln{width:22px;flex:none;color:var(--code-muted)}
+.story{margin:0}
+.note{margin:0}
+.foot{flex:none;display:flex;align-items:center;gap:12px;padding:12px 20px 34px;border-top:1.5px solid var(--line);background:var(--bg)}
+.foot .wrapf{max-width:600px;margin:0 auto;width:100%}
+/* 矮屏 / 键盘弹出（可视区约 450）：标题始终在内容区顶部可见，底栏不遮挡 */
+@media (max-height: 520px){
+  .ios{height:28px;padding:0 30px 4px 34px;align-items:center}
+  .body{padding:4px 20px 12px}
+  .wrap{gap:10px}
+  .head h1{margin:4px 0 0}
+  .bezel{padding:10px 12px 12px}
+  .bezel .tag{margin-bottom:6px}
+  .bezel .cl{font-size:15px;line-height:1.6}
+  .foot{padding:8px 20px 12px}
+}
+</style></head><body>
+<div class="screen">
+ <div class="ios"><span>9:41</span><i></i></div>
+ <div class="lessonbar"><span class="icon-btn" aria-label="退出"><svg width="22" height="22"><use href="#i-x"/></svg></span>
+  <div class="progress"><b style="width:8%"></b></div><span class="chip c-tube" data-tubes="4"></span></div>
+ <main class="body"><div class="wrap">
+  <header class="head">
+   <div class="concept">第 1 单元 · 第 2 关 · 变量</div>
+   <h1 class="t-display">记住顾客</h1>
+  </header>
+  <div class="bezel">
+   <div class="tag">示例</div>
+   <div class="cl"><span class="ln">1</span>name = <span class="s">"小林"</span></div>
+   <div class="cl"><span class="ln">2</span><span class="f">print</span>(name)</div>
+  </div>
+  <p class="t-body story" style="font-weight:400">顾客点单时，屏幕要记住他的名字。这就要用到「变量」。</p>
+  <p class="t-cap muted note">看完示例后点「继续」，开始第 1 题。</p>
+ </div></main>
+ <footer class="foot"><div class="wrapf"><button class="btn btn-primary">继续</button></div></footer>
+</div><script src="common.js"></script></body></html>

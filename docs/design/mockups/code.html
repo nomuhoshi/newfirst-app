@@ -1,0 +1,65 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>代码编辑（键盘打开）· 编程实验室</title><link rel="stylesheet" href="base.css"><style>
+.chip.c-tube{gap:6px;padding:0 10px}
+.task{flex:none;margin:0 16px;display:flex;align-items:center;gap:10px;height:48px;padding:0 8px 0 14px}
+.task b{font:800 15px/1.3 var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task .tg{font:800 13px/1 var(--font);color:var(--copper-text);flex:none}
+.task .more{margin-left:auto;display:flex;align-items:center;gap:2px;height:44px;padding:0 6px;font:600 13px/1 var(--font);color:var(--muted);flex:none}
+.task .more svg{width:16px;height:16px}
+.ed{flex:1;min-height:0;margin:10px 16px 0;display:flex;flex-direction:column;border-radius:var(--r-m);background:var(--code-bg);overflow:hidden;border:1.5px solid transparent}
+.dark .ed{border-color:var(--line)}
+.ed .lines{flex:1;padding:12px 0;font:400 15px/26px var(--mono);color:var(--code-fg)}
+.ed .l{display:flex;padding:0 14px 0 0;white-space:pre}
+.ed .l .ln{width:38px;text-align:right;padding-right:12px;color:var(--code-muted)}
+.ed .l.act{background:rgba(255,255,255,.05)} .ed .l.act .ln{color:var(--code-fg)}
+.ed .ind{display:inline-block;width:4ch;border-left:1px solid rgba(255,255,255,.12)}
+.cur{display:inline-block;width:2px;height:20px;background:var(--glow);vertical-align:-4px;margin-left:1px;box-shadow:0 0 6px var(--glow)}
+.out{flex:none;border-top:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);padding:8px 14px 10px;font:400 15px/1.5 var(--mono);color:var(--code-fg)}
+.out .h{display:flex;align-items:center;gap:6px;font:600 13px/1.4 var(--font);color:var(--code-muted);margin-bottom:2px}
+.out .h svg{width:14px;height:14px}
+.out .ok{margin-left:auto;color:#5FD19B;font-weight:800}
+.tools{flex:none;display:flex;align-items:center;gap:10px;padding:10px 16px}
+.tools .ghost{height:44px;padding:0 12px;display:flex;align-items:center;gap:6px;border-radius:var(--r-m);font:600 15px/1 var(--font);color:var(--muted)}
+.tools .ghost svg{width:18px;height:18px}
+.tools .run{margin-left:auto;width:auto;padding:0 18px;height:44px;font-size:15px}
+.tools .check{width:auto;padding:0 22px;height:44px;font-size:15px}
+.tools .run svg{width:16px;height:16px}
+/* 自制编程键盘（与 src/keyboard.js 的按键表一致） */
+.kb{flex:none;background:var(--kb-bg);padding:6px 4px 30px;border-top:1px solid var(--line)}
+.kb .r{display:flex;gap:6px;justify-content:center;margin-top:8px}
+.kb .r:first-child{margin-top:2px}
+.k{height:44px;min-width:0;flex:1;max-width:34px;border-radius:7px;background:var(--kb-key);color:var(--kb-ink);display:grid;place-items:center;font:400 19px/1 var(--font);box-shadow:0 1.5px 0 rgba(0,0,0,.22)}
+.k.sym{font-family:var(--mono);font-size:18px}
+.k.fn{background:var(--kb-key-2);font:600 15px/1 var(--font);max-width:none;flex:1.5}
+.k.sp{max-width:none;flex:4;font-size:15px}
+.k.ent{background:var(--copper);color:#fff;font-weight:800}
+.bar{display:flex;gap:6px;padding:0 2px 6px;border-bottom:1px solid rgba(0,0,0,.08)}
+.dark .bar{border-color:rgba(255,255,255,.06)}
+.bar .k{max-width:none;background:transparent;box-shadow:none;font:600 15px/1 var(--font);color:var(--kb-ink)}
+.bar .k.s{font-family:var(--mono);font-size:18px;background:var(--kb-key);box-shadow:0 1.5px 0 rgba(0,0,0,.18)}
+.bar .k.i{flex:none;width:36px;font-size:19px}
+.bar .sep{width:1px;background:var(--line-strong);margin:8px 2px;opacity:.6}
+</style></head><body>
+<div class="screen">
+ <div class="ios"><span>9:41</span><i></i></div>
+ <div class="lessonbar"><span class="icon-btn"><svg width="22" height="22"><use href="#i-x"/></svg></span><div class="progress"><b style="width:62%"></b></div><span class="chip c-tube" data-tubes="4"></span></div>
+ <div class="card task"><span class="tg">任务</span><b>满 100 元时打印优惠提示</b><span class="more">题面与示例<svg><use href="#i-down"/></svg></span></div>
+ <div class="ed">
+  <div class="lines">
+   <div class="l"><span class="ln">1</span><span>total = <span class="k" style="all:unset;color:#C9A1FF">120</span></span></div>
+   <div class="l"><span class="ln">2</span><span><span class="k" style="all:unset;color:var(--tk-kw)">if</span> total >= <span style="color:#C9A1FF">100</span>:</span></div>
+   <div class="l"><span class="ln">3</span><span><span class="ind"></span><span class="f">print</span>(<span class="s">"可以减 10 元"</span>)</span></div>
+   <div class="l act"><span class="ln">4</span><span><span class="ind"></span><span class="cur"></span></span></div>
+  </div>
+  <div class="out"><div class="h"><svg><use href="#i-term"/></svg>运行结果<span class="ok">✓ 运行完成</span></div>可以减 10 元</div>
+ </div>
+ <div class="tools"><span class="ghost"><svg><use href="#i-reset"/></svg>重置</span><span class="ghost"><svg><use href="#i-bulb"/></svg>提示</span>
+  <button class="btn btn-secondary run"><svg><use href="#i-play"/></svg>运行</button><button class="btn btn-primary check">检查</button></div>
+ <div class="kb">
+  <div class="bar"><span class="k i" aria-label="Tab 缩进">⇥</span><span class="k i" aria-label="退缩进">⇤</span><span class="k i" aria-label="撤销">↶</span><span class="sep"></span><span class="k s">(</span><span class="k s">)</span><span class="k s">"</span><span class="k s">:</span><span class="k s">=</span><span class="sep"></span><span class="k i">←</span><span class="k i">→</span></div>
+  <div class="r"><span class="k">q</span><span class="k">w</span><span class="k">e</span><span class="k">r</span><span class="k">t</span><span class="k">y</span><span class="k">u</span><span class="k">i</span><span class="k">o</span><span class="k">p</span></div>
+  <div class="r" style="padding:0 18px"><span class="k">a</span><span class="k">s</span><span class="k">d</span><span class="k">f</span><span class="k">g</span><span class="k">h</span><span class="k">j</span><span class="k">k</span><span class="k">l</span></div>
+  <div class="r"><span class="k fn">⇧</span><span class="k">z</span><span class="k">x</span><span class="k">c</span><span class="k">v</span><span class="k">b</span><span class="k">n</span><span class="k">m</span><span class="k fn">⌫</span></div>
+  <div class="r"><span class="k fn">123</span><span class="k sym">.</span><span class="k sp">space</span><span class="k sym">,</span><span class="k fn">⌨︎</span><span class="k fn ent">换行</span></div>
+ </div>
+</div><script src="common.js"></script></body></html>
