@@ -21,7 +21,7 @@ export function statusText(s) {
 }
 const ERR = {
   network: "网络连不上，请检查网络后重试。",
-  "rate-limit": "发送太频繁了，请等一分钟再试。",
+  "rate-limit": "云端请求太频繁了，请稍后再试。",
   config: "云端暂未开通。",
 };
 // 提示条 / 弹窗里的失败文字：应用自己写的中文原样显示，其余（可能是服务器英文原文）换成通用中文，绝不直接显示 r.message。

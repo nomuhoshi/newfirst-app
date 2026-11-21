@@ -691,6 +691,28 @@ await scenario("冲突期间不会写云端：禁用的「立即同步」点不�
   check("冲突：没有 create / save 请求，本机 XP 原样", d.hits.create === 0 && d.hits.save === 0 && (await d.page.evaluate(() => window.__app.getState().xp)) === 80, JSON.stringify(d.hits));
 });
 
+// G08：先正常登录并完成同步，再让手动同步读取收到 429；不把登录过程当成限流前提。
+await (async () => {
+  const cloud = cloudWithRow(); let limited = false;
+  await scenario("G-LOGIN-08 已登录点立即同步收到 429：通用提示不冒充发验证码、不写死一分钟", {
+    xp: 0, verify: okVerify, progress: cloud.progress,
+    getProgress: (r) => limited ? json(r, 429, { code: 429, error_code: "over_request_rate_limit", msg: CAN }, RAX(7200)) : cloud.getProgress(r),
+  }, async (d) => {
+    await loggedInAccountCard(d);
+    const before = await d.page.evaluate(() => ({ account: window.__app.sync.account(), status: window.__app.sync.status().status, xp: window.__app.getState().xp, toasts: window.__toasts.length }));
+    if (!before.account || before.status !== "synced") throw new Error("G08 前提失败：未正常登录并同步：" + JSON.stringify(before));
+    const hits = { ...d.hits }; limited = true;
+    await d.page.locator("[data-sync-now]").tap();
+    // toast 节点会复用：等这次新提示实际产生，不能读到登录成功时留下的旧提示。
+    await d.page.waitForFunction((n) => window.__toasts.length > n, before.toasts);
+    const t = await T(d.page, ".toast");
+    check("G08 同步 429：实际提示条为中性云端请求文案", t === "云端请求太频繁了，请稍后再试。", t);
+    check("G08 同步 429：不含发送、验证码、固定一分钟、自动重试承诺或服务器原文", !/发送|验证码|一分钟|自动/.test(t) && !t.includes(CAN) && (await noRaw(d.page)), t);
+    const after = await d.page.evaluate(() => ({ account: window.__app.sync.account(), xp: window.__app.getState().xp }));
+    check("G08 前提与隔离：这次同步恰好多一次读取，没有发码、验证或云端写入，账号及 XP 不变", d.hits.get === hits.get + 1 && d.hits.otp === hits.otp && d.hits.verify === hits.verify && d.hits.create === hits.create && d.hits.save === hits.save && JSON.stringify(after.account) === JSON.stringify(before.account) && after.xp === before.xp, JSON.stringify({ before: hits, after: d.hits }));
+  });
+})();
+
 // ---------- 已发布产物的核对（只在 DIST_DIR / FAKE_URL 给定时运行）----------
 if (EXPECT_SHA) {
   await scenario("预览产物：页面显示的源码提交、云项目，且只访问测试项目", { nav: "none", otp: (r) => json(r, 500, { error_code: "unexpected_failure", msg: CAN }) }, async (d) => {
