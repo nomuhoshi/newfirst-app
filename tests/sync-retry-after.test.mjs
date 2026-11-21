@@ -7,6 +7,8 @@ import { GUEST_KEY } from "../src/account-store.js";
 import { createApi, parseRetryAfter } from "../src/cloud-api.js";
 import { freshState, bumpStreak } from "../src/storage.js";
 import { docToState, sumXp, newId } from "../src/account-data.js";
+import { statusText, errorText } from "../src/account-ui.js";
+import { SYNC_COPY } from "../src/auth-errors.js";
 
 const results = [];
 const check = (name, ok, detail = "") => { results.push(!!ok); console.log(`${ok ? "✅" : "❌"} ${name}${!ok && detail ? "  — " + detail : ""}`); };
@@ -467,6 +469,26 @@ const fire = (d, i = d.timers.length - 1) => d.timers[i].fn();
   check("  第 180 秒唤醒被较长的发码冷却拦下后重排剩余约 420 秒（没有丢）；第 181 / 599 秒手动和自动同步都不发请求", rearm.length === 1 && rearm[0] === 420000 && [m1, a1, m2].every((x) => x.kind === "rate-limit") && req(S) + writes(S) === n0, JSON.stringify([rearm, [m1, a1, m2].map((x) => x.kind), req(S) + writes(S) - n0]));
   d.clock = T0 + secs(601); fire(d); await sleep(80);                             // 到期：不做任何手动操作
   check("  第 601 秒到期自动完成：导入完成（游客记录和待办已清），云端 50 XP，状态 synced，导入写入只多一次（成功的那次）", d.storage.getItem(GUEST_KEY) === null && imports(d.storage) === "" && S.xpOf(EMAIL_A) === 50 && statusOf(d).status === "synced" && statusOf(d).pending === false && writes(S) - w0 === 1, JSON.stringify([imports(d.storage), S.xpOf(EMAIL_A), statusOf(d), writes(S) - w0]));
+}
+
+// ===== 14. G-LOGIN-10：冷却内再次同步仍按同步限流展示，不回退成发验证码 / 固定一分钟 =====
+for (const [header, elapsed] of [["30", 1], ["180", 121]]) {
+  const S = fakeCloud(); const { d, first } = await limitedDevice(S, header);
+  const label = `G10 Retry-After ${header}，第 ${elapsed} 秒`;
+  check(`${label}：首次 429 的实际状态映射为同步限流`, first.kind === "rate-limit" && statusText(statusOf(d)) === SYNC_COPY.Y3b);
+  const requests = JSON.stringify(S.count), stored = snap(d.storage), xp = d.state.xp, writeBefore = writes(S);
+  const timers = d.timers.map((t) => t.ms), wake = d.timers.length - 1;
+  const until = T0 + secs(Number(header));
+  d.clock = T0 + secs(elapsed);
+  for (const manual of [true, false]) {
+    const r = await d.sync.syncNow({ manual });
+    const shown = statusText(statusOf(d)), toast = errorText(r);
+    check(`${label} ${manual ? "手动" : "自动"}：G10 状态栏仍为同步限流，不出现发送 / 验证码 / 固定一分钟`, shown === SYNC_COPY.Y3b && !/发送|验证码|一分钟/.test(shown), shown);
+    check(`${label} ${manual ? "手动" : "自动"}：提示条保持 G08 中性文案`, toast === "云端请求太频繁了，请稍后再试。", toast);
+    check(`${label} ${manual ? "手动" : "自动"}：零新增请求，账号存档和 XP 不变，截止时间及原唤醒不变`, r.kind === "rate-limit" && r.retryable === false && r.retryAt === until && JSON.stringify(S.count) === requests && snap(d.storage) === stored && d.state.xp === xp && JSON.stringify(d.timers.map((t) => t.ms)) === JSON.stringify(timers), JSON.stringify(r));
+  }
+  d.clock = until + secs(1); fire(d, wake); await sleep(80);
+  check(`${label}：原唤醒到期仍自动同步成功，云端 40 XP 且只新增一次上传`, statusOf(d).status === "synced" && S.xpOf(EMAIL_A) === 40 && writes(S) - writeBefore === 1, JSON.stringify([statusOf(d), S.xpOf(EMAIL_A), writes(S) - writeBefore]));
 }
 
 const bad = results.filter((x) => !x).length;
