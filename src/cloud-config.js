@@ -28,6 +28,22 @@ const IS_PREVIEW = typeof __PREVIEW_ID__ !== "undefined" && !!__PREVIEW_ID__;
 // 关闭时正式构建等同“云端未开通”：不发任何请求到 Supabase，看不到登录 / 注册 / 验证码入口；本机已有的登录凭证和账号副本不使用、也不删除，云端数据不会被读写。
 const ACCOUNTS_LIVE = typeof __ACCOUNTS_LIVE__ !== "undefined" ? __ACCOUNTS_LIVE__ === true : false;
 export const PROD_CLOUD = DEFAULT;
+// 账号受控验收（2026-11-11 产品官 5 号）：开关关闭期间，只有在本机用 ?accounts-pilot=1 打开过的设备看得到账号功能，
+// 用来在正式项目上验真实收信、登录、双会话同步，而不必先对所有用户开放。?accounts-pilot=0 关掉。
+// 配套要求（见 supabase/prod-init/C2-auth-smtp.md）：验收期间正式项目“允许新用户注册”保持关闭，只用后台手动添加的测试邮箱，
+// 所以即使别人也加了这个参数，也注册不了新账号。正式开放时把 ACCOUNTS_LIVE 改为 true，再打开注册。
+// 边界（产品官 5 号 17:06）：这个参数是公开的功能入口，**不是访问控制**；关闭注册只挡新账号，已有账号的人加了参数仍能登录和同步。
+// 后端的数据隔离靠 RLS 和三个只认 auth.uid() 的函数，不靠这个参数。
+const PILOT_KEY = "suipian.accountsPilot";
+function pilotOptIn() {
+  try {
+    if (typeof location === "undefined" || typeof localStorage === "undefined") return false;
+    const q = new URLSearchParams(location.search || "").get("accounts-pilot");
+    if (q === "1") localStorage.setItem(PILOT_KEY, "1");
+    else if (q === "0") localStorage.removeItem(PILOT_KEY);
+    return localStorage.getItem(PILOT_KEY) === "1";
+  } catch { return false; }
+}
 // 只有在本机（localhost / 127.0.0.1，自动测试用）才允许用浏览器里的设置覆盖；线上站点永远只用上面写死的配置。
 function pick() {
   try {
@@ -41,10 +57,10 @@ function pick() {
       }
     }
   } catch { /* 忽略 */ }
-  return IS_PREVIEW ? testCloud() : ACCOUNTS_LIVE ? DEFAULT : { url: "", anonKey: "" };
+  return IS_PREVIEW ? testCloud() : (ACCOUNTS_LIVE || pilotOptIn()) ? DEFAULT : { url: "", anonKey: "" };
 }
 export const CLOUD = pick();
-export const ACCOUNTS_ENABLED = IS_PREVIEW ? !!CLOUD.url : ACCOUNTS_LIVE;
+export const ACCOUNTS_ENABLED = !!CLOUD.url;
 
 // 当前构建实际连接的云项目（给测试入口的信息面板和自动测试用）：只返回主机名和项目编号，不含密钥。
 export function cloudTarget() {
