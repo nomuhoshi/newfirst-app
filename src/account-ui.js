@@ -336,6 +336,30 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       h("a", { href: "./privacy.html", target: "_blank", rel: "noopener", "data-privacy-link": "" , text: "隐私说明" }), "。");
   }
 
+  function restoreErrorBanner() {
+    const issue = sync.restoreError?.();
+    if (!issue) return null;
+    const box = h("div", { class: "acct-recover", role: "alert", "data-restore-error": issue.code },
+      h("h3", { text: "账号记录尚未恢复" }), h("p", { class: "muted", text: issue.message }),
+      h("p", { class: "muted small", text: "当前显示本机游客进度。恢复前新做的题先保存在游客记录里，账号副本不会被覆盖。" }));
+    if (issue.retryable) {
+      const retry = lockedBtn(button("重试恢复", () => {
+        if (logoutLock) return;
+        retry.disabled = true;
+        try {
+          const r = sync.retryRestore(getState());
+          if (r.stale) { rerender(); return; }
+          if (!r.ok) { rerender(); showToast(safeMessage(r.message, "仍无法恢复，请稍后重试。")); return; }
+          onSwitchedIn(r.restored);
+          showToast("本机账号进度已恢复。");
+          sync.syncNow(); // 和启动恢复一样，在应用 state 切换完成后才尝试后台同步。
+        } finally { retry.disabled = false; }
+      }, "btn3d primary wide", { "data-retry-restore": "" }));
+      box.append(retry);
+    }
+    return box;
+  }
+
   // ---------- “我的”页里的账号卡片 ----------
   function accountCard() {
     const acc = sync.account();
@@ -345,6 +369,8 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       return card;
     }
     if (!acc) {
+      const restoreBanner = restoreErrorBanner();
+      if (restoreBanner) card.append(restoreBanner);
       card.append(h("h3", { text: "账号" }), h("p", { class: "muted", text: "登录后，进度会保存到云端，换手机或 iPad 也能接着学。" }),
         lockedBtn(button("邮箱登录 / 注册", () => openLogin(), "btn3d primary wide", { "data-open-login": "" })), privacyNote());
       return card;
@@ -452,6 +478,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
   function accountRow() {
     if (!api.configured) return null;
     const acc = sync.account();
+    if (!acc) { const restoreBanner = restoreErrorBanner(); if (restoreBanner) return restoreBanner; }
     if (!acc) return lockedBtn(button("登录 / 注册：换设备也能接着学", () => openLogin(), "acct-link", { "data-login-link": "" }));
     const st = h("span", { class: "acct-mini", "data-sync-mini": "" }); statusEls.add(st);
     const row = h("div", { class: "acct-row-mini" }, h("span", { text: acc.email || "已登录" }), st);
