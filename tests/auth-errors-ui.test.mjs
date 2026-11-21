@@ -728,7 +728,11 @@ for (const [retryAfter, elapsed] of [[30, 1], [180, 121]]) {
     await d.page.waitForFunction((n) => window.__toasts.length > n, before.toasts);
     check("G10 首次 429：状态栏为同步限流，且只多一次读取", (await T(d.page, "[data-sync-status]")) === "云端请求太频繁，稍后会自动重试。" && d.hits.get === hits.get + 1);
     const blockedHits = { ...d.hits }, stored = await dump(d.page);
-    await shiftClock(d, elapsed * 1000);
+    // 只快进时钟。shiftClock() 还会派发 visibilitychange，触发正常的前台保存和重试计数可写探测。
+    await d.page.evaluate((ms) => {
+      const realNow = Date.now.bind(Date);
+      Date.now = () => realNow() + ms;
+    }, elapsed * 1000);
     const toastCount = await d.page.evaluate(() => window.__toasts.length);
     await d.page.locator("[data-sync-now]").tap();
     await d.page.waitForFunction((n) => window.__toasts.length > n, toastCount);
@@ -736,7 +740,8 @@ for (const [retryAfter, elapsed] of [[30, 1], [180, 121]]) {
     check("G10 冷却中再次同步：实际状态栏仍为同步限流，不出现发送 / 验证码 / 固定一分钟", st === "云端请求太频繁，稍后会自动重试。" && !/发送|验证码|一分钟/.test(st), st);
     check("G10 冷却中再次同步：实际提示条保持 G08 中性文案，页面不显示服务器原文", toast === "云端请求太频繁了，请稍后再试。" && (await noRaw(d.page)), toast);
     const after = await d.page.evaluate(() => ({ account: window.__app.sync.account(), xp: window.__app.getState().xp }));
-    check("G10 冷却中再次同步：零新增请求，登录、XP 和本机存档逐字节不变", JSON.stringify(d.hits) === JSON.stringify(blockedHits) && JSON.stringify(after.account) === JSON.stringify(before.account) && after.xp === before.xp && (await dump(d.page)) === stored, JSON.stringify({ before: blockedHits, after: d.hits }));
+    const stable = { requests: JSON.stringify(d.hits) === JSON.stringify(blockedHits), account: JSON.stringify(after.account) === JSON.stringify(before.account), xp: after.xp === before.xp, storage: (await dump(d.page)) === stored };
+    check("G10 冷却中再次同步：零新增请求，登录、XP 和本机存档逐字节不变", Object.values(stable).every(Boolean), JSON.stringify({ stable, before: blockedHits, after: d.hits }));
   });
 }
 
