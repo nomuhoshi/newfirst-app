@@ -39,6 +39,8 @@ const BNAME = process.env.MOBILE_BROWSER === "webkit" ? "webkit" : "chromium";
 let browser;
 try { browser = await browserType.launch(); } catch (e) { console.log("环境失败：浏览器启动失败 " + String(e.message).split("\n")[0]); srv.closeAllConnections(); srv.close(); process.exit(2); }
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS" };
+// 浏览器只在服务器声明 expose-headers 时才让页面读到 Retry-After（跨域）；测试里的假服务器显式声明，等于真实服务器配置了的情形。
+const RAX = (sec) => ({ "retry-after": String(sec), "access-control-expose-headers": "retry-after" });
 const json = (route, status, body, headers = {}) => route.fulfill({ status, headers: { ...CORS, "content-type": "application/json", ...headers }, body: body === undefined ? "" : JSON.stringify(body) });
 
 // 每个场景的假服务器应答由场景决定：函数 (route) => ...。progress 相关的路由默认返回“云端没有进度”。
@@ -133,12 +135,12 @@ await scenario("S4 服务器发信失败（500）", { otp: (r) => json(r, 500, {
   check("颜色层级：L1 红色，进度行和诊断行灰色且互不相同于 L1（规范 §2.1）", colors.msg !== colors.xp && colors.xp === colors.diag, JSON.stringify(colors));
   const bad = await layoutOk(d.page); check("S4：320px 布局无溢出", bad.length === 0, bad.join("; ")); await shot(d, "S4");
 });
-await scenario("S2 刚发过（服务器给了 40 秒）", { otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN + " For security purposes, you can only request this after 40 seconds." }) }, async (d) => {
+await scenario("S2 邮箱发送间隔（G-LOGIN-06：不再说“刚发过”，等待取本页门禁 60 秒默认）", { otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN + " For security purposes, you can only request this after 40 seconds." }) }, async (d) => {
   await sendTap(d);
-  await waitMsg(d, /刚刚已经发过验证码/);
+  await waitMsg(d, /这个邮箱请求验证码太频繁/);
   const btn = await T(d.page, "[data-send-code]");
-  check("S2：冷却取服务器给的真实数字（约 41 秒），按钮写“N 秒后可再发”", secondsIn(btn) >= 36 && secondsIn(btn) <= 41 && /秒后可再发/.test(btn), btn);
-  check("S2：文案写出 40 秒；没有诊断行；XP 句子在", /40 秒/.test(await T(d.page, "[data-login-msg]")) && (await T(d.page, "[data-login-diag]")) === "" && (await T(d.page, "[data-login-xp]")) === XP50);
+  check("S2：没有 Retry-After → 沿用 60 秒默认门禁，按钮写“N 秒后可再发”（原文里的 40 秒不决定等待）", secondsIn(btn) >= 55 && secondsIn(btn) <= 60 && /秒后可再发/.test(btn), btn);
+  check("S2：文案不说“刚发过”、不保证旧验证码有效；没有诊断行；XP 句子在", /不一定还有效/.test(await T(d.page, "[data-login-msg]")) && !/刚刚已经发过|还能用/.test(await T(d.page, "[data-login-msg]")) && (await T(d.page, "[data-login-diag]")) === "" && (await T(d.page, "[data-login-xp]")) === XP50);
   await d.page.locator("[data-send-code]").evaluate((b) => b.click()); // 强制点禁用的按钮：不能再发请求
   await d.page.waitForTimeout(300);
   check("冷却期间强行点击不会再发请求（服务器只收到 1 次）", d.hits.otp === 1, String(d.hits.otp));
@@ -149,10 +151,18 @@ await scenario("S2 刚发过（服务器给了 40 秒）", { otp: (r) => json(r,
   await d.page.locator("[data-code]").waitFor();
   check("点「我已收到」：进入输验证码页，没有再发请求", d.hits.otp === 1);
 });
-await scenario("S3 邮件配额（429 没有秒数）", { otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN }) }, async (d) => {
+await scenario("S3 邮件服务限流（email rate limit exceeded；G-LOGIN-06 不再生成 5 分钟）", { otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN + " email rate limit exceeded" }, RAX(600)) }, async (d) => {
   await sendTap(d);
-  await waitMsg(d, /登录邮件发得太多/);
-  check("S3：按钮禁用，写“约 5 分钟后可再试”；无诊断行；无次按钮", (await T(d.page, "[data-send-code]")) === "约 5 分钟后可再试" && (await d.page.locator("[data-send-code]").isDisabled()) && (await T(d.page, "[data-login-diag]")) === "" && (await d.page.locator("[data-enter-code]").count()) === 0);
+  await waitMsg(d, /邮件服务暂时限流/);
+  const b3 = await T(d.page, "[data-send-code]");
+  check("S3：有等待头也不变 S2；按钮禁用，写真实倒计时“约 10 分钟后可再发”（不是 5 分钟）；无诊断行；无次按钮", /^约 10 分钟后可再发$/.test(b3) && (await d.page.locator("[data-send-code]").isDisabled()) && (await T(d.page, "[data-login-diag]")) === "" && (await d.page.locator("[data-enter-code]").count()) === 0);
+});
+await scenario("S8 请求限流（over_request_rate_limit + Retry-After 7200：中性文案，长等待不截成一小时）", { otp: (r) => json(r, 429, { code: 429, error_code: "over_request_rate_limit", msg: CAN }, RAX(7200)) }, async (d) => {
+  await sendTap(d);
+  await waitMsg(d, /请求太频繁了，暂时发不出验证码/);
+  const m8 = await T(d.page, "[data-login-msg]"), b8 = await T(d.page, "[data-send-code]");
+  check("S8：不说“验证码刚发过”、不说邮件额度；写约 2 小时；按钮倒计时约 2 小时（不是 60 分钟）；没有“我已收到”入口", /约 2 小时/.test(m8) && !/发过|邮件服务|额度/.test(m8) && /^约 2 小时后可再发$/.test(b8) && (await d.page.locator("[data-enter-code]").count()) === 0, m8 + " | " + b8);
+  check("S8：页面上没有服务器原文；服务器只收到 1 次请求", (await noRaw(d.page)) && d.hits.otp === 1, String(d.hits.otp));
 });
 await scenario("S5 邮箱无资格（400 email_address_not_authorized）", { otp: (r) => json(r, 400, { code: 400, error_code: "email_address_not_authorized", msg: CAN }) }, async (d) => {
   await sendTap(d);
@@ -269,7 +279,7 @@ await scenario("发送成功仍进入输验证码，60 秒后才能重发", {}, 
 });
 
 // ---------- 回归：键盘遮挡（P0-3）----------
-await scenario("键盘弹出（可视高度 315）时错误区和发送按钮都看得见", { fakeVv: true, otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN + " after 40 seconds" }) }, async (d) => {
+await scenario("键盘弹出（可视高度 315）时错误区和发送按钮都看得见", { fakeVv: true, otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN + " For security purposes, you can only request this after 40 seconds." }) }, async (d) => {
   await d.page.evaluate(() => { window.__vvh = 315; window.visualViewport.dispatchEvent(new Event("resize")); });
   await d.page.waitForFunction(() => document.querySelector("[data-login]")?.classList.contains("kb-open"));
   const geo = () => d.page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); if (!e || e.offsetParent === null) return null; const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; }; return { vv: window.visualViewport.height, email: r("[data-email]"), send: r("[data-send-code]"), msg: r("[data-login-msg]"), xp: r("[data-login-xp]"), fb: r("[data-login-feedback]"), actions: r(".login-actions"), sheet: r(".login-sheet .sheet") }; });
@@ -277,7 +287,7 @@ await scenario("键盘弹出（可视高度 315）时错误区和发送按钮都
   check("键盘开：弹窗高度跟 --app-h，底边不超过可视高度", g.sheet && g.sheet.bottom <= g.vv + 1 && g.sheet.top >= -1, JSON.stringify(g.sheet));
   check("键盘开（还没出错）：输入框和发送按钮同时在可视区内", g.email.top >= 0 && g.email.bottom <= g.vv && g.send.bottom <= g.vv && g.send.top >= 0, JSON.stringify(g));
   await sendTap(d);
-  await waitMsg(d, /刚刚已经发过验证码/);
+  await waitMsg(d, /这个邮箱请求验证码太频繁/);
   await d.page.waitForTimeout(200);
   g = await geo();
   check("键盘开 + 出错：错误文字和进度行完整可见，且没有被吸底的发送按钮盖住", g.msg.top >= 0 && g.xp.bottom <= g.actions.top + 1 && g.msg.bottom <= g.actions.top + 1, JSON.stringify(g));
@@ -647,14 +657,16 @@ await scenario("退出登录：同步没完成时不报 XP 数字，说清已同
   if (!t) { await d.page.getByRole("button", { name: "仍然退出" }).tap().catch(() => {}); await d.page.waitForSelector(".toast"); t = await T(d.page, ".toast"); }
   check("X0（未同步）：已退出登录。已同步的进度在云端；还没上传的进度留在这台设备上…，且不含 120", /^已退出登录。已同步的进度在云端；还没上传的进度留在这台设备上/.test(t) && !t.includes("120"), t);
 });
-await scenario("换邮箱：针对旧邮箱的冷却不会拦住新邮箱，改回旧邮箱仍然拦", { otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN + " after 40 seconds" }) }, async (d) => {
+await scenario("换邮箱：发码限流按本页实际门禁，换邮箱 / 改回都不会解锁，也不会重新计满（G-LOGIN-06；原来按邮箱记账）", { otp: (r) => json(r, 429, { code: 429, error_code: "over_email_send_rate_limit", msg: CAN + " For security purposes, you can only request this after 40 seconds." }, RAX(90)) }, async (d) => {
   await sendTap(d);
-  await waitMsg(d, /刚刚已经发过验证码/);
-  check("旧邮箱：发送按钮被冷却锁住", await d.page.locator("[data-send-code]").isDisabled());
+  await waitMsg(d, /这个邮箱请求验证码太频繁/);
+  check("旧邮箱：发送按钮被冷却锁住，倒计时约 90 秒", (await d.page.locator("[data-send-code]").isDisabled()) && secondsIn(await T(d.page, "[data-send-code]")) > 80, await T(d.page, "[data-send-code]"));
+  await d.page.waitForTimeout(2200);
   await d.page.locator("[data-email]").fill("other@example.com");
-  check("改成新邮箱：按钮立刻可点，旧邮箱的“刚刚已发过”提示清掉", !(await d.page.locator("[data-send-code]").isDisabled()) && (await T(d.page, "[data-send-code]")) === "发送验证码" && (await T(d.page, "[data-login-msg]")) === "" && (await d.page.locator("[data-enter-code]").count()) === 0);
+  const bn = await T(d.page, "[data-send-code]");
+  check("改成新邮箱：仍被同一个门禁锁住（不能绕过），倒计时没有重新计满（已走过约 2 秒，不超过 88 秒）", (await d.page.locator("[data-send-code]").isDisabled()) && secondsIn(bn) > 70 && secondsIn(bn) <= 88, bn);
   await d.page.locator("[data-email]").fill("T@Example.com ");
-  check("改回旧邮箱（大小写 / 空格不同也算同一个）：按钮又被锁住", await d.page.locator("[data-send-code]").isDisabled());
+  check("改回旧邮箱：同一个门禁，同样锁住", await d.page.locator("[data-send-code]").isDisabled());
   check("整个过程服务器只收到 1 次 otp 请求", d.hits.otp === 1, String(d.hits.otp));
 });
 await scenario("超时后返回改邮箱：新邮箱不继承旧邮箱的 60 秒等待，验证码页重新计时", { otp: (r) => (r.request().postData() || "").includes("t@example.com") ? new Promise(() => {}) : json(r, 200, {}) }, async (d) => {

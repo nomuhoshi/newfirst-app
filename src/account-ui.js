@@ -1,7 +1,7 @@
 // 登录 / 账号界面：邮箱验证码登录、同步状态、退出、切换账号、删除账号。
 // 不直接碰数据：全部通过 sync（src/sync.js）；元素创建函数和弹窗从 app.js 传进来，所以样式和无障碍行为和其他弹窗一致。
 import { createCaptcha } from "./captcha.js";
-import { describeSendError, describeVerifyError, describeChoiceError, syncErrorText, safeMessage, SYNC_COPY } from "./auth-errors.js";
+import { describeSendError, describeVerifyError, describeChoiceError, syncErrorText, safeMessage, fmtSendWait, SYNC_COPY } from "./auth-errors.js";
 
 // 同步状态的文字。出错类状态不显示服务器原文（Y3b/Y3c/Y3d）；诊断行只带过滤后的状态码和错误码。
 export function statusText(s) {
@@ -34,7 +34,7 @@ export const errorText = (r) => {
 // 登录成功但这次没同步上（D1）：不拼接服务器原文。
 const syncedToast = (r, okText, notText) => (r.synced ? okText : notText + (r.syncError ? "本机进度仍在，云端同步未完成，联网后会自动补上。" : ""));
 
-const fmtWait = (ms) => { const s = Math.max(1, Math.ceil(ms / 1000)); return s <= 90 ? `${s} 秒` : `约 ${Math.ceil(s / 60)} 分钟`; };
+const fmtWait = (ms) => fmtSendWait(Math.max(1, Math.ceil(ms / 1000))); // 合法的长等待不截断（小时 / 天），两分钟内精确到秒，和同步层的截止时间一致
 
 // D：人机验证站点密钥只来自构建（测试入口），正式构建为空 = 功能关闭
 const BUILD_CAPTCHA_KEY = typeof __CAPTCHA_SITE_KEY__ !== "undefined" ? __CAPTCHA_SITE_KEY__ : "";
@@ -98,6 +98,8 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
       const norm = (x) => String(x || "").trim().toLowerCase();
       const cdLeft = (v) => (cooldownUntil > Date.now() && (!cdEmail || cdEmail === norm(v)) ? cooldownUntil - Date.now() : 0);
       const setCooldown = (ms, v, scope) => { cooldownUntil = Date.now() + ms; cdEmail = scope === "email" ? norm(v) : ""; };
+      // 发码被限流（含本地挡住）：以同步层给的实际门禁截止时间为准（全局，不标成只针对某个邮箱）。重复点击 / 换邮箱 / 重开弹窗拿到的都是同一个截止时间，不会重新计满。
+      const setSendGate = (d, v) => { if (Number.isFinite(d.retryAt)) { cooldownUntil = d.retryAt; cdEmail = ""; } else setCooldown(d.cooldownMs, v, d.scope); };
       // 错误区：一个始终存在的 role=alert 容器，里面最多三层——L1 原因与动作（红）、L2 进度行（灰）、L3 诊断行（灰、等宽）。
       const msg = h("p", { class: "login-msg", "data-login-msg": "" });
       const xpEl = h("p", { class: "login-xp", "data-login-xp": "" });
@@ -150,7 +152,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
             const d0 = describeSendError(r, { xp: localXp(), fails: 1, captchaOn: captcha.enabled });
             s4Fails = d0.id === "S4" ? s4Fails + 1 : 0; // S4 连续失败计数只放内存，成功一次清零
             const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails, captchaOn: captcha.enabled }) : d0;
-            if (d.cooldownMs) setCooldown(d.cooldownMs, v, d.scope);
+            if (d.cooldownMs) setSendGate(d, v);
             sendLabel = d.cooldownLabel;
             if (d.uncertainSent) { email = v; setCooldown(60000, v, "email"); stepCode(); sayFail(d); return; } // 超时：邮件可能已发出，直接去输验证码、先查邮箱，不鼓励马上重发
             sayFail(d);
@@ -213,7 +215,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
             const d0 = describeSendError(r, { xp: localXp(), fails: 1, captchaOn: captcha.enabled });
             s4Fails = d0.id === "S4" ? s4Fails + 1 : 0;
             const d = d0.id === "S4" ? describeSendError(r, { xp: localXp(), fails: s4Fails, captchaOn: captcha.enabled }) : d0;
-            if (d.cooldownMs) setCooldown(d.cooldownMs, email, d.scope);
+            if (d.cooldownMs) setSendGate(d, email);
             sayFail(d); tick(); return;
           }
           s4Fails = 0; resends++;
@@ -223,7 +225,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         }, "btn3d ghost", { "data-resend": "" });
         const tick = () => {
           const left = Math.ceil(cdLeft(email) / 1000);
-          if (!busy) { resend.disabled = left > 0; resend.textContent = left > 0 ? `重新发送（${left} 秒）` : "重新发送"; }
+          if (!busy) { resend.disabled = left > 0; resend.textContent = left > 0 ? `重新发送（${fmtWait(left * 1000)}）` : "重新发送"; }
           if (retryMode && !busy) {
             if (sync.hasVerified && !sync.hasVerified()) { // 已验证的会话到期了（等待跨过了到期时间）：不能再重试；不自动重发验证码，只提示去「重新发送」
               retryMode = false; readUntil = 0; go.textContent = "登录";

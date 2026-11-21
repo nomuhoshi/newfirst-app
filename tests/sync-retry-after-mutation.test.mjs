@@ -53,7 +53,7 @@ try {
     ["sync.js", "导入写入失败丢掉服务器的等待时间", "kind = c.kind; raSec = c.retryAfterSec; break; }\n        if (c.rev === null) { latest", "kind = c.kind; break; }\n        if (c.rev === null) { latest"],
     ["sync.js", "导入读回失败丢掉服务器的等待时间", "rbRa = rb.retryAfterSec; }", "}"],
     ["sync.js", "登录选择里的导入 429 不进冷却", "if (result && result.kind === \"rate-limit\") noteRateLimit(result);", ""],
-    ["sync.js", "发码入口不检查冷却", "    if (inCooldown()) return rateLimited();\n    const r = await", "    const r = await"],
+    ["sync.js", "发码入口不检查冷却", "    if (inCooldown()) return gate(rateLimited(), true);\n    const r = await", "    const r = await"],
   ];
   for (const [file, name, from, to] of MUTS) {
     reset();

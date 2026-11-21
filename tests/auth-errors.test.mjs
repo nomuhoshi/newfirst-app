@@ -30,20 +30,23 @@ x = await send(503, "");
 check("S4：空响应体 503", x.d.id === "S4" && x.d.diag === "诊断：503");
 
 // ---------- S2 / S3 限流 ----------
+// G-LOGIN-06：原因只看“错误码 + 原文有限匹配”，等待数字（Retry-After）只决定等多久。完整矩阵 / 假时钟见 tests/send-code-cooldown.test.mjs。
 x = await send(429, { code: 429, error_code: "over_email_send_rate_limit", msg: "For security purposes, you can only request this after 40 seconds." });
-check("S2：429 消息带 “after 40 seconds” → 文案写 40 秒，冷却取真实数字 41 秒，给“去输入验证码”入口", x.d.id === "S2" && /40 秒/.test(x.d.text) && x.d.cooldownMs === 41000 && x.d.secondary === "enter-code" && x.d.diag === "", JSON.stringify(x.d));
+check("S2：邮箱限流码 + 发送间隔提示 → 该邮箱请求太频繁；不保证旧验证码有效；没有等待头 → 60 秒默认（原文里的 40 秒不进界面也不决定等待）；给“去输入验证码”入口", x.d.id === "S2" && /这个邮箱/.test(x.d.text) && /不一定还有效/.test(x.d.text) && !/40 秒/.test(x.d.text) && x.d.cooldownMs === 60000 && x.d.secondary === "enter-code" && x.d.diag === "", JSON.stringify(x.d));
 x = await send(429, { error_code: "over_request_rate_limit", msg: "Request rate limit reached" }, { "retry-after": "120" });
-check("S2：Retry-After 120 → 约 2 分钟，冷却 121 秒", x.d.id === "S2" && /约 2 分钟/.test(x.d.text) && x.d.cooldownMs === 121000, JSON.stringify(x.d));
+check("S8：over_request_rate_limit + Retry-After 120 → 中性请求限流（不再是“验证码刚发过”），等 120 秒，不推断已发邮件 / 额度", x.d.id === "S8" && /120 秒/.test(x.d.text) && x.d.cooldownMs === 120000 && !/发过|邮件服务|额度/.test(x.d.text) && x.d.secondary === "", JSON.stringify(x.d));
 x = await send(429, { error_code: "over_request_rate_limit", msg: "slow down" });
-check("S2：over_request_rate_limit 没有数字 → N=60", x.d.id === "S2" && /60 秒/.test(x.d.text) && x.d.cooldownMs === 60000);
+check("S8：over_request_rate_limit 没有数字 → N=60", x.d.id === "S8" && /60 秒/.test(x.d.text) && x.d.cooldownMs === 60000);
 x = await send(429, { code: 429, error_code: "over_email_send_rate_limit", msg: "email rate limit exceeded" });
-check("S3：429 没有秒数 → 邮件配额，冷却 5 分钟，不显示诊断行", x.d.id === "S3" && x.d.cooldownMs === 300000 && x.d.cooldownLabel === "约 5 分钟后可再试" && x.d.diag === "" && /最久可能要等一小时/.test(x.d.text));
+check("S3：邮箱限流码 + email rate limit exceeded → 邮件服务限流，没有等待头 → 60 秒默认（不再自己生成 5 分钟），不显示诊断行", x.d.id === "S3" && x.d.cooldownMs === 60000 && x.d.cooldownLabel === "可再发" && x.d.diag === "" && /邮件服务暂时限流/.test(x.d.text) && !/最久可能要等一小时|5 分钟/.test(x.d.text), JSON.stringify(x.d));
 x = await send(429, { msg: "slow down" });
-check("S3：429 无错误码无秒数 → S3", x.d.id === "S3");
+check("S8：429 无错误码无秒数 → 中性请求限流（不推断是邮件额度）", x.d.id === "S8" && !/邮件服务|额度/.test(x.d.text));
 x = await send(429, { msg: "after 99999 seconds" });
-check("冷却上限截到 1 小时", x.d.cooldownMs === 3600000);
-x = await send(429, { msg: "after 1 seconds" });
-check("冷却下限抬到 10 秒", x.d.cooldownMs === 10000);
+check("发码冷却不再截到 1 小时（Retry-After 缺失时原文里的数字不决定等待，仍是 60 秒默认）", x.d.cooldownMs === 60000);
+x = await send(429, { msg: "m" }, { "retry-after": "99999" });
+check("合法的长 Retry-After 99999 秒不截断（约 28 小时）", x.d.cooldownMs === 99999000 && /约 28 小时/.test(x.d.text), JSON.stringify(x.d));
+x = await send(429, { msg: "m" }, { "retry-after": "1" });
+check("冷却下限：合法的 1 秒按现有最短 5 秒（原来 10 秒是 UI 层另抬的，和同步层门禁不一致）", x.d.cooldownMs === 5000, JSON.stringify(x.d));
 
 // ---------- S5 / S6 ----------
 x = await send(400, { code: 400, error_code: "email_address_not_authorized", msg: "Email address \"x@qq.com\" cannot be used as it is not authorized" });
@@ -181,7 +184,13 @@ check("V4：验证 500 → 登录服务暂时出问题；诊断行 诊断：500�
   check("发送 / 验证码失败（登录没发生、本机没动）仍用“没有受影响”", /没有受影响/.test(s1.xp) && /没有受影响/.test(v1.xp));
   const t1 = describeSendError({ ok: false, kind: "network", timedOut: true }, { xp: 50 }), t2 = describeSendError({ ok: false, kind: "network" }, { xp: 50 });
   check("S1b 超时文案：请求超时，邮件可能已发出。请先检查邮箱；非超时是网络不稳版本", /^请求超时，邮件可能已发出。请先检查邮箱/.test(t1.text) && /^网络不稳/.test(t2.text) && t1.uncertainSent && !t2.uncertainSent);
-  check("冷却范围：S2、V2 只针对当前邮箱；S3、S4、S5、S6 不绑邮箱", describeSendError({ ok: false, kind: "rate-limit", status: 429, message: "after 30 seconds" }).scope === "email" && describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "verify" }).scope === "email" && ["rate-limit", "server"].every((k) => describeSendError({ ok: false, kind: k, status: k === "server" ? 500 : 429 }).scope === ""));
+  check("冷却范围（G-LOGIN-06）：发码限流（S2/S3/S8/S9）都按本页实际门禁，不绑邮箱；只有 V2（验证太频繁）按当前邮箱；S4、S5、S6 不绑邮箱", describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "verify" }).scope === "email" && ["rate-limit", "server"].every((k) => describeSendError({ ok: false, kind: k, status: k === "server" ? 500 : 429 }).scope === "") && describeSendError({ ok: false, kind: "rate-limit", status: 429, errorCode: "over_email_send_rate_limit", message: "you can only request this after 30 seconds" }).scope === "");
+  // V2（输入验证码太频繁）仍走 serverWaitSec：Retry-After 优先、上限 1 小时、下限 10 秒。发码路径（S2/S3/S8/S9）已不用它，这几条原来由发码的断言顺带覆盖，现在直接测 V2。
+  const v2 = (o) => describeVerifyError({ ok: false, kind: "rate-limit", status: 429, stage: "verify", ...o });
+  check("V2：Retry-After 120 → 冷却 121 秒、文案约 2 分钟（忽略 Retry-After 会变成 60 秒）", v2({ retryAfterSec: 120 }).cooldownMs === 121000 && /约 2 分钟/.test(v2({ retryAfterSec: 120 }).text), JSON.stringify(v2({ retryAfterSec: 120 })));
+  check("V2：冷却上限截到 1 小时（验证路径语义不变）", v2({ retryAfterSec: 99999 }).cooldownMs === 3600000);
+  check("V2：冷却下限抬到 10 秒（验证路径语义不变）", v2({ retryAfterSec: 1 }).cooldownMs === 10000);
+  check("S9 本地冷却拦截：中性等待文案，截止时间沿用原来的（retryAt），不说服务器拒绝", (() => { const d = describeSendError({ ok: false, kind: "rate-limit", localBlock: true, retryAt: 5000, waitMs: 3000, message: "请求太频繁了" }); seen.send.add(d.id); return d.id === "S9" && d.cooldownMs === 3000 && d.retryAt === 5000 && /3 秒/.test(d.text) && !/服务器|邮件服务|发过/.test(d.text); })());
 }
 
 // ---------- 同步状态栏 / 提示条：不出现服务器英文原文 ----------
