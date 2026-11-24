@@ -532,6 +532,7 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         if (r.stale) { showToast(safeMessage(r.message, r.cloudDeleted === true ? "账号已在云端删除。这台设备在删除过程中已退出或换了账号，本机没有改动。" : r.cloudDeleted === null ? "无法确认旧账号是否已删除；当前登录和本机数据未改动。" : "删除没有完成。")); return; } // 删除期间这台设备已退出 / 换了账号：不走“已删除并退出”的回调，不动现在的账号
         if (r.ok) { onSwitchedOut(); showToast("账号已删除。"); }
         else if (r.pendingLocalCleanup) { onSwitchedOut(); showToast(safeMessage(r.message, "账号已在云端删除，但这台设备还没清理完。")); }
+        else if (r.deleteUncertain === true) showToast("无法确认云端是否已完成删除，本机记录未清理，请先备份学习进度。");
         else showToast(errorText(r));
       }, true); }, "btn3d danger-ghost wide", { "data-delete-account": "" })));
     paint(st, sync.status());

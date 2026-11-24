@@ -36,8 +36,15 @@ try {
     ["sync.js", "响应丢失 / 超时也当作“云端明确没删”（把结果未知误报成删除失败）", "(r.ok === true ? true : r.kind === \"network\" ? null : false)", "(r.ok === true ? true : false)"],
     ["sync.js", "结果未知时仍说“删除没有完成”（提示文案和结果不符）", "null: \"无法确认旧账号是否已删除；当前登录和本机数据未改动。\" };", "null: \"删除没有完成，云端报错了；这台设备在删除过程中已退出或换了账号，本机没有改动。\" };"],
     ["sync.js", "迟到结果不再标记为“已被取代”（界面会当成普通结果走回调）", "kind: \"stale\", stale: true, superseded: true, retryable: false, cloudDeleted,", "kind: \"stale\", retryable: false, cloudDeleted,"],
+
+    ["sync.js", "G12 当前未知结果不打标记", "deleteUncertain: true, cloudDeleted: null", "deleteUncertain: false, cloudDeleted: null", "G12_META"],
+    ["sync.js", "G12 当前未知结果误报云端未删除", "deleteUncertain: true, cloudDeleted: null", "deleteUncertain: true, cloudDeleted: false", "G12_META"],
+    ["sync.js", "G12 结果未知时清掉本机凭证", '      if (r.kind === "network") return { ...r, retryable: false, deleteUncertain: true,', '      if (r.kind === "network") storage.removeItem(AUTH_KEY);\n      if (r.kind === "network") return { ...r, retryable: false, deleteUncertain: true,', "G12_KEEP"],
+    ["sync.js", "G12 结果未知时清掉待导入记录", '      if (r.kind === "network") return { ...r, retryable: false, deleteUncertain: true,', '      if (r.kind === "network") clearPendingImport(storage, uid);\n      if (r.kind === "network") return { ...r, retryable: false, deleteUncertain: true,', "G12_KEEP"],
+    ["sync.js", "G12 刷新失败也误标为删除未知", '    if (!t.ok) return t;\n    const afterTokenGuard = importGuard();', '    if (!t.ok) return { ...t, deleteUncertain: true, cloudDeleted: null };\n    const afterTokenGuard = importGuard();', "G12_BEFORE"],
+    ["account-ui.js", "G12 界面忽略删除专用未知提示", 'else if (r.deleteUncertain === true)', 'else if (false)', "G12_UI"],
   ];
-  for (const [file, name, from, to] of MUTS.filter((m) => m[0] === "sync.js")) {
+  for (const [file, name, from, to, marker] of MUTS) {
     reset();
     const p = join(SRC, file);
     let text = readFileSync(p, "utf8");
@@ -45,9 +52,11 @@ try {
     if (froms.some((f) => !text.includes(f))) { check(`变异“${name}”：要改的源码片段存在`, false, "片段没找到：" + froms.find((f) => !text.includes(f)).slice(0, 60)); continue; }
     froms.forEach((f, i) => { text = text.replace(f, tos[i]); });
     writeFileSync(p, text);
+    const syntax = spawnSync(process.execPath, ["--check", p], { encoding: "utf8", timeout: 5000 });
+    if (syntax.status !== 0) { check(`变异“${name}”：语法须正常`, false, syntax.stderr); continue; }
     const r = run();
-    const fails = (r.stdout.match(/^❌/gm) || []).length;
-    check(`变异“${name}”：删除账号迟到隔离专项变红（失败或挂住都算红，exit=${r.status}，红 ${fails} 项）`, r.status !== 0 && r.status !== null, `exit=${r.status}`);
+    const failures = r.stdout.split("\n").filter((line) => line.startsWith("❌"));
+    check(`变异“${name}”：须由行为断言检出（exit=${r.status}，红 ${failures.length} 项）`, r.status === 1 && !r.error && r.signal === null && r.stderr === "" && failures.length > 0 && (!marker || failures.some((line) => line.includes(marker))), r.stderr || `exit=${r.status}`);
   }
 } finally { rmSync(W, { recursive: true, force: true }); }
 const bad = results.filter((v) => !v).length;
