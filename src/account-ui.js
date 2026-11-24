@@ -456,13 +456,13 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
         const mk = (label, choice, cls) => { const b = button(label, () => pick(choice), cls, { "data-choice": choice }); controls.push(b); return b; };
         const later = button("稍后再说", () => { if (isActive() && !busy) closeOwn(); }, "btn3d ghost wide"); controls.push(later);
         box.append(
-          info.cloudHasData
+          ...(info.cloudHasData
             ? [h("h2", { text: "这个账号已有学习进度" }), h("p", { text: `云端已经有这个账号的进度。这台设备上还有没登录时学的进度（${g}）。` }),
               mk("保留云端进度（推荐）", "cloud", "btn3d primary wide"),
               mk("安全合并游客进度", "transfer", "btn3d wide")]
             : [h("h2", { text: "转存这台设备上的进度？" }), h("p", { text: `这台设备上有没登录时学的进度（${g}）。要放进这个账号吗？` }),
               mk("安全合并到账号", "transfer", "btn3d primary wide"),
-              mk("不转存，用全新账号", "cloud", "btn3d wide")],
+              mk("不转存，用全新账号", "cloud", "btn3d wide")]),
           msg, later);
         return [box];
       }, { canClose: () => !busy, onClose: () => { closed = true; } });
