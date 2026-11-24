@@ -102,15 +102,15 @@ const stale = r => { assert.equal(r.ok, false); assert.equal(r.stale, true); ass
 
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 class Element {
-  constructor(env, tag, attrs = {}, ...children) {
+  constructor(env, tag, attrs = {}) {
     this.env = env; this.tag = tag; this.attrs = attrs; this.children = []; this.parentNode = null;
     this.disabled = false; this.dataset = {}; this._text = attrs.text || ''; this.classes = new Set();
     this.classList = { add: k => this.classes.add(k), remove: k => this.classes.delete(k) };
-    this.append(...children);
   }
   get isConnected() { return this === this.env.body || !!this.parentNode?.isConnected; }
   contains(n) { return this === n || this.children.some(c => c instanceof Element && c.contains(n)); }
-  append(...xs) { for (const x of xs.flat(Infinity)) if (x != null && x !== false) { if (x instanceof Element) { x.remove(); x.parentNode = this; } this.children.push(x); } }
+  // 与原生 Node.append 一致：只接收节点或字符串，不展开数组；其余参数（数组、null、false 等）一律转成文本。
+  append(...xs) { for (const x of xs) { if (x instanceof Element) { x.remove(); x.parentNode = this; this.children.push(x); } else this.children.push(String(x)); } }
   remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(x => x !== this); this.parentNode = null; }
   get textContent() { return this._text + this.children.map(x => x instanceof Element ? x.textContent : String(x)).join(''); }
   set textContent(x) { for (const c of this.children) if (c instanceof Element) c.parentNode = null; this.children = []; this._text = String(x); }
@@ -133,7 +133,9 @@ function uiHarness(t, withLocks, { emptyCloud = false } = {}) {
   const e = { f, sheets: [], toasts: [], switched: [], pending: [], rerenders: 0, finishCalls: 0 };
   e.body = new Element(e, 'body'); e.doc = { activeElement: e.body, querySelectorAll: () => [] };
   globalThis.document = e.doc;
-  const h = (tag, attrs, ...children) => new Element(e, tag, attrs || {}, ...children);
+  // 与 app.js 的 h() 一致：一层 children.flat()，过滤 null / false，再逐个 append。
+  const h = (tag, attrs, ...children) => { const el = new Element(e, tag, attrs || {}); for (const c of children.flat()) if (c != null && c !== false) el.append(c); return el; };
+  e.h = h;
   const button = (text, fn, cls, attrs = {}) => {
     const b = h('button', { ...attrs, text: typeof text === 'string' ? text : '', class: cls });
     b.invoke = () => { let p; try { p = Promise.resolve(fn()); } catch (err) { p = Promise.reject(err); } e.pending.push(p); p.catch(() => {}); return p; };
@@ -280,8 +282,33 @@ for (const withLocks of [false, true]) {
     await e.pick('transfer').click(); assert.equal(e.sheet.closed, true, 'G11_SESSION_CHANGED 会话变化只收起旧弹窗');
     assert.equal(e.toasts.length, e.beforeToast); assert.equal(e.switched.length, 0);
   });
+  for (const emptyCloud of [false, true]) test(mode + '：两种分支都真实渲染标题和两个选择按钮 ' + JSON.stringify({ emptyCloud }), async t => {
+    const e = uiHarness(t, withLocks, { emptyCloud }); await e.open();
+    const head = find(e.box, n => n.tag === 'h2');
+    assert.ok(head, 'G11_RENDER 标题没有渲染');
+    assert.equal(head.textContent, emptyCloud ? '转存这台设备上的进度？' : '这个账号已有学习进度', 'G11_RENDER 分支标题');
+    assert.ok(e.pick('cloud') && e.pick('transfer') && e.later, 'G11_RENDER 两个选择按钮和稍后再说必须存在');
+    assert.ok([e.pick('cloud'), e.pick('transfer'), e.later, e.msg].every(n => n.parentNode === e.box && n.isConnected), 'G11_RENDER 控件必须真正挂在选择框里');
+    assert.equal(e.box.children.filter(c => typeof c === 'string').length, 0, 'G11_RENDER 选择框里不能混入字符串化的数组');
+    assert.doesNotMatch(e.box.textContent, /\[object|undefined|null/, 'G11_RENDER 不得出现字符串化的节点');
+  });
   test(mode + '：空闲时稍后再说不提交、不改存档', async t => {
     const e = uiHarness(t, withLocks); await e.open(); const before = e.f.snapshot();
     await e.later.click(); assert.equal(e.sheet.closed, true); assert.equal(e.finishCalls, 0); assert.equal(e.f.snapshot(), before);
   });
 }
+
+test('测试替身与真实 DOM 一致：append 不展开数组，h 展开一层并过滤 null / false', t => {
+  const e = uiHarness(t, false);
+  const a = e.h('i'), b = e.h('i'), c = e.h('i'), host = e.h('div');
+  host.append([a, b], c);
+  assert.equal(a.parentNode, null, 'G11_DOUBLE append 不得把数组里的节点挂入');
+  assert.equal(b.parentNode, null); assert.equal(c.parentNode, host);
+  assert.equal(host.children.filter(x => typeof x === 'string').length, 1, 'G11_DOUBLE 数组被当成一个文本参数');
+  const x = e.h('i'), y = e.h('i'), z = e.h('i'), box = e.h('div', {}, [x, y], null, false, z);
+  assert.deepEqual(box.children, [x, y, z], 'G11_DOUBLE h 展开一层数组并过滤 null / false');
+  assert.ok([x, y, z].every(n => n.parentNode === box));
+  const deep = e.h('i'), outer = e.h('div', {}, [[deep]]);
+  assert.equal(deep.parentNode, null, 'G11_DOUBLE h 只展开一层，与 app.js 的 children.flat() 一致');
+  assert.equal(outer.children.length, 1);
+});

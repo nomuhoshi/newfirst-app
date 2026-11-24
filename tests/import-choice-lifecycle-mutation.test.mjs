@@ -18,6 +18,7 @@ const variants = [
   ['不收起 stale 旧弹窗', 'if (r.stale || r.kind === "session-changed") { closeOwn(); return; }', '', 'G11_STALE'],
   ['会话变化仍提示游客重试', 'r.stale || r.kind === "session-changed"', 'r.stale', 'G11_SESSION_CHANGED'],
   ['失败后不恢复控件', 'finally { if (isActive()) setBusy(false); }', 'finally {}', 'G11_REENABLE'],
+  ['撤掉产品展开（数组当单个参数传给 append）', 'box.append(\n          ...(info.cloudHasData', 'box.append(\n          (info.cloudHasData', 'G11_RENDER'],
   ['关闭旧弹窗抢走新弹窗焦点', 'if (keepFocus && focused.isConnected) focused.focus?.({ preventScroll: true });', '', 'G11_FOCUS'],
 ];
 const run = () => spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(dir, test)], { encoding: 'utf8', timeout: 20000 });
