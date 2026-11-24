@@ -251,6 +251,95 @@ try {
       await d.ctx.close();
     }
   }
+
+  // ---- G-LOGIN-11：恢复选择弹窗自己的上传锁、关闭生命周期和 stale 收尾 ----
+  const g11Deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
+  const g11Gate = (uid, status) => ({ uid, status, used: false, entered: g11Deferred(), release: g11Deferred(), done: g11Deferred() });
+  const g11Entered = async gate => {
+    let timer;
+    try { await Promise.race([gate.entered.promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("G11 上传读取没有到达门闩")), 10000); })]); }
+    finally { clearTimeout(timer); }
+  };
+  const g11Open = async d => {
+    await d.page.locator("[data-quarantine]").tap();
+    await d.page.getByRole("button", { name: "备份并继续", exact: true }).tap();
+    await d.page.waitForSelector("[data-import-choice]");
+    await d.page.evaluate(() => {
+      const sync = window.__app.sync, original = sync.finishChoice.bind(sync);
+      window.__g11Calls = 0; window.__g11Toasts = []; window.__g11Done = false;
+      sync.finishChoice = async (...args) => { window.__g11Calls++; const r = await original(...args); window.__g11Result = r; window.__g11Done = true; return r; };
+      const st = window.setTimeout.bind(window);
+      window.setTimeout = (fn, ms, ...args) => { if (ms === 4000) window.__g11Toasts.push(document.querySelector(".toast")?.textContent || ""); return st(fn, ms, ...args); };
+    });
+  };
+  for (const status of [200, 503]) {
+    const email = "g11-busy-" + status + "@example.com";
+    const { d, uid, reqs, pendKey } = await corruptedDevice("G11-busy-" + status, email);
+    const gate = g11Gate(uid, status);
+    try {
+      await g11Open(d); reqs.length = 0; d.ctx.__g04Gate = gate;
+      const choice = d.page.locator('[data-import-choice] [data-choice="transfer"]');
+      await choice.tap(); await g11Entered(gate);
+      check("G11 " + status + " 上传中两个选择及稍后再说全部禁用", await d.page.locator("[data-import-choice] button").evaluateAll(bs => bs.length === 3 && bs.every(b => b.disabled)));
+      // 绕过 DOM disabled，确认处理函数自身仍互斥。
+      await d.page.locator("[data-import-choice] [data-choice]").evaluateAll(bs => { for (const b of bs) { b.disabled = false; b.click(); b.disabled = true; } });
+      await d.page.getByRole("button", { name: "稍后再说", exact: true }).evaluate(b => { b.disabled = false; b.click(); b.disabled = true; });
+      await d.page.waitForTimeout(850); // 超过共用 sheet 的遮罩防误触窗口，实际检查 canClose
+      await d.page.keyboard.press("Escape"); await d.page.mouse.click(3, 3);
+      check("G11 " + status + " 连点只提交一次；按钮 / Esc / 遮罩都不能关闭上传弹窗", (await d.page.evaluate(() => window.__g11Calls)) === 1 && (await d.page.locator("[data-import-choice]").count()) === 1 && reqs.length === 1 && reqs[0] === "GET /rest/v1/progress", JSON.stringify(reqs));
+      gate.release.resolve(); await d.page.waitForFunction(() => window.__g11Done);
+      if (status === 503) {
+        check("G11 503 失败后恢复三个按钮，游客及待办保留", (await d.page.locator("[data-import-choice] button").evaluateAll(bs => bs.length === 3 && bs.every(b => !b.disabled))) && /没有处理完/.test(await d.page.locator("[data-import-choice] [data-choice-msg]").innerText()) && (await getRaw(d.page, pendKey)) !== null && xpIn(email) === 0);
+        await choice.tap();
+      }
+      await d.page.waitForFunction(() => !document.querySelector("[data-import-choice]"));
+      check("G11 " + status + " 最终正常完成：云端和页面 80 XP，待办清除，成功提示只有一次", xpIn(email) === 80 && (await xpOnPage(d)) === 80 && (await getRaw(d.page, pendKey)) === null && (await d.page.evaluate(() => window.__g11Toasts.filter(t => /^游客进度已处理/.test(t)).length)) === 1);
+      await syncNow(d); await syncNow(d);
+      check("G11 " + status + " 后续同步不重复加分，页面无脚本错误", xpIn(email) === 80 && d.errors.length === 0, JSON.stringify(d.errors));
+    } finally { gate.release.resolve(); if (gate.used) await gate.done.promise; await d.ctx.close(); }
+  }
+  for (const status of [200, 503]) {
+    const email = "g11-detached-" + status + "@example.com";
+    const { d, uid } = await corruptedDevice("G11-detached-" + status, email);
+    const gate = g11Gate(uid, status);
+    try {
+      await g11Open(d); d.ctx.__g04Gate = gate;
+      await d.page.locator('[data-import-choice] [data-choice="transfer"]').tap(); await g11Entered(gate);
+      const xpBefore = await xpOnPage(d);
+      await d.page.evaluate(() => {
+        document.querySelector("[data-account]").dataset.g11Original = "yes";
+        window.__g11OldMsg = document.querySelector("[data-import-choice] [data-choice-msg]");
+        document.querySelector("[data-import-choice]").closest(".overlay").remove(); // 外部卸载，不调用 onClose
+        window.__app.sheet(close => { const title = document.createElement("h2"), b = document.createElement("button"); title.textContent = "新弹窗"; b.textContent = "保留新弹窗"; b.dataset.g11New = "yes"; b.onclick = close; return [title, b]; });
+      });
+      gate.release.resolve(); await d.page.waitForFunction(() => window.__g11Done);
+      const state = await d.page.evaluate(() => ({ oldMsg: window.__g11OldMsg.textContent, newDialog: !!document.querySelector("[data-g11-new]"), originalCard: document.querySelector("[data-account]")?.dataset.g11Original, focus: document.activeElement?.dataset.g11New, successToasts: window.__g11Toasts.filter(t => /^游客进度已处理/.test(t)).length }));
+      check("G11 " + status + " 卸载后迟到结果不改旧提示、不切换页面、不提示完成，新弹窗及焦点保留", state.oldMsg === "正在处理…" && state.newDialog && state.originalCard === "yes" && state.focus === "yes" && state.successToasts === 0 && (await xpOnPage(d)) === xpBefore, JSON.stringify(state));
+      check("G11 " + status + " 外部卸载场景没有脚本错误", d.errors.length === 0, JSON.stringify(d.errors));
+    } finally { gate.release.resolve(); if (gate.used) await gate.done.promise; await d.ctx.close(); }
+  }
+  {
+    const oldEmail = "g11-stale-old@example.com", newEmail = "g11-stale-new@example.com";
+    const { d, uid } = await corruptedDevice("G11-stale", oldEmail), gate = g11Gate(uid, 200);
+    try {
+      await g11Open(d); d.ctx.__g04Gate = gate;
+      await d.page.locator('[data-import-choice] [data-choice="transfer"]').tap(); await g11Entered(gate);
+      // 模拟上传中被外部退出；用真实登录界面建立另一账号的新选择。
+      await d.page.evaluate(async () => { const r = await window.__app.sync.forceLocalLogout(); if (!r.ok) throw new Error("G11 强制退出失败"); window.__app.accountUi.openLogin(); });
+      const login = d.page.locator("[data-login]");
+      await login.locator("[data-email]").fill(newEmail); await login.locator("[data-send-code]").tap();
+      await login.locator("[data-code]").fill("123456"); await login.locator("[data-verify]").tap();
+      const newChoice = login.locator('[data-choice="transfer"]'); await newChoice.waitFor();
+      await newChoice.evaluate(b => { b.dataset.g11New = "choice"; b.focus(); });
+      const snapshot = () => d.page.evaluate(() => JSON.stringify(Object.entries(localStorage).sort(([a], [b]) => a.localeCompare(b))));
+      const before = await snapshot(); gate.release.resolve();
+      await d.page.waitForFunction(() => window.__g11Result?.stale === true && !document.querySelector("[data-import-choice]"));
+      check("G11 stale 只收起所属旧弹窗，新选择、焦点和共享存储保留", (await newChoice.count()) === 1 && (await snapshot()) === before && (await d.page.evaluate(() => document.activeElement?.dataset.g11New)) === "choice");
+      check("G11 stale 不显示旧重试 / 成功提示", (await d.page.evaluate(() => window.__g11Toasts.length)) === 0 && !/没有处理完/.test(await login.innerText()));
+      await newChoice.tap(); await d.page.waitForFunction(() => !document.querySelector("[data-login]"));
+      check("G11 新账号选择仍可完成且只导入一次，无脚本错误", (await uidOf(d)) === S.users.get(newEmail) && xpIn(newEmail) === 80 && xpIn(oldEmail) === 0 && d.errors.length === 0, JSON.stringify(d.errors));
+    } finally { gate.release.resolve(); if (gate.used) await gate.done.promise; await d.ctx.close(); }
+  }
 } catch (e) {
   check("恢复入口界面测试异常", false, String(e.stack || e).split("\n").slice(0, 4).join(" | "));
 } finally {
