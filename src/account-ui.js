@@ -425,25 +425,47 @@ export function createAccountUi({ h, button, sheet, icon, showToast, sync, api, 
     // 恢复成功只在隔离确实完成（原文已备份并读回、原待办已删除并读回）之后才说；任何一步失败都如实告诉用户原待办还在。
     function openImportChoice(info) {
       const g = `${info.guest.xp} XP、${info.guest.lessons} 关`;
+      let busy = false, closed = false;
       sheet((close) => {
+        const box = h("div", { class: "lsheet", "data-import-choice": "" });
         const msg = h("p", { class: "login-msg", role: "alert", "data-choice-msg": "" });
+        const controls = [];
+        const isActive = () => !closed && box.isConnected;
+        const setBusy = (value) => { busy = value; controls.forEach((b) => { b.disabled = value; }); };
+        const closeOwn = () => {
+          // 旧弹窗收尾时，保留后来弹窗里的焦点；共用 sheet() 的关闭规则不变。
+          const focused = document.activeElement;
+          const keepFocus = focused?.isConnected && !box.contains(focused);
+          close();
+          if (keepFocus && focused.isConnected) focused.focus?.({ preventScroll: true });
+        };
         const pick = async (choice) => {
+          if (!isActive() || busy) return;
+          setBusy(true);
           msg.textContent = "正在处理…"; msg.classList.remove("bad");
-          const r = await sync.finishChoice(choice);
+          let r;
+          try { r = await sync.finishChoice(choice); }
+          catch { r = { ok: false, kind: "network" }; }
+          finally { if (isActive()) setBusy(false); }
+          if (!isActive()) return; // 只接收所属弹窗仍有效时的结果
+          if (r.stale || r.kind === "session-changed") { closeOwn(); return; }
           if (!r.ok) { msg.textContent = describeChoiceError(r, { xp: info.guest.xp }).text; msg.classList.add("bad"); return; }
-          close(); onSwitchedIn(r);
+          closeOwn(); onSwitchedIn(r);
           showToast(syncedToast(r, "游客进度已处理，已同步。", "游客进度已处理。"));
         };
-        return [h("div", { class: "lsheet", "data-import-choice": "" },
-          info.cloudHasData
+        const mk = (label, choice, cls) => { const b = button(label, () => pick(choice), cls, { "data-choice": choice }); controls.push(b); return b; };
+        const later = button("稍后再说", () => { if (isActive() && !busy) closeOwn(); }, "btn3d ghost wide"); controls.push(later);
+        box.append(
+          ...(info.cloudHasData
             ? [h("h2", { text: "这个账号已有学习进度" }), h("p", { text: `云端已经有这个账号的进度。这台设备上还有没登录时学的进度（${g}）。` }),
-              button("保留云端进度（推荐）", () => pick("cloud"), "btn3d primary wide", { "data-choice": "cloud" }),
-              button("安全合并游客进度", () => pick("transfer"), "btn3d wide", { "data-choice": "transfer" })]
+              mk("保留云端进度（推荐）", "cloud", "btn3d primary wide"),
+              mk("安全合并游客进度", "transfer", "btn3d wide")]
             : [h("h2", { text: "转存这台设备上的进度？" }), h("p", { text: `这台设备上有没登录时学的进度（${g}）。要放进这个账号吗？` }),
-              button("安全合并到账号", () => pick("transfer"), "btn3d primary wide", { "data-choice": "transfer" }),
-              button("不转存，用全新账号", () => pick("cloud"), "btn3d wide", { "data-choice": "cloud" })],
-          msg, button("稍后再说", close, "btn3d ghost wide"))];
-      });
+              mk("安全合并到账号", "transfer", "btn3d primary wide"),
+              mk("不转存，用全新账号", "cloud", "btn3d wide")]),
+          msg, later);
+        return [box];
+      }, { canClose: () => !busy, onClose: () => { closed = true; } });
     }
     async function runRecovery(digest) {
       const q = await sync.quarantinePendingImport({ expectedDigest: digest });
