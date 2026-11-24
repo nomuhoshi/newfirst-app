@@ -745,6 +745,65 @@ for (const [retryAfter, elapsed] of [[30, 1], [180, 121]]) {
   });
 }
 
+
+// G12：删除已在假服务器提交，随后连接 / 正文丢失；当前会话必须说结果未知。
+const G12_COPY = "无法确认云端是否已完成删除，本机记录未清理，请先备份学习进度。";
+for (const lose of ["drop", "body", "stall"]) {
+  let row = null, committed = false;
+  await scenario("G-LOGIN-12 当前删除响应丢失 / " + lose, {
+    xp: 0, verify: okVerify,
+    progress: (r) => { if (row) return json(r, 200, null); row = { doc: JSON.parse(r.request().postData()).new_doc, rev: 1 }; return json(r, 200, 1); },
+    getProgress: (r) => json(r, 200, row ? [row] : []),
+    del: (r) => { committed = row !== null; row = null; return lose === "drop" ? r.abort("connectionreset") : json(r, 200, null); },
+  }, async (d) => {
+    await loggedInAccountCard(d);
+    if (!row || (await d.page.evaluate(() => window.__app.sync.status().status)) !== "synced") throw new Error("G12 前提失败：删除前须有云端记录且已同步");
+    await d.page.evaluate((mode) => {
+      const sync = window.__app.sync, originalDelete = sync.deleteAccount.bind(sync);
+      sync.deleteAccount = async (...args) => { const r = await originalDelete(...args); window.__g12Result = r; return r; };
+      document.querySelector("[data-account]").dataset.g12Original = "yes";
+      if (mode !== "drop") {
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = async (input, init) => {
+          const response = await originalFetch(input, init);
+          const url = typeof input === "string" ? input : input.url;
+          if (new URL(url, location.href).pathname !== "/rest/v1/rpc/delete_my_account" || !response.ok) return response;
+          window.__g12ReplyReceived = true;
+          return new Response(new ReadableStream({ start(controller) { if (mode === "body") controller.error(new TypeError("CANARY_G12_BODY")); } }), { status: 200 });
+        };
+      }
+    }, lose);
+    const before = await dump(d.page), hits = { ...d.hits };
+    const identity = await d.page.evaluate(() => ({ account: window.__app.sync.account(), xp: window.__app.getState().xp, toasts: window.__toasts.length }));
+    await d.page.locator("[data-delete-account]").tap();
+    await d.page.getByRole("button", { name: "永久删除", exact: true }).tap();
+    // 等这次的新提示，不能读到登录成功时遗留的 toast。
+    await d.page.waitForFunction((n) => window.__toasts.length > n, identity.toasts, { timeout: 25000 });
+    const t = await T(d.page, ".toast"), result = await d.page.evaluate(() => window.__g12Result);
+    check("G12 " + lose + " 已提交删除但响应未知：元数据和专用提示正确", committed && row === null && result.ok === false && result.kind === "network" && result.deleteUncertain === true && result.cloudDeleted === null && result.localCleaned === false && result.retryable === false && t === G12_COPY, JSON.stringify({ committed, result, toast: t }));
+    const after = await d.page.evaluate(() => ({ account: window.__app.sync.account(), xp: window.__app.getState().xp, originalCard: document.querySelector("[data-account]")?.dataset.g12Original }));
+    check("G12 " + lose + " 本机逐字节保留、不走退出回调、只发一次删除且没有额外云端请求", (await dump(d.page)) === before && JSON.stringify(after.account) === JSON.stringify(identity.account) && after.xp === identity.xp && after.originalCard === "yes" && d.hits.del === hits.del + 1 && Object.keys(hits).filter(k => k !== "del").every(k => d.hits[k] === hits[k]), JSON.stringify({ before: hits, after: d.hits }));
+    check("G12 " + lose + " 不泄露原文、不承诺删除成败或自动重试", !/CANARY|网络连不上|账号已删除|删除没有完成|自动重试/.test(t) && (await noRaw(d.page)), t);
+    if (lose !== "drop") check("G12 " + lose + " 失败确实发生在成功响应头之后", await d.page.evaluate(() => window.__g12ReplyReceived === true));
+  });
+}
+await scenario("G-LOGIN-12 刷新断网但删除 RPC 未调用", { xp: 0, verify: okVerify, ...cloudWithRow() }, async (d) => {
+  await loggedInAccountCard(d);
+  await d.page.evaluate(() => {
+    const sync = window.__app.sync, key = Object.keys(localStorage).find(k => k.endsWith("suipian.auth"));
+    const auth = JSON.parse(localStorage.getItem(key)); auth.session.expiresAt = Date.now() + 1000; localStorage.setItem(key, JSON.stringify(auth));
+    if (!sync.restore(window.__app.getState())) throw new Error("G12 前提失败：无法恢复临期会话");
+    const originalFetch = window.fetch.bind(window); window.__g12Refresh = 0;
+    window.fetch = (input, init) => { const url = typeof input === "string" ? input : input.url; if (new URL(url, location.href).pathname === "/auth/v1/token") { window.__g12Refresh++; return Promise.reject(new TypeError("CANARY_G12_REFRESH")); } return originalFetch(input, init); };
+    const originalDelete = sync.deleteAccount.bind(sync); sync.deleteAccount = async (...args) => { const r = await originalDelete(...args); window.__g12Result = r; return r; };
+  });
+  const before = await dump(d.page), hits = { ...d.hits }, n = await d.page.evaluate(() => window.__toasts.length);
+  await d.page.locator("[data-delete-account]").tap(); await d.page.getByRole("button", { name: "永久删除", exact: true }).tap();
+  await d.page.waitForFunction((count) => window.__toasts.length > count, n);
+  const t = await T(d.page, ".toast"), r = await d.page.evaluate(() => window.__g12Result);
+  check("G12 RPC 前刷新失败：只显示通用网络提示，不误标删除未知，本机原样", t === "网络连不上，请检查网络后重试。" && r.kind === "network" && !Object.hasOwn(r, "deleteUncertain") && !Object.hasOwn(r, "cloudDeleted") && (await dump(d.page)) === before && JSON.stringify(d.hits) === JSON.stringify(hits) && (await d.page.evaluate(() => window.__g12Refresh)) === 1, JSON.stringify({ toast: t, result: r, hits: d.hits }));
+});
+
 // ---------- 已发布产物的核对（只在 DIST_DIR / FAKE_URL 给定时运行）----------
 if (EXPECT_SHA) {
   await scenario("预览产物：页面显示的源码提交、云项目，且只访问测试项目", { nav: "none", otp: (r) => json(r, 500, { error_code: "unexpected_failure", msg: CAN }) }, async (d) => {

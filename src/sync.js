@@ -1687,7 +1687,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // 请求在途时本机已退出 / 换账号 / 同号重新登录：绝不清理共享存储中的新登录实例数据，仅报告云端三态结果
     const v2 = verifyDeleteOwnership();
     if (!v2.ok) return staleDelete(deleteOutcome(r));
-    if (!r.ok) return r;
+    if (!r.ok) {
+      if (r.kind === "network") return { ...r, retryable: false, deleteUncertain: true, cloudDeleted: null, localCleaned: false,
+        message: "无法确认云端是否已完成删除，本机记录未清理，请先备份学习进度。" };
+      return r;
+    }
     let cleaned = false;
     try { cleaned = logoutLocal(storage, uid) && clearPendingImport(storage, uid); } catch { cleaned = false; }
     if (!cleaned) {

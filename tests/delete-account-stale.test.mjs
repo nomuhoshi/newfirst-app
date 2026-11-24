@@ -4,10 +4,11 @@
 // 假 Supabase 在 fetch 层，可以挂起删除 / 刷新请求，之后放行成功 / 失败。
 // 运行：node tests/delete-account-stale.test.mjs
 import { createSync } from "../src/sync.js";
-import { GUEST_KEY } from "../src/account-store.js";
+import { createAccountUi } from "../src/account-ui.js";
+import { GUEST_KEY, getGuestId, savePendingImport } from "../src/account-store.js";
 import { createApi } from "../src/cloud-api.js";
 import { freshState, bumpStreak } from "../src/storage.js";
-import { docToState, sumXp, newId } from "../src/account-data.js";
+import { docToState, sumXp, newId, guestFingerprint } from "../src/account-data.js";
 
 const results = [];
 let CUR_MODE = ""; // 跑两遍：无锁 / 有 Web Locks（假的独占锁，按名字排队，和真实 navigator.locks 的语义一致）
@@ -108,6 +109,26 @@ const consistent = (d, email) => {
 const DEL = /POST \/rest\/v1\/rpc\/delete_my_account/, dels = (S) => S.count["POST /rest/v1/rpc/delete_my_account"] || 0;
 const unsentOf = (S, email) => S.xpOf(email);
 
+
+// 删除界面回归使用真实 createAccountUi；h 展开一层，append 不展开数组。
+function deleteUi(d) {
+  const sheets = [], toasts = [], out = [];
+  class E {
+    constructor(tag, attrs = {}) { this.tag = tag; this.attrs = attrs; this.children = []; this.textContent = attrs.text || ""; this.dataset = {}; this.classList = { add() {}, remove() {} }; }
+    append(...xs) { for (const x of xs) this.children.push(x instanceof E ? x : String(x)); }
+  }
+  const h = (tag, attrs = {}, ...children) => { const n = new E(tag, attrs); for (const c of children.flat()) if (c != null && c !== false) n.append(c); return n; };
+  const find = (n, pred) => { if (Array.isArray(n)) { for (const c of n) { const r = find(c, pred); if (r) return r; } return null; } if (!(n instanceof E)) return null; return pred(n) ? n : find(n.children, pred); };
+  const ui = createAccountUi({ h, button: (label, click, cls, attrs = {}) => Object.assign(h("button", { ...attrs, text: label }), { click }),
+    icon: () => h("i"), api: { configured: true }, sync: d.sync, getState: () => d.state,
+    showToast: x => toasts.push(x), onSwitchedOut: () => out.push(true), onSwitchedIn() {}, rerender() {},
+    sheet: render => { const sheet = { closed: false }; sheet.nodes = render(() => { sheet.closed = true; }); sheets.push(sheet); return () => { sheet.closed = true; }; },
+  });
+  const card = ui.accountCard();
+  return { toasts, out, confirm() { const open = find(card, n => Object.hasOwn(n.attrs, "data-delete-account")); if (!open) throw new Error("G12_PRECONDITION 无删除按钮"); open.click(); const confirm = find(sheets.at(-1).nodes, n => n.tag === "button" && n.textContent === "永久删除"); if (!confirm) throw new Error("G12_PRECONDITION 无永久删除确认"); return confirm.click(); } };
+}
+const G12_COPY = "无法确认云端是否已完成删除，本机记录未清理，请先备份学习进度。";
+
 for (const MODE of ["无锁", "有 Web Locks"]) {
 CUR_MODE = MODE;
 
@@ -176,6 +197,8 @@ for (const [who, email] of [["A→B", EMAIL_B], ["A→A", EMAIL_A]]) {
   await d.sync.forceLocalLogout(); await login(S, d, email);
   const p2 = d.sync.deleteAccount(); await tick();
   check(`3d ${who}：新会话的删除不并进旧删除——是另一个调用，各发一次请求（删除接口 2 次）`, p1 !== p2 && dels(S) === 2, `删除接口=${dels(S)}`);
+  // 错误合并时先放行旧请求，使上面的行为断言失败后仍能收尾，避免变异靠挂起退出被误算检出。
+  if (p1 === p2) rel1();
   rel2(); const r2 = await p2; await tick();
   check(`3d ${who}：新会话的删除成功，本机清干净`, r2.ok === true && consistent(d, null), JSON.stringify(r2));
   rel1(); const r1 = await p1; await tick();
@@ -193,6 +216,51 @@ for (const [who, email] of [["A→B", EMAIL_B], ["A→A", EMAIL_A]]) {
   check("4b 删除失败（503）：返回失败，仍是登录 B，凭证在，再删一次可成功", f.ok === false && !f.stale && consistent(d, EMAIL_B), JSON.stringify(f));
   const r2 = await d.sync.deleteAccount(); await tick();
   check("4c 失败之后再删一次成功（登记已释放）", v.ok === true && r2.ok === true && consistent(d, null), JSON.stringify(r2));
+}
+
+// ===== G12. 当前会话 RPC 后未知、RPC 前失败和界面专用提示 =====
+for (const lose of ["drop", "body", "stall"]) {
+  const S = fakeCloud(), d = await loggedInA(S); const synced = await d.sync.syncNow({ manual: true });
+  check(`G12_PRECONDITION ${lose}：删除前云端已有 40 XP`, synced.ok === true && S.xpOf(EMAIL_A) === 40);
+  const uid = d.sync.account().userId;
+  if (lose === "body") {
+    const guest = { ...freshState(), onboarded: true, xp: 20, done: { G12G: true }, lessonsCompleted: 1 };
+    const raw = JSON.stringify(guest), gid = getGuestId(d.storage); d.storage.setItem(GUEST_KEY, raw);
+    const saved = savePendingImport(d.storage, uid, { version: 1, userId: uid, guestId: gid.id, choice: "merge", fingerprint: guestFingerprint(guest), guestState: guest, guestRaw: raw, createdAt: d.clock });
+    check("G12_PRECONDITION body：快照还包含游客记录和健康导入待办", gid.ok && saved);
+  }
+  const before = snap(d.storage), rel = S.hold(DEL, { lose });
+  const p1 = d.sync.deleteAccount(), p2 = d.sync.deleteAccount(); await tick(); rel();
+  const r = await p1; await p2;
+  check(`G12_META ${lose}：RPC 后响应未知携带删除元数据，不声称失败或已删除`, p1 === p2 && r.ok === false && r.kind === "network" && r.deleteUncertain === true && r.cloudDeleted === null && r.localCleaned === false && r.retryable === false && r.message === G12_COPY, JSON.stringify(r));
+  await tick();
+  check(`G12_KEEP ${lose}：假服务器已提交删除，本机所有键和当前登录不变，只发一次删除`, !S.rows.has(uid) && snap(d.storage) === before && consistent(d, EMAIL_A) && dels(S) === 1 && d.state.xp === 40, JSON.stringify({ deleteCalls: dels(S), cloudHasRow: S.rows.has(uid) }));
+}
+for (const failure of ["offline", "timeout", "503"]) {
+  const S = fakeCloud(); S.expiresIn = 30; const d = await loggedInA(S);
+  const before = snap(d.storage);
+  if (failure === "offline") S.offline = true;
+  else if (failure === "timeout") S.timeout(REFRESH);
+  else S.fail(REFRESH, 503, { msg: "refresh unavailable" });
+  const r = await d.sync.deleteAccount();
+  check(`G12_BEFORE ${failure}：刷新失败，删除 RPC 零次，不能标记删除结果未知`, r.ok === false && !Object.hasOwn(r, "deleteUncertain") && !Object.hasOwn(r, "cloudDeleted") && dels(S) === 0 && snap(d.storage) === before && consistent(d, EMAIL_A) && (failure !== "timeout" || r.timedOut === true), JSON.stringify(r));
+}
+for (const status of [403, 503]) {
+  const S = fakeCloud(), d = await loggedInA(S); await d.sync.syncNow({ manual: true });
+  const before = snap(d.storage); S.fail(DEL, status, { msg: "explicit rejection" });
+  const r = await d.sync.deleteAccount();
+  check(`G12_EXPLICIT ${status}：明确错误不标未知，不清本机，云端仍有 40 XP`, r.ok === false && r.status === status && !Object.hasOwn(r, "deleteUncertain") && S.xpOf(EMAIL_A) === 40 && snap(d.storage) === before && consistent(d, EMAIL_A), JSON.stringify(r));
+}
+for (const lose of ["drop", "body", "stall"]) {
+  const S = fakeCloud(), d = await loggedInA(S); await d.sync.syncNow({ manual: true });
+  const e = deleteUi(d), before = snap(d.storage), rel = S.hold(DEL, { lose });
+  const p = e.confirm(); await tick(); rel(); await p;
+  check(`G12_UI ${lose}：真实删除回调显示专用未知提示，不走已退出回调`, e.toasts.length === 1 && e.toasts[0] === G12_COPY && e.out.length === 0 && snap(d.storage) === before && consistent(d, EMAIL_A) && dels(S) === 1, JSON.stringify(e.toasts));
+}
+{
+  const S = fakeCloud(); S.expiresIn = 30; const d = await loggedInA(S);
+  const e = deleteUi(d), before = snap(d.storage); S.offline = true; await e.confirm();
+  check("G12_UI_BEFORE：刷新断网只提示通用网络失败，不误报删除未知", e.toasts.length === 1 && e.toasts[0] === "网络连不上，请检查网络后重试。" && e.out.length === 0 && dels(S) === 0 && snap(d.storage) === before, JSON.stringify(e.toasts));
 }
 }
 
