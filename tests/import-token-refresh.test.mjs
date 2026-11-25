@@ -100,7 +100,7 @@ function fixture(withLocks, { cloudRow = true, verifyLife = LIFE } = {}) {
   const stored = () => JSON.parse(storage.getItem(AUTH_KEY)).session;
   const afterRefresh = () => { const i = calls.findIndex(c => c.method === 'refresh'); return i < 0 ? [] : calls.slice(i + 1).filter(c => c.method !== 'refresh'); };
   const gateOn = (method, reply = null, skip = 0) => { const g = { method, reply, skip, used: false, entered: defer(), release: defer() }; gates.push(g); return g; };
-  return { raw, storage, m, calls, hooks, rows, sync, make, guest, issue, expireSoon, addPending, stored, afterRefresh, gateOn, seedA,
+  return { raw, storage, m, calls, hooks, rows, sync, make, revoke: at => revoked.add(at), guest, issue, expireSoon, addPending, stored, afterRefresh, gateOn, seedA,
     advance: ms => { clock += ms; }, snapshot: () => JSON.stringify([...m].sort(([a], [b]) => a.localeCompare(b))),
     refreshes: () => calls.filter(c => c.method === 'refresh').length, pendingLeft: () => loadPendingImport(storage, A).record };
 }
@@ -228,7 +228,7 @@ for (const withLocks of [false, true]) {
       if (path === 'sync') { f.addPending(choice); const g = f.gateOn('get', null, 1); run = { g, p: f.sync.syncNow({ manual: true }) }; }
       else {
         const v = await f.sync.resumeGuestImportChoice(freshState()); assert.equal(v.needChoice, true);
-        const g = f.gateOn('get', null, 1); run = { g, p: f.sync.finishChoice(choice === 'cloud' ? 'cloud' : 'transfer') };
+        const g = f.gateOn('get', null, 2); run = { g, p: f.sync.finishChoice(choice === 'cloud' ? 'cloud' : 'transfer') }; // 前两次读取是恢复时的读取和选择后的重读，第三次才是读回
       }
       await bounded(run.g.entered.promise, 'readback');
       await otherTab(f, who);
@@ -318,4 +318,32 @@ for (const withLocks of [false, true]) {
     assert.equal(f.snapshot(), before, 'G13_LOGIN_EXPIRY 存储（含 B 的登录凭证）逐字节不变');
     assert.equal(f.calls.length, reqs, 'G13_LOGIN_EXPIRY 之后不再发请求');
   });
+}
+
+// ===== r3：最终提交前采纳共享存储里同一登录实例的最新会话（读回期间另一页正常刷新了令牌）=====
+for (const withLocks of [false, true]) {
+  const L = withLocks ? '模拟 Web Locks' : '无锁';
+  for (const choice of ['cloud', 'merge']) {
+    test(`${L}：恢复后重新选择（${choice}）读回期间另一页刷新了同一登录实例：最终提交不覆盖新凭证，之后同步成功`, async () => {
+      const f = fixture(withLocks);
+      const v = await f.sync.resumeGuestImportChoice(freshState()); assert.equal(v.needChoice, true);
+      const g = f.gateOn('get', null, 2); // 前两次读取是恢复时的读取和选择后的重读，第三次才是读回
+      const p = f.sync.finishChoice(choice === 'cloud' ? 'cloud' : 'transfer');
+      await bounded(g.entered.promise, 'readback');
+      // 另一页对同一登录实例做了一次正常刷新：同实例编号，写入更新的凭证
+      f.advance(1000);
+      const key = f.raw.getItem ? Object.keys(Object.fromEntries(f.m)).find(k => k.endsWith('suipian.auth')) : null;
+      const auth = JSON.parse(f.m.get(key)), oldAt = auth.session.accessToken, fresh = f.issue(A);
+      f.m.set(key, JSON.stringify({ ...auth, session: fresh }));
+      g.release.resolve(); const r = await p;
+      assert.equal(r.ok, true, 'G13_COMMIT ' + JSON.stringify(r)); assert.equal(r.synced, true, 'G13_COMMIT ' + JSON.stringify(r));
+      assert.equal(f.stored().accessToken, fresh.accessToken, 'G13_COMMIT 最终提交不得把内存里的旧会话写回，覆盖另一页刚刷新的凭证：' + f.stored().accessToken);
+      assert.equal(f.stored().refreshToken, fresh.refreshToken, 'G13_COMMIT');
+      f.revoke(oldAt); // 旧访问令牌之后失效（服务端轮换）：本页必须已经换用新会话
+      const sy = await f.sync.syncNow({ manual: true });
+      assert.equal(sy.ok, true, 'G13_COMMIT 之后同步必须成功：' + JSON.stringify(sy));
+      assert.equal(f.sync.status().status, 'synced', 'G13_COMMIT 不得误报重新登录：' + JSON.stringify(f.sync.status()));
+      assert.equal(sumXp(f.rows.get(A).doc), choice === 'cloud' ? 40 : 120);
+    });
+  }
 }

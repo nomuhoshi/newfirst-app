@@ -1328,7 +1328,16 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const commitSessionErr = checkExpectedSession();
     if (commitSessionErr) return commitSessionErr;
     // 恢复后重新选择：导入途中可能刷新过令牌，收尾写回必须用刷新之后的当前会话，不能把挂起时那份旧令牌写回存储（G-LOGIN-13）。
-    if (ctx.resume && isSessionShape(session) && session.userId === uid) ctx.session = session;
+    if (ctx.resume) {
+      // 最终提交前再复核原登录实例，并采纳共享存储里该实例的最新会话：读回期间另一页可能刚正常刷新过令牌，不能把内存里的旧会话写回去覆盖它。
+      const ownCommit = checkSessionOwnership();
+      if (!ownCommit.ok) {
+        if (ownCommit.kind === "lost") { dropLostSession(ownCommit.reason); return staleImport(); }
+        return { ok: false, kind: "local", message: "无法确认本机登录状态" };
+      }
+      adoptStoredSession();
+      if (isSessionShape(session) && session.userId === uid) ctx.session = session;
+    }
     if (!result || !result.saved) {
       const dirty = ctx.copy ? ctx.copy.dirty : cleanDirty;
       if (!saveAccount(storage, uid, { doc, base, dirty }, { now: now(), expectEmpty: !ctx.copy })) return { ok: false, kind: "local", message: "无法保存到本机，登录没有完成" };

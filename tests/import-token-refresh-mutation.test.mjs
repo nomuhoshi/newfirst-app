@@ -15,7 +15,7 @@ const variants = [
   { name: '保存仍用刷新前的旧会话', marker: 'G13_REUSE', edits: [ORIG, ['await api.saveProgress(k.session, latest.row.rev, doc)', 'await api.saveProgress(src.orig, latest.row.rev, doc)'], ['await api.saveProgress(k.session, current.row.rev, doc)', 'await api.saveProgress(src.orig, current.row.rev, doc)']] },
   { name: '创建仍用刷新前的旧会话', marker: 'G13_CREATE', edits: [ORIG, ['await api.createProgress(k.session, doc)', 'await api.createProgress(src.orig, doc)', 2]] },
   { name: '读回仍用刷新前的旧会话', marker: 'G13_READBACK', edits: [ORIG, ['await api.getProgress(rk.session) : rk', 'await api.getProgress(src.orig) : rk', 2]] },
-  { name: '恢复后重新选择：收尾把挂起时的旧令牌写回存储', marker: 'G13_FINAL', edits: [['    if (ctx.resume && isSessionShape(session) && session.userId === uid) ctx.session = session;\n', '']] },
+  { name: '恢复后重新选择：收尾把挂起时的旧令牌写回存储', marker: 'G13_FINAL', edits: [['      if (isSessionShape(session) && session.userId === uid) ctx.session = session;\n', '']] },
   { name: '刷新失败后仍用旧会话继续发请求', marker: 'G13_FAIL', edits: [['    if (!t.ok) return t;\n    if (!isSessionShape(session) || session.userId !== src.uid)', '    if (!isSessionShape(session) || session.userId !== src.uid)']] },
   { name: '刷新返回后不核对代次（被取代也继续，借新会话）', marker: 'G13_STALE', edits: [
     ['    if (dead() || src.gen !== acctGen || t.stale) return staleImport(); // 刷新期间已退出 / 换账号 / 同号重登：不借新会话继续旧任务\n    if (!t.ok) return t;', '    if (!t.ok && !t.stale) return t;']] },
@@ -24,6 +24,7 @@ const variants = [
   { name: '首次登录验证会话过期后不局部刷新（冲突重读仍带过期令牌）', marker: 'G13_LOGIN_EXPIRY', edits: [['      if (!Number.isFinite(src.sess.expiresAt) || src.sess.expiresAt - now() > 60000) return { ok: true, session: src.sess };', '      return { ok: true, session: src.sess };']] },
   { name: '首次登录局部刷新的新凭证不交回登录选择（重试 / 最终提交用已作废的旧令牌）', marker: 'G13_LOGIN_EXPIRY', edits: [['      try { src.onSession?.(rf.session); } catch {}\n', '']] },
   { name: '首次登录局部刷新前后不复核登录实例（被其他页取代也继续）', marker: 'G13_LOGIN_EXPIRY', edits: [['      const e = check ? check() : null;\n      return e ? { ...e, retryable: false } : null;', '      return null;']] },
+  { name: '最终提交不采纳共享存储里同实例的新凭证（覆盖另一页刚刷新的令牌）', marker: 'G13_COMMIT', edits: [['      adoptStoredSession();\n      if (isSessionShape(session) && session.userId === uid) ctx.session = session;', '      if (isSessionShape(session) && session.userId === uid) ctx.session = session;']] },
 ];
 function reset() { rmSync(join(dir, 'src'), { recursive: true, force: true }); cpSync(join(root, 'src'), join(dir, 'src'), { recursive: true }); }
 const run = () => spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(dir, tests)], { encoding: 'utf8', timeout: 60000 });
