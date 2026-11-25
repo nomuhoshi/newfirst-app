@@ -28,7 +28,10 @@ try {
     ["sync.js", "不合并重复退出（连点就发多次云端撤销）", "if (userId && logoutOp && logoutOp.uid === userId &&", "if (false && userId && logoutOp && logoutOp.uid === userId &&"],
     ["sync.js", "合并时不看会话代次（同号重新登录后，新会话的退出被合并进旧退出一起作废）", "logoutOp.uid === userId && logoutOp.gen === acctGen &&", "logoutOp.uid === userId &&"],
     ["sync.js", "所有权只看登记、不比较会话代次（删除账号取代在途退出后，旧退出仍当自己是所有者）", "const owns = () => logoutOp === op && acctGen === op.gen;", "const owns = () => logoutOp === op;"],
-    ["sync.js", "旧的令牌刷新迟到返回时不核对会话代次（旧令牌写进同号重新登录的新会话）", "    if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话，也不能写存储里的凭证\n    // 刷新返回后、writeAuth() 写回凭证之前", "    // 刷新返回后、writeAuth() 写回凭证之前"],
+    ["sync.js", "旧的令牌刷新迟到返回时不核对会话代次（旧令牌写进同号重新登录的新会话；G-LOGIN-14 起连同刷新登记里写回前的代次 / 会话复查一起拆掉：两道防线并存，单拆任何一道行为不变）",
+      ["    if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话，也不能写存储里的凭证\n    // 刷新返回后、writeAuth() 写回凭证之前",
+       "f.gen === acctGen && f.inst === loginInstanceId && f.uid === userId && session === src && checkSessionOwnership().ok\n          && r && r.ok"],
+      ["    // 刷新返回后、writeAuth() 写回凭证之前", "r && r.ok"]],
     ["sync.js", "强制退出在跑时，后来的退出不合并", "(!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise;", "(!dropping)) return logoutOp.promise;"],
     ["sync.js", "强制本机退出不能取代在途的联网强制退出（被合并过去，要等云端撤销）", "(!dropping || (logoutOp.dropping && (!local || logoutOp.local)))) return logoutOp.promise;", "(!dropping || logoutOp.dropping)) return logoutOp.promise;"],
     ["sync.js", "旧退出永远认为自己还是所有者（没有任何旧任务保护）", "const owns = () => logoutOp === op && acctGen === op.gen;", "const owns = () => true;"],
@@ -47,9 +50,12 @@ try {
   for (const [file, name, from, to] of MUTS.filter((m) => m[0] === "sync.js")) {
     reset();
     const p = join(SRC, file);
-    const text = readFileSync(p, "utf8");
-    if (!text.includes(from)) { check(`变异“${name}”：要改的源码片段存在`, false, "片段没找到：" + from.slice(0, 60)); continue; }
-    writeFileSync(p, text.replace(from, to));
+    let text = readFileSync(p, "utf8");
+    const froms = [].concat(from), tos = [].concat(to); // from / to 可以是数组：一次变异同时拆掉并存的几道防线
+    const missing = froms.find((f) => !text.includes(f));
+    if (missing !== undefined) { check(`变异“${name}”：要改的源码片段存在`, false, "片段没找到：" + missing.slice(0, 60)); continue; }
+    froms.forEach((f, i) => { text = text.replace(f, tos[i]); });
+    writeFileSync(p, text);
     const r = run();
     const fails = (r.stdout.match(/^❌/gm) || []).length;
     check(`变异“${name}”：退出去重专项变红（失败或挂住都算红，exit=${r.status}，红 ${fails} 项）`, r.status !== 0 && r.status !== null, `exit=${r.status}`);

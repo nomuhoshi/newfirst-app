@@ -236,6 +236,25 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     return true;
   }
 
+  // 同页在途刷新登记（G-LOGIN-14）：只存在于本 createSync 实例内，绑定账号代次 / 登录实例 / 用户 / 来源刷新令牌。
+  // 结果在登记方内部同步写进会话并落盘，然后立即释放，中间没有可插队的空隙；释放只清自己的登记，旧刷新收尾不会清掉新登记。
+  let refreshFlight = null;
+  function startRefresh(src) {
+    const f = { gen: acctGen, inst: loginInstanceId, uid: userId, rt: src.refreshToken, promise: null };
+    f.promise = (async () => {
+      try {
+        const r = await api.refresh(src);
+        if (f.gen === acctGen && f.inst === loginInstanceId && f.uid === userId && session === src && checkSessionOwnership().ok
+          && r && r.ok && isSessionShape(r.session) && r.session.userId === userId) {
+          session = r.session; email = session.email || email; writeAuth();
+        }
+        return r;
+      } finally { if (refreshFlight === f) refreshFlight = null; }
+    })();
+    refreshFlight = f;
+    return f;
+  }
+
   async function ensureToken(gen = acctGen) {
     const preOwn = checkSessionOwnership();
     if (!preOwn.ok) {
@@ -245,7 +264,11 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     adoptStoredSession();
     if (!isSessionShape(session) || session.userId !== userId) return { ok: false, kind: "auth", message: "需要重新登录" };
     if (session.expiresAt - now() > 60000) return { ok: true };
-    const r = await api.refresh(session);
+    // 同页并发刷新去重（G-LOGIN-14）：刷新令牌一次性，同一份凭证并发发两次刷新，后一个会被当作“令牌复用”拒绝（真实服务端还可能作废整个会话）。
+    // 登记项绑定账号代次 / 登录实例 / 用户 / 来源刷新令牌，只有这四项全部一致才合并；等待方共享同一个结果，但返回后各自复查所有权。
+    let flight = refreshFlight;
+    if (!(flight && flight.gen === acctGen && flight.inst === loginInstanceId && flight.uid === userId && flight.rt === session.refreshToken)) flight = startRefresh(session);
+    const r = await flight.promise;
     if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话，也不能写存储里的凭证
     // 刷新返回后、writeAuth() 写回凭证之前，必须复查共享登录实例所有权，绝不覆盖其他标签页新登录的凭证
     const postOwn = checkSessionOwnership();
@@ -253,9 +276,17 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (postOwn.kind === "lost") { dropLostSession(postOwn.reason); return staleResult(); }
       return { ok: false, kind: "local", message: "无法确认本机登录状态" };
     }
-    if (r.ok && isSessionShape(r.session) && r.session.userId === userId) { session = r.session; email = session.email || email; writeAuth(); return { ok: true }; }
+    if (r.ok && isSessionShape(r.session) && r.session.userId === userId) {
+      // 登记方已把结果写进会话并落盘；这里只在会话仍是刷新前的凭证时补写（不会拿旧结果覆盖已经更新的会话）
+      if (session.refreshToken === flight.rt) { session = r.session; email = session.email || email; writeAuth(); }
+      return { ok: true };
+    }
     // 刷新失败，可能是另一个标签页刚好抢先刷新了：再看一次存储
-    if (!r.ok && r.kind === "auth" && adoptStoredSession() && session.expiresAt - now() > 60000) return { ok: true };
+    // 共享同一次刷新的多个等待方：先到的那个已经采用了存储里的新凭证，后到的看到会话已不是刷新前的来源凭证，同样视为成功
+    if (!r.ok && r.kind === "auth") {
+      const adopted = adoptStoredSession();
+      if ((adopted || session.refreshToken !== flight.rt) && session.expiresAt - now() > 60000) return { ok: true };
+    }
     return r.ok ? { ok: false, kind: "auth", message: "登录账号不一致" } : r;
   }
 
