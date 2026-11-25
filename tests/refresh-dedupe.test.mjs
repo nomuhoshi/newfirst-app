@@ -245,10 +245,12 @@ for (const withLocks of [false, true]) {
     f.storage.setItem(AUTH_KEY, JSON.stringify({ project: PROJECT, instanceId: 'inst-A-1', session: newer }));
     const dp = f.sync.deleteAccount();
     await sleep(40);
-    assert.equal(f.refreshes(), 2, 'G14_KEY_RT 来源刷新令牌不同，不能共用在途刷新：' + JSON.stringify(f.of('refresh')));
-    assert.deepEqual(f.of('refresh').map(c => c.rt), [f.first.refreshToken, newer.refreshToken]);
+    // 无锁时第二次刷新立刻发出；有 Web Locks 时（G-LOGIN-15）它在刷新锁上排队，等前一次刷新结束后才发——但都是各自独立的一次刷新
+    if (!withLocks) assert.equal(f.refreshes(), 2, 'G14_KEY_RT 来源刷新令牌不同，不能共用在途刷新：' + JSON.stringify(f.of('refresh')));
     g1.release.resolve();
     await Promise.all([sp, dp]);
+    assert.equal(f.refreshes(), 2, 'G14_KEY_RT 来源刷新令牌不同，不能共用在途刷新：' + JSON.stringify(f.of('refresh')));
+    assert.deepEqual(f.of('refresh').map(c => c.rt), [f.first.refreshToken, newer.refreshToken], 'G14_KEY_RT');
   });
 
   test(`${L}：旧登录在途时本机退出并恢复出相同的凭证和实例（只有账号代次不同）：新操作不能合并进旧刷新`, async () => {

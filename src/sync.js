@@ -25,7 +25,7 @@ export function scopedStorage(raw, ns) {
   return { getItem: (k) => raw.getItem(scoped(k)), setItem: (k, v) => raw.setItem(scoped(k), v), removeItem: (k) => raw.removeItem(scoped(k)) };
 }
 
-export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, onSessionLost = () => {}, retryLocks = null }) {
+export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, onSessionLost = () => {}, retryLocks = null, refreshLockWaitMs = 20_000 }) {
   const storage = scopedStorage(rawStorage, projectNamespace(projectId, legacyProject));
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "", loginInstanceId = null;
@@ -238,24 +238,77 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
 
   // 同页在途刷新登记（G-LOGIN-14）：只存在于本 createSync 实例内，绑定账号代次 / 登录实例 / 用户 / 来源刷新令牌。
   // 结果在登记方内部同步写进会话并落盘，然后立即释放，中间没有可插队的空隙；释放只清自己的登记，旧刷新收尾不会清掉新登记。
+  // 跨页协调（G-LOGIN-15）：同一浏览器的多个页面共用这份凭证，刷新令牌一次性，两页各刷新一次就会有一次被当作“令牌复用”拒绝。
+  // 所以刷新本身放进“项目 + 账号 + 登录实例”粒度的 Web Locks 独占锁：等待页拿到锁后先复核身份、采纳共享存储里别页刚发布的新凭证，
+  // 仍然需要才自己刷新；刷新结果的落盘也在锁内完成。锁顺序固定为：本机写回锁 → 刷新锁；刷新锁里不再申请任何别的锁，所以不会死锁。
+  // 没有 Web Locks 时退回单页去重（不宣称跨页去重）；锁请求本身失败（没进入回调）时不刷新、不动任何数据，返回可重试的本机错误。
   let refreshFlight = null;
-  function startRefresh(src) {
+  const refreshLockName = (inst) => `suipian:refresh:${projectNamespace(projectId, legacyProject)}:${userId}:${inst ?? "-"}`;
+  function startRefresh(src, wait = true) {
     const f = { gen: acctGen, inst: loginInstanceId, uid: userId, rt: src.refreshToken, promise: null };
-    f.promise = (async () => {
+    const mine = () => f.gen === acctGen && f.inst === loginInstanceId && f.uid === userId;
+    const doRefresh = async () => {
+      if (!mine()) return staleResult();
+      const own = checkSessionOwnership();
+      if (!own.ok) return own.kind === "lost" ? staleResult() : { ok: false, kind: "local", message: "无法确认本机登录状态" }; // 失权由调用方返回后统一处理
+      adoptStoredSession(); // 别页刚刷新并发布了同一登录实例的新凭证：直接采用，不再刷新
+      if (isSessionShape(session) && session.userId === userId && session.expiresAt - now() > 60000) return { ok: true, session, shared: true };
+      const base = session;
+      const r = await api.refresh(base);
+      if (mine() && session === base && checkSessionOwnership().ok
+        && r && r.ok && isSessionShape(r.session) && r.session.userId === userId) {
+        session = r.session; email = session.email || email; writeAuth();
+      }
+      return r;
+    };
+    const locked = async () => {
+      if (!(retryLockProvider && typeof retryLockProvider.request === "function")) return doRefresh();
+      let entered = false, closed = false;
+      const retryable = (message) => ({ ok: false, kind: "local", message });
+      // 排队等锁有独立、有限的期限（G-LOGIN-15 终审）：等待页还没调用 api.refresh()，自己的网络超时没有开始；持锁页被冻结时它的定时器和请求回调
+      // 也会暂停，不能无限等。到期（或代次前进）就用 AbortSignal 撤销还没拿到锁的请求，并且标记 closed：就算锁实现不认 signal、之后才把锁给
+      // 排队回调，回调也立刻放锁，不联网、不绕锁刷新。到期返回可重试的本机错误，用户重试会重新排队。
+      let ctl = null, timer = null, stopWait = null;
+      const waitEnded = new Promise((res) => { stopWait = res; });
+      if (wait) {
+        ctl = typeof AbortController === "function" ? new AbortController() : null;
+        timer = setTimeout(() => { if (!entered && !closed) { closed = true; try { ctl?.abort(); } catch {} stopWait(retryable("等待其他页面完成登录刷新超时，请稍后重试")); } }, refreshLockWaitMs);
+        const abandonQueue = () => { if (!entered && !closed) { closed = true; try { ctl?.abort(); } catch {} stopWait(staleResult()); } };
+        abandonWaiters.add(abandonQueue); // 排队期间退出 / 换账号：立刻撤销排队，不等到期
+        waitEnded.finally(() => abandonWaiters.delete(abandonQueue));
+        f.dropQueue = () => abandonWaiters.delete(abandonQueue);
+      }
       try {
-        const r = await api.refresh(src);
-        if (f.gen === acctGen && f.inst === loginInstanceId && f.uid === userId && session === src && checkSessionOwnership().ok
-          && r && r.ok && isSessionShape(r.session) && r.session.userId === userId) {
-          session = r.session; email = session.email || email; writeAuth();
-        }
-        return r;
-      } finally { if (refreshFlight === f) refreshFlight = null; }
+        // 退出（wait=false）不排队：别页的刷新卡住时，退出照旧立刻进行（拿不到锁就按原来的方式自己刷新），不会被拖住
+        const opts = wait ? { mode: "exclusive", ...(ctl ? { signal: ctl.signal } : {}) } : { mode: "exclusive", ifAvailable: true };
+        const req = retryLockProvider.request(refreshLockName(f.inst), opts, async (lock) => {
+          if (closed) return staleResult(); // 已到期 / 已撤销：拿到锁立刻还，绝不联网
+          entered = true;
+          if (timer) { clearTimeout(timer); timer = null; }
+          f.dropQueue?.();
+          if (!wait && lock === null) return doRefresh();
+          if (!mine()) return staleResult(); // 排队等锁期间已退出 / 换账号 / 重登：拿到锁立刻还
+          let abandon;
+          const abandoned = new Promise((res) => { abandon = () => res(staleResult()); });
+          abandonWaiters.add(abandon); // 代次前进时立刻放锁，新会话的刷新不排在旧刷新后面
+          try { return await Promise.race([doRefresh(), abandoned]); } finally { abandonWaiters.delete(abandon); }
+        });
+        req.catch(() => {}); // 到期后 request 可能以 AbortError 拒绝：已经由下面的竞速处理，不再产生未处理拒绝
+        return await Promise.race([req, waitEnded]);
+      } catch (err) {
+        if (entered) throw err;
+        if (!mine()) return staleResult();
+        return retryable("暂时无法协调多个页面的登录刷新，请稍后重试");
+      } finally { if (timer) clearTimeout(timer); }
+    };
+    f.promise = (async () => {
+      try { return await locked(); } finally { if (refreshFlight === f) refreshFlight = null; }
     })();
     refreshFlight = f;
     return f;
   }
 
-  async function ensureToken(gen = acctGen) {
+  async function ensureToken(gen = acctGen, { wait = true } = {}) {
     const preOwn = checkSessionOwnership();
     if (!preOwn.ok) {
       if (preOwn.kind === "lost") { dropLostSession(preOwn.reason); return staleResult(); }
@@ -267,7 +320,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // 同页并发刷新去重（G-LOGIN-14）：刷新令牌一次性，同一份凭证并发发两次刷新，后一个会被当作“令牌复用”拒绝（真实服务端还可能作废整个会话）。
     // 登记项绑定账号代次 / 登录实例 / 用户 / 来源刷新令牌，只有这四项全部一致才合并；等待方共享同一个结果，但返回后各自复查所有权。
     let flight = refreshFlight;
-    if (!(flight && flight.gen === acctGen && flight.inst === loginInstanceId && flight.uid === userId && flight.rt === session.refreshToken)) flight = startRefresh(session);
+    if (!(flight && flight.gen === acctGen && flight.inst === loginInstanceId && flight.uid === userId && flight.rt === session.refreshToken)) flight = startRefresh(session, wait);
     const r = await flight.promise;
     if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话，也不能写存储里的凭证
     // 刷新返回后、writeAuth() 写回凭证之前，必须复查共享登录实例所有权，绝不覆盖其他标签页新登录的凭证
@@ -1611,7 +1664,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     // 普通退出
     if (sess && isSessionShape(sess)) {
       // access token 快过期就先刷新；刷新被拒 = 会话已经失效，不用再撤销；断网等其他失败 → 不退出（没法撤销云端会话）。
-      const t = await ensureToken();
+      const t = await ensureToken(acctGen, { wait: false }); // 退出不排在别页的刷新后面
       if (!owns()) return supersededLogout();
       if (t.stale) return { ok: true, alreadyLoggedOut: true, sessionLost: true, message: "当前账号已在其他页面退出或切换。" };
       // 刷新失败只有“明确证明会话已死”才继续退出（没东西可撤销）；其他失败（权限错误、路由错误、请求格式错误、429、断网、账号不一致）都先不动本机。

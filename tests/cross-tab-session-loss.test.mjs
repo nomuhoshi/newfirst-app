@@ -18,11 +18,14 @@ function makeStorage() {
 }
 
 function makeMockLocks() {
-  const chains = new Map();
+  const chains = new Map(), busy = new Map();
   return {
-    request(name, _opts, fn) {
+    request(name, opts, fn) {
+      if (opts && opts.ifAvailable && (busy.get(name) || 0) > 0) return Promise.resolve().then(() => fn(null)); // 与真实 Web Locks 一致：ifAvailable 且锁被占着 → 回调拿到 null，不排队
       const prev = chains.get(name) || Promise.resolve();
-      const next = prev.then(() => fn(), () => fn());
+      busy.set(name, (busy.get(name) || 0) + 1);
+      const run = () => Promise.resolve().then(() => fn({ name })).finally(() => busy.set(name, busy.get(name) - 1));
+      const next = prev.then(run, run);
       chains.set(name, next.catch(() => {}));
       return next;
     },
