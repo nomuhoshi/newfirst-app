@@ -538,8 +538,9 @@ try {
       name: '恢复：重新选择不先刷新令牌（挂起期间的旧令牌被写回存储）',
       file: "sync.js",
       test: "pending-import-quarantine.test.mjs",
-      from: "      const tk = await ensureToken();",
-      to: "      const tk = { ok: true }; void ensureToken;\n      void 0;",
+      // G-LOGIN-13 之后导入链路自己会取刷新后的会话，所以这里要连同它一起撤掉才等于“旧令牌被写回”。
+      from: ["      const tk = await ensureToken();", "    if (!src.active) {\n      // 验证码登录尚未提交", "      adoptStoredSession();\n      if (isSessionShape(session) && session.userId === uid) ctx.session = session;\n"],
+      to: ["      const tk = { ok: true }; void ensureToken;\n      void 0;", "    if (true) {\n      return { ok: true, session: src.sess };\n      // 验证码登录尚未提交", ""],
     },
     {
       name: '清理残留：删除前不比对原文（盲删，别的标签页刚写的登录凭证也删）',
@@ -569,8 +570,10 @@ try {
     resetSource();
     const path = join(TMP_SRC, m.file);
     const before = readFileSync(path, "utf8");
-    if (!before.includes(m.from)) { check(`故障注入「${m.name}」能施加到源码上`, false, "找不到要替换的代码"); continue; }
-    writeFileSync(path, before.replace(m.from, m.to));
+    const froms = [].concat(m.from), tos = [].concat(m.to);
+    if (froms.some((f) => !before.includes(f))) { check(`故障注入「${m.name}」能施加到源码上`, false, "找不到要替换的代码"); continue; }
+    let mutated = before; froms.forEach((f, i) => { mutated = mutated.replace(f, tos[i]); });
+    writeFileSync(path, mutated);
     const r = m.test ? run(join(W, "tests", m.test)) : run();
     const output = (r.stdout || "") + (r.stderr || "");
     const red = output.split("\n").filter((line) => line.startsWith("❌") || line.startsWith("not ok")).length;
