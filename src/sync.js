@@ -25,7 +25,7 @@ export function scopedStorage(raw, ns) {
   return { getItem: (k) => raw.getItem(scoped(k)), setItem: (k, v) => raw.setItem(scoped(k), v), removeItem: (k) => raw.removeItem(scoped(k)) };
 }
 
-export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, onSessionLost = () => {}, retryLocks = null }) {
+export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, onSessionLost = () => {}, retryLocks = null, refreshLockWaitMs = 20_000 }) {
   const storage = scopedStorage(rawStorage, projectNamespace(projectId, legacyProject));
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "", loginInstanceId = null;
@@ -263,11 +263,29 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     };
     const locked = async () => {
       if (!(retryLockProvider && typeof retryLockProvider.request === "function")) return doRefresh();
-      let entered = false;
+      let entered = false, closed = false;
+      const retryable = (message) => ({ ok: false, kind: "local", message });
+      // 排队等锁有独立、有限的期限（G-LOGIN-15 终审）：等待页还没调用 api.refresh()，自己的网络超时没有开始；持锁页被冻结时它的定时器和请求回调
+      // 也会暂停，不能无限等。到期（或代次前进）就用 AbortSignal 撤销还没拿到锁的请求，并且标记 closed：就算锁实现不认 signal、之后才把锁给
+      // 排队回调，回调也立刻放锁，不联网、不绕锁刷新。到期返回可重试的本机错误，用户重试会重新排队。
+      let ctl = null, timer = null, stopWait = null;
+      const waitEnded = new Promise((res) => { stopWait = res; });
+      if (wait) {
+        ctl = typeof AbortController === "function" ? new AbortController() : null;
+        timer = setTimeout(() => { if (!entered && !closed) { closed = true; try { ctl?.abort(); } catch {} stopWait(retryable("等待其他页面完成登录刷新超时，请稍后重试")); } }, refreshLockWaitMs);
+        const abandonQueue = () => { if (!entered && !closed) { closed = true; try { ctl?.abort(); } catch {} stopWait(staleResult()); } };
+        abandonWaiters.add(abandonQueue); // 排队期间退出 / 换账号：立刻撤销排队，不等到期
+        waitEnded.finally(() => abandonWaiters.delete(abandonQueue));
+        f.dropQueue = () => abandonWaiters.delete(abandonQueue);
+      }
       try {
         // 退出（wait=false）不排队：别页的刷新卡住时，退出照旧立刻进行（拿不到锁就按原来的方式自己刷新），不会被拖住
-        return await retryLockProvider.request(refreshLockName(f.inst), wait ? { mode: "exclusive" } : { mode: "exclusive", ifAvailable: true }, async (lock) => {
+        const opts = wait ? { mode: "exclusive", ...(ctl ? { signal: ctl.signal } : {}) } : { mode: "exclusive", ifAvailable: true };
+        const req = retryLockProvider.request(refreshLockName(f.inst), opts, async (lock) => {
+          if (closed) return staleResult(); // 已到期 / 已撤销：拿到锁立刻还，绝不联网
           entered = true;
+          if (timer) { clearTimeout(timer); timer = null; }
+          f.dropQueue?.();
           if (!wait && lock === null) return doRefresh();
           if (!mine()) return staleResult(); // 排队等锁期间已退出 / 换账号 / 重登：拿到锁立刻还
           let abandon;
@@ -275,11 +293,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           abandonWaiters.add(abandon); // 代次前进时立刻放锁，新会话的刷新不排在旧刷新后面
           try { return await Promise.race([doRefresh(), abandoned]); } finally { abandonWaiters.delete(abandon); }
         });
+        req.catch(() => {}); // 到期后 request 可能以 AbortError 拒绝：已经由下面的竞速处理，不再产生未处理拒绝
+        return await Promise.race([req, waitEnded]);
       } catch (err) {
         if (entered) throw err;
         if (!mine()) return staleResult();
-        return { ok: false, kind: "local", message: "暂时无法协调多个页面的登录刷新，请稍后重试" };
-      }
+        return retryable("暂时无法协调多个页面的登录刷新，请稍后重试");
+      } finally { if (timer) clearTimeout(timer); }
     };
     f.promise = (async () => {
       try { return await locked(); } finally { if (refreshFlight === f) refreshFlight = null; }

@@ -18,19 +18,30 @@ async function bounded(p, label) {
   try { return await Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('门闩未到达：' + label)), 3000); })]); }
   finally { clearTimeout(timer); }
 }
+const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
 function locks() {
-  const chains = new Map();
-  const busy = new Map();
+  const chains = new Map(), busy = new Map();
   return { request(name, opts, fn) {
     if (opts && opts.ifAvailable && (busy.get(name) || 0) > 0) return Promise.resolve().then(() => fn(null)); // 与真实 Web Locks 一致：ifAvailable 且锁被占着 → 回调拿到 null，不排队
+    const sig = opts && opts.signal;
+    if (sig && sig.aborted) return Promise.reject(abortError());
     const prev = chains.get(name) || Promise.resolve();
     busy.set(name, (busy.get(name) || 0) + 1);
-    const run = () => Promise.resolve().then(() => fn({ name })).finally(() => busy.set(name, busy.get(name) - 1));
-    const next = prev.then(run, run); chains.set(name, next.catch(() => {})); return next;
+    let cancelled = false, started = false, rej;
+    const out = new Promise((resolve, reject) => {
+      rej = reject;
+      const run = () => { if (cancelled) return; started = true; return Promise.resolve().then(() => fn({ name })).then(resolve, reject).finally(() => busy.set(name, busy.get(name) - 1)); };
+      chains.set(name, prev.then(run, run).catch(() => {}));
+    });
+    // 与真实 Web Locks 一致：还没拿到锁时 signal 中止 → 撤销排队，request 以 AbortError 拒绝，回调永远不会被调用
+    if (sig) sig.addEventListener('abort', () => { if (!started && !cancelled) { cancelled = true; busy.set(name, busy.get(name) - 1); rej(abortError()); } });
+    return out;
   } };
 }
+// 不认 signal 的锁实现：排队的请求不会被撤销，之后拿到锁时回调照常被调用（用来证明回调自己也会拒绝联网）
+const ignoreSignal = real => ({ request(name, opts, fn) { const { signal, ...rest } = opts || {}; return real.request(name, rest, fn); } });
 
-function fixture(withLocks, { provider: given = null } = {}) {
+function fixture(withLocks, { provider: given = null, waitMs } = {}) {
   let clock = T0, seq = 0;
   const m = new Map(), calls = [], gates = [], exp = new Map(), revoked = new Set(), liveRt = new Map(), hooks = {};
   const raw = { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: k => { m.delete(k); } };
@@ -76,7 +87,7 @@ function fixture(withLocks, { provider: given = null } = {}) {
     async signOut() { return { ok: true }; },
   };
   const provider = given || (withLocks ? locks() : {});
-  const make = () => createSync({ storage: raw, api, projectId: PROJECT, legacyProject: 'legacy.invalid', now: () => clock, schedule: () => 0, retryLocks: provider });
+  const make = () => createSync({ storage: raw, api, projectId: PROJECT, legacyProject: 'legacy.invalid', now: () => clock, schedule: () => 0, retryLocks: provider, ...(waitMs ? { refreshLockWaitMs: waitMs } : {}) });
   const sync = make();
   const first = (() => {
     saveAccount(storage, A, { doc: rows.get(A).doc, base: rows.get(A).rev, dirty: {} }, { now: clock });
@@ -86,6 +97,7 @@ function fixture(withLocks, { provider: given = null } = {}) {
   assert.ok(sync.restore(freshState()));
   const f = {
     raw, storage, calls, rows, sync, first, issue, hooks, make, provider,
+    snap: () => JSON.stringify([...m].sort(([a], [b]) => a.localeCompare(b))),
     tab: () => { const t = make(); assert.ok(t.restore(freshState()), '第二个页面恢复同一份登录'); return t; },
     stored: () => JSON.parse(storage.getItem(AUTH_KEY)).session,
     expireSoon: sess => { clock = exp.get(sess.accessToken) - 30_000; }, // 距过期不足 60 秒：下次用令牌前必须刷新
@@ -102,7 +114,6 @@ const authFailure = x => x && x.ok === false && x.kind === 'auth';
 
 
 const within = (p, ms = 1500) => { let tm; return Promise.race([p.then(v => ({ settled: true, v })), new Promise(r => { tm = setTimeout(() => r({ settled: false }), ms); })]).finally(() => clearTimeout(tm)); };
-const snap = f => JSON.stringify([...f.raw._m ?? []]);
 const flaky = real => { const p = { fail: false, request(...a) { return p.fail ? Promise.reject(new Error('locks denied')) : real.request(...a); } }; return p; };
 
 for (const withLocks of [false, true]) {
@@ -209,28 +220,32 @@ test('模拟 Web Locks：持锁页的刷新在途时本页退出并同号重新�
   assert.equal((await f.sync.forceLocalLogout()).ok, true);
   assert.equal((await f.sync.verify(A + '@example.test', '123456', freshState())).ok, true);
   const fresh = f.stored(); f.expireSoon(fresh);
-  const ndr = await within(f.sync.deleteAccount());
+  const ndr = await within(f.sync.syncNow({ manual: true })); // 新操作：同步（保留登录，便于比较存储里的凭证）
   assert.ok(ndr.settled, 'G15_ISOLATE 旧刷新仍被挂住时，新会话的操作不能被拖住');
   const nd = ndr.v;
   assert.equal(nd.ok, true, 'G15_ISOLATE 新操作独立完成：' + JSON.stringify(nd));
-  assert.equal(f.of('delete').length, 1);
-  const before = f.raw.getItem(AUTH_KEY);
+  const before = f.storage.getItem(AUTH_KEY);
+  assert.ok(before && JSON.parse(before).session.userId === A && /^at-tokA-/.test(JSON.parse(before).session.accessToken), '前提：存储里是新会话刷新后的凭证（带项目前缀读取）');
+  assert.notEqual(JSON.parse(before).session.accessToken, fresh.accessToken, '前提：新会话确实刷新过');
   g1.release.resolve();
   const oldRes = await old;
   assert.equal(oldRes.stale, true, JSON.stringify(oldRes));
-  assert.equal(f.raw.getItem(AUTH_KEY), before, 'G15_ISOLATE 旧结果不得写存储');
+  await sleep(100); // 旧刷新的后续落盘（如果有的话）发生在放行之后
+  assert.equal(f.storage.getItem(AUTH_KEY), before, 'G15_ISOLATE 旧结果不得写存储');
 });
 
 test('模拟 Web Locks：锁请求失败（没进入回调）：不刷新、不动数据、可重试，不宣称跨页去重', async () => {
   const real = locks(); const p = flaky(real);
   const f = fixture(true, { provider: p });
   p.fail = true;
-  const before = snap(f);
+  const before = f.snap();
+  assert.ok(f.storage.getItem(AUTH_KEY), '前提：存储里有带项目前缀的登录凭证');
+  assert.ok(JSON.parse(before).length >= 2, '前提：快照里有内容');
   const d = await f.sync.deleteAccount();
   assert.equal(d.ok, false, 'G15_LOCKFAIL 拿不到锁时必须失败而不是自行刷新：' + JSON.stringify(d)); assert.equal(d.kind, 'local', 'G15_LOCKFAIL ' + JSON.stringify(d));
   assert.equal(f.refreshes(), 0, 'G15_LOCKFAIL 拿不到锁不得自行刷新（否则可能与别页重复使用刷新凭证）');
   assert.equal(f.of('delete').length, 0);
-  assert.equal(snap(f), before, 'G15_LOCKFAIL 本机数据与凭证原样保留');
+  assert.equal(f.snap(), before, 'G15_LOCKFAIL 本机数据与凭证原样保留');
   assert.notEqual(f.sync.status().status, 'need-login');
   p.fail = false;
   const d2 = await f.sync.deleteAccount();
@@ -273,3 +288,86 @@ test('模拟 Web Locks：别页的刷新被挂住时，本页普通退出不排�
   g.release.resolve(); await sp.catch(() => {}); // 无论如何先放行，避免失败时挂住
   assert.ok(lr.settled, 'G15_LOGOUT 退出不得排在别页挂住的刷新后面');
 });
+
+test('断言有效性自检：快照和带项目前缀的凭证读取，在数据被篡改时会变化', () => {
+  const f = fixture(true);
+  const s0 = f.snap(), a0 = f.storage.getItem(AUTH_KEY);
+  assert.ok(JSON.parse(s0).length >= 2 && a0, '快照与凭证都不是空的');
+  assert.equal(f.raw.getItem(AUTH_KEY), null, '未加项目前缀的原始存储读不到凭证（正是之前断言恒为 null 的原因）');
+  f.storage.setItem(AUTH_KEY, a0.replace('at-tokA', 'at-TAMPER'));
+  assert.notEqual(f.snap(), s0, '篡改凭证后快照必须不同');
+  assert.notEqual(f.storage.getItem(AUTH_KEY), a0, '篡改凭证后读到的值必须不同');
+  f.raw.setItem('suipian.tamper', '1');
+  assert.ok(JSON.parse(f.snap()).some(([k]) => k === 'suipian.tamper'), '快照包含原始存储里新增的键');
+});
+
+// ---- 刷新锁排队的独立期限（终审 P2）----
+for (const mode of ['认 signal（撤销排队）', '不认 signal（回调自己拒绝）']) {
+  test(`模拟 Web Locks · ${mode}：持锁方长期不释放时，等待操作按期结束，不联网、不绕锁；之后释放旧锁没有迟到请求；用户重试可以完成`, async () => {
+    const real = locks(); const prov = mode.startsWith('认') ? real : ignoreSignal(real);
+    const f = fixture(true, { provider: prov, waitMs: 80 });
+    const B = f.tab();
+    const g = f.gateOn(1);
+    const sp = f.sync.syncNow({ manual: true });
+    await bounded(g.entered.promise, 'refresh');
+    const t0 = Date.now();
+    const dr = await within(B.deleteAccount(), 1500);
+    assert.ok(dr.settled, 'G15_TIMEOUT 持锁方不释放时，等待操作必须按期结束');
+    assert.ok(Date.now() - t0 < 1200, 'G15_TIMEOUT 在期限附近结束：' + (Date.now() - t0));
+    const d = dr.v;
+    assert.equal(d.ok, false); assert.equal(d.kind, 'local', 'G15_TIMEOUT 超时返回可重试的本机错误：' + JSON.stringify(d));
+    assert.equal(f.refreshes(), 1, 'G15_TIMEOUT 不得绕锁自行刷新：' + JSON.stringify(f.of('refresh')));
+    assert.equal(f.of('delete').length, 0, 'G15_TIMEOUT 没有删除请求');
+    assert.notEqual(B.status().status, 'need-login');
+    g.release.resolve(); // 释放旧锁
+    await sp.catch(() => {});
+    await sleep(200);
+    assert.equal(f.refreshes(), 1, 'G15_LATE 释放旧锁后，已过期的排队回调不得迟到联网：' + JSON.stringify(f.of('refresh')));
+    assert.equal(f.of('delete').length, 0, 'G15_LATE 没有迟到的删除请求');
+    const d2 = await B.deleteAccount(); // 用户明确重试
+    assert.equal(d2.ok, true, 'G15_RETRY 用户重试可以完成：' + JSON.stringify(d2));
+    assert.equal(f.of('delete').length, 1);
+    assert.equal(f.refreshes(), 1, '重试时采纳别页发布的新凭证，不再刷新');
+  });
+}
+
+for (const who of [A, B]) {
+  test(`模拟 Web Locks：排队等刷新锁期间本页退出并${who === A ? '同号重新登录' : '换成另一个账号'}：立刻作废排队，不等到期，也没有迟到请求`, async () => {
+    const f = fixture(true, { waitMs: 5_000 });
+    const T = f.tab();
+    const g = f.gateOn(1);
+    const sp = f.sync.deleteAccount(); // 持锁页用删除（删除不占写回锁），这样等待页退出 / 登录不会被持锁页的同步写回锁挡住
+    await bounded(g.entered.promise, 'refresh');
+    const dp = T.deleteAccount();
+    await sleep(60);
+    assert.equal((await T.forceLocalLogout()).ok, true);
+    assert.equal((await T.verify(who + '@example.test', '123456', freshState())).ok, true);
+    const dr = await within(dp, 1500);
+    assert.ok(dr.settled, 'G15_ABANDON_WAIT 排队期间退出 / 换号必须立刻作废排队');
+    assert.equal(dr.v.ok, false);
+    assert.ok(dr.v.stale === true || dr.v.sessionLost === true || dr.v.kind === 'session-lost', 'G15_ABANDON_WAIT ' + JSON.stringify(dr.v));
+    const reqs = f.calls.length;
+    g.release.resolve(); await sp.catch(() => {});
+    await sleep(150);
+    assert.ok(!f.calls.slice(reqs).some(c => c.method === 'delete' || (c.method === 'refresh' && c.rt === f.first.refreshToken)), 'G15_LATE 作废后没有迟到的旧请求：' + JSON.stringify(f.calls.slice(reqs)));
+    assert.equal(f.of('delete').length, 0, 'G15_LATE 持锁页发现登录已被取代，也没有任何删除请求');
+    assert.equal(f.refreshes(), 1, 'G15_LATE 排队页没有迟到的刷新');
+  });
+}
+
+for (const mode of ['认 signal（撤销排队）', '不认 signal（回调自己拒绝）']) {
+  test(`模拟 Web Locks · ${mode}：持锁方最终没有发布新凭证（刷新失败）时，已过期的排队回调也不会迟到联网`, async () => {
+    const real = locks(); const prov = mode.startsWith('认') ? real : ignoreSignal(real);
+    const f = fixture(true, { provider: prov, waitMs: 80 });
+    const B = f.tab();
+    const g = f.gateOn(1, { ok: false, kind: 'network', message: '网络连不上' });
+    const sp = f.sync.syncNow({ manual: true });
+    await bounded(g.entered.promise, 'refresh');
+    const dr = await within(B.deleteAccount(), 1500);
+    assert.ok(dr.settled && dr.v.kind === 'local', 'G15_TIMEOUT ' + JSON.stringify(dr));
+    g.release.resolve(); await sp.catch(() => {});
+    await sleep(200);
+    assert.equal(f.refreshes(), 1, 'G15_LATE 持锁方没发布新凭证，过期的排队回调不得拿到锁后再刷新：' + JSON.stringify(f.of('refresh')));
+    assert.equal(f.of('delete').length, 0, 'G15_LATE');
+  });
+}
