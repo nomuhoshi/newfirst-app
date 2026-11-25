@@ -299,7 +299,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         if (entered) throw err;
         if (!mine()) return staleResult();
         return retryable("暂时无法协调多个页面的登录刷新，请稍后重试");
-      } finally { if (timer) clearTimeout(timer); }
+      } finally { if (timer) clearTimeout(timer); f.dropQueue?.(); } // 无论正常 / 超时 / 同步抛错 / 异步拒绝，都释放本次排队登记（重复清理安全）：已结束的请求不会被之后的退出 / 换号再触发 abort，登记也不会累积
     };
     f.promise = (async () => {
       try { return await locked(); } finally { if (refreshFlight === f) refreshFlight = null; }
