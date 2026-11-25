@@ -9,14 +9,14 @@ import { spawnSync } from 'node:child_process';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const dir = mkdtempSync(join(tmpdir(), 'g14-refresh-mutation-'));
 const tests = 'tests/refresh-dedupe.test.mjs';
-const KEY = 'if (!(flight && flight.gen === acctGen && flight.inst === loginInstanceId && flight.uid === userId && flight.rt === session.refreshToken)) flight = startRefresh(session);';
+const KEY = 'if (!(flight && flight.gen === acctGen && flight.inst === loginInstanceId && flight.uid === userId && flight.rt === session.refreshToken)) flight = startRefresh(session, wait);';
 const variants = [
-  { name: '不合并：每个调用者都自己发刷新（原缺陷）', marker: 'G14_ONE', edits: [[KEY, 'flight = startRefresh(session);']] },
+  { name: '不合并：每个调用者都自己发刷新（原缺陷）', marker: 'G14_ONE', edits: [[KEY, 'flight = startRefresh(session, wait);']] },
   { name: '登记匹配不看来源刷新令牌', marker: 'G14_KEY_RT', edits: [[' && flight.rt === session.refreshToken)) flight = startRefresh', ')) flight = startRefresh']] },
   { name: '登记匹配不看账号代次', marker: 'G14_KEY_GEN', edits: [['(flight && flight.gen === acctGen && flight.inst', '(flight && flight.inst']] },
   { name: '旧刷新收尾无条件清登记（会清掉新登记）', marker: 'G14_FINALLY', edits: [['finally { if (refreshFlight === f) refreshFlight = null; }', 'finally { refreshFlight = null; }']] },
   { name: '登记从不释放（失败后重试仍拿旧结果）', marker: 'G14_RETRY', edits: [['finally { if (refreshFlight === f) refreshFlight = null; }', 'finally { }']] },
-  { name: '旧刷新结果不核对代次 / 实例 / 会话就写进当前会话并落盘', marker: 'G14_ISOLATE', edits: [['f.gen === acctGen && f.inst === loginInstanceId && f.uid === userId && session === src && checkSessionOwnership().ok\n          && r && r.ok', 'r && r.ok']] },
+  { name: '旧刷新结果不核对代次 / 实例 / 会话就写进当前会话并落盘', marker: 'G14_ISOLATE', edits: [['mine() && session === base && checkSessionOwnership().ok\n        && r && r.ok', 'r && r.ok']] },
   { name: '等待方返回后不复核账号代次（被取代也继续）', marker: 'G14_ISOLATE', edits: [['    if (gen !== acctGen) return staleResult(); // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话', '    // (变异) 不复核代次 // 刷新期间退出 / 换了账号：旧的刷新结果不能写进新会话']] },
   { name: '后到的等待方不认已被先到者采用的共享新凭证（误报认证失败）', marker: 'G14_ADOPT', edits: [['if ((adopted || session.refreshToken !== flight.rt) && session.expiresAt', 'if (adopted && session.expiresAt']] },
 ];
