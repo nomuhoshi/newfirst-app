@@ -22,6 +22,7 @@ const variants = [
   { name: '排队期间退出 / 换号不作废排队', marker: 'G15_ABANDON_WAIT', edits: [['        abandonWaiters.add(abandonQueue); // 排队期间退出 / 换账号：立刻撤销排队，不等到期\n', '']] },
   { name: '锁请求失败时清掉本机登录凭证（存储快照不再原样）', marker: 'G15_LOCKFAIL', edits: [['        return retryable("暂时无法协调多个页面的登录刷新，请稍后重试");', '        try { storage.removeItem(AUTH_KEY); } catch {}\n        return retryable("暂时无法协调多个页面的登录刷新，请稍后重试");']] },
   { name: '旧刷新结果不核对代次 / 实例 / 会话就写进当前会话并落盘', marker: 'G15_ISOLATE', edits: [['mine() && session === base && checkSessionOwnership().ok\n        && r && r.ok', 'r && r.ok']] },
+  { name: '锁请求异常收尾不释放排队登记（之后的退出 / 换号会再取消已结束的请求，登记累积）', marker: 'G16_LEAK', edits: [['clearTimeout(timer); f.dropQueue?.(); }', 'clearTimeout(timer); }']] },
   { name: '拿不到锁时自行刷新（可能与别页重复使用刷新凭证）', marker: 'G15_LOCKFAIL', edits: [['        return retryable("暂时无法协调多个页面的登录刷新，请稍后重试");', '        return doRefresh();']] },
   { name: '刷新锁名不含登录实例且不放锁：同号重登后的新操作被旧锁拖住', marker: 'G15_ISOLATE', edits: [['${userId}:${inst ?? "-"}`', '${userId}`'], ['          abandonWaiters.add(abandon); // 代次前进时立刻放锁，新会话的刷新不排在旧刷新后面\n', '']] },
 ];

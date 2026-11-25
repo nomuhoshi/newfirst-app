@@ -371,3 +371,48 @@ for (const mode of ['认 signal（撤销排队）', '不认 signal（回调自�
     assert.equal(f.of('delete').length, 0, 'G15_LATE');
   });
 }
+
+// ---- G-LOGIN-16：锁请求异常收尾时释放排队登记 ----
+const recorder = real => { const r = { mode: 'ok', signals: [], request(name, opts, fn) { r.signals.push(opts && opts.signal); if (r.mode === 'throw') throw new Error('locks threw'); if (r.mode === 'reject') return Promise.reject(new Error('locks denied')); return real.request(name, opts, fn); } }; return r; };
+for (const mode of ['throw', 'reject']) {
+  const what = mode === 'throw' ? '同步抛错' : '异步拒绝';
+  test(`模拟 Web Locks：锁请求${what}，连续重试 12 次：零刷新零删除、存储不变；随后退出不会再取消已结束的请求；恢复后重试成功`, async () => {
+    const rec = recorder(locks());
+    const f = fixture(true, { provider: rec });
+    rec.mode = mode;
+    const before = f.snap();
+    assert.ok(f.storage.getItem(AUTH_KEY) && JSON.parse(before).length >= 2, '前提：存储里有带项目前缀的凭证');
+    for (let i = 0; i < 12; i++) {
+      const d = await f.sync.deleteAccount();
+      assert.equal(d.ok, false); assert.equal(d.kind, 'local', 'G16_FAIL ' + JSON.stringify(d));
+    }
+    assert.equal(rec.signals.length, 12); assert.ok(rec.signals.every(s => s && s.aborted === false), '前提：12 次请求都带着自己的 signal，且还没被取消');
+    assert.equal(f.refreshes(), 0, 'G16_FAIL 失败期间零刷新'); assert.equal(f.of('delete').length, 0, 'G16_FAIL 失败期间零删除');
+    assert.equal(f.snap(), before, 'G16_FAIL 存储逐字节不变');
+    // 换号 / 退出（账号代次前进）：已结束的请求不得再被旧登记取消
+    rec.mode = 'ok';
+    const keep = rec.signals.slice();
+    assert.equal((await f.sync.forceLocalLogout()).ok, true);
+    assert.ok(keep.every(s => s?.aborted === false), 'G16_LEAK 已结束的锁请求不得再收到旧登记触发的 abort：' + keep.map(s => s?.aborted).join(','));
+  });
+}
+test('模拟 Web Locks：锁请求失败后恢复，用户重试成功；仍在排队的有效请求遇到超时继续正确撤销', async () => {
+  const rec = recorder(locks());
+  const f = fixture(true, { provider: rec, waitMs: 80 });
+  const B = f.tab();
+  rec.mode = 'reject';
+  for (let i = 0; i < 3; i++) assert.equal((await B.deleteAccount()).kind, 'local');
+  rec.mode = 'ok';
+  const failed = rec.signals.slice();
+  const g = f.gateOn(1);
+  const sp = f.sync.syncNow({ manual: true });
+  await bounded(g.entered.promise, 'refresh');
+  const queued = rec.signals.length;
+  const dr = await within(B.deleteAccount(), 1500);
+  assert.ok(dr.settled && dr.v.kind === 'local', 'G16_QUEUE 仍在排队的有效请求到期后正确结束：' + JSON.stringify(dr));
+  assert.equal(rec.signals[queued]?.aborted, true, 'G16_QUEUE 到期撤销了这个仍在排队的请求');
+  assert.ok(failed.every(s => s?.aborted === false), 'G16_LEAK 之前失败的请求不受影响');
+  g.release.resolve(); await sp.catch(() => {});
+  const d2 = await B.deleteAccount();
+  assert.equal(d2.ok, true, 'G16_RETRY 恢复后用户重试成功：' + JSON.stringify(d2));
+});
