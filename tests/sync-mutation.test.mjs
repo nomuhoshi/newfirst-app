@@ -539,8 +539,8 @@ try {
       file: "sync.js",
       test: "pending-import-quarantine.test.mjs",
       // G-LOGIN-13 之后导入链路自己会取刷新后的会话，所以这里要连同它一起撤掉才等于“旧令牌被写回”。
-      from: ["      const tk = await ensureToken();", "    if (!src.active) return { ok: true, session: src.sess };", "    if (ctx.resume && isSessionShape(session) && session.userId === uid) ctx.session = session;\n"],
-      to: ["      const tk = { ok: true }; void ensureToken;\n      void 0;", "    return { ok: true, session: src.sess };", ""],
+      from: ["      const tk = await ensureToken();", "    if (!src.active) {\n      // 验证码登录尚未提交", "    if (ctx.resume && isSessionShape(session) && session.userId === uid) ctx.session = session;\n"],
+      to: ["      const tk = { ok: true }; void ensureToken;\n      void 0;", "    if (true) {\n      return { ok: true, session: src.sess };\n      // 验证码登录尚未提交", ""],
     },
     {
       name: '清理残留：删除前不比对原文（盲删，别的标签页刚写的登录凭证也删）',

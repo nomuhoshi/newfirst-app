@@ -1008,7 +1008,19 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   //   非 active（验证码登录尚未设全局 session）：只用刚验证得到的 ctx.session，不借用全局 session。
   async function useSession(src, dead = () => false) {
     if (!src || !src.sess) return { ok: false, kind: "auth", message: "需要重新登录" };
-    if (!src.active) return { ok: true, session: src.sess };
+    if (!src.active) {
+      // 验证码登录尚未提交：用刚验证得到的独立会话，不借用全局 session。它在等待选择 / 冲突重读期间也会过期：这里局部刷新，
+      // 新凭证立刻交回登录选择（onSession），后续重试和最终提交都用它；刷新前后都复核登录实例，被其他页取代就停（G-LOGIN-13）。
+      if (!Number.isFinite(src.sess.expiresAt) || src.sess.expiresAt - now() > 60000) return { ok: true, session: src.sess };
+      const pre = src.guard(); if (pre) return pre;
+      const rf = await api.refresh(src.sess);
+      const post = src.guard(); if (post) return post;
+      if (!rf.ok) return rf;
+      if (!isSessionShape(rf.session) || rf.session.userId !== src.uid) return { ok: false, kind: "auth", message: "登录账号不一致" };
+      src.sess = rf.session;
+      try { src.onSession?.(rf.session); } catch {}
+      return { ok: true, session: src.sess };
+    }
     if (dead() || src.gen !== acctGen) return staleImport();
     const t = await ensureToken(src.gen);
     if (dead() || src.gen !== acctGen || t.stale) return staleImport(); // 刷新期间已退出 / 换账号 / 同号重登：不借新会话继续旧任务
@@ -1097,6 +1109,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       rev = s.rev; uploaded = true; break;
     }
     if (!uploaded) {
+      const lostBefore = src.guard(); if (lostBefore) return lostBefore; // 请求返回后、写本机副本之前：共享登录实例已被其他页取代就停，不动存储
       // 五次都是被抢先（没有别的错误种类）：停止盲目重试。网络错误仍保留原来的 kind，允许稍后重试。
       if (!kind) kind = "conflict";
       // 写指纹失败：云端原样、游客原样；本机副本只保存“最新云端 + 本机新学的”，不带新指纹。
@@ -1120,6 +1133,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!n.ok) { rbKind = "data"; rbError = "云端记录：" + n.message; }
       else { readBack = n.doc; verified = docsEquivalent(doc, n.doc) && n.doc.imported[guestId] === fingerprint; }
     }
+    const lostAfterRead = src.guard(); if (lostAfterRead) return lostAfterRead; // 读回返回后、写副本 / 清游客 / 清待办之前复核登录实例
     if (!verified) {
       const p = preserveLocalChanges(uid, doc, lastCloud);
       const localDoc = withoutGuestImport(p.ok ? p.doc : doc, guestId, lastCloud);
@@ -1171,6 +1185,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       rev = s.rev; uploaded = true; break;
     }
     if (!uploaded) {
+      const lostBefore = src.guard(); if (lostBefore) return lostBefore; // 请求返回后、写本机副本之前：共享登录实例已被其他页取代就停，不动存储
       // 五次都是被抢先：kind 标成 conflict，同步层不会把它当成可盲目重试的网络错误。
       if (!kind) kind = "conflict";
       // 上传失败 / 冲突太多次：游客原文保留；本机副本保留合并结果（不带未确认的新指纹）并标记待上传。
@@ -1192,6 +1207,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
       if (!n.ok) { rbKind = "data"; rbError = "云端记录：" + n.message; }
       else { readBack = n.doc; verified = docsEquivalent(doc, n.doc); }
     }
+    const lostAfterRead = src.guard(); if (lostAfterRead) return lostAfterRead; // 读回返回后、写副本 / 清游客 / 清待办之前复核登录实例
     if (!verified) {
       const localDoc = withoutGuestImport(doc, guestId, lastCloud);
       const dirty = { hearts: !!first.copy?.dirty.hearts, prefs: !!first.copy?.dirty.prefs, content: true };
@@ -1221,7 +1237,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   }
 
   // 执行一条专用待办：选中“保留云端”或“安全合并”，写云 + 读回确认。成功才清待办。
-  async function runPendingImport(record, sess, { notify = false, dead = () => false } = {}) {
+  async function runPendingImport(record, sess, { notify = false, dead = () => false, check = null, onSession = null } = {}) {
     const uid = record.userId;
     let expectedRaw;
     try { expectedRaw = storage.getItem(PENDING_IMPORT_PREFIX + uid); }
@@ -1229,7 +1245,20 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
     const startGuard = pendingIdentityGuard(uid, record, expectedRaw);
     if (startGuard) return startGuard;
     // 会话来源在入口一次定好：传入的就是当前登录会话 → 已登录实例（active）；否则是登录流程里刚验证的独立会话（G-LOGIN-13）。
-    const src = { sess, active: !!sess && sess === session && userId === uid, gen: acctGen, uid };
+    const src = { sess, active: !!sess && sess === session && userId === uid, gen: acctGen, uid, onSession };
+    // 请求返回后、任何本机写入 / 清理之前复核：仍是本页发起的这次登录实例。已登录实例查共享存储的登录所有权（失权 → 丢弃本页会话并作废）；
+    // 登录流程查“起点登录状态”未被其他页取代（check = finish 的 checkExpectedSession）。返回 null 表示可以继续，否则原样返回这个结果、不动存储。
+    src.guard = () => {
+      if (dead()) return staleImport();
+      if (src.active) {
+        const own = checkSessionOwnership();
+        if (own.ok) return null;
+        if (own.kind === "lost") { dropLostSession(own.reason); return staleImport(); }
+        return { ok: false, kind: "local", message: "无法确认本机登录状态" };
+      }
+      const e = check ? check() : null;
+      return e ? { ...e, retryable: false } : null;
+    };
     let r;
     if (record.choice === "cloud") {
       r = await writeKeepCloud(uid, record.guestId, record.guestState, record.fingerprint, src, dead);
@@ -1286,7 +1315,7 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         record = { version: 1, userId: uid, guestId: g.id, choice: wantedImport, fingerprint: fp, guestState: clone(ctx.guest.state), guestRaw: ctx.guest.raw, createdAt: now() };
         if (!savePendingImport(storage, uid, record)) return { ok: false, kind: "local", message: "无法保存游客导入待办，登录没有完成" };
       }
-      result = await runPendingImport(record, ctx.session, { dead });
+      result = await runPendingImport(record, ctx.session, { dead, check: checkExpectedSession, onSession: s => { ctx.session = s; } });
       if (dead()) return result.stale ? result : staleImport();
       if (!result.ok) return result;
       doc = result.doc; base = result.rev; transferred = wantedImport === "merge";

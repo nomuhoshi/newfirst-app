@@ -19,6 +19,11 @@ const variants = [
   { name: '刷新失败后仍用旧会话继续发请求', marker: 'G13_FAIL', edits: [['    if (!t.ok) return t;\n    if (!isSessionShape(session) || session.userId !== src.uid)', '    if (!isSessionShape(session) || session.userId !== src.uid)']] },
   { name: '刷新返回后不核对代次（被取代也继续，借新会话）', marker: 'G13_STALE', edits: [
     ['    if (dead() || src.gen !== acctGen || t.stale) return staleImport(); // 刷新期间已退出 / 换账号 / 同号重登：不借新会话继续旧任务\n    if (!t.ok) return t;', '    if (!t.ok && !t.stale) return t;']] },
+  { name: '读回返回后不复核登录实例（跨页换号 / 重登后仍写副本、清游客和待办）', marker: 'G13_CROSSTAB', edits: [['    const lostAfterRead = src.guard(); if (lostAfterRead) return lostAfterRead; // 读回返回后、写副本 / 清游客 / 清待办之前复核登录实例\n', '', 2]] },
+  { name: '写入失败收尾前不复核登录实例（跨页取代后仍写本机副本）', marker: 'G13_CROSSTAB', edits: [['      const lostBefore = src.guard(); if (lostBefore) return lostBefore; // 请求返回后、写本机副本之前：共享登录实例已被其他页取代就停，不动存储\n', '', 2]] },
+  { name: '首次登录验证会话过期后不局部刷新（冲突重读仍带过期令牌）', marker: 'G13_LOGIN_EXPIRY', edits: [['      if (!Number.isFinite(src.sess.expiresAt) || src.sess.expiresAt - now() > 60000) return { ok: true, session: src.sess };', '      return { ok: true, session: src.sess };']] },
+  { name: '首次登录局部刷新的新凭证不交回登录选择（重试 / 最终提交用已作废的旧令牌）', marker: 'G13_LOGIN_EXPIRY', edits: [['      try { src.onSession?.(rf.session); } catch {}\n', '']] },
+  { name: '首次登录局部刷新前后不复核登录实例（被其他页取代也继续）', marker: 'G13_LOGIN_EXPIRY', edits: [['      const e = check ? check() : null;\n      return e ? { ...e, retryable: false } : null;', '      return null;']] },
 ];
 function reset() { rmSync(join(dir, 'src'), { recursive: true, force: true }); cpSync(join(root, 'src'), join(dir, 'src'), { recursive: true }); }
 const run = () => spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(dir, tests)], { encoding: 'utf8', timeout: 60000 });
