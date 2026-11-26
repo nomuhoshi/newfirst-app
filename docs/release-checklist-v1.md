@@ -18,10 +18,10 @@
 | R4 | 功能完整性走查 | 首次打开 → 开场 → 做题 → 红心 / XP / 连续天数 → 通关 → 随机练习 → “我的”（备份、进度码、自测、隐私、规则）全流程在 390 宽自动化通过；离线刷新不白屏；版本更新提示可用 | 程序员 | ✅ 自动化：首次打开→开场→做题→红心 / XP / 连续天数→通关→随机练习→“我的”→离线刷新→版本更新，均在 390 宽 Chromium + WebKit 通过；真机部分见 §3 |
 | R5 | 性能 | 构建产物体积、首屏 JS gzip、Pyodide 懒加载（只在点“运行”时下载）三项有数字记录；Lighthouse 移动端（CI 里跑）性能 ≥ 90、无障碍 ≥ 95、最佳实践 ≥ 95；低于标准的列出原因或修复 | 程序员 | ✅ #163 已合并（`Perf report` 工作流，可手动触发）。基线（2026-11-26，main `25bdaf7`，正式构建，Lighthouse mobile 3 次）：性能 95 / 99 / 99，无障碍 100，最佳实践 100，SEO 100；FCP 1.7 s、LCP 1.9–2.0 s、TBT 0–220 ms、CLS 0；首屏壳（JS+CSS+HTML）gzip 约 277 KB（主脚本 117 KB、键盘编辑器块 121 KB）；Pyodide 约 12 MB gzip，只在点“运行”时下载 |
 | R6 | 可访问性与触控 | 现有触控 44px、对比度、减少动态效果测试全绿；新增 U7 页面无新违规 | 程序员 | ✅ 触控 44px、对比度、减少动态效果、反馈区 sticky、选项布局测试均在 CI 全绿，U7 无新增违规 |
-| R7 | 文档 | README、`docs/14-known-issues.md`、`docs/00-latest-handoff.md`、`docs/50-product-officer-handoff.md` 更新为发布现状；新增 `docs/release-notes-v1.md`（用户可见变化 + 已知限制）；过期的候选 / 预览文档标注“已过时”，不删历史 | 程序员 | 🔄 #164（README 状态、已知问题现状、发布说明草稿）；定稿在发布前 |
-| R8 | 发布前检查 | main 最新提交 CI 全绿且 deploy 成功；`codeTasksEnabled=[]`、`ACCOUNTS_LIVE=false`、CAPTCHA 关；线上包不含测试域和测试页；CSP 与隐私页在线上可打开；SW 缓存版本更新 | 程序员 | 待做（发布当天对线上实际产物逐项核对） |
+| R7 | 文档 | README、`docs/14-known-issues.md`、`docs/00-latest-handoff.md`、`docs/50-product-officer-handoff.md` 更新为发布现状；新增 `docs/release-notes-v1.md`（用户可见变化 + 已知限制）；过期的候选 / 预览文档标注“已过时”，不删历史 | 程序员 | ✅ #164 已合并；发布说明于 2026-11-27 定稿（`docs/release-notes-v1.md`，已写明真机未验） |
+| R8 | 发布前检查 | main 最新提交 CI 全绿且 deploy 成功；`codeTasksEnabled=[]`、`ACCOUNTS_LIVE=false`、CAPTCHA 关；线上包不含测试域和测试页；CSP 与隐私页在线上可打开；SW 缓存版本更新 | 程序员 | ✅ 2026-11-27：main `d77ab9b` CI 全绿且 deploy 成功；`Release check`（线上只读核对）通过：资源 200、CSP 在、无测试域、课程含 U1–U7、测试页 404、隐私页 / manifest / sw 正常；账号关闭与 `codeTasksEnabled=[]` 由 `accounts-off`、`code-task-merge` 等测试在 CI 守住 |
 | R10 | 偶发测试排查 | WebKit 下 `cross-tab-refresh-browser`「G15 刷新令牌只用了一次」偶发 reuse=1（2026-11-26 在 #161 首轮出现，重跑通过；main 与其他 PR 的多轮均通过）。**初步判断**：第二页拿到刷新锁后用 `readAuth()` 读共享存储，WebKit 跨进程 localStorage 的传播可能略晚于 Web Locks 释放，读到旧会话就多发一次刷新（服务端按“令牌复用”拒绝），之后走采纳存储会话的恢复路径，删除最终成功。云端登录在 v1 关闭，不影响发布；**不改测试断言**。后续：若再复现，在锁内加“读存储→短等→再读”的稳定读取并补回归；连续多轮稳定则关闭 | 程序员 | 已分析，监控中 |
-| R9 | 发布 | 打 tag `v1.0.0` + GitHub Release（发布说明）；线上冒烟：新开浏览器清缓存访问 → 做完一关 → 关闭重开进度仍在；回滚方案写明（向前修复优先；v4 存储不能直接回退到旧前端） | 程序员，**老大点头** | 最后 |
+| R9 | 发布 | 打 tag `v1.0.0` + GitHub Release（发布说明）；线上冒烟：新开浏览器清缓存访问 → 做完一关 → 关闭重开进度仍在；回滚方案写明（向前修复优先；v4 存储不能直接回退到旧前端） | 程序员，老大点一下 | 🔶 站点已发布（main `d77ab9b` 已部署，自动化线上核对通过）；**tag 和 GitHub Release 我这边无权创建**（会话被禁止写 tag / release），需老大网页上点一下，步骤见 §5；真机冒烟待老大 |
 
 ## 2. 需要老大本人做 / 决定
 
@@ -54,3 +54,9 @@
 4. 线上冒烟（新浏览器环境 + 刷新 + 离线）。
 5. 回报：版本、提交、CI 编号、冒烟结果、真机状态。
 6. 回滚：优先向前修复；若必须撤回，只能撤回“课程内容 / 界面”类提交，**不得回退存储 v4**（见 docs/56 §7.5）。
+
+## 5. 发布状态（2026-11-27）
+
+- **站点**：`https://nomuhoshi.github.io/newfirst-app/` 已是 v1 内容（U1–U7 共 49 关，游客模式）。按老大“做完并发布”的指示，没有等 iPhone 真机核查；真机项在发布说明里如实标为“未验收”。
+- **tag / Release（需老大点一下，约 1 分钟）**：GitHub 仓库页 → Releases → Draft a new release → Choose a tag 输入 `v1.0.0`（Create new tag）→ Target 选 main（提交 `d77ab9b`）→ 标题“碎片编程 v1.0.0”→ 正文粘贴 `docs/release-notes-v1.md` → Publish。
+- **仍待老大**：iPhone 真机核查（§3）；可选的反馈渠道（O6）、云端账号（O4）、域名（O5）。
