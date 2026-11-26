@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)), DIST = join(ROOT, "dist");
-const PORT = 4395 + (process.argv[2] === "webkit" ? 1 : 0), BASE = `http://localhost:${PORT}/`;
+const ENGINE = process.argv[2] || process.env.MOBILE_BROWSER || "chromium";
+const PORT = 4395 + (ENGINE === "webkit" ? 1 : 0), BASE = `http://localhost:${PORT}/`;
 const readJ = (f) => JSON.parse(readFileSync(join(ROOT, "content", f)));
 const unitN = readJ("unit7.json");
 const course = readJ("course.json");
@@ -61,7 +62,7 @@ const srv = createServer((q, s) => { const u = new URL(q.url, BASE); let p = joi
   if (!p.startsWith(DIST) || !existsSync(p) || statSync(p).isDirectory()) { s.writeHead(404); s.end(); return; }
   s.writeHead(200, { "content-type": MIME[extname(p)] || "application/octet-stream" }); s.end(readFileSync(p)); });
 await new Promise((r) => srv.listen(PORT, r));
-const engine = process.argv[2] === "webkit" ? webkit : chromium;
+const engine = ENGINE === "webkit" ? webkit : chromium;
 const browser = await engine.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 760 }, isMobile: engine === chromium, hasTouch: true, serviceWorkers: "block" });
 ctx.setDefaultTimeout(20000);

@@ -1,4 +1,4 @@
-// P0（只读验证）：课程 pending 里的 16 道“写代码 / 改代码题”，真实浏览器 + 真实 Pyodide 逐题验证。不改课程、不改产品代码、不联网（Pyodide 来自 public/pyodide）。
+// P0（只读验证）：课程 pending 里的 17 道（16 道试点 + U7L6-M1）“写代码 / 改代码题”，真实浏览器 + 真实 Pyodide 逐题验证。不改课程、不改产品代码、不联网（Pyodide 来自 public/pyodide）。
 // A 层（判题层，vite 开发服 + 真实 Runner/Worker）：参考答案、起始代码、变化题、示范、数据注入、报错展示；
 // B 层（界面层，dist 构建产物 + 真实应用）：把每道题放进临时关卡，真实点“检查”，看 XP / 红心 / 反馈 / 通关流程。
 // 运行：npm run build && node tests/code-tasks-pyodide.test.mjs [chromium|webkit]    结果 JSON：OUT=<路径>（默认 /tmp/p0-<引擎>.json）
@@ -18,7 +18,7 @@ const DIST = join(ROOT, "dist");
 const course = JSON.parse(readFileSync(join(ROOT, "content/course.json")));
 const TASKS = [];
 for (const u of course.units) { if (!u.available) continue; const d = JSON.parse(readFileSync(join(ROOT, "content", u.file))); for (const l of d.lessons) for (const p of l.pending || []) TASKS.push({ lesson: l.id, replaces: p.replaces, task: p.task }); }
-if (TASKS.length !== 16) { console.log("题数不是 16：", TASKS.length); process.exit(1); }
+if (TASKS.length !== 17) { console.log("题数不是 17：", TASKS.length); process.exit(1); }
 const ONLY = (process.env.ONLY || "").split(",").filter(Boolean);
 const run = ONLY.length ? TASKS.filter((t) => ONLY.includes(t.task.id)) : TASKS;
 const R = { engine: ENGINE, tasks: {}, probes: {}, notes: [] };
