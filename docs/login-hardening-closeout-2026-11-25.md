@@ -23,12 +23,12 @@ Gemini 的原始文档起草仅依据传话员材料，未读取 raw 链接、�
 
 以下“审查 HEAD”为已合并 PR 的最终 HEAD，均以完整 SHA 记录。本次已核对相应 `pull_request` 运行的 `head_sha` 与该 HEAD 一致，且三项必需任务成功。每一行的部署任务均为 skipped。
 
-G-LOGIN-01、G-LOGIN-02 的编号映射仍**未核验**。本次另查到 #143（重复退出／旧退出隔离）和 #144（删除请求绑定会话）已合并，但其标题及正文未提供 G-LOGIN-01／02 标识；不能仅凭相邻编号或主题给它们指定任务编号。映射证据后续单独补齐。
+G-LOGIN-01、G-LOGIN-02 的编号映射：**2026-11-26 程序员 Sonnet 在仓库内核查，无法证实**。已查：全部 PR 标题与正文（含 #136–#145）、全部提交信息、GitHub 搜索、仓库文档，均没有出现 “G-LOGIN-01／02” 字样；该编号只在 GPT1 的任务单里出现过，仓库里没有留痕。因此下表这两行**不指定 PR**，只列编号在 G-LOGIN-03 之前、同属登录加固且已合并的 PR 作线索（线索不等于映射）：#136（请求超时覆盖响应正文）、#137（验证码对了但读云端失败保留会话）、#140（旧同步迟到结果隔离）、#141（同步遵守 429）、#142（重试读取遵守 429）、#143（重复退出合并）、#144（删除请求绑定会话）。其中 #143、#144 与 G-LOGIN-03 的基线说明（#145 正文：“基线 main 099c6c0（#144 已合并）”）直接相连，是最可能的对应，但仍需 GPT1 任务单或老大确认，不得据此宣称。
 
 | 任务与修复范围 | PR | 最终审查 HEAD（完整 SHA） | main 合并提交（完整 SHA） | PR 同头 CI | 合并时间（JST） |
 | --- | --- | --- | --- | --- | --- |
-| G-LOGIN-01 | 未核验 | 未核验 | 未核验 | 未核验 | 未核验 |
-| G-LOGIN-02 | 未核验 | 未核验 | 未核验 | 未核验 | 未核验 |
+| G-LOGIN-01 | 仓库内无证据，无法映射 | — | — | — | — |
+| G-LOGIN-02 | 仓库内无证据，无法映射 | — | — | — | — |
 | G-LOGIN-03：跨标签页登录失权与迟到结果隔离 | [#145](https://github.com/nomuhoshi/newfirst-app/pull/145) | `d98636ba5bec173663dcbb3a2dedc9288fb8e7ef` | [`d48a6e7e78f7db32ee16f65b93a0ea1f6f21e21e`](https://github.com/nomuhoshi/newfirst-app/commit/d48a6e7e78f7db32ee16f65b93a0ea1f6f21e21e) | [44810778473](https://github.com/nomuhoshi/newfirst-app/actions/runs/44810778473) | 2026-11-21 05:47:35 JST |
 | G-LOGIN-04：恢复游客导入选择的迟到结果隔离 | [#146](https://github.com/nomuhoshi/newfirst-app/pull/146) | `3c5b53b6ed5b6d8aca9acec393cef679f0f9b5e4` | [`235d40e954fa002730a23426b70d0c7f67175fee`](https://github.com/nomuhoshi/newfirst-app/commit/235d40e954fa002730a23426b70d0c7f67175fee) | [44820889138](https://github.com/nomuhoshi/newfirst-app/actions/runs/44820889138) | 2026-11-21 07:16:58 JST |
 | G-LOGIN-05：会话恢复失败分类与重试 | [#147](https://github.com/nomuhoshi/newfirst-app/pull/147) | `2e01fb9276d76fcb71afefd3cf0735a1832e2b44` | [`a14b432003708cdbf1f73d1c3f1cb916eac94540`](https://github.com/nomuhoshi/newfirst-app/commit/a14b432003708cdbf1f73d1c3f1cb916eac94540) | [44841851637](https://github.com/nomuhoshi/newfirst-app/actions/runs/44841851637) | 2026-11-21 09:47:30 JST |
@@ -83,14 +83,14 @@ G-LOGIN-01、G-LOGIN-02 的编号映射仍**未核验**。本次另查到 #143�
 
 ## 六、仍开放的旧登录相关 PR
 
-状态由 GPT1 本次读取 GitHub 元数据核对。覆盖情况尚未逐项比对，继续标为待核查；本单不合并、关闭或删除这些 PR。
+状态由 GPT1 本次读取 GitHub 元数据核对；2026-11-26 程序员 Sonnet 已逐项比对（见下表末列），结果以末列为准。关闭只写说明，不删分支、不删历史。同日另按同样标准关闭了 #21、#22、#23、#24、#25、#38（其提交均已在 main），不属登录范围，此处仅留记录。
 
 | PR | 标题／摘要 | 状态 | 与当前 main 的覆盖关系 |
 | --- | --- | --- | --- |
-| [#41](https://github.com/nomuhoshi/newfirst-app/pull/41) | “进度已在别的设备被替换”提示与双页／跨设备测试 | OPEN，Draft，未合并 | 待核查 |
-| [#44](https://github.com/nomuhoshi/newfirst-app/pull/44) | 退出失败留登录、冲突停止重试、429 冷却 | OPEN，非 Draft，未合并 | 待核查 |
-| [#46](https://github.com/nomuhoshi/newfirst-app/pull/46) | 登录与同步体验设计规范 DESIGN-AUTH-02 | OPEN，非 Draft，未合并 | 待核查 |
-| [#57](https://github.com/nomuhoshi/newfirst-app/pull/57) | 账号验收入口，标题标注暂不合并 | OPEN，Draft，未合并 | 待核查；不据旧 PR 标题推定当前入口开关值 |
+| [#41](https://github.com/nomuhoshi/newfirst-app/pull/41) | “进度已在别的设备被替换”提示与双页／跨设备测试 | OPEN，Draft，未合并 | **2026-11-26 已关闭**：其提交已全部在 main（`git cherry` 无独有提交），PR 上留有说明，分支保留 |
+| [#44](https://github.com/nomuhoshi/newfirst-app/pull/44) | 退出失败留登录、冲突停止重试、429 冷却 | OPEN，非 Draft，未合并 | **2026-11-26 已关闭**：提交 `c002a89` 是 main 的祖先，补丁统计一致，PR 上留有说明，分支保留 |
+| [#46](https://github.com/nomuhoshi/newfirst-app/pull/46) | 登录与同步体验设计规范 DESIGN-AUTH-02 | OPEN，非 Draft，未合并 | 仍开：只有设计文档，不在 main；是否并入留待后续决定 |
+| [#57](https://github.com/nomuhoshi/newfirst-app/pull/57) | 账号验收入口，标题标注暂不合并 | OPEN，Draft，未合并 | 仍开：与“是否开通云端账号”绑定，该决定属于老大；不据旧 PR 标题推定当前入口开关值 |
 
 ## 七、交付范围与后续动作
 
