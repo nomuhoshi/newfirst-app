@@ -1,4 +1,4 @@
-// P0（只读验证）：课程 pending 里的 16 道“写代码 / 改代码题”，真实浏览器 + 真实 Pyodide 逐题验证。不改课程、不改产品代码、不联网（Pyodide 来自 public/pyodide）。
+// P0（只读验证）：课程 pending 里的 17 道（16 道试点 + U7L6-M1）“写代码 / 改代码题”，真实浏览器 + 真实 Pyodide 逐题验证。不改课程、不改产品代码、不联网（Pyodide 来自 public/pyodide）。
 // A 层（判题层，vite 开发服 + 真实 Runner/Worker）：参考答案、起始代码、变化题、示范、数据注入、报错展示；
 // B 层（界面层，dist 构建产物 + 真实应用）：把每道题放进临时关卡，真实点“检查”，看 XP / 红心 / 反馈 / 通关流程。
 // 运行：npm run build && node tests/code-tasks-pyodide.test.mjs [chromium|webkit]    结果 JSON：OUT=<路径>（默认 /tmp/p0-<引擎>.json）
@@ -18,7 +18,7 @@ const DIST = join(ROOT, "dist");
 const course = JSON.parse(readFileSync(join(ROOT, "content/course.json")));
 const TASKS = [];
 for (const u of course.units) { if (!u.available) continue; const d = JSON.parse(readFileSync(join(ROOT, "content", u.file))); for (const l of d.lessons) for (const p of l.pending || []) TASKS.push({ lesson: l.id, replaces: p.replaces, task: p.task }); }
-if (TASKS.length !== 16) { console.log("题数不是 16：", TASKS.length); process.exit(1); }
+if (TASKS.length !== 17) { console.log("题数不是 17：", TASKS.length); process.exit(1); }
 const ONLY = (process.env.ONLY || "").split(",").filter(Boolean);
 const run = ONLY.length ? TASKS.filter((t) => ONLY.includes(t.task.id)) : TASKS;
 const R = { engine: ENGINE, tasks: {}, probes: {}, notes: [] };
@@ -27,8 +27,8 @@ let browser;
 try { browser = await bt.launch(); } catch (e) { console.log("环境失败：浏览器启动失败 " + String(e.message).split("\n")[0]); process.exit(2); }
 R.browserVersion = browser.version();
 const starterOf = (t) => (t.type === "modify" ? t.code : t.starter);
-const pyRepr = (v) => (typeof v === "boolean" ? (v ? "True" : "False") : typeof v === "number" ? String(v) : typeof v === "string" ? "'" + v + "'" : Array.isArray(v) ? "[" + v.map(pyRepr).join(", ") + "]" : String(v));
-const pyType = (v) => (typeof v === "boolean" ? "bool" : typeof v === "number" ? (Number.isInteger(v) ? "int" : "float") : typeof v === "string" ? "str" : Array.isArray(v) ? "list" : "?");
+const pyRepr = (v) => (typeof v === "boolean" ? (v ? "True" : "False") : typeof v === "number" ? String(v) : typeof v === "string" ? "'" + v + "'" : Array.isArray(v) ? "[" + v.map(pyRepr).join(", ") + "]" : v && typeof v === "object" ? "{" + Object.entries(v).map(([k, x]) => pyRepr(k) + ": " + pyRepr(x)).join(", ") + "}" : String(v));
+const pyType = (v) => (typeof v === "boolean" ? "bool" : typeof v === "number" ? (Number.isInteger(v) ? "int" : "float") : typeof v === "string" ? "str" : Array.isArray(v) ? "list" : v && typeof v === "object" ? "dict" : "?");
 const short = (c) => ({ name: c.name, hidden: !!c.hidden, ok: c.ok, kind: c.kind, ms: c.ms, err: c.error ? `${c.error.kind}: ${String(c.error.msg || "").slice(0, 80)}${c.error.line ? " @行" + c.error.line : ""}` : undefined, got: c.stdout !== undefined && !c.ok && !c.hidden ? String(c.stdout).slice(0, 60) : undefined });
 
 // ================= A 层 =================

@@ -78,11 +78,11 @@ try {
   }
   // ===== 2. 试点构建：合并结果 =====
   { const { ctx, page, errors } = await openPage(PORT0 + 2);
-    const r = await page.evaluate(() => { const L = window.__app.allLessons(); const l5 = L.find((x) => x.id === "U3L5"); return { en: window.__app.codeTasksEnabled(), types: l5.exercises.map((e) => e.type), id: l5.exercises[3].id, pend: l5.pending ?? null, l6: L.find((x) => x.id === "U1L1").exercises.map((e) => e.type), l6p: L.filter((x) => (x.pending || []).length).length }; });
+    const r = await page.evaluate((ids) => { const L = window.__app.allLessons(); const l5 = L.find((x) => x.id === "U3L5"); return { en: window.__app.codeTasksEnabled(), types: l5.exercises.map((e) => e.type), id: l5.exercises[3].id, pend: l5.pending ?? null, l6: L.find((x) => x.id === "U1L1").exercises.map((e) => e.type), l6p: L.filter((x) => (x.pending || []).some((pt) => ids.includes(pt.task?.id))).length, rest: L.flatMap((x) => (x.pending || []).map((pt) => pt.task?.id)).filter((id) => !ids.includes(id)) }; }, IDS);
     check("试点构建：启用列表 = 试点清单；U3L5 第 4 题是改代码题 U3L5-M1，前 3 题类型不变，pending 被移出", JSON.stringify(r.en) === IDS_TXT && JSON.stringify(r.types) === JSON.stringify(["predict", "fill", "order", "modify"]) && r.id === "U3L5-M1" && r.pend === null, JSON.stringify(r));
     const nCode = await page.evaluate(() => window.__app.allLessons().flatMap((l) => l.exercises).filter((e) => e.type === "modify" || e.type === "write").map((e) => e.id));
     check(`试点构建：整个课程里恰好 ${IDS.length} 道代码题，就是试点清单里的题`, JSON.stringify([...nCode].sort()) === JSON.stringify([...IDS].sort()), JSON.stringify(nCode));
-    check("试点构建：没有代码题的关卡不受影响（U1L1 仍是点选题），16 道 pending 题都已合并，没有关卡还留着 pending", r.l6.every((t) => ["predict", "fill", "order"].includes(t)) && r.l6p === 0, JSON.stringify(r.l6));
+    check("试点构建：没有代码题的关卡不受影响（U1L1 仍是点选题），试点清单里的 pending 题都已合并，清单里的题没有关卡还留着 pending；不在清单里的 pending 只有 U7L6-M1（U7 接入后新增，不进试点、仍留着）", r.l6.every((t) => ["predict", "fill", "order"].includes(t)) && r.l6p === 0 && JSON.stringify(r.rest) === JSON.stringify(["U7L6-M1"]), JSON.stringify([r.l6, r.l6p, r.rest]));
     await ctx.close(); if (errors.length) check("试点构建初始页面无脚本错误", false, errors.join("|")); }
 
   // ===== 3. 整关：全部答对 =====
