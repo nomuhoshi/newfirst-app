@@ -1,0 +1,25 @@
+# 线上产物只读核对（发布清单 R8 / R9 冒烟的自动化部分）。手动触发：Actions → Release check → Run workflow。
+# 只发 GET 请求，不用密钥，不登录，不碰云端。改动本工作流或脚本的 PR 也会自动跑一次（对线上现状）。
+name: Release check
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 要核对的网址（默认正式站）
+        required: false
+        default: https://nomuhoshi.github.io/newfirst-app/
+  pull_request:
+    paths:
+      - ".github/workflows/release-check.yml"
+      - "scripts/release-check.mjs"
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: node scripts/release-check.mjs "${{ github.event.inputs.url || 'https://nomuhoshi.github.io/newfirst-app/' }}"
