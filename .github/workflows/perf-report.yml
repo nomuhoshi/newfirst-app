@@ -1,0 +1,48 @@
+# 发布前性能度量（只读，不部署）：构建正式版 → 统计产物体积 → Lighthouse 移动端 3 次。
+# 手动触发（Actions → Perf report → Run workflow，选 main），或在改动本工作流 / scripts/perf-size.mjs 的 PR 上自动跑。
+# 结果在运行摘要和日志里，Lighthouse 原始报告作为产物保存。不使用任何密钥，不连云端。
+name: Perf report
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/perf-report.yml"
+      - "scripts/perf-size.mjs"
+      - "scripts/lighthouse-summary.cjs"
+permissions:
+  contents: read
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 构建正式版（不含测试域、代码题关闭）
+        run: npm run copy-pyodide && npx vite build --outDir dist-formal
+      - name: 产物体积
+        run: node scripts/perf-size.mjs dist-formal
+      - name: Lighthouse（mobile，3 次）
+        shell: bash
+        run: |
+          set -e
+          npx vite preview --outDir dist-formal --port 4173 --strictPort > /tmp/preview.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
+          mkdir -p lh
+          for n in 1 2 3; do
+            npx -y lighthouse@12.8.2 http://localhost:4173/ --quiet --output=json --output-path="lh/lh12-mobile-run$n.report.json" --chrome-flags="--headless=new --no-sandbox"
+          done
+          { echo "## Lighthouse（mobile 预设，3 次）"; echo '```'; node scripts/lighthouse-summary.cjs lh; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: 保存 Lighthouse 报告
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lighthouse-${{ github.sha }}
+          path: lh/
+          if-no-files-found: ignore
