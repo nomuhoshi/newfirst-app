@@ -27,8 +27,8 @@ let browser;
 try { browser = await bt.launch(); } catch (e) { console.log("环境失败：浏览器启动失败 " + String(e.message).split("\n")[0]); process.exit(2); }
 R.browserVersion = browser.version();
 const starterOf = (t) => (t.type === "modify" ? t.code : t.starter);
-const pyRepr = (v) => (typeof v === "boolean" ? (v ? "True" : "False") : typeof v === "number" ? String(v) : typeof v === "string" ? "'" + v + "'" : Array.isArray(v) ? "[" + v.map(pyRepr).join(", ") + "]" : String(v));
-const pyType = (v) => (typeof v === "boolean" ? "bool" : typeof v === "number" ? (Number.isInteger(v) ? "int" : "float") : typeof v === "string" ? "str" : Array.isArray(v) ? "list" : "?");
+const pyRepr = (v) => (typeof v === "boolean" ? (v ? "True" : "False") : typeof v === "number" ? String(v) : typeof v === "string" ? "'" + v + "'" : Array.isArray(v) ? "[" + v.map(pyRepr).join(", ") + "]" : v && typeof v === "object" ? "{" + Object.entries(v).map(([k, x]) => pyRepr(k) + ": " + pyRepr(x)).join(", ") + "}" : String(v));
+const pyType = (v) => (typeof v === "boolean" ? "bool" : typeof v === "number" ? (Number.isInteger(v) ? "int" : "float") : typeof v === "string" ? "str" : Array.isArray(v) ? "list" : v && typeof v === "object" ? "dict" : "?");
 const short = (c) => ({ name: c.name, hidden: !!c.hidden, ok: c.ok, kind: c.kind, ms: c.ms, err: c.error ? `${c.error.kind}: ${String(c.error.msg || "").slice(0, 80)}${c.error.line ? " @行" + c.error.line : ""}` : undefined, got: c.stdout !== undefined && !c.ok && !c.hidden ? String(c.stdout).slice(0, 60) : undefined });
 
 // ================= A 层 =================
