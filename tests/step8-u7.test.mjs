@@ -1,6 +1,5 @@
 // 第 7 单元「字典」（U7L1–U7L6）：内容检查 + 真实构建、真实 Pyodide 里逐关答题。
-// U7 还没挂进 content/course.json（U6 在另一个分支写，U7 要等 U6 上线后再开放），app 的地图上看不到它；
-// 这里用测试钩子 window.__app.startLesson(关卡) 直接打开 U7 的每一关，走和正式关卡完全相同的答题页面。
+// U7 已接入课程路线（地图上 U6 之后）；这里用测试钩子 window.__app.startLesson(关卡) 直接打开 U7 的每一关，走和点地图节点完全相同的答题页面。
 // 运行：npm run build && node tests/step8-u7.test.mjs [chromium|webkit]
 import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -10,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)), DIST = join(ROOT, "dist");
-const PORT = 4381 + (process.argv[2] === "webkit" ? 1 : 0), BASE = `http://localhost:${PORT}/`;
+const PORT = 4395 + (process.argv[2] === "webkit" ? 1 : 0), BASE = `http://localhost:${PORT}/`;
 const readJ = (f) => JSON.parse(readFileSync(join(ROOT, "content", f)));
 const unitN = readJ("unit7.json");
 const course = readJ("course.json");
@@ -37,9 +36,9 @@ const wide = shown.flatMap(([w, c]) => c.split("\n").filter((x) => cellW(x) > 28
 check("U7：题目代码和选项每行不超过 28 格（全角算 2）", wide.length === 0, wide.join(" | "));
 const wideIntro = L.flatMap((l) => l.introCode.split("\n").filter((x) => cellW(x) > 22).map((x) => `${l.id}: ${x}（${cellW(x)}）`));
 check("U7：开场讲解示例每行不超过 22 格（全角算 2）", wideIntro.length === 0, wideIntro.join(" | "));
-const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
+const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json", "unit6.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
 check("U7：关卡 id 不和已有单元重复", L.every((l) => !otherIds.includes(l.id)));
-check("U7：还没开放（course.json 里没有指向 unit7.json 的单元；U7 最多是“即将推出”占位），不改现有地图", !course.units.some((u) => u.file === "unit7.json" || (u.id === "U7" && u.available)));
+check("U7：已接入课程路线（course.json 里 U7 开放并指向 unit7.json），第 8 单元仍是“即将推出”", course.units.some((u) => u.id === "U7" && u.available === true && u.file === "unit7.json") && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U8");
 check("U7L6-Q4：选输出题，测库存不足分支（显示“库存不足”，库存表不变）", L[5].exercises[3].type === "predict" && L[5].exercises[3].options.find((o) => o.correct)?.text === "库存不足\n{'奶茶': 12, '果茶': 5}");
 check("U7L6：项目代码题只记在 pending（待代码题运行器），不进题目", L[5].pending?.[0]?.task?.id === "U7L6-M1" && L.slice(0, 5).every((l) => !l.pending));
 const before = readFileSync(join(ROOT, "content/unit7.json"), "utf8");
@@ -72,7 +71,7 @@ await ctx.addInitScript((s) => { if (!sessionStorage.getItem("seeded")) { localS
 const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message));
 await page.goto(BASE); await page.waitForSelector(".pathview");
-check("地图不变：U7 不出现在地图上", (await page.locator('[data-lesson^="U7"]').count()) === 0);
+check("U1–U6 通关后 U7 的 6 关都在地图上，U7L1 是当前关，U7L2–L6 锁定", (await page.locator('[data-lesson^="U7"]').count()) === 6 && (await page.locator('[data-lesson="U7L1"]').getAttribute("class")).includes("current") && (await page.locator('.node.locked').count()) === 5);
 
 async function answer(ex, right) {
   if (ex.type === "predict") {
@@ -89,6 +88,7 @@ async function answer(ex, right) {
 for (const l of L) {
   // 每关故意答错一次会扣 1 颗红心；每关开始前补满（只改测试状态，不改红心规则）
   await page.evaluate(() => { const s = window.__app.getState(); s.hearts = 5; window.__app.persist(); });
+  const xp0 = await page.evaluate(() => window.__app.getState().xp);
   await page.evaluate((lesson) => window.__app.startLesson(lesson), l);
   await page.getByRole("button", { name: "继续", exact: true }).click(); // 讲解页
   let wrongDone = false, steps = 0; const outs = [];
@@ -109,6 +109,8 @@ for (const l of L) {
   }
   for (const [ex, right, out] of outs) if (right) check(`${l.id}：${ex.type} 真实运行结果与 expected 一致`, out.includes(ex.expected.split("\n")[0]), out.slice(0, 80));
   await page.waitForSelector(".finish");
+  const xpGain = (await page.evaluate(() => window.__app.getState().xp)) - xp0;
+  check(`${l.id}：本关得到恰好 50 XP（4 题 × 10 + 通关 10；答错一次不影响）`, xpGain === 50, `增加 ${xpGain}`);
   check(`${l.id}：走完 4 题到结算页，记为完成`, await page.evaluate((id) => window.__app.getState().done[id] === true, l.id));
   await page.locator(".finish [data-continue]").click(); await page.waitForSelector(".pathview");
 }

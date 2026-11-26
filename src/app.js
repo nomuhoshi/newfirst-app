@@ -15,6 +15,7 @@ import unit3 from "../content/unit3.json";
 import unit4 from "../content/unit4.json";
 import unit5 from "../content/unit5.json";
 import unit6 from "../content/unit6.json";
+import unit7 from "../content/unit7.json";
 import words from "../content/words.json";
 import { Runner, LIMITS } from "./runner.js";
 import { makeRunnerExecutor } from "./judge.js";
@@ -53,7 +54,7 @@ import { ROUND_SIZES, DEFAULT_ROUND, clearedScope, buildPool, drawRound, shuffle
 
 // 代码题试点：只合并构建时（CODE_TASKS 环境变量）启用的题；正式构建和普通测试构建的列表是空的，课程和以前完全一样。
 const CODE_TASKS_ENABLED = typeof __CODE_TASKS__ !== "undefined" ? __CODE_TASKS__ : [];
-const UNITS = mergeCodeTasks({ U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6 }, CODE_TASKS_ENABLED);
+const UNITS = mergeCodeTasks({ U1: unit1, U2: unit2, U3: unit3, U4: unit4, U5: unit5, U6: unit6, U7: unit7 }, CODE_TASKS_ENABLED);
 const XP_CORRECT = 10;
 const XP_REVIEW = 5;
 const XP_FINISH = 10;
