@@ -1,0 +1,706 @@
+{
+  "id": "U16",
+  "title": "数组与哈希",
+  "subtitle": "字典计数、前缀和、分组",
+  "lessons": [
+    {
+      "id": "U16L1",
+      "title": "用字典计数",
+      "concept": "c[x] = c.get(x, 0) + 1",
+      "story": "数每个值出现几次，用字典：键是值，值是次数。c.get(x, 0) 取出 x 现在的次数（没出现过就是 0），加 1 再存回去。走一遍就数完，O(n)。这是哈希类题目最常用的一招。",
+      "introCode": "a = [\"x\", \"y\", \"x\"]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nprint(c[\"x\"])",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [3, 1, 3, 3, 2]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nprint(c[3])\nprint(c[2])",
+          "options": [
+            {
+              "text": "3\n1",
+              "correct": true,
+              "why": "3 出现了 3 次，2 出现了 1 次。"
+            },
+            {
+              "text": "1\n1",
+              "correct": false,
+              "why": "每遇到一次 3 都加 1，不是只记一次。"
+            },
+            {
+              "text": "3\n2",
+              "correct": false,
+              "why": "c[2] 是值 2 出现的次数：1 次，不是下标。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "每个出现过的值都在字典里；c[2] 查得到。"
+            }
+          ],
+          "tip": "c[值] 是这个值出现的次数。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [\"a\", \"b\"]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nprint(c.get(\"z\", 0))",
+          "options": [
+            {
+              "text": "0",
+              "correct": true,
+              "why": "\"z\" 没出现过，get 交回给定的默认值 0，不报错。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "c[\"z\"] 才会报 KeyError；get 找不到就交回默认值。"
+            },
+            {
+              "text": "None",
+              "correct": false,
+              "why": "给了默认值 0，就交回 0；不给默认值才是 None。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "\"z\" 一次都没出现。"
+            }
+          ],
+          "tip": "get(键, 默认值)：没有就用默认值。"
+        },
+        {
+          "type": "fill",
+          "prompt": "数一数每个字母出现几次，输出 l 的次数：2",
+          "code": "s = \"hello\"\nc = {}\nfor x in s:\n    c[x] = {0}\nprint(c[\"l\"])",
+          "tokens": [
+            "c.get(x, 0) + 1",
+            "c[x] + 1",
+            "1",
+            "c.get(x, 0)"
+          ],
+          "answer": [
+            "c.get(x, 0) + 1"
+          ],
+          "expected": "2",
+          "why": {
+            "c[x] + 1": "第一次遇到 h 时字典里还没有 h，c[\"h\"] 报 KeyError。",
+            "1": "每次都写成 1，没有累加：l 只显示 1。",
+            "c.get(x, 0)": "只取出原来的次数，没有加 1，永远是 0。"
+          },
+          "hint": "原来的次数（没有就是 0）+ 1。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [\"b\", \"a\", \"b\"]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nprint(len(c))",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "字典的键是不同的值：\"b\" 和 \"a\" 两个。len(c) 就是有几种不同的值。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "3 是列表长度；字典里每种值只有一个键。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "\"a\" 也是一个键。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "len 数的是键的个数。"
+            }
+          ],
+          "tip": "len(c)：有几种不同的值。"
+        }
+      ]
+    },
+    {
+      "id": "U16L2",
+      "title": "出现最多的那个",
+      "concept": "max(c, key=c.get)",
+      "story": "数完以后，要找出现次数最多的那个值：max(c, key=c.get)。max 走的是字典的键，key=c.get 表示按每个键的次数比较。次数一样时，交回先放进字典的那个。",
+      "introCode": "a = [\"x\", \"y\", \"y\"]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nprint(max(c, key=c.get))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [4, 2, 4, 7, 2, 4]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nprint(max(c, key=c.get))",
+          "options": [
+            {
+              "text": "4",
+              "correct": true,
+              "why": "4 出现 3 次，2 出现 2 次，7 出现 1 次：按次数比，4 最多。"
+            },
+            {
+              "text": "7",
+              "correct": false,
+              "why": "不写 key 时才按值本身比大小；这里按次数。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "max 交回的是那个值，不是它的次数。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "2 只出现了 2 次，比 4 少。"
+            }
+          ],
+          "tip": "key=c.get：按次数比。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [5, 9, 9]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nprint(max(c))",
+          "options": [
+            {
+              "text": "9",
+              "correct": true,
+              "why": "没有写 key：max 直接比较键本身，5 和 9 里 9 大。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "max(c) 比的是键，不是次数，也不会交回次数。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "5 比 9 小。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "max 可以作用在字典上，比的是键。"
+            }
+          ],
+          "tip": "不写 key：比的是键本身。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出出现次数最多的字母：a",
+          "code": "s = \"banana\"\nc = {}\nfor x in s:\n    c[x] = c.get(x, 0) + 1\nprint(max(c, key={0}))",
+          "tokens": [
+            "c.get",
+            "c",
+            "len",
+            "max"
+          ],
+          "answer": [
+            "c.get"
+          ],
+          "expected": "a",
+          "why": {
+            "c": "key 要的是一个函数；字典本身不能这样调用，报 TypeError。",
+            "len": "每个键都是一个字母，长度都是 1，并列，交回第一个放进去的 b。",
+            "max": "max(\"b\") 还是字母本身，等于按字母比：最大的是 n。"
+          },
+          "hint": "按次数比：c.get。"
+        },
+        {
+          "type": "predict",
+          "prompt": "次数一样多。运行下面的程序，输出是什么？",
+          "code": "a = [\"q\", \"p\", \"p\", \"q\"]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nprint(max(c, key=c.get))",
+          "options": [
+            {
+              "text": "q",
+              "correct": true,
+              "why": "q 和 p 都是 2 次，并列时交回先放进字典的那个：q 先出现。"
+            },
+            {
+              "text": "p",
+              "correct": false,
+              "why": "并列时不按字母比，看谁先放进字典：q 在前。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "交回的是值，不是次数。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "并列不会报错。"
+            }
+          ],
+          "tip": "并列：交回先出现的。"
+        }
+      ]
+    },
+    {
+      "id": "U16L3",
+      "title": "第一个只出现一次的",
+      "concept": "两遍：第一遍计数，第二遍按原顺序找次数为 1 的",
+      "story": "笔试常见题（LeetCode 387）：找字符串里第一个只出现一次的字符。走一遍不够：还不知道后面会不会再出现。所以走两遍：第一遍用字典数完次数，第二遍按原来的顺序，找第一个次数是 1 的。O(n)。",
+      "introCode": "s = \"aab\"\nc = {}\nfor x in s:\n    c[x] = c.get(x, 0) + 1\nfor x in s:\n    if c[x] == 1:\n        print(x)\n        break",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"swiss\"\nc = {}\nfor x in s:\n    c[x] = c.get(x, 0) + 1\nfor x in s:\n    if c[x] == 1:\n        print(x)\n        break",
+          "options": [
+            {
+              "text": "w",
+              "correct": true,
+              "why": "s 出现 3 次；按原顺序看，第一个次数是 1 的是 w（i 也是 1 次，但在 w 后面）。"
+            },
+            {
+              "text": "i",
+              "correct": false,
+              "why": "i 也只出现一次，但 w 在它前面。"
+            },
+            {
+              "text": "s",
+              "correct": false,
+              "why": "s 出现了 3 次。"
+            },
+            {
+              "text": "w\ni",
+              "correct": false,
+              "why": "找到第一个就 break 了。"
+            }
+          ],
+          "tip": "第二遍按原顺序找。"
+        },
+        {
+          "type": "predict",
+          "prompt": "每个字符都重复了。运行下面的程序，输出是什么？",
+          "code": "s = \"aabb\"\nc = {}\nfor x in s:\n    c[x] = c.get(x, 0) + 1\nans = \"无\"\nfor x in s:\n    if c[x] == 1:\n        ans = x\n        break\nprint(ans)",
+          "options": [
+            {
+              "text": "无",
+              "correct": true,
+              "why": "a、b 都出现 2 次，第二遍一个都没找到，ans 保持“无”。"
+            },
+            {
+              "text": "a",
+              "correct": false,
+              "why": "a 出现了 2 次，不是只出现一次。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "找不到时 ans 有默认值，不会报错。"
+            },
+            {
+              "text": "什么都不显示",
+              "correct": false,
+              "why": "最后一定会显示 ans。"
+            }
+          ],
+          "tip": "找不到时要有一个默认答案。"
+        },
+        {
+          "type": "fill",
+          "prompt": "找第一个只出现一次的字符，输出：v",
+          "code": "s = \"level\"\nc = {}\nfor x in s:\n    c[x] = c.get(x, 0) + 1\nfor x in s:\n    if c[x] {0} 1:\n        print(x)\n        break",
+          "tokens": [
+            "==",
+            ">",
+            "!=",
+            "<"
+          ],
+          "answer": [
+            "=="
+          ],
+          "expected": "v",
+          "why": {
+            ">": "> 1 找到的是第一个出现不止一次的：l。",
+            "!=": "!= 1 也是找出现不止一次的：l。",
+            "<": "没有次数小于 1 的字符，什么都不显示。"
+          },
+          "hint": "只出现一次：次数 == 1。"
+        },
+        {
+          "type": "predict",
+          "prompt": "AI 只走了一遍：遇到一个字符就看“前面出现过没有”，没出现过就当它是答案。用哪个字符串测试，能看出它错了？",
+          "code": "def first(s):\n    seen = set()\n    for x in s:\n        if x not in seen:\n            return x\n        seen.add(x)",
+          "fixed": "不一致",
+          "options": [
+            {
+              "text": "first(\"aab\")",
+              "correct": true,
+              "why": "正确答案是 b（a 出现两次）；AI 一看到第一个 a 前面没出现过，就交回 a。不一致。",
+              "program": "def first(s):\n    seen = set()\n    for x in s:\n        if x not in seen:\n            return x\n        seen.add(x)\ndef rule(s):\n    c = {}\n    for x in s:\n        c[x] = c.get(x, 0) + 1\n    for x in s:\n        if c[x] == 1:\n            return x\nprint(\"不一致\" if first(\"aab\") != rule(\"aab\") else \"一致\")"
+            },
+            {
+              "text": "first(\"abc\")",
+              "correct": false,
+              "why": "每个都只出现一次：正确答案和 AI 都是 a，一致。",
+              "program": "def first(s):\n    seen = set()\n    for x in s:\n        if x not in seen:\n            return x\n        seen.add(x)\ndef rule(s):\n    c = {}\n    for x in s:\n        c[x] = c.get(x, 0) + 1\n    for x in s:\n        if c[x] == 1:\n            return x\nprint(\"不一致\" if first(\"abc\") != rule(\"abc\") else \"一致\")"
+            },
+            {
+              "text": "first(\"x\")",
+              "correct": false,
+              "why": "只有一个字符：两边都是 x，一致。",
+              "program": "def first(s):\n    seen = set()\n    for x in s:\n        if x not in seen:\n            return x\n        seen.add(x)\ndef rule(s):\n    c = {}\n    for x in s:\n        c[x] = c.get(x, 0) + 1\n    for x in s:\n        if c[x] == 1:\n            return x\nprint(\"不一致\" if first(\"x\") != rule(\"x\") else \"一致\")"
+            }
+          ],
+          "tip": "测试要让“第一个字符后面又出现了”。"
+        }
+      ]
+    },
+    {
+      "id": "U16L4",
+      "title": "前缀和",
+      "concept": "pre[i] 是前 i 个数的和；区间和 = pre[j] - pre[i]",
+      "story": "要反复问“第 i 到第 j - 1 个数加起来是多少”，每次都循环加是 O(n)。先算前缀和：pre[k] 是前 k 个数的和，pre[0] 是 0。之后任何区间的和都是 pre[j] - pre[i]，一步算出，O(1)。",
+      "introCode": "a = [2, 5, 1]\npre = [0]\nfor x in a:\n    pre.append(pre[-1] + x)\nprint(pre)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [3, 1, 4, 1, 5]\npre = [0]\nfor x in a:\n    pre.append(pre[-1] + x)\nprint(pre)",
+          "options": [
+            {
+              "text": "[0, 3, 4, 8, 9, 14]",
+              "correct": true,
+              "why": "从 0 开始，每次加上下一个数：0、3、3+1=4、4+4=8、8+1=9、9+5=14。"
+            },
+            {
+              "text": "[3, 4, 8, 9, 14]",
+              "correct": false,
+              "why": "pre 一开始就放了一个 0，所以比 a 多一个。"
+            },
+            {
+              "text": "[0, 3, 1, 4, 1, 5]",
+              "correct": false,
+              "why": "每次加的是上一个前缀和 pre[-1] 加上 x，不是只放 x。"
+            },
+            {
+              "text": "14",
+              "correct": false,
+              "why": "pre 是整个列表；14 只是最后一个。"
+            }
+          ],
+          "tip": "pre[-1] 是到目前为止的和。"
+        },
+        {
+          "type": "predict",
+          "prompt": "下标 1 到 3 的三个数（1、4、1）的和。运行下面的程序，输出是什么？",
+          "code": "a = [3, 1, 4, 1, 5]\npre = [0]\nfor x in a:\n    pre.append(pre[-1] + x)\nprint(pre[4] - pre[1])",
+          "options": [
+            {
+              "text": "6",
+              "correct": true,
+              "why": "pre[4] 是前 4 个数的和 9，pre[1] 是前 1 个数的和 3，相减得 1 + 4 + 1 = 6。"
+            },
+            {
+              "text": "9",
+              "correct": false,
+              "why": "9 是 pre[4]，还要减去前面不要的 pre[1]。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "pre[4] - pre[1] = 9 - 3 = 6。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "这是 a[2]；区间里有 3 个数。"
+            }
+          ],
+          "tip": "区间和 = 右边的前缀和 - 左边的前缀和。"
+        },
+        {
+          "type": "fill",
+          "prompt": "求最后两个数（1、5）的和：6",
+          "code": "a = [3, 1, 4, 1, 5]\npre = [0]\nfor x in a:\n    pre.append(pre[-1] + x)\nprint(pre[5] - {0})",
+          "tokens": [
+            "pre[3]",
+            "pre[4]",
+            "pre[2]",
+            "a[3]"
+          ],
+          "answer": [
+            "pre[3]"
+          ],
+          "expected": "6",
+          "why": {
+            "pre[4]": "pre[5] - pre[4] 只剩最后一个数 5。",
+            "pre[2]": "pre[5] - pre[2] 是最后三个数：4 + 1 + 5 = 10。",
+            "a[3]": "a[3] 是一个数 1，14 - 1 = 13，不是区间和。"
+          },
+          "hint": "最后两个数是下标 3、4：减去前 3 个的和。"
+        },
+        {
+          "type": "predict",
+          "prompt": "问了 3 次区间和，数一数一共加了几次。运行下面的程序，输出是什么？",
+          "code": "a = [3, 1, 4, 1, 5]\npre = [0]\nfor x in a:\n    pre.append(pre[-1] + x)\nn = len(a)\nq = [[0, 5], [1, 4], [2, 3]]\nfor r in q:\n    j = r[1]\n    s = pre[j] - pre[r[0]]\n    n = n + 1\nprint(n)",
+          "options": [
+            {
+              "text": "8",
+              "correct": true,
+              "why": "算前缀和走了 5 步，之后每次问只要 1 步：5 + 3 = 8。不用前缀和，每次都要把区间里的数加一遍。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "前面算前缀和的 5 步也要算上。"
+            },
+            {
+              "text": "15",
+              "correct": false,
+              "why": "每次问只做一次减法，不是把区间重新加一遍。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "三次询问各算 1 步。"
+            }
+          ],
+          "tip": "先花 O(n) 准备，之后每次 O(1)。"
+        }
+      ]
+    },
+    {
+      "id": "U16L5",
+      "title": "按特征分组",
+      "concept": "字典的值是列表：g[特征].append(w)",
+      "story": "笔试常见题（LeetCode 49）：把字母异位词分到一组。每个单词排好序后的字母当“特征”：eat、tea 排好都是 aet。用字典，键是特征，值是一个列表；第一次见到这个特征先放一个空列表。",
+      "introCode": "g = {}\nfor w in [\"ab\", \"ba\"]:\n    k = \"\".join(sorted(w))\n    if k not in g:\n        g[k] = []\n    g[k].append(w)\nprint(g)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "k = sorted(\"tea\")\nprint(\"\".join(k))",
+          "options": [
+            {
+              "text": "aet",
+              "correct": true,
+              "why": "sorted 把字母排成 ['a', 'e', 't']，再用 \"\" 接起来：aet。"
+            },
+            {
+              "text": "['a', 'e', 't']",
+              "correct": false,
+              "why": "后面用 \"\".join 把列表接成了字符串。"
+            },
+            {
+              "text": "tea",
+              "correct": false,
+              "why": "排过序了：a、e、t。"
+            },
+            {
+              "text": "a e t",
+              "correct": false,
+              "why": "join 前面的分隔符是空字符串，字母之间不加东西。"
+            }
+          ],
+          "tip": "排好序的字母，接成一个字符串当“特征”。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "ws = [\"eat\", \"tea\", \"tan\"]\ng = {}\nfor w in ws:\n    k = \"\".join(sorted(w))\n    if k not in g:\n        g[k] = []\n    g[k].append(w)\nprint(g[\"aet\"])\nprint(len(g))",
+          "options": [
+            {
+              "text": "['eat', 'tea']\n2",
+              "correct": true,
+              "why": "eat、tea 的特征都是 aet，放进同一个列表；tan 的特征是 ant，另一组。一共 2 组。"
+            },
+            {
+              "text": "['eat']\n3",
+              "correct": false,
+              "why": "tea 排好序也是 aet，和 eat 放进同一组。"
+            },
+            {
+              "text": "['eat', 'tea', 'tan']\n1",
+              "correct": false,
+              "why": "tan 排好是 ant，不是 aet。"
+            },
+            {
+              "text": "['aet']\n2",
+              "correct": false,
+              "why": "列表里放的是原来的单词，不是特征。"
+            }
+          ],
+          "tip": "特征一样就放进同一个列表。"
+        },
+        {
+          "type": "fill",
+          "prompt": "第一次见到这个特征时，先放一个空列表。输出：{'ab': ['ab', 'ba'], 'c': ['c']}",
+          "code": "g = {}\nfor w in [\"ab\", \"ba\", \"c\"]:\n    k = \"\".join(sorted(w))\n    if k not in g:\n        g[k] = {0}\n    g[k].append(w)\nprint(g)",
+          "tokens": [
+            "[]",
+            "w",
+            "[w]",
+            "0"
+          ],
+          "answer": [
+            "[]"
+          ],
+          "expected": "{'ab': ['ab', 'ba'], 'c': ['c']}",
+          "why": {
+            "w": "放进去的是字符串，字符串没有 append，报 AttributeError。",
+            "[w]": "先放了 [w]，下一句又 append 一次，每个单词都出现两遍。",
+            "0": "放进去的是数字 0，数字没有 append，报 AttributeError。"
+          },
+          "hint": "先放一个空列表，下一句再加进去。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = {}\nfor w in [\"no\", \"on\", \"xy\"]:\n    k = \"\".join(sorted(w))\n    g[k] = []\n    g[k].append(w)\nprint(g[\"no\"])",
+          "options": [
+            {
+              "text": "['on']",
+              "correct": true,
+              "why": "没有判断 k not in g：每次都把这一组重新清成空列表，no 被 on 那一次清掉了，只剩 on。"
+            },
+            {
+              "text": "['no', 'on']",
+              "correct": false,
+              "why": "每一轮都执行 g[k] = []，前面放进去的被清掉了。"
+            },
+            {
+              "text": "['no']",
+              "correct": false,
+              "why": "on 排好序也是 no，后放进去，同时清掉了前面的。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "不会报错，只是悄悄丢了数据。"
+            }
+          ],
+          "tip": "只有第一次见到才放空列表。"
+        }
+      ]
+    },
+    {
+      "id": "U16L6",
+      "title": "笔试题：多数元素",
+      "concept": "出现次数超过一半的那个：计数后找次数 > n // 2 的",
+      "story": "笔试常见题（LeetCode 169）：列表里有一个数出现了超过一半次，找出它。用字典计数，再找次数大于 len(a) // 2 的那个。走一遍计数 O(n)，再看一遍字典。",
+      "introCode": "a = [2, 2, 1]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nfor x in c:\n    if c[x] > len(a) // 2:\n        print(x)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [3, 2, 3]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nfor x in c:\n    if c[x] > len(a) // 2:\n        print(x)",
+          "options": [
+            {
+              "text": "3",
+              "correct": true,
+              "why": "3 出现 2 次，len(a) // 2 是 1，2 > 1，所以是 3。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "2 只出现 1 次，不超过一半。"
+            },
+            {
+              "text": "3\n2",
+              "correct": false,
+              "why": "2 的次数 1 不大于 1。"
+            },
+            {
+              "text": "什么都不显示",
+              "correct": false,
+              "why": "3 的次数 2 大于 1。"
+            }
+          ],
+          "tip": "超过一半：次数 > len(a) // 2。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "print(7 // 2)\nprint(6 // 2)",
+          "options": [
+            {
+              "text": "3\n3",
+              "correct": true,
+              "why": "整除去掉小数：3.5 留 3，3 本来就是 3。7 个数里要超过 3 次，6 个数里也要超过 3 次。"
+            },
+            {
+              "text": "3.5\n3",
+              "correct": false,
+              "why": "// 是整除，没有小数。"
+            },
+            {
+              "text": "4\n3",
+              "correct": false,
+              "why": "整除不是四舍五入。"
+            },
+            {
+              "text": "3\n2",
+              "correct": false,
+              "why": "6 // 2 是 3。"
+            }
+          ],
+          "tip": "// 整除：只留整数部分。"
+        },
+        {
+          "type": "fill",
+          "prompt": "找多数元素，输出：1",
+          "code": "a = [1, 1, 2, 2, 1]\nc = {}\nfor x in a:\n    c[x] = c.get(x, 0) + 1\nfor x in c:\n    if c[x] {0} len(a) // 2:\n        print(x)",
+          "tokens": [
+            ">",
+            "<",
+            "==",
+            ">="
+          ],
+          "answer": [
+            ">"
+          ],
+          "expected": "1",
+          "why": {
+            "<": "len(a) // 2 是 2，没有次数小于 2 的，什么都不显示。",
+            "==": "2 恰好出现 2 次，显示的是 2。",
+            ">=": "1（3 次）和 2（2 次）都满足 >= 2，两个都显示；可 2 只占 5 个里的 2 个，没超过一半。"
+          },
+          "hint": "超过一半：严格大于。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：计数并找出多数元素。输出：5",
+          "lines": [
+            "a = [5, 4, 5]",
+            "c = {}",
+            "for x in a:",
+            "    c[x] = c.get(x, 0) + 1",
+            "for x in c:",
+            "    if c[x] > len(a) // 2:",
+            "        print(x)"
+          ],
+          "shuffled": [
+            6,
+            4,
+            1,
+            5,
+            0,
+            3,
+            2
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            [
+              1,
+              0,
+              2,
+              3,
+              4,
+              5,
+              6
+            ]
+          ],
+          "expected": "5",
+          "hint": "先计数（a、c 在前，计数循环），再找（第二个循环）。"
+        }
+      ]
+    }
+  ]
+}
