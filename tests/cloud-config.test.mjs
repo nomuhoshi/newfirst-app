@@ -23,6 +23,23 @@ const prod = await load({ live: true });
 check("正式构建，开关打开：用正式项目", prod.url === PROD_URL && prod.anonKey.length > 10, JSON.stringify(prod));
 const prod2 = await load({ id: "", test: { url: "https://test.supabase.co", anonKey: "k" }, live: true });
 check("正式构建即使有测试配置也不读：仍用正式项目", prod2.url === PROD_URL);
+{ // 受控验收：开关关闭时，只有本机用 ?accounts-pilot=1 打开过才连正式项目；=0 关掉；其他值不算
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  globalThis.location = { hostname: "nomuhoshi.github.io", search: "" };
+  check("受控验收：没加参数、本机也没打开过：仍是云端关闭", (await load()).url === "");
+  globalThis.location.search = "?accounts-pilot=yes";
+  check("受控验收：参数值不是 1：不打开", (await load()).url === "" && !store.has("suipian.accountsPilot"));
+  globalThis.location.search = "?accounts-pilot=1";
+  check("受控验收：?accounts-pilot=1：这台设备连正式项目", (await load()).url === PROD_URL && store.get("suipian.accountsPilot") === "1");
+  globalThis.location.search = "";
+  check("受控验收：之后不带参数打开：仍保持打开（记在本机）", (await load()).url === PROD_URL);
+  globalThis.location.search = "?accounts-pilot=0";
+  check("受控验收：?accounts-pilot=0：关掉，回到云端关闭", (await load()).url === "" && !store.has("suipian.accountsPilot"));
+  globalThis.location.search = "?accounts-pilot=1";
+  check("受控验收：测试入口不读这个参数（只用自己的测试项目）", (await load({ id: "rc1", test: { url: "https://abcdefgh.supabase.co", anonKey: "k" } })).url === "https://abcdefgh.supabase.co");
+  delete globalThis.localStorage; delete globalThis.location;
+}
 const prevLive = await load({ id: "rc1", test: { url: "https://abcdefgh.supabase.co", anonKey: "sb_publishable_test" }, live: false });
 check("测试入口不受账号开关影响：照常用测试项目", prevLive.url === "https://abcdefgh.supabase.co");
 const none = await load({ id: "rc1" });
