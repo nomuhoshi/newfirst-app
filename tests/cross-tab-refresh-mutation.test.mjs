@@ -1,4 +1,4 @@
-// G-LOGIN-15 反向验证：未变异对照必须通过；每个变异必须由行为断言检出（退出码 1 + ERR_ASSERTION + 目标标记）。
+// G-LOGIN-15 / 18 反向验证：未变异对照必须通过；每个变异必须由行为断言检出（退出码 1 + ERR_ASSERTION + 目标标记）。
 import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,6 +25,8 @@ const variants = [
   { name: '锁请求异常收尾不释放排队登记（之后的退出 / 换号会再取消已结束的请求，登记累积）', marker: 'G16_LEAK', edits: [['clearTimeout(timer); f.dropQueue?.(); }', 'clearTimeout(timer); }']] },
   { name: '拿不到锁时自行刷新（可能与别页重复使用刷新凭证）', marker: 'G15_LOCKFAIL', edits: [['        return retryable("暂时无法协调多个页面的登录刷新，请稍后重试");', '        return doRefresh();']] },
   { name: '刷新锁名不含登录实例且不放锁：同号重登后的新操作被旧锁拖住', marker: 'G15_ISOLATE', edits: [['${userId}:${inst ?? "-"}`', '${userId}`'], ['          abandonWaiters.add(abandon); // 代次前进时立刻放锁，新会话的刷新不排在旧刷新后面\n', '']] },
+  { name: '拿到锁后不等别页的新凭证传到本页（WebKit 多进程下拿旧令牌复用，原 R10 偶发失败）', marker: 'G18_ONE', edits: [['          if (contended) await awaitPublished(f);', '          if (false) await awaitPublished(f);']] },
+  { name: '等新凭证没有上限（持锁页刷新失败时等待页卡住）', marker: 'G18_NOHANG', edits: [['const n = Math.max(1, Math.ceil(refreshSettleMs / 25));', 'const n = Math.max(1, Math.ceil(refreshSettleMs / 25)) * 12;']] },
 ];
 function reset() { rmSync(join(dir, 'src'), { recursive: true, force: true }); cpSync(join(root, 'src'), join(dir, 'src'), { recursive: true }); }
 const run = () => spawnSync(process.execPath, ['--test', '--test-reporter=tap', join(dir, tests)], { encoding: 'utf8', timeout: 60000 });
