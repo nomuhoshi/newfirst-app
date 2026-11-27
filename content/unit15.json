@@ -1,0 +1,696 @@
+{
+  "id": "U15",
+  "title": "引用与拷贝",
+  "subtitle": "两个名字指向同一个列表；copy",
+  "lessons": [
+    {
+      "id": "U15L1",
+      "title": "两个名字，同一个列表",
+      "concept": "b = a 不是复制：两个名字指向同一个列表",
+      "story": "b = a 并没有复制出一个新列表，只是给同一个列表多起了一个名字 b。所以用 b 改它（b.append(4)、b[0] = 9），再用 a 看，也变了。整数、字符串不能原地改，不会有这个问题。",
+      "introCode": "a = [1, 2]\nb = a\nb.append(3)\nprint(a)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [1, 2, 3]\nb = a\nb[0] = 9\nprint(a)",
+          "options": [
+            {
+              "text": "[9, 2, 3]",
+              "correct": true,
+              "why": "b 和 a 是同一个列表：用 b 把第一个改成 9，a 看到的也是 9。"
+            },
+            {
+              "text": "[1, 2, 3]",
+              "correct": false,
+              "why": "b = a 不是复制，没有第二个列表；改 b 就是改 a。"
+            },
+            {
+              "text": "[9]",
+              "correct": false,
+              "why": "b[0] = 9 只改第一个，其他的还在。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "b[0] 是可以改的。"
+            }
+          ],
+          "tip": "b = a：同一个列表，两个名字。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "x = 5\ny = x\ny = y + 1\nprint(x)\nprint(y)",
+          "options": [
+            {
+              "text": "5\n6",
+              "correct": true,
+              "why": "整数不能原地改：y = y + 1 是让 y 指向一个新的数 6，x 还是 5。"
+            },
+            {
+              "text": "6\n6",
+              "correct": false,
+              "why": "整数没有“原地改”这回事，改 y 不会影响 x。"
+            },
+            {
+              "text": "5\n5",
+              "correct": false,
+              "why": "y 变成了 6。"
+            },
+            {
+              "text": "6\n5",
+              "correct": false,
+              "why": "x 没有被改过，还是 5。"
+            }
+          ],
+          "tip": "数字、字符串：改一个名字不影响另一个。"
+        },
+        {
+          "type": "fill",
+          "prompt": "让 a 也显示新加的 3：[1, 2, 3]",
+          "code": "a = [1, 2]\nb = {0}\nb.append(3)\nprint(a)",
+          "tokens": [
+            "a",
+            "a.copy()",
+            "a[:]",
+            "[1, 2]"
+          ],
+          "answer": [
+            "a"
+          ],
+          "expected": "[1, 2, 3]",
+          "why": {
+            "a.copy()": "a.copy() 复制出一个新列表，往副本里加 3，a 不变：[1, 2]。",
+            "a[:]": "a[:] 也是复制出一个新列表，a 不变。",
+            "[1, 2]": "这是一个新列表，只是内容一样；往它里面加，a 不变。"
+          },
+          "hint": "要改到同一个列表：b 就是 a。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"hi\"\nt = s\nt = t + \"!\"\nprint(s)",
+          "options": [
+            {
+              "text": "hi",
+              "correct": true,
+              "why": "字符串不能原地改：t + \"!\" 做出一个新字符串让 t 指向它，s 不变。"
+            },
+            {
+              "text": "hi!",
+              "correct": false,
+              "why": "这是 t 的值；s 没被改。"
+            },
+            {
+              "text": "!",
+              "correct": false,
+              "why": "s 还是原来的 hi。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "字符串可以用 + 拼出新字符串。"
+            }
+          ],
+          "tip": "字符串不能原地改。"
+        }
+      ]
+    },
+    {
+      "id": "U15L2",
+      "title": "真正复制一份",
+      "concept": "a.copy()、a[:] 复制出新列表",
+      "story": "想要一份独立的副本，就要真的复制：b = a.copy()，或者用切片 b = a[:]。这样 b 是一个新列表，改 b 不影响 a。笔试里经常要“不改原数据”，就先复制一份再处理。",
+      "introCode": "a = [1, 2]\nb = a.copy()\nb.append(3)\nprint(a)\nprint(b)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [1, 2, 3]\nb = a[:]\nb[0] = 9\nprint(a)\nprint(b)",
+          "options": [
+            {
+              "text": "[1, 2, 3]\n[9, 2, 3]",
+              "correct": true,
+              "why": "a[:] 复制出一个新列表；改 b 的第一个，a 不变。"
+            },
+            {
+              "text": "[9, 2, 3]\n[9, 2, 3]",
+              "correct": false,
+              "why": "这是 b = a 的结果；a[:] 是真的复制了一份。"
+            },
+            {
+              "text": "[1, 2, 3]\n[1, 2, 3]",
+              "correct": false,
+              "why": "b[0] = 9 改了 b。"
+            },
+            {
+              "text": "[9, 2, 3]\n[1, 2, 3]",
+              "correct": false,
+              "why": "改的是 b，不是 a。"
+            }
+          ],
+          "tip": "a[:]：从头切到尾，就是一份副本。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [3, 1, 2]\nb = a.copy()\nb.sort()\nprint(a)\nprint(b)",
+          "options": [
+            {
+              "text": "[3, 1, 2]\n[1, 2, 3]",
+              "correct": true,
+              "why": "b 是副本：b.sort() 只排了 b，a 保持原样。"
+            },
+            {
+              "text": "[1, 2, 3]\n[1, 2, 3]",
+              "correct": false,
+              "why": "a.copy() 复制了一份，排序只影响 b。"
+            },
+            {
+              "text": "[3, 1, 2]\nNone",
+              "correct": false,
+              "why": "print(b) 显示的是 b 本身；b.sort() 交回 None，但我们没有把它存进 b。"
+            },
+            {
+              "text": "[3, 1, 2]\n[3, 1, 2]",
+              "correct": false,
+              "why": "b.sort() 把 b 排好了。"
+            }
+          ],
+          "tip": "先复制再排序：原数据不变。"
+        },
+        {
+          "type": "fill",
+          "prompt": "不改原列表，输出排好的副本和原列表：\n[1, 2, 3]\n[2, 3, 1]",
+          "code": "a = [2, 3, 1]\nb = {0}\nb.sort()\nprint(b)\nprint(a)",
+          "tokens": [
+            "a.copy()",
+            "a",
+            "a.sort()",
+            "[]"
+          ],
+          "answer": [
+            "a.copy()"
+          ],
+          "expected": "[1, 2, 3]\n[2, 3, 1]",
+          "why": {
+            "a": "b 和 a 是同一个列表，b.sort() 也把 a 排了：两行都是 [1, 2, 3]。",
+            "a.sort()": "a.sort() 交回 None，b 是 None，b.sort() 报 AttributeError。",
+            "[]": "b 是空列表，和 a 没关系：排好后还是 []。"
+          },
+          "hint": "要独立的一份：复制。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [1, 2]\nb = a\nc = a.copy()\na.append(3)\nprint(len(b))\nprint(len(c))",
+          "options": [
+            {
+              "text": "3\n2",
+              "correct": true,
+              "why": "b 和 a 是同一个列表，跟着变成 3 个；c 是复制时的副本，还是 2 个。"
+            },
+            {
+              "text": "2\n2",
+              "correct": false,
+              "why": "b 不是副本：a 加了一个，b 看到的也多了一个。"
+            },
+            {
+              "text": "3\n3",
+              "correct": false,
+              "why": "c 是在 append 之前复制的，之后 a 的变化和它无关。"
+            },
+            {
+              "text": "2\n3",
+              "correct": false,
+              "why": "两个反了：b 跟着 a 变，c 不变。"
+            }
+          ],
+          "tip": "名字（b = a）跟着变；副本（copy）不变。"
+        }
+      ]
+    },
+    {
+      "id": "U15L3",
+      "title": "重新赋值和原地修改",
+      "concept": "b = [...] 是换一个列表；b.append() 是改这个列表",
+      "story": "要分清两种操作：b.append(4)、b[0] = 9、b.sort()、b.clear()（清空）是原地修改，所有指向这个列表的名字都会看到；b = [9] 是让 b 改去指向另一个新列表，原来的列表和 a 都不受影响。",
+      "introCode": "a = [1]\nb = a\nb = [2]\nprint(a)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [1, 2]\nb = a\nb = [7, 8]\nprint(a)",
+          "options": [
+            {
+              "text": "[1, 2]",
+              "correct": true,
+              "why": "b = [7, 8] 只是让 b 去指向一个新列表；原来那个列表没被改，a 还是 [1, 2]。"
+            },
+            {
+              "text": "[7, 8]",
+              "correct": false,
+              "why": "重新赋值不会改原来的列表；只有 append、b[0] = … 这种才会。"
+            },
+            {
+              "text": "[1, 2, 7, 8]",
+              "correct": false,
+              "why": "没有任何地方往原列表里加东西。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "给 b 换一个新列表是允许的。"
+            }
+          ],
+          "tip": "名字 = 新值：只换这个名字指向谁。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [1, 2]\nb = a\nb.append(3)\nb = [0]\nb.append(4)\nprint(a)\nprint(b)",
+          "options": [
+            {
+              "text": "[1, 2, 3]\n[0, 4]",
+              "correct": true,
+              "why": "append(3) 时 b 还指向 a 的列表，a 变成 [1, 2, 3]；之后 b 换成新列表 [0]，再 append(4) 只改新列表。"
+            },
+            {
+              "text": "[1, 2, 3, 4]\n[0, 4]",
+              "correct": false,
+              "why": "append(4) 时 b 已经指向新列表了，不再影响 a。"
+            },
+            {
+              "text": "[1, 2]\n[0, 4]",
+              "correct": false,
+              "why": "append(3) 发生在 b 换列表之前，那时 b 就是 a。"
+            },
+            {
+              "text": "[1, 2, 3]\n[0]",
+              "correct": false,
+              "why": "b.append(4) 加在了新列表里。"
+            }
+          ],
+          "tip": "按顺序追：每一步 b 指向的是哪个列表？"
+        },
+        {
+          "type": "fill",
+          "prompt": "只换掉 b，不动 a。输出：\n[1, 2]\n[5]",
+          "code": "a = [1, 2]\nb = a\n{0}\nprint(a)\nprint(b)",
+          "tokens": [
+            "b = [5]",
+            "b[0] = 5",
+            "b.append(5)",
+            "b.clear()"
+          ],
+          "answer": [
+            "b = [5]"
+          ],
+          "expected": "[1, 2]\n[5]",
+          "why": {
+            "b[0] = 5": "这是原地修改：a 也变成 [5, 2]。",
+            "b.append(5)": "原地修改：a 也变成 [1, 2, 5]。",
+            "b.clear()": "clear 原地清空：a 也变成空列表 []。"
+          },
+          "hint": "让 b 指向新列表：重新赋值。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [3, 1, 2]\nb = a\nb.sort()\nprint(a)",
+          "options": [
+            {
+              "text": "[1, 2, 3]",
+              "correct": true,
+              "why": "b.sort() 是原地排序，b 就是 a，所以 a 也排好了。"
+            },
+            {
+              "text": "[3, 1, 2]",
+              "correct": false,
+              "why": "b 没有复制；sort 原地改了同一个列表。"
+            },
+            {
+              "text": "None",
+              "correct": false,
+              "why": "print(a) 显示的是列表本身。"
+            },
+            {
+              "text": "[3, 2, 1]",
+              "correct": false,
+              "why": "sort 默认从小到大。"
+            }
+          ],
+          "tip": "sort、append、b[i] = …：原地修改，大家都看得到。"
+        }
+      ]
+    },
+    {
+      "id": "U15L4",
+      "title": "传给函数的列表",
+      "concept": "函数里原地修改会影响外面；重新赋值不会",
+      "story": "把列表传给函数，函数里的参数和外面的变量指向同一个列表。所以函数里 append、改元素，外面也变了；函数里把参数重新赋值成新列表，只影响函数里面。不想改到外面，就在函数里先复制。",
+      "introCode": "def add(x):\n    x.append(0)\na = [1]\nadd(a)\nprint(a)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "def add(x):\n    x.append(9)\na = [1, 2]\nadd(a)\nprint(a)",
+          "options": [
+            {
+              "text": "[1, 2, 9]",
+              "correct": true,
+              "why": "x 和 a 是同一个列表，函数里 append 9，外面的 a 也多了 9。"
+            },
+            {
+              "text": "[1, 2]",
+              "correct": false,
+              "why": "函数没有复制列表；x 就是 a。"
+            },
+            {
+              "text": "[9]",
+              "correct": false,
+              "why": "append 是在后面加一个，原来的还在。"
+            },
+            {
+              "text": "None",
+              "correct": false,
+              "why": "print(a) 显示的是 a 本身。"
+            }
+          ],
+          "tip": "传列表：函数拿到的是同一个列表。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "def reset(x):\n    x = []\na = [1, 2]\nreset(a)\nprint(a)",
+          "options": [
+            {
+              "text": "[1, 2]",
+              "correct": true,
+              "why": "x = [] 只是让函数里的 x 指向一个新空列表；外面的 a 没被改。"
+            },
+            {
+              "text": "[]",
+              "correct": false,
+              "why": "重新赋值只影响函数里的名字 x，不会清空外面的列表。"
+            },
+            {
+              "text": "None",
+              "correct": false,
+              "why": "print(a) 显示的是 a；reset 没有改它。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "函数里给参数重新赋值是允许的。"
+            }
+          ],
+          "tip": "函数里重新赋值：只影响里面。"
+        },
+        {
+          "type": "fill",
+          "prompt": "函数里先复制，不改到外面。输出：\n[1, 2, 0]\n[1, 2]",
+          "code": "def plus(x):\n    y = {0}\n    y.append(0)\n    return y\na = [1, 2]\nprint(plus(a))\nprint(a)",
+          "tokens": [
+            "x.copy()",
+            "x",
+            "[]",
+            "a"
+          ],
+          "answer": [
+            "x.copy()"
+          ],
+          "expected": "[1, 2, 0]\n[1, 2]",
+          "why": {
+            "x": "y 和 x、a 是同一个列表，append 后 a 也变成 [1, 2, 0]。",
+            "[]": "y 是空列表，结果只有 [0]。",
+            "a": "函数里用外面的 a 也还是同一个列表，a 也被改了。"
+          },
+          "hint": "不想改到传进来的列表：先复制一份。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "def clear_it(x):\n    x.clear()\na = [5, 6]\nb = a\nclear_it(b)\nprint(a)",
+          "options": [
+            {
+              "text": "[]",
+              "correct": true,
+              "why": "a、b、x 三个名字都指向同一个列表；x.clear() 原地清空，a 看到的也是空的。"
+            },
+            {
+              "text": "[5, 6]",
+              "correct": false,
+              "why": "b = a 没有复制，传进函数的还是同一个列表。"
+            },
+            {
+              "text": "None",
+              "correct": false,
+              "why": "print(a) 显示的是列表本身。"
+            },
+            {
+              "text": "[5]",
+              "correct": false,
+              "why": "clear 清空全部。"
+            }
+          ],
+          "tip": "数一数：一共有几个列表？"
+        }
+      ]
+    },
+    {
+      "id": "U15L5",
+      "title": "表格里的同一行",
+      "concept": "同一行放两次；copy() 只复制一层",
+      "story": "row = [0, 0]，g = [row, row]：两行其实是同一个列表，改 g[0][0]，g[1][0] 也变了。每一行要各自新建。另外 g.copy() 只复制最外面一层：里面的每一行还是共用的。",
+      "introCode": "row = [0, 0]\ng = [row, row]\ng[0][0] = 1\nprint(g)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "row = [0, 0]\ng = [row, row]\ng[1][1] = 5\nprint(g)",
+          "options": [
+            {
+              "text": "[[0, 5], [0, 5]]",
+              "correct": true,
+              "why": "两行是同一个列表 row：改 g[1][1] 就是改 row[1]，两行都显示 5。"
+            },
+            {
+              "text": "[[0, 0], [0, 5]]",
+              "correct": false,
+              "why": "g 里放的两次都是同一个 row，不是两个独立的行。"
+            },
+            {
+              "text": "[[0, 5], [0, 0]]",
+              "correct": false,
+              "why": "改的是同一个列表，两行一起变。"
+            },
+            {
+              "text": "[[5, 5], [5, 5]]",
+              "correct": false,
+              "why": "只改了下标 1 那一格。"
+            }
+          ],
+          "tip": "同一个列表放两次：改一处，两处都变。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[0, 0], [0, 0]]\ng[1][1] = 5\nprint(g)",
+          "options": [
+            {
+              "text": "[[0, 0], [0, 5]]",
+              "correct": true,
+              "why": "这里两行是分别写出来的两个列表，只改第 2 行。"
+            },
+            {
+              "text": "[[0, 5], [0, 5]]",
+              "correct": false,
+              "why": "两行是各自新建的，互不影响。"
+            },
+            {
+              "text": "[[5, 5], [5, 5]]",
+              "correct": false,
+              "why": "只改了一格。"
+            },
+            {
+              "text": "[[0, 5], [0, 0]]",
+              "correct": false,
+              "why": "g[1] 是第 2 行。"
+            }
+          ],
+          "tip": "每一行各自新建，才互不影响。"
+        },
+        {
+          "type": "fill",
+          "prompt": "每行各自新建，只改第 1 行。输出：[[1, 0], [0, 0]]",
+          "code": "g = []\nfor i in range(2):\n    g.append({0})\ng[0][0] = 1\nprint(g)",
+          "tokens": [
+            "[0, 0]",
+            "g",
+            "0",
+            "[0]"
+          ],
+          "answer": [
+            "[0, 0]"
+          ],
+          "expected": "[[1, 0], [0, 0]]",
+          "why": {
+            "g": "把 g 自己加进了 g 里（套娃）：g[0] 就是 g 本身，g[0][0] = 1 把 g 的第一项换成了 1，显示 [1, [...]]。",
+            "0": "加进去的是数字 0，不是一行，g[0][0] 会报 TypeError。",
+            "[0]": "每行只有一格：结果是 [[1], [0]]。"
+          },
+          "hint": "每一轮写一个新的 [0, 0]：每次都是新列表。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2], [3, 4]]\nh = g.copy()\nh[0][0] = 9\nh.append([5])\nprint(g)",
+          "options": [
+            {
+              "text": "[[9, 2], [3, 4]]",
+              "correct": true,
+              "why": "copy() 只复制了外层：h 是新列表，所以 append 不影响 g；但里面的行还是同一行，改 h[0][0] 也改了 g 的第 1 行。"
+            },
+            {
+              "text": "[[1, 2], [3, 4]]",
+              "correct": false,
+              "why": "copy() 只复制一层，里面的行是共用的。"
+            },
+            {
+              "text": "[[9, 2], [3, 4], [5]]",
+              "correct": false,
+              "why": "append 加在了新的外层列表 h 上，g 没多一行。"
+            },
+            {
+              "text": "[[1, 2], [3, 4], [5]]",
+              "correct": false,
+              "why": "外层是复制的，append 不影响 g；里面那一格却被改了。"
+            }
+          ],
+          "tip": "copy() 只复制一层：外层新的，里层共用。"
+        }
+      ]
+    },
+    {
+      "id": "U15L6",
+      "title": "常见错：边遍历边删除",
+      "concept": "for x in a 时删 a 的元素会跳过下一个；遍历副本或建新列表",
+      "story": "笔试和写代码都常见的错：for x in a 走着走着用 a.remove(x) 删元素，后面的元素往前挪，下一个就被跳过了。改法：遍历一份副本 for x in a[:]，或者干脆把要留下的放进一个新列表。",
+      "introCode": "a = [2, 4, 5]\nfor x in a[:]:\n    if x < 5:\n        a.remove(x)\nprint(a)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "想删掉所有不是 5 的数。运行下面的程序，输出是什么？",
+          "code": "a = [2, 4, 5, 6]\nfor x in a:\n    if x != 5:\n        a.remove(x)\nprint(a)",
+          "options": [
+            {
+              "text": "[4, 5]",
+              "correct": true,
+              "why": "删掉 2 后，后面的元素往前挪，4 来到了刚检查过的位置，循环直接看下一个 5，4 被跳过了；接着删了 6。"
+            },
+            {
+              "text": "[5]",
+              "correct": false,
+              "why": "这是想要的结果，但边遍历边删除会跳过元素：4 没被检查到。"
+            },
+            {
+              "text": "[2, 4, 5, 6]",
+              "correct": false,
+              "why": "2 和 6 确实被删了。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "不会报错，只是悄悄漏掉了元素，所以更危险。"
+            }
+          ],
+          "tip": "边遍历边删除：删一个，下一个就被跳过。"
+        },
+        {
+          "type": "predict",
+          "prompt": "想删掉所有小于 5 的数，屏幕要显示 [5, 7]。第 2 行该怎么写？",
+          "code": "a = [1, 2, 5, 3, 7]\n……\n    if x < 5:\n        a.remove(x)\nprint(a)",
+          "fixed": "[5, 7]",
+          "options": [
+            {
+              "text": "for x in a[:]:",
+              "correct": true,
+              "why": "遍历的是副本：副本不变，每个元素都会被检查到；删的是原列表 a。",
+              "program": "a = [1, 2, 5, 3, 7]\nfor x in a[:]:\n    if x < 5:\n        a.remove(x)\nprint(a)"
+            },
+            {
+              "text": "for x in a:",
+              "correct": false,
+              "why": "边遍历边删除：删掉 1 后 2 被跳过，结果是 [2, 5, 7]。",
+              "program": "a = [1, 2, 5, 3, 7]\nfor x in a:\n    if x < 5:\n        a.remove(x)\nprint(a)"
+            },
+            {
+              "text": "for x in a.sort():",
+              "correct": false,
+              "why": "a.sort() 交回 None，for 不能遍历 None，报 TypeError。",
+              "program": "a = [1, 2, 5, 3, 7]\nfor x in a.sort():\n    if x < 5:\n        a.remove(x)\nprint(a)"
+            },
+            {
+              "text": "for x in [a]:",
+              "correct": false,
+              "why": "[a] 是只装了一个元素（整个列表 a）的新列表，x 是整个列表，x < 5 会报 TypeError。",
+              "program": "a = [1, 2, 5, 3, 7]\nfor x in [a]:\n    if x < 5:\n        a.remove(x)\nprint(a)"
+            }
+          ],
+          "tip": "要边删边走：走的是副本。"
+        },
+        {
+          "type": "fill",
+          "prompt": "不删原列表，把要留下的放进新列表。输出：[5, 7]",
+          "code": "a = [1, 2, 5, 3, 7]\nkeep = []\nfor x in a:\n    if x >= 5:\n        {0}\nprint(keep)",
+          "tokens": [
+            "keep.append(x)",
+            "a.remove(x)",
+            "keep = [x]",
+            "print(x)"
+          ],
+          "answer": [
+            "keep.append(x)"
+          ],
+          "expected": "[5, 7]",
+          "why": {
+            "a.remove(x)": "这是在原列表里删留下的那些，keep 还是空的：输出 []。",
+            "keep = [x]": "每次都换成只有一个元素的新列表，最后只剩 [7]。",
+            "print(x)": "只是把 5、7 显示出来，keep 里什么都没放，最后还显示 []。"
+          },
+          "hint": "留下的放进 keep。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [3, 3, 3]\nfor x in a:\n    a.remove(x)\nprint(a)",
+          "options": [
+            {
+              "text": "[3]",
+              "correct": true,
+              "why": "第 1 轮删掉一个 3，列表变成 [3, 3]，循环走到下标 1；第 2 轮再删一个，变成 [3]，下标 2 已经超出长度，循环结束，还剩一个。"
+            },
+            {
+              "text": "[]",
+              "correct": false,
+              "why": "边删边走会漏：每删一个，循环的位置也往后走一格。"
+            },
+            {
+              "text": "[3, 3, 3]",
+              "correct": false,
+              "why": "确实删掉了两个。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "不会报错，只是漏删了。"
+            }
+          ],
+          "tip": "这类 bug 不报错，要自己追每一轮的位置。"
+        }
+      ]
+    }
+  ]
+}

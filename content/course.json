@@ -103,6 +103,20 @@
       "id": "U15",
       "title": "引用与拷贝",
       "subtitle": "两个名字指向同一个列表；copy",
+      "available": true,
+      "file": "unit15.json"
+    },
+    {
+      "id": "U16",
+      "title": "数组与哈希",
+      "subtitle": "字典计数、前缀和、分组",
+      "available": true,
+      "file": "unit16.json"
+    },
+    {
+      "id": "U17",
+      "title": "排序与二分",
+      "subtitle": "排序后的规律、二分查找",
       "available": false
     }
   ]
