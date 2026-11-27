@@ -1208,7 +1208,7 @@ function renderMe() {
     const doneCount = allLessons().filter((l) => state.done[l.id]).length;
     const themeLabel = { light: "浅色", dark: "深色" }[state.prefs.theme] || "跟随系统";
     const subs = {
-      account: sync?.account() ? "已登录，进度会同步到云端" : "登录后，换手机或 iPad 也能接着学",
+      account: sync?.account() ? "已登录，进度会同步到云端" : cloudApi.configured ? "登录后，换手机或 iPad 也能接着学" : "云端暂未开通，记录保存在这台设备上",
       settings: `外观：${themeLabel} · 音效${state.prefs.sound ? "开" : "关"}`,
       data: "导出、导入学习记录，清除记录",
       help: "规则、添加到主屏幕、隐私说明",
