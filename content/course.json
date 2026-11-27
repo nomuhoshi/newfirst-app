@@ -67,7 +67,21 @@
     {
       "id": "U10",
       "title": "字符串操作",
-      "subtitle": "切片、查找、替换、格式化",
+      "subtitle": "切片、查找、替换、拆分",
+      "available": true,
+      "file": "unit10.json"
+    },
+    {
+      "id": "U11",
+      "title": "二维列表",
+      "subtitle": "表格、行和列、嵌套循环",
+      "available": true,
+      "file": "unit11.json"
+    },
+    {
+      "id": "U12",
+      "title": "集合与排序",
+      "subtitle": "set、去重、sorted 和排序键",
       "available": false
     }
   ]

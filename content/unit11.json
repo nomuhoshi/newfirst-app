@@ -1,0 +1,730 @@
+{
+  "id": "U11",
+  "title": "二维列表",
+  "subtitle": "表格、行和列、嵌套循环",
+  "lessons": [
+    {
+      "id": "U11L1",
+      "title": "列表里放列表",
+      "concept": "g[i] 是一行，g[i][j] 是一格",
+      "story": "列表的元素也可以是列表：g = [[1, 2, 3], [4, 5, 6]] 就是两行三列的表格。g[1] 取出第 2 行 [4, 5, 6]；g[1][0] 再取这一行的第 1 个，得 4。先行后列，下标都从 0 开始。",
+      "introCode": "g = [[1, 2], [3, 4]]\nprint(g[1])\nprint(g[1][0])",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2, 3], [4, 5, 6]]\nprint(g[0])",
+          "options": [
+            {
+              "text": "[1, 2, 3]",
+              "correct": true,
+              "why": "g[0] 取的是第 1 个元素，它本身是一个列表，也就是第 1 行。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "g[0] 是整行；要取 1，得再加一个下标：g[0][0]。"
+            },
+            {
+              "text": "[1, 4]",
+              "correct": false,
+              "why": "这是第 1 列。g[0] 取的是第 1 行，不是第 1 列。"
+            },
+            {
+              "text": "[[1, 2, 3]]",
+              "correct": false,
+              "why": "g[0] 取出来的就是那一行本身，外面不会再套一层。"
+            }
+          ],
+          "tip": "一个方括号取一行。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2, 3], [4, 5, 6]]\nprint(g[1][2])",
+          "options": [
+            {
+              "text": "6",
+              "correct": true,
+              "why": "g[1] 是第 2 行 [4, 5, 6]，再取它的下标 2，得 6。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "3 是 g[0][2]，在第 1 行。g[1] 是第 2 行。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "下标从 0 开始：[4, 5, 6] 的下标 2 是 6，不是 5。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "g 有 2 行，g[1] 存在；第 2 行有 3 个数，下标 2 也存在。"
+            }
+          ],
+          "tip": "先行后列：g[行][列]。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出：5",
+          "code": "g = [[1, 2, 3], [4, 5, 6]]\nprint(g{0})",
+          "tokens": [
+            "[1][1]",
+            "[1][2]",
+            "[0][1]",
+            "[1, 1]"
+          ],
+          "answer": [
+            "[1][1]"
+          ],
+          "expected": "5",
+          "why": {
+            "[1][2]": "g[1][2] 是第 2 行的第 3 个：6。",
+            "[0][1]": "g[0][1] 在第 1 行：2。",
+            "[1, 1]": "列表的下标不能用逗号写在一个方括号里，会报 TypeError。要写成两个方括号 g[1][1]。"
+          },
+          "hint": "5 在第 2 行、第 2 个：两个下标都是 1。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2], [3, 4], [5, 6]]\nprint(len(g))\nprint(len(g[0]))",
+          "options": [
+            {
+              "text": "3\n2",
+              "correct": true,
+              "why": "len(g) 数的是有几行：3 行。len(g[0]) 数第 1 行有几个数：2 个，也就是列数。"
+            },
+            {
+              "text": "2\n3",
+              "correct": false,
+              "why": "两个反了：g 里有 3 个元素（3 行），每行 2 个数。"
+            },
+            {
+              "text": "6\n2",
+              "correct": false,
+              "why": "len(g) 只数外层有几个元素，不会把里面的数都数一遍。"
+            },
+            {
+              "text": "3\n3",
+              "correct": false,
+              "why": "len(g[0]) 是第 1 行 [1, 2] 的长度：2。"
+            }
+          ],
+          "tip": "len(g) 是行数，len(g[0]) 是列数。"
+        }
+      ]
+    },
+    {
+      "id": "U11L2",
+      "title": "改一格、加一行",
+      "concept": "g[i][j] = 值、g.append(一行)",
+      "story": "改表格里的一格：g[0][1] = 9，先找到第 1 行，再改这一行的第 2 个，别的格子不动。g.append([7, 8]) 在最下面加一整行。下标超出行数或列数，会报 IndexError。",
+      "introCode": "g = [[1, 2], [3, 4]]\ng[0][1] = 9\nprint(g)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2], [3, 4]]\ng[1][0] = 0\nprint(g)",
+          "options": [
+            {
+              "text": "[[1, 2], [0, 4]]",
+              "correct": true,
+              "why": "g[1] 是第 2 行，把它的第 1 个改成 0：[0, 4]。第 1 行不变。"
+            },
+            {
+              "text": "[[0, 2], [3, 4]]",
+              "correct": false,
+              "why": "改的是 g[1]（第 2 行），不是 g[0]。"
+            },
+            {
+              "text": "[[1, 2], [3, 0]]",
+              "correct": false,
+              "why": "g[1][0] 是第 2 行的第 1 个（3），不是最后一个。"
+            },
+            {
+              "text": "[[1, 0], [3, 4]]",
+              "correct": false,
+              "why": "这是 g[0][1]：行和列反了。"
+            }
+          ],
+          "tip": "g[行][列] = 新值，只改这一格。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2]]\ng.append([3, 4])\nprint(len(g))",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "append 把 [3, 4] 作为一整行加进去：现在有 2 行。len(g) 数行数。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "len(g) 不数格子总数，只数有几行。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "加进去的 [3, 4] 是一个元素（一行），不是两个。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "append 会改 g：加了一行，变成 2 行。"
+            }
+          ],
+          "tip": "append 一个列表，就是加一行。"
+        },
+        {
+          "type": "fill",
+          "prompt": "把右下角改成 0，输出：[[1, 2], [3, 0]]",
+          "code": "g = [[1, 2], [3, 4]]\ng{0} = 0\nprint(g)",
+          "tokens": [
+            "[1][1]",
+            "[0][0]",
+            "[1]",
+            "[0][1]"
+          ],
+          "answer": [
+            "[1][1]"
+          ],
+          "expected": "[[1, 2], [3, 0]]",
+          "why": {
+            "[0][0]": "g[0][0] 是左上角的 1。右下角是第 2 行第 2 个。",
+            "[1]": "g[1] = 0 把整个第 2 行换成了 0，表格变成 [[1, 2], 0]。",
+            "[0][1]": "g[0][1] 是右上角的 2。"
+          },
+          "hint": "右下角：最后一行的最后一个。"
+        },
+        {
+          "type": "predict",
+          "prompt": "这段程序报错了，最后一行是：\nIndexError: list index out of range\n是什么原因？",
+          "code": "g = [[1, 2], [3, 4]]\nprint(g[2][0])",
+          "expectError": {
+            "type": "IndexError",
+            "line": 2,
+            "stdout": "",
+            "msg": "list index out of range"
+          },
+          "options": [
+            {
+              "text": "只有 2 行，行下标只有 0 和 1，g[2] 取不到",
+              "correct": true,
+              "why": "第一个方括号是行：g 只有 2 行，下标最大是 1。还没取到列，在 g[2] 就出错了。"
+            },
+            {
+              "text": "每行只有 2 个数，列下标 0 取不到",
+              "correct": false,
+              "why": "列下标 0 是存在的；出错的是前面的行下标 2。"
+            },
+            {
+              "text": "二维列表不能连写两个方括号",
+              "correct": false,
+              "why": "可以连写：g[1][0] 就能取到 3。问题是行下标 2 太大。"
+            },
+            {
+              "text": "print 里不能放两层下标",
+              "correct": false,
+              "why": "print 里可以放任何表达式；是 g[2] 取不到。"
+            }
+          ],
+          "tip": "先看第一个下标（行）有没有超出行数。",
+          "optionLayout": "text"
+        }
+      ]
+    },
+    {
+      "id": "U11L3",
+      "title": "一行一行看",
+      "concept": "for row in g、sum(row)、max(row)",
+      "story": "for row in g 每一轮取出一整行（它是一个列表）。对这一行可以用学过的 sum(row)、max(row)、len(row)。比如每行一个总和：在循环里 print(sum(row))。",
+      "introCode": "g = [[1, 2], [3, 4]]\nfor row in g:\n    print(sum(row))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2, 3], [4, 5, 6]]\nfor row in g:\n    print(max(row))",
+          "options": [
+            {
+              "text": "3\n6",
+              "correct": true,
+              "why": "每一轮 row 是一行：第 1 行最大是 3，第 2 行最大是 6。每行显示一次。"
+            },
+            {
+              "text": "6",
+              "correct": false,
+              "why": "max 是在循环里对每一行算的，显示两次；6 只是第 2 行的。"
+            },
+            {
+              "text": "1\n4",
+              "correct": false,
+              "why": "这是每行最小的数（第 1 个）。max 取最大。"
+            },
+            {
+              "text": "21",
+              "correct": false,
+              "why": "21 是所有数的和；这里每行求的是最大值。"
+            }
+          ],
+          "tip": "for row in g：每轮一整行。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2], [3, 4]]\nfor row in g:\n    print(row)",
+          "options": [
+            {
+              "text": "[1, 2]\n[3, 4]",
+              "correct": true,
+              "why": "row 每轮是一整行（一个列表），print 一个列表会带方括号显示。"
+            },
+            {
+              "text": "1\n2\n3\n4",
+              "correct": false,
+              "why": "一层 for 只走到“行”；要走到每个数，需要再套一层 for。"
+            },
+            {
+              "text": "[[1, 2], [3, 4]]",
+              "correct": false,
+              "why": "这是 print(g)；循环里每轮只显示一行。"
+            },
+            {
+              "text": "1 2\n3 4",
+              "correct": false,
+              "why": "print 列表会原样显示方括号和逗号。"
+            }
+          ],
+          "tip": "一层循环拿到的是行。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出表格里所有数的总和：10",
+          "code": "g = [[1, 2], [3, 4]]\nt = 0\nfor row in g:\n    t = t + {0}\nprint(t)",
+          "tokens": [
+            "sum(row)",
+            "row",
+            "len(row)",
+            "max(row)"
+          ],
+          "answer": [
+            "sum(row)"
+          ],
+          "expected": "10",
+          "why": {
+            "row": "row 是一个列表，整数加列表会报 TypeError。要先把这一行加成一个数：sum(row)。",
+            "len(row)": "len 数的是每行有几个数，加起来是 4，不是总和。",
+            "max(row)": "每行只加了最大的那个：2 + 4 = 6。"
+          },
+          "hint": "每一轮把这一行的和加进 t。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：找出各行总和里最大的那个。输出：7",
+          "lines": [
+            "g = [[1, 2], [3, 4]]",
+            "best = 0",
+            "for row in g:",
+            "    if sum(row) > best:",
+            "        best = sum(row)",
+            "print(best)"
+          ],
+          "shuffled": [
+            5,
+            3,
+            0,
+            4,
+            2,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            [
+              1,
+              0,
+              2,
+              3,
+              4,
+              5
+            ]
+          ],
+          "expected": "7",
+          "hint": "g 和 best = 0 在循环前；if 在 for 里，更新 best 在 if 里；最后在循环外显示一次。"
+        }
+      ]
+    },
+    {
+      "id": "U11L4",
+      "title": "嵌套循环",
+      "concept": "两层 for：外层取行，内层取这一行的每个数",
+      "story": "要看每一格，用两层循环：外层 for row in g 取一行，内层 for x in row 取这一行里的每个数。内层整个跑完一遍，外层才走到下一行。",
+      "introCode": "g = [[1, 2], [3, 4]]\nfor row in g:\n    for x in row:\n        print(x)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2], [3]]\nfor row in g:\n    for x in row:\n        print(x * 10)",
+          "options": [
+            {
+              "text": "10\n20\n30",
+              "correct": true,
+              "why": "外层第 1 轮：内层走 1、2；外层第 2 轮：内层走 3。每个数乘 10 显示一行。"
+            },
+            {
+              "text": "10\n30",
+              "correct": false,
+              "why": "内层会走完这一行的每个数，第 1 行有 1 和 2 两个。"
+            },
+            {
+              "text": "[10, 20]\n[30]",
+              "correct": false,
+              "why": "x 是一个数，x * 10 也是一个数；不是整行乘 10。"
+            },
+            {
+              "text": "30\n20\n10",
+              "correct": false,
+              "why": "外层从第 1 行开始，内层从左到右，顺序是 10、20、30。"
+            }
+          ],
+          "tip": "内层跑完一整行，外层才换行。"
+        },
+        {
+          "type": "fill",
+          "prompt": "数一数表格里大于 2 的数有几个：3",
+          "code": "g = [[1, 5], [3, 4]]\nn = 0\nfor row in g:\n    for x in row:\n        if x {0} 2:\n            n = n + 1\nprint(n)",
+          "tokens": [
+            ">",
+            "<",
+            "==",
+            "!="
+          ],
+          "answer": [
+            ">"
+          ],
+          "expected": "3",
+          "why": {
+            "<": "数的是小于 2 的：只有 1，得 1。",
+            "==": "表格里没有 2，得 0。",
+            "!=": "4 个数都不等于 2，得 4。"
+          },
+          "hint": "大于 2：用 >。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "n = 0\nfor i in range(3):\n    for j in range(2):\n        n = n + 1\nprint(n)",
+          "options": [
+            {
+              "text": "6",
+              "correct": true,
+              "why": "外层 3 轮，每一轮内层走 2 次：3 × 2 = 6 次加 1。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "不是相加：外层每一轮，内层都要完整走一遍。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "内层每轮还要走 2 次，不止外层的 3 次。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "外层有 3 轮，内层每轮 2 次，一共 6 次。"
+            }
+          ],
+          "tip": "两层循环的次数是相乘。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2], [3, 4]]\nfor row in g:\n    t = 0\n    for x in row:\n        t = t + x\n    print(t)",
+          "options": [
+            {
+              "text": "3\n7",
+              "correct": true,
+              "why": "t = 0 在外层里、内层外：每行重新从 0 开始加，加完这一行就显示一次：1 + 2 = 3，3 + 4 = 7。"
+            },
+            {
+              "text": "10",
+              "correct": false,
+              "why": "t 每行都清零，而且 print 在外层循环里，每行显示一次，不是只显示总和。"
+            },
+            {
+              "text": "1\n3\n3\n7",
+              "correct": false,
+              "why": "print 和内层的 for 对齐，不在内层里：每行加完才显示一次。"
+            },
+            {
+              "text": "3\n10",
+              "correct": false,
+              "why": "第 2 行开始时 t 又清零了，所以是 3 + 4 = 7，不是接着加到 10。"
+            }
+          ],
+          "tip": "看清每一行代码在哪一层：清零在哪层，就在哪层重新开始。"
+        }
+      ]
+    },
+    {
+      "id": "U11L5",
+      "title": "按列看",
+      "concept": "第 c 列是每一行的 row[c]；列数是 len(g[0])",
+      "story": "按列看要用下标：第 c 列由每一行的 row[c] 组成。一层 for row in g 加上 row[0]，就是第 1 列的和。要走每一列，用 for c in range(len(g[0]))，列数就是第 1 行的长度。",
+      "introCode": "g = [[1, 2], [3, 4]]\nt = 0\nfor row in g:\n    t = t + row[0]\nprint(t)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2], [3, 4], [5, 6]]\nt = 0\nfor row in g:\n    t = t + row[1]\nprint(t)",
+          "options": [
+            {
+              "text": "12",
+              "correct": true,
+              "why": "row[1] 是每行的第 2 个：2 + 4 + 6 = 12，就是第 2 列的和。"
+            },
+            {
+              "text": "9",
+              "correct": false,
+              "why": "这是第 1 列 1 + 3 + 5。row[1] 是第 2 个。"
+            },
+            {
+              "text": "21",
+              "correct": false,
+              "why": "这是所有数的和；这里每行只加了 row[1]。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "3 是第 2 行的和；循环把每行的 row[1] 加起来。"
+            }
+          ],
+          "tip": "row[c]：每一行的第 c 个。"
+        },
+        {
+          "type": "fill",
+          "prompt": "逐行输出第 2 列：\n2\n4",
+          "code": "g = [[1, 2], [3, 4]]\nfor row in g:\n    print(row[{0}])",
+          "tokens": [
+            "1",
+            "0",
+            "2",
+            "-2"
+          ],
+          "answer": [
+            "1"
+          ],
+          "expected": "2\n4",
+          "why": {
+            "0": "row[0] 是第 1 列：1、3。",
+            "2": "每行只有 2 个数，下标最大是 1，row[2] 报 IndexError。",
+            "-2": "每行 2 个数，-2 是倒数第 2 个，也就是第 1 列：1、3。"
+          },
+          "hint": "第 2 列的下标是 1。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2, 3], [4, 5, 6]]\nfor c in range(len(g[0])):\n    print(g[0][c] + g[1][c])",
+          "options": [
+            {
+              "text": "5\n7\n9",
+              "correct": true,
+              "why": "列数 len(g[0]) 是 3，c 走 0、1、2；每一列把两行的数相加：1 + 4、2 + 5、3 + 6。"
+            },
+            {
+              "text": "6\n15",
+              "correct": false,
+              "why": "这是每行的和。这里循环的是列：每列一个和，3 列。"
+            },
+            {
+              "text": "5\n7",
+              "correct": false,
+              "why": "range(len(g[0])) 是 range(3)，走 3 列，不是 2 列。"
+            },
+            {
+              "text": "21",
+              "correct": false,
+              "why": "每一列显示一次，不是全部加在一起。"
+            }
+          ],
+          "tip": "for c in range(列数)：一列一列走。"
+        },
+        {
+          "type": "predict",
+          "prompt": "这段程序先输出了 2，然后报错，最后一行是：\nIndexError: list index out of range\n为什么？",
+          "code": "g = [[1, 2], [3]]\nfor row in g:\n    print(row[1])",
+          "expectError": {
+            "type": "IndexError",
+            "line": 3,
+            "stdout": "2",
+            "msg": "list index out of range"
+          },
+          "options": [
+            {
+              "text": "第 2 行只有一个数，row[1] 取不到",
+              "correct": true,
+              "why": "第 1 行 [1, 2] 有下标 1，显示了 2；第 2 行 [3] 只有下标 0，取 row[1] 超出范围。"
+            },
+            {
+              "text": "第 1 行取不到 row[1]",
+              "correct": false,
+              "why": "第 1 行取到了，所以先显示了 2。是第 2 行出的错。"
+            },
+            {
+              "text": "row 不能用下标",
+              "correct": false,
+              "why": "row 是列表，可以用下标；第 1 行就取成功了。"
+            },
+            {
+              "text": "g 只有 2 行，循环走不了",
+              "correct": false,
+              "why": "循环按行走，有 2 行就走 2 轮；出错在第 2 轮取 row[1]。"
+            }
+          ],
+          "tip": "每一行的长度可以不一样；按列取之前要想到短的那一行。",
+          "optionLayout": "text"
+        }
+      ]
+    },
+    {
+      "id": "U11L6",
+      "title": "笔试题：对角线之和",
+      "concept": "主对角线：行号等于列号，g[i][i]",
+      "story": "笔试常见题：n × n 的方阵，求主对角线（左上到右下）上的数之和。主对角线上的格子行号等于列号：g[0][0]、g[1][1]……所以一层 for i in range(len(g)) 加上 g[i][i] 就够了。",
+      "introCode": "g = [[1, 2], [3, 4]]\nt = 0\nfor i in range(len(g)):\n    t = t + g[i][i]\nprint(t)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 2, 3],\n     [4, 5, 6],\n     [7, 8, 10]]\nt = 0\nfor i in range(3):\n    t = t + g[i][i]\nprint(t)",
+          "options": [
+            {
+              "text": "16",
+              "correct": true,
+              "why": "主对角线是 g[0][0]、g[1][1]、g[2][2]：1 + 5 + 10 = 16。"
+            },
+            {
+              "text": "15",
+              "correct": false,
+              "why": "这是副对角线（右上到左下）3 + 5 + 7。g[i][i] 是行号等于列号的格子。"
+            },
+            {
+              "text": "46",
+              "correct": false,
+              "why": "这是所有数的和；这里只加了对角线上的 3 个。"
+            },
+            {
+              "text": "6",
+              "correct": false,
+              "why": "这是第 1 行的和。g[i][i] 每一轮换一行。"
+            }
+          ],
+          "tip": "g[i][i]：第 i 行的第 i 个。"
+        },
+        {
+          "type": "fill",
+          "prompt": "求副对角线（右上到左下）之和：15",
+          "code": "g = [[1, 2, 3],\n     [4, 5, 6],\n     [7, 8, 10]]\nt = 0\nfor i in range(3):\n    t = t + g[i][{0}]\nprint(t)",
+          "tokens": [
+            "2 - i",
+            "i",
+            "i + 1",
+            "3 - i"
+          ],
+          "answer": [
+            "2 - i"
+          ],
+          "expected": "15",
+          "why": {
+            "i": "g[i][i] 是主对角线：1 + 5 + 10 = 16。",
+            "i + 1": "i 是 2 时列下标是 3，超出范围，报 IndexError。",
+            "3 - i": "i 是 0 时列下标是 3，超出范围，报 IndexError。最后一列的下标是 2。"
+          },
+          "hint": "副对角线：第 0 行取最后一列（下标 2），每往下一行，列往左一格。"
+        },
+        {
+          "type": "predict",
+          "prompt": "AI 写的 diag 把 g[i][i] 写成了 g[0][i]。用哪个方阵测试，能看出它和“主对角线之和”不一致？",
+          "code": "def diag(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[0][i]\n    return t",
+          "fixed": "不一致",
+          "options": [
+            {
+              "text": "[[1, 0], [0, 1]]",
+              "correct": true,
+              "why": "主对角线是 1 + 1 = 2；AI 的程序加的是第 1 行 1 + 0 = 1。不一致，测出来了。",
+              "program": "def diag(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[0][i]\n    return t\ndef rule(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[i][i]\n    return t\nm = [[1, 0], [0, 1]]\nprint(\"不一致\" if diag(m) != rule(m) else \"一致\")"
+            },
+            {
+              "text": "[[1, 1], [1, 1]]",
+              "correct": false,
+              "why": "每格都是 1：对角线 2，第 1 行也是 2，一致，测不出来。",
+              "program": "def diag(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[0][i]\n    return t\ndef rule(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[i][i]\n    return t\nm = [[1, 1], [1, 1]]\nprint(\"不一致\" if diag(m) != rule(m) else \"一致\")"
+            },
+            {
+              "text": "[[0, 0], [0, 0]]",
+              "correct": false,
+              "why": "全是 0：两边都是 0，一致。",
+              "program": "def diag(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[0][i]\n    return t\ndef rule(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[i][i]\n    return t\nm = [[0, 0], [0, 0]]\nprint(\"不一致\" if diag(m) != rule(m) else \"一致\")"
+            },
+            {
+              "text": "[[5, 0], [0, 0]]",
+              "correct": false,
+              "why": "对角线 5 + 0 = 5，第 1 行 5 + 0 = 5，碰巧一样，测不出来。",
+              "program": "def diag(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[0][i]\n    return t\ndef rule(g):\n    t = 0\n    for i in range(len(g)):\n        t = t + g[i][i]\n    return t\nm = [[5, 0], [0, 0]]\nprint(\"不一致\" if diag(m) != rule(m) else \"一致\")"
+            }
+          ],
+          "tip": "好的测试数据，要让“第 1 行”和“对角线”算出不同的结果。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：求 2 × 2 方阵主对角线之和。输出：5",
+          "lines": [
+            "g = [[1, 2], [3, 4]]",
+            "t = 0",
+            "for i in range(2):",
+            "    t = t + g[i][i]",
+            "print(t)"
+          ],
+          "shuffled": [
+            4,
+            2,
+            0,
+            3,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            [
+              1,
+              0,
+              2,
+              3,
+              4
+            ]
+          ],
+          "expected": "5",
+          "hint": "g 和 t = 0 在循环前；累加缩进在 for 里；最后在循环外显示一次。"
+        }
+      ]
+    }
+  ]
+}
