@@ -326,6 +326,9 @@ body { background: var(--g-bg); color: var(--g-fg); }
 .choices.code .choice { min-width: 0; text-align: left; }
 .choices.code .opt-scroll { display: block; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
 .choices.code .choice pre { white-space: pre; width: max-content; min-width: 100%; }
+/* 文字排法里的长句选项（U8 起：选原因 / 说改法）：单列，左对齐，自然折行 */
+.choices.text.wide { grid-template-columns: minmax(0, 1fr); }
+.choices.text.wide .choice { text-align: left; }
 .choice.sel { border-color: var(--g-primary); border-width: 2.5px; padding: 11.5px; background: color-mix(in srgb, var(--g-primary) 10%, var(--g-card)); }
 .choice.right { border-color: var(--g-ok); background: var(--g-ok-bg); }
 .choice.wrong { border-color: var(--g-bad); background: var(--g-bad-bg); animation: nudge .16s ease-in-out; }
