@@ -1,0 +1,716 @@
+{
+  "id": "U12",
+  "title": "集合与排序",
+  "subtitle": "set、去重、sorted 和排序键",
+  "lessons": [
+    {
+      "id": "U12L1",
+      "title": "集合：自动去重",
+      "concept": "set()、重复只留一个、len、in",
+      "story": "集合（set）里每个值只留一个：set([3, 1, 3]) 只剩 1 和 3。所以 len(set(列表)) 就是“有几种不同的值”。查某个值在不在集合里，用 in，很快。集合没有顺序，不能用下标。",
+      "introCode": "a = [3, 1, 3, 2, 1]\ns = set(a)\nprint(len(a))\nprint(len(s))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [\"x\", \"y\", \"x\", \"x\"]\nprint(len(set(a)))",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "集合里重复的只留一个：只剩 \"x\" 和 \"y\" 两种。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "4 是列表的长度；变成集合后重复的被去掉了。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "\"x\" 出现了 3 次，但在集合里只算一个。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "\"y\" 也在里面，一共两种。"
+            }
+          ],
+          "tip": "len(set(列表))：有几种不同的值。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = set([1, 2, 3])\nprint(2 in s)\nprint(5 in s)",
+          "options": [
+            {
+              "text": "True\nFalse",
+              "correct": true,
+              "why": "2 在集合里，5 不在。in 交回 True 或 False。"
+            },
+            {
+              "text": "False\nTrue",
+              "correct": false,
+              "why": "两个反了：集合里有 1、2、3。"
+            },
+            {
+              "text": "True\nTrue",
+              "correct": false,
+              "why": "5 不在集合里。"
+            },
+            {
+              "text": "1\n报错",
+              "correct": false,
+              "why": "in 交回的是 True / False；查不到也不会报错。"
+            }
+          ],
+          "tip": "值 in 集合：在就是 True。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出这个单词里有几种不同的字母：4",
+          "code": "s = \"letter\"\nprint(len({0}))",
+          "tokens": [
+            "set(s)",
+            "s",
+            "set(s[0])",
+            "\"set\""
+          ],
+          "answer": [
+            "set(s)"
+          ],
+          "expected": "4",
+          "why": {
+            "s": "len(s) 是字母总数 6，重复的 e、t 也各算两次。",
+            "set(s[0])": "s[0] 只是第一个字母 l，集合里只有 1 个。",
+            "\"set\"": "这是文字 \"set\"，长度是 3，和 s 没有关系。"
+          },
+          "hint": "先变成集合去重，再数。"
+        },
+        {
+          "type": "predict",
+          "prompt": "这段程序报错了，最后一行是：\nTypeError: 'set' object is not subscriptable\n是什么原因？",
+          "code": "s = set([5, 6])\nprint(s[0])",
+          "expectError": {
+            "type": "TypeError",
+            "line": 2,
+            "stdout": "",
+            "msg": "'set' object is not subscriptable"
+          },
+          "options": [
+            {
+              "text": "集合没有顺序，不能用下标取第几个",
+              "correct": true,
+              "why": "集合只管“在不在”，没有第几个的说法，所以不能写 s[0]。要按顺序取，先 sorted(s) 变成列表。"
+            },
+            {
+              "text": "集合里没有 0 这个值",
+              "correct": false,
+              "why": "s[0] 不是查值 0，是取第 0 个；集合不支持这种写法。查值要用 0 in s。"
+            },
+            {
+              "text": "set 要写成 Set",
+              "correct": false,
+              "why": "名字没写错：set 就是小写。问题在 s[0]。"
+            },
+            {
+              "text": "集合里只能放文字",
+              "correct": false,
+              "why": "集合里可以放数字。问题是不能用下标。"
+            }
+          ],
+          "tip": "not subscriptable：这种值不能用方括号下标。",
+          "optionLayout": "text"
+        }
+      ]
+    },
+    {
+      "id": "U12L2",
+      "title": "共同的、全部的、多出来的",
+      "concept": "add、&、|、-",
+      "story": "s.add(x) 往集合里加一个值，已经有了就不变。两个集合：a & b 是两边都有的（交集），a | b 是合在一起（并集），a - b 是 a 有而 b 没有的（差集）。要按顺序看结果，用 sorted() 排成列表。",
+      "introCode": "a = set([1, 2, 3])\nb = set([2, 3, 4])\nprint(sorted(a & b))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = set([1, 2])\ns.add(2)\ns.add(5)\nprint(len(s))",
+          "options": [
+            {
+              "text": "3",
+              "correct": true,
+              "why": "加 2 时已经有了，集合不变；加 5 是新值。最后是 1、2、5 三个。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "2 已经在集合里，再 add 一次不会多一个。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "5 是新值，加进去了。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "len 数的是有几个值，不是最大的值。"
+            }
+          ],
+          "tip": "add 一个已经有的值，集合不变。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = set([1, 2, 3])\nb = set([2, 3, 4])\nprint(sorted(a | b))\nprint(sorted(a - b))",
+          "options": [
+            {
+              "text": "[1, 2, 3, 4]\n[1]",
+              "correct": true,
+              "why": "a | b 是合在一起，重复的只留一个；a - b 是 a 有、b 没有的：只有 1。"
+            },
+            {
+              "text": "[2, 3]\n[1]",
+              "correct": false,
+              "why": "[2, 3] 是交集 a & b；| 是并集。"
+            },
+            {
+              "text": "[1, 2, 3, 4]\n[4]",
+              "correct": false,
+              "why": "a - b 是 a 里去掉 b 有的：剩 1。4 是 b - a。"
+            },
+            {
+              "text": "[1, 2, 2, 3, 3, 4]\n[1]",
+              "correct": false,
+              "why": "集合里每个值只留一个，并集不会有重复。"
+            }
+          ],
+          "tip": "&：都有；|：全部；-：我有你没有。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出两个人都会的语言：['go', 'py']",
+          "code": "a = set([\"py\", \"go\", \"js\"])\nb = set([\"go\", \"py\", \"c\"])\nprint(sorted(a {0} b))",
+          "tokens": [
+            "&",
+            "|",
+            "-",
+            "+"
+          ],
+          "answer": [
+            "&"
+          ],
+          "expected": "['go', 'py']",
+          "why": {
+            "|": "| 是并集：两人会的全部合在一起，有 4 种。",
+            "-": "a - b 是只有 a 会的：['js']。",
+            "+": "集合不能用 + 相加，会报 TypeError。合在一起用 |。"
+          },
+          "hint": "两边都有：交集 &。"
+        },
+        {
+          "type": "predict",
+          "prompt": "想找出“在 a 里出现、但不在 b 里出现”的数，屏幕要显示 [1, 5]。第 3 行该怎么写？",
+          "code": "a = [1, 2, 5, 2]\nb = [2, 3]\n……\nprint(sorted(d))",
+          "fixed": "[1, 5]",
+          "options": [
+            {
+              "text": "d = set(a) - set(b)",
+              "correct": true,
+              "why": "先把两边都变成集合，再用差集：a 里去掉 b 有的，剩 1 和 5。",
+              "program": "a = [1, 2, 5, 2]\nb = [2, 3]\nd = set(a) - set(b)\nprint(sorted(d))"
+            },
+            {
+              "text": "d = set(b) - set(a)",
+              "correct": false,
+              "why": "方向反了：这是 b 有、a 没有的，得 [3]。",
+              "program": "a = [1, 2, 5, 2]\nb = [2, 3]\nd = set(b) - set(a)\nprint(sorted(d))"
+            },
+            {
+              "text": "d = set(a) & set(b)",
+              "correct": false,
+              "why": "这是两边都有的，得 [2]。",
+              "program": "a = [1, 2, 5, 2]\nb = [2, 3]\nd = set(a) & set(b)\nprint(sorted(d))"
+            },
+            {
+              "text": "d = a - b",
+              "correct": false,
+              "why": "列表不能用 - 相减，会报 TypeError。要先变成集合。",
+              "program": "a = [1, 2, 5, 2]\nb = [2, 3]\nd = a - b\nprint(sorted(d))"
+            }
+          ],
+          "tip": "差集有方向：a - b 是 a 有、b 没有。"
+        }
+      ]
+    },
+    {
+      "id": "U12L3",
+      "title": "排序",
+      "concept": "sorted()、reverse=True、list.sort() 交回 None",
+      "story": "sorted(a) 交回一个排好序的新列表，a 本身不变；sorted(a, reverse=True) 从大到小。a.sort() 是直接把 a 排好，它自己交回 None，所以不要写 a = a.sort()。字符串按字母顺序排。",
+      "introCode": "a = [3, 1, 2]\nb = sorted(a)\nprint(b)\nprint(a)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [5, 2, 9]\nb = sorted(a, reverse=True)\nprint(b)",
+          "options": [
+            {
+              "text": "[9, 5, 2]",
+              "correct": true,
+              "why": "reverse=True 是从大到小排。"
+            },
+            {
+              "text": "[2, 5, 9]",
+              "correct": false,
+              "why": "不写 reverse 才是从小到大。"
+            },
+            {
+              "text": "[9, 2, 5]",
+              "correct": false,
+              "why": "这只是把原列表倒过来，不是排序。"
+            },
+            {
+              "text": "9",
+              "correct": false,
+              "why": "sorted 交回整个列表，不是最大值。"
+            }
+          ],
+          "tip": "reverse=True：从大到小。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [3, 1, 2]\na = a.sort()\nprint(a)",
+          "options": [
+            {
+              "text": "None",
+              "correct": true,
+              "why": "a.sort() 把列表排好，但它自己交回 None；再赋给 a，a 就变成了 None。"
+            },
+            {
+              "text": "[1, 2, 3]",
+              "correct": false,
+              "why": "排序确实发生了，可 a = a.sort() 把 a 换成了 sort() 交回的 None。"
+            },
+            {
+              "text": "[3, 1, 2]",
+              "correct": false,
+              "why": "sort() 会改原列表；只是最后 a 被赋成了 None。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "不会报错，只是得到 None。这是很常见的坑。"
+            }
+          ],
+          "tip": "a.sort() 直接排好 a，交回 None；要新列表用 sorted(a)。"
+        },
+        {
+          "type": "fill",
+          "prompt": "从小到大输出，并且原来的 a 不变：\n[1, 2, 3]\n[3, 1, 2]",
+          "code": "a = [3, 1, 2]\nb = {0}\nprint(b)\nprint(a)",
+          "tokens": [
+            "sorted(a)",
+            "a.sort()",
+            "a",
+            "sorted(a, reverse=True)"
+          ],
+          "answer": [
+            "sorted(a)"
+          ],
+          "expected": "[1, 2, 3]\n[3, 1, 2]",
+          "why": {
+            "a.sort()": "a.sort() 把 a 本身排了，还交回 None：b 是 None，a 也变了。",
+            "a": "b 和 a 是同一个列表，没有排序。",
+            "sorted(a, reverse=True)": "这是从大到小：[3, 2, 1]。"
+          },
+          "hint": "要新列表、原来不变：sorted(a)。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "w = [\"pear\", \"apple\", \"fig\"]\nprint(sorted(w))",
+          "options": [
+            {
+              "text": "['apple', 'fig', 'pear']",
+              "correct": true,
+              "why": "字符串按字母顺序排：a 开头最前，然后 f，然后 p。"
+            },
+            {
+              "text": "['fig', 'pear', 'apple']",
+              "correct": false,
+              "why": "这是按长度排的结果；不写 key 时按字母顺序。"
+            },
+            {
+              "text": "['pear', 'apple', 'fig']",
+              "correct": false,
+              "why": "这是原来的顺序，没有排。"
+            },
+            {
+              "text": "['pear', 'fig', 'apple']",
+              "correct": false,
+              "why": "这是倒着的字母顺序；要倒序得写 reverse=True。"
+            }
+          ],
+          "tip": "字符串默认按字母顺序排。"
+        }
+      ]
+    },
+    {
+      "id": "U12L4",
+      "title": "按规则排序",
+      "concept": "sorted(a, key=函数)",
+      "story": "想按别的规则排，给 sorted 一个 key：sorted(w, key=len) 按长度排。key 也可以是自己写的函数：def price(x): return x[1]，就按每个元素的第 2 项排。规则一样的元素，保持原来的先后顺序。",
+      "introCode": "w = [\"pear\", \"fig\", \"apple\"]\nprint(sorted(w, key=len))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "w = [\"ccc\", \"a\", \"bb\"]\nprint(sorted(w, key=len))",
+          "options": [
+            {
+              "text": "['a', 'bb', 'ccc']",
+              "correct": true,
+              "why": "key=len：按每个字符串的长度排，1、2、3。"
+            },
+            {
+              "text": "['ccc', 'bb', 'a']",
+              "correct": false,
+              "why": "这是从长到短；从长到短还要加 reverse=True。"
+            },
+            {
+              "text": "[1, 2, 3]",
+              "correct": false,
+              "why": "key 只决定按什么比，交回的还是原来的字符串。"
+            },
+            {
+              "text": "['ccc', 'a', 'bb']",
+              "correct": false,
+              "why": "这是原来的顺序，没有排。"
+            }
+          ],
+          "tip": "key 决定按什么比，排的还是原来的元素。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "def p(x):\n    return x[1]\nm = [[\"tea\", 9], [\"pie\", 5]]\nr = sorted(m, key=p)\nprint(r[0][0])",
+          "options": [
+            {
+              "text": "pie",
+              "correct": true,
+              "why": "按每项的第 2 个（价格）排：5 在 9 前面，r 里排第一的是 [\"pie\", 5]，再取它的第 1 个：pie。"
+            },
+            {
+              "text": "tea",
+              "correct": false,
+              "why": "按价格排，便宜的 pie 在前面。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "最后取的是 [0][0]：第一项的名字，不是价格。"
+            },
+            {
+              "text": "['pie', 5]",
+              "correct": false,
+              "why": "后面又取了一次 [0]，拿到的是名字。"
+            }
+          ],
+          "tip": "key=p：用 p 交回的值来比。"
+        },
+        {
+          "type": "fill",
+          "prompt": "按长度从短到长：['fig', 'pear', 'apple']",
+          "code": "w = [\"pear\", \"fig\", \"apple\"]\nprint(sorted(w, key={0}))",
+          "tokens": [
+            "len",
+            "max",
+            "sorted",
+            "str"
+          ],
+          "answer": [
+            "len"
+          ],
+          "expected": "['fig', 'pear', 'apple']",
+          "why": {
+            "max": "key=max 按每个单词里“最大的字母”比：fig 的是 i，apple 的是 p，pear 的是 r，排成 fig、apple、pear。",
+            "sorted": "key=sorted 按每个单词排好后的字母列表比，结果是 apple、pear、fig，不是按长度。",
+            "str": "key=str 就是按文字本身比，等于按字母顺序：apple、fig、pear。"
+          },
+          "hint": "按长度：key=len。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "w = [\"bb\", \"a\", \"cc\", \"d\"]\nprint(sorted(w, key=len))",
+          "options": [
+            {
+              "text": "['a', 'd', 'bb', 'cc']",
+              "correct": true,
+              "why": "长度为 1 的 a、d 在前，长度为 2 的 bb、cc 在后；长度一样的保持原来的先后：a 在 d 前，bb 在 cc 前。"
+            },
+            {
+              "text": "['a', 'd', 'cc', 'bb']",
+              "correct": false,
+              "why": "长度一样的不会再按字母倒过来，保持原来的先后：bb 原来在 cc 前面。"
+            },
+            {
+              "text": "['d', 'a', 'bb', 'cc']",
+              "correct": false,
+              "why": "a 在原列表里排在 d 前面，长度一样时保持这个先后。"
+            },
+            {
+              "text": "['a', 'bb', 'cc', 'd']",
+              "correct": false,
+              "why": "这是按字母排；key=len 按长度，d 的长度是 1，要排在前面。"
+            }
+          ],
+          "tip": "规则一样的元素，保持原来的先后。"
+        }
+      ]
+    },
+    {
+      "id": "U12L5",
+      "title": "最大、最小和前几名",
+      "concept": "max / min 带 key、sorted(...)[:k]",
+      "story": "max 和 min 也能带 key：max(w, key=len) 找最长的那个。要前几名，先排序再切片：sorted(a, reverse=True)[:3] 是最大的 3 个。一样长时，max 交回最先出现的那个。",
+      "introCode": "w = [\"fig\", \"apple\", \"kiwi\"]\nprint(max(w, key=len))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "w = [\"hi\", \"hello\", \"hey\"]\nprint(max(w, key=len))\nprint(min(w, key=len))",
+          "options": [
+            {
+              "text": "hello\nhi",
+              "correct": true,
+              "why": "按长度比：hello 最长（5），hi 最短（2）。"
+            },
+            {
+              "text": "hey\nhello",
+              "correct": false,
+              "why": "不写 key 时才按字母比；这里按长度。"
+            },
+            {
+              "text": "5\n2",
+              "correct": false,
+              "why": "max 带 key 交回的是那个字符串，不是它的长度。"
+            },
+            {
+              "text": "hello\nhey",
+              "correct": false,
+              "why": "hey 长度 3，比 hi 的 2 长；最短的是 hi。"
+            }
+          ],
+          "tip": "max / min 带 key：交回的是元素本身。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [4, 9, 1, 7, 3]\nb = sorted(a, reverse=True)\nprint(b[:2])",
+          "options": [
+            {
+              "text": "[9, 7]",
+              "correct": true,
+              "why": "先从大到小排成 [9, 7, 4, 3, 1]，再取前 2 个。"
+            },
+            {
+              "text": "[4, 9]",
+              "correct": false,
+              "why": "这是原列表的前 2 个，没有先排序。"
+            },
+            {
+              "text": "[1, 3]",
+              "correct": false,
+              "why": "这是最小的 2 个；reverse=True 让大的在前。"
+            },
+            {
+              "text": "[9, 7, 4]",
+              "correct": false,
+              "why": "[:2] 只取 2 个。"
+            }
+          ],
+          "tip": "前 k 大：先从大到小排，再 [:k]。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出最便宜的商品名：pie",
+          "code": "def p(x):\n    return x[1]\nm = [[\"tea\", 9], [\"pie\", 5],\n     [\"cake\", 7]]\nprint({0}(m, key=p)[0])",
+          "tokens": [
+            "min",
+            "max",
+            "sorted",
+            "len"
+          ],
+          "answer": [
+            "min"
+          ],
+          "expected": "pie",
+          "why": {
+            "max": "max 找的是最贵的：tea。",
+            "sorted": "sorted(...) 交回排好的整个列表，[0] 取到的是 [\"pie\", 5]，不是名字。",
+            "len": "len 不接受 key，会报 TypeError。"
+          },
+          "hint": "最便宜：按价格找最小的。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "w = [\"ab\", \"cd\", \"e\"]\nprint(max(w, key=len))",
+          "options": [
+            {
+              "text": "ab",
+              "correct": true,
+              "why": "ab 和 cd 一样长（都是 2），max 交回最先出现的那个：ab。"
+            },
+            {
+              "text": "cd",
+              "correct": false,
+              "why": "一样长时不会按字母比，交回先出现的 ab。"
+            },
+            {
+              "text": "e",
+              "correct": false,
+              "why": "e 最短，不是最长。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "max 带 key 交回的是元素本身，不是长度。"
+            }
+          ],
+          "tip": "并列时，交回最先出现的那个。"
+        }
+      ]
+    },
+    {
+      "id": "U12L6",
+      "title": "笔试题：字母异位词",
+      "concept": "两个字符串排序后相同 = 字母和次数都一样",
+      "story": "笔试常见题：判断两个单词是不是字母异位词——用的字母和每个字母的次数都一样，只是顺序不同，比如 listen 和 silent。思路：把两个字符串都排序再比，sorted(a) == sorted(b) 为 True 就是。",
+      "introCode": "a = \"listen\"\nb = \"silent\"\nok = sorted(a) == sorted(b)\nprint(ok)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "print(sorted(\"cab\"))",
+          "options": [
+            {
+              "text": "['a', 'b', 'c']",
+              "correct": true,
+              "why": "sorted 一个字符串，会把每个字母拆开排好，交回列表。"
+            },
+            {
+              "text": "abc",
+              "correct": false,
+              "why": "sorted 交回的是列表，不是字符串。"
+            },
+            {
+              "text": "['cab']",
+              "correct": false,
+              "why": "字符串会被拆成一个个字母再排。"
+            },
+            {
+              "text": "['c', 'a', 'b']",
+              "correct": false,
+              "why": "这是拆开后没排序的样子；sorted 会排好。"
+            }
+          ],
+          "tip": "sorted(字符串) 交回排好的字母列表。"
+        },
+        {
+          "type": "predict",
+          "prompt": "AI 用集合判断：set(a) == set(b)。用哪组单词测试，能看出它和“字母异位词”的定义不一致？",
+          "code": "def ana(a, b):\n    return set(a) == set(b)",
+          "fixed": "不一致",
+          "options": [
+            {
+              "text": "ana(\"aab\", \"abb\")",
+              "correct": true,
+              "why": "字母种类一样（a、b），集合相等，AI 交回 True；但 a 和 b 的次数不同，不是异位词。不一致，测出来了。",
+              "program": "def ana(a, b):\n    return set(a) == set(b)\ndef rule(a, b):\n    return sorted(a) == sorted(b)\nx = \"aab\"\ny = \"abb\"\nprint(\"不一致\" if ana(x, y) != rule(x, y) else \"一致\")"
+            },
+            {
+              "text": "ana(\"abc\", \"cba\")",
+              "correct": false,
+              "why": "确实是异位词：两边都 True，一致。",
+              "program": "def ana(a, b):\n    return set(a) == set(b)\ndef rule(a, b):\n    return sorted(a) == sorted(b)\nx = \"abc\"\ny = \"cba\"\nprint(\"不一致\" if ana(x, y) != rule(x, y) else \"一致\")"
+            },
+            {
+              "text": "ana(\"ab\", \"cd\")",
+              "correct": false,
+              "why": "字母都不一样：两边都 False，一致。",
+              "program": "def ana(a, b):\n    return set(a) == set(b)\ndef rule(a, b):\n    return sorted(a) == sorted(b)\nx = \"ab\"\ny = \"cd\"\nprint(\"不一致\" if ana(x, y) != rule(x, y) else \"一致\")"
+            },
+            {
+              "text": "ana(\"aa\", \"aa\")",
+              "correct": false,
+              "why": "完全一样：两边都 True，一致。",
+              "program": "def ana(a, b):\n    return set(a) == set(b)\ndef rule(a, b):\n    return sorted(a) == sorted(b)\nx = \"aa\"\ny = \"aa\"\nprint(\"不一致\" if ana(x, y) != rule(x, y) else \"一致\")"
+            }
+          ],
+          "tip": "集合会丢掉“次数”：找字母一样、次数不一样的例子。"
+        },
+        {
+          "type": "fill",
+          "prompt": "判断两个单词是不是字母异位词，输出：True",
+          "code": "a = \"listen\"\nb = \"silent\"\nok = {0} == sorted(b)\nprint(ok)",
+          "tokens": [
+            "sorted(a)",
+            "set(a)",
+            "a",
+            "len(a)"
+          ],
+          "answer": [
+            "sorted(a)"
+          ],
+          "expected": "True",
+          "why": {
+            "set(a)": "集合和列表比较，永远不相等，输出 False。两边都要用 sorted。",
+            "a": "字符串 \"listen\" 和列表比较，永远不相等，输出 False。",
+            "len(a)": "数字和列表比较，永远不相等，输出 False。"
+          },
+          "hint": "两边都要排序后再比。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：写一个判断字母异位词的函数并测试。输出：True",
+          "lines": [
+            "def ana(a, b):",
+            "    x = sorted(a)",
+            "    y = sorted(b)",
+            "    return x == y",
+            "print(ana(\"abc\", \"cab\"))"
+          ],
+          "shuffled": [
+            4,
+            3,
+            1,
+            0,
+            2
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            [
+              0,
+              2,
+              1,
+              3,
+              4
+            ]
+          ],
+          "expected": "True",
+          "hint": "先 def；两个排好的列表先算出来再 return 比较；调用写在函数外面、定义之后。"
+        }
+      ]
+    }
+  ]
+}

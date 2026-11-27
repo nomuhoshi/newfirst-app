@@ -82,6 +82,13 @@
       "id": "U12",
       "title": "集合与排序",
       "subtitle": "set、去重、sorted 和排序键",
+      "available": true,
+      "file": "unit12.json"
+    },
+    {
+      "id": "U13",
+      "title": "递归",
+      "subtitle": "函数调用自己、终止条件",
       "available": false
     }
   ]
