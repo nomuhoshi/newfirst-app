@@ -18,7 +18,7 @@ console.log("   connect-src：", (csp.match(/connect-src[^;]*/) || ["（无）"]
 check("CSP 不含测试域 fake.supabase.test", !csp.includes("fake.supabase.test"));
 const js = Object.entries(bodies).filter(([k]) => k.endsWith(".js")).map(([, v]) => v).join("\n");
 check("脚本里不含测试域 fake.supabase.test", !js.includes("fake.supabase.test"));
-check("课程包含第 1–7 单元的关卡（U1L1 … U7L6）", ["U1L1", "U5L7", "U6L9", "U7L1", "U7L6"].every((id) => js.includes(`"${id}"`) || js.includes(id)));
+check("课程包含第 1–8 单元的关卡（U1L1 … U8L6）", ["U1L1", "U5L7", "U6L9", "U7L1", "U7L6", "U8L1", "U8L6"].every((id) => js.includes(`"${id}"`) || js.includes(id)));
 for (const p of ["privacy.html", "manifest.webmanifest", "sw.js", "robots.txt"]) { const x = await get(p); check(`${p} 200`, x.status === 200, String(x.status)); }
 const man = await get("manifest.webmanifest"); let mj = null; try { mj = JSON.parse(man.text); } catch {}
 check("manifest 可解析且有名称和图标", !!mj && !!(mj.name || mj.short_name) && Array.isArray(mj.icons) && mj.icons.length > 0);
