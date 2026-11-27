@@ -27,8 +27,8 @@ check("U8：同一关里没有重复的题（程序 + 题面都不同）", L.eve
 check("U8：每道选择题恰好一个正确选项，每个选项都有解释", ALL.filter(([, e]) => e.type === "predict").every(([, e]) => e.options.filter((o) => o.correct).length === 1 && e.options.every((o) => o.why)));
 check("U8：填空题每个错误词块都有解释", ALL.filter(([, e]) => e.type === "fill").every(([, e]) => e.tokens.filter((t) => !e.answer.includes(t)).every((t) => e.why[t])));
 const cellW = (s) => [...s].reduce((n, ch) => n + (/[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/.test(ch) ? 2 : 1), 0);
-// 行宽（PR #47 的设计规则）：题目代码、按代码排的选项每行 ≤28 格（全角算 2）；按文字排的选项（中文说明）会折行，不受此限；开场示例 ≤22 格。
-const shown = ALL.flatMap(([w, e]) => [...(e.type === "fill" ? e.tokens.map((t) => e.code.replace("{0}", t)) : [e.code]).map((c) => [w, c]), ...(e.optionLayout === "text" ? [] : (e.options || []).map((o) => [w + " 选项", o.text]))]);
+// 行宽（PR #47 的设计规则）：题目代码、按代码排的选项每行 ≤28 格（全角算 2）；按文字排的选项会折行、改法题的选项按 D5 在卡片内横滚（choice-layout 测试验），不受此限；开场示例 ≤22 格。
+const shown = ALL.flatMap(([w, e]) => [...(e.type === "fill" ? e.tokens.map((t) => e.code.replace("{0}", t)) : [e.code]).map((c) => [w, c]), ...(e.optionLayout === "text" || (e.options || []).some((o) => o.program) ? [] : (e.options || []).map((o) => [w + " 选项", o.text]))]);
 const wide = shown.flatMap(([w, c]) => c.split("\n").filter((x) => cellW(x) > 28).map((x) => `${w}: ${x}（${cellW(x)}）`));
 check("U8：题目代码和按代码排的选项每行不超过 28 格（全角算 2）", wide.length === 0, wide.join(" | "));
 const wideIntro = L.flatMap((l) => l.introCode.split("\n").filter((x) => cellW(x) > 22).map((x) => `${l.id}: ${x}（${cellW(x)}）`));
@@ -115,7 +115,7 @@ for (const l of L) {
   check(`${l.id}：走完 4 题到结算页，记为完成`, await page.evaluate((id) => window.__app.getState().done[id] === true, l.id));
   await page.locator(".finish [data-continue]").click(); await page.waitForSelector(".pathview");
 }
-check("走过的中文说明选项题都检查了排法（U8 共 5 道）", layoutSeen === 5, String(layoutSeen));
+check("走过的中文说明选项题都检查了排法（U8 共 1 道：U8L2 选原因）", layoutSeen === 1, String(layoutSeen));
 check("无脚本错误", errors.length === 0, errors.join(" | "));
 await browser.close(); srv.close();
 console.log(`\n共 ${pass + fail} 项，失败 ${fail} 项`);

@@ -245,7 +245,6 @@
               "program": "def pay():\n    print(\"应付\", price * 2)\npay(10, 2)"
             }
           ],
-          "optionLayout": "text",
           "fixed": "应付 20",
           "tip": "takes 1 … but 2 were given：只收 1 个，却给了 2 个。数一数括号里的值和 def 里的参数。"
         }
@@ -485,7 +484,6 @@
               "program": "def two(price):\n    print(price * 2)\ntotal = two(8) + \"3\"\nprint(total)"
             }
           ],
-          "optionLayout": "text",
           "fixed": "19",
           "tip": "本关要把算出的数字交给后续计算，所以用 return 返回数字；函数里的 print 只是显示。"
         }
@@ -618,7 +616,6 @@
               "program": "def total(price):\n    return price * cups\nprint(total(8))"
             }
           ],
-          "optionLayout": "text",
           "fixed": "8",
           "tip": "不想每次都传的值，给它一个默认值；有默认值的参数写在后面。"
         }
@@ -757,7 +754,6 @@
               "program": "def calc(price):\n    result = price * 2\ncalc(8)\ncalc(8)\nprint(result)"
             }
           ],
-          "optionLayout": "text",
           "fixed": "16",
           "tip": "想把函数里算出的结果拿到外面，用 return 交回来。"
         }

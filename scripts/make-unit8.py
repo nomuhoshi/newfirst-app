@@ -682,8 +682,9 @@ def to_main(e):
     if f'{c["type"]}: {c["msg"]}' in e["prompt"]: ee["msg"] = c["msg"]
     d = {"type": "predict", "prompt": e["prompt"], "code": e["code"], "expectError": ee,
          "options": [{k: v for k, v in {"text": o["text"], "correct": o["correct"], "why": o["why"], "program": o.get("fixed")}.items() if v is not None} for o in e["options"]]}
-    # 选项是中文说明（选原因 / 说改法）时按文字排：单列、自然折行（src/app.js optionLayout + .choices.text.wide）；选代码行的题仍按代码排。
-    if e["key"] in ("type", "fix"): d["optionLayout"] = "text"
+    # 选项排法沿用 D5（产品官 2026-11-11）：选代码行 / 选改法（含代码）按代码排，长的在卡片内横滚；
+    # 只有“选原因”（纯中文说明）按文字排，长句时单列折行（src/app.js optionLayout + .choices.text.wide）。
+    if e["key"] == "type": d["optionLayout"] = "text"
     if "expected" in e: d["fixed"] = e["expected"]
     if "tip" in e: d["tip"] = e["tip"]
     return d
