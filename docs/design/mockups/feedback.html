@@ -1,0 +1,54 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>统一反馈组件 · 编程实验室</title><link rel="stylesheet" href="base.css"><style>
+.chip.c-tube{gap:6px;padding:0 10px}
+.body{flex:1;overflow:hidden;padding:4px 20px 0}
+.q{margin:12px 0 12px}
+.code{margin-bottom:12px}
+.opts{display:flex;flex-direction:column;gap:10px}
+.opt{display:flex;align-items:center;gap:14px;min-height:56px;padding:10px 16px 10px 12px}
+.opt .key{width:32px;height:32px;border-radius:var(--r-s);border:1.5px solid var(--line-strong);display:grid;place-items:center;font:800 13px/1 var(--font);color:var(--muted);flex:none}
+.opt .v{font:400 17px/1.4 var(--mono);white-space:nowrap}.opt .v.zh{font-family:var(--font);font-weight:600}
+.opt.good{border:2px solid var(--ok);background:var(--ok-soft)} .opt.good .key{background:var(--ok);border-color:var(--ok);color:#fff}
+.opt.bad{border:2px solid var(--err);background:var(--err-soft)} .opt.bad .key{background:var(--err);border-color:var(--err);color:#fff}
+/* 统一反馈面板：对 / 错 同结构、同高度规则，只换颜色 */
+.fb{flex:none;border-radius:24px 24px 0 0;padding:18px 20px 34px;background:var(--fb-soft);border-top:2px solid var(--fb)}
+.fb .top{display:flex;align-items:center;gap:12px}
+.fb .ic{width:40px;height:40px;border-radius:50%;background:var(--fb);color:#fff;display:grid;place-items:center;flex:none}
+.fb .ic svg{width:22px;height:22px}
+.fb h2{font:800 22px/1.3 var(--font);color:var(--fb-text)}
+.fb .xp{margin-left:auto}
+.fb p{margin:10px 0 0;font:400 15px/1.5 var(--font);color:var(--ink)}
+.fb .outp{margin-top:12px;border-radius:var(--r-s);background:var(--code-bg);color:var(--code-fg);font:400 15px/1.5 var(--mono);padding:8px 12px;display:flex;gap:10px}
+.fb .outp small{font:600 13px/1.6 var(--font);color:var(--code-muted);flex:none}
+.fb .acts{display:flex;gap:12px;margin-top:16px}
+.fb .acts .btn-secondary{flex:0 0 40%}
+.ok{--fb:var(--ok);--fb-soft:var(--ok-soft);--fb-text:var(--ok-text)}
+.err{--fb:var(--err);--fb-soft:var(--err-soft);--fb-text:var(--err-text)}
+.badge-xp{background:var(--ok);color:#fff}
+.dark .fb{background:color-mix(in srgb,var(--fb) 14%,var(--surface))}
+</style></head><body>
+<div class="screen">
+ <div class="ios"><span>9:41</span><i></i></div>
+ <div class="lessonbar"><span class="icon-btn"><svg width="22" height="22"><use href="#i-x"/></svg></span><div class="progress"><b style="width:46%"></b></div><span class="chip c-tube" data-tubes="4"></span></div>
+ <main class="body">
+  <h1 class="t-title q">运行这段程序，点单屏上会显示什么？</h1>
+  <div class="code"><span class="ln">1</span><span class="f">print</span>(<span class="s">"欢迎光临！"</span>)</div>
+  <div class="opts" id="opts"></div>
+ </main>
+ <section class="fb" id="fb"></section>
+</div><script src="common.js"></script><script>
+const wrong = location.hash.includes("wrong");
+document.querySelector(".screen").classList.add(wrong ? "err" : "ok");
+document.getElementById("opts").innerHTML = wrong
+ ? `<div class="card opt good"><span class="key">A</span><span class="v zh">欢迎光临！</span></div><div class="card opt bad"><span class="key">B</span><span class="v">"欢迎光临！"</span></div><div class="card opt" style="opacity:.6"><span class="key">C</span><span class="v">print("欢迎光临！")</span></div>`
+ : `<div class="card opt good"><span class="key">A</span><span class="v zh">欢迎光临！</span></div><div class="card opt" style="opacity:.6"><span class="key">B</span><span class="v">"欢迎光临！"</span></div><div class="card opt" style="opacity:.6"><span class="key">C</span><span class="v">print("欢迎光临！")</span></div>`;
+document.getElementById("fb").innerHTML = wrong
+ ? `<div class="top"><span class="ic"><svg><use href="#i-x"/></svg></span><h2>差一点</h2></div>
+    <p>引号只是告诉 Python「这是一段文字」，<b>不会</b>显示在屏幕上。</p>
+    <div class="outp"><small>运行结果</small>欢迎光临！</div>
+    <div class="acts"><button class="btn btn-secondary">看提示</button><button class="btn btn-err">知道了</button></div>`
+ : `<div class="top"><span class="ic"><svg><use href="#i-check"/></svg></span><h2>答对了！</h2><span class="badge badge-xp xp">+10 XP</span></div>
+    <p>print 只显示引号里面的文字，引号本身不会出现。</p>
+    <div class="outp"><small>运行结果</small>欢迎光临！</div>
+    <div class="acts"><button class="btn btn-secondary">看解析</button><button class="btn btn-ok">继续</button></div>`;
+</script></body></html>
