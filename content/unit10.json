@@ -1,0 +1,713 @@
+{
+  "id": "U10",
+  "title": "字符串操作",
+  "subtitle": "切片、查找、替换、拆分",
+  "lessons": [
+    {
+      "id": "U10L1",
+      "title": "字符串的下标",
+      "concept": "s[0]、s[-1]、最后一个是 len(s) - 1",
+      "story": "字符串和列表一样，可以按位置取：s = \"python\"，s[0] 是第一个字符 \"p\"，s[-1] 是最后一个 \"n\"。下标从 0 开始，所以最后一个的下标是 len(s) - 1。下标超出范围会报 IndexError。",
+      "introCode": "s = \"python\"\nprint(s[0])\nprint(s[-1])\nprint(len(s))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"hello\"\nprint(s[1])\nprint(s[-2])",
+          "options": [
+            {
+              "text": "e\nl",
+              "correct": true,
+              "why": "下标从 0 开始：s[0] 是 h，s[1] 是 e。负下标从末尾数：s[-1] 是 o，s[-2] 是 l。"
+            },
+            {
+              "text": "h\nl",
+              "correct": false,
+              "why": "s[1] 不是第一个字符：下标从 0 开始，h 是 s[0]，s[1] 是 e。"
+            },
+            {
+              "text": "e\no",
+              "correct": false,
+              "why": "s[-1] 才是最后一个 o；s[-2] 是倒数第二个 l。"
+            },
+            {
+              "text": "h\no",
+              "correct": false,
+              "why": "两个都差了一位：s[1] 是 e，s[-2] 是 l。"
+            }
+          ],
+          "tip": "正着数从 0 开始，倒着数从 -1 开始。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"abc\"\nprint(s[len(s) - 1])",
+          "options": [
+            {
+              "text": "c",
+              "correct": true,
+              "why": "len(s) 是 3，len(s) - 1 是 2，s[2] 是最后一个字符 c。"
+            },
+            {
+              "text": "b",
+              "correct": false,
+              "why": "len(s) - 1 是 2，s[2] 是 c；b 是 s[1]。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "3 是长度 len(s)；这里取的是下标 2 上的字符。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "s[3] 才会超出范围；这里减了 1，s[2] 正好是最后一个。"
+            }
+          ],
+          "tip": "最后一个字符的下标 = 长度 - 1。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出单词的最后一个字符：d",
+          "code": "s = \"word\"\nprint(s[{0}])",
+          "tokens": [
+            "-1",
+            "4",
+            "len(s)",
+            "0"
+          ],
+          "answer": [
+            "-1"
+          ],
+          "expected": "d",
+          "why": {
+            "4": "word 有 4 个字符，下标是 0 到 3，s[4] 超出范围，报 IndexError。",
+            "len(s)": "len(s) 是 4，s[4] 超出范围，报 IndexError。最后一个是 len(s) - 1 或 -1。",
+            "0": "s[0] 是第一个字符 w。"
+          },
+          "hint": "倒着数，最后一个是 -1。"
+        },
+        {
+          "type": "predict",
+          "prompt": "这段程序报错了，最后一行是：\nIndexError: string index out of range\n是什么原因？",
+          "code": "s = \"cat\"\nprint(s[3])",
+          "expectError": {
+            "type": "IndexError",
+            "line": 2,
+            "stdout": "",
+            "msg": "string index out of range"
+          },
+          "options": [
+            {
+              "text": "下标 3 超出范围：cat 的下标只有 0、1、2",
+              "correct": true,
+              "why": "cat 有 3 个字符，下标从 0 开始，最大是 2。s[3] 取不到，报 IndexError。"
+            },
+            {
+              "text": "字符串不能用下标取字符",
+              "correct": false,
+              "why": "字符串可以用下标：s[0] 是 c。问题是 3 超出了范围。"
+            },
+            {
+              "text": "3 要写成 \"3\"",
+              "correct": false,
+              "why": "下标是整数；写成文字 \"3\" 会报 TypeError。这里错在 3 太大。"
+            },
+            {
+              "text": "print 里不能放 s[3]",
+              "correct": false,
+              "why": "print 里可以放任何表达式；是 s[3] 本身取不到。"
+            }
+          ],
+          "tip": "IndexError：下标超出范围。长度为 n 的字符串，下标是 0 到 n - 1。",
+          "optionLayout": "text"
+        }
+      ]
+    },
+    {
+      "id": "U10L2",
+      "title": "切片和反转",
+      "concept": "s[a:b]、s[:n]、s[n:]、s[::-1]",
+      "story": "切片和列表一样：s[a:b] 取下标 a 到 b - 1；s[:3] 取前 3 个，s[2:] 从下标 2 取到末尾。再加一个数是步长：s[::-1] 从后往前一个一个取，得到反过来的字符串。切片超出范围不报错。",
+      "introCode": "s = \"python\"\nprint(s[:2])\nprint(s[2:])\nprint(s[::-1])",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"abcdef\"\nprint(s[1:4])",
+          "options": [
+            {
+              "text": "bcd",
+              "correct": true,
+              "why": "从下标 1（b）开始，到下标 4 之前停：取下标 1、2、3，就是 bcd。"
+            },
+            {
+              "text": "bcde",
+              "correct": false,
+              "why": "终点下标 4（e）不包含在内，只取到下标 3。"
+            },
+            {
+              "text": "abcd",
+              "correct": false,
+              "why": "起点是下标 1，不是 0：a 是下标 0，不在里面。"
+            },
+            {
+              "text": "abc",
+              "correct": false,
+              "why": "s[1:4] 从下标 1 开始；abc 是 s[:3]。"
+            }
+          ],
+          "tip": "s[a:b]：包含 a，不包含 b。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"hello\"\nprint(s[::-1])",
+          "options": [
+            {
+              "text": "olleh",
+              "correct": true,
+              "why": "步长 -1：从最后一个字符开始，往前一个一个取，整串反过来。"
+            },
+            {
+              "text": "hello",
+              "correct": false,
+              "why": "步长是 -1，不是 1：方向反了。"
+            },
+            {
+              "text": "o",
+              "correct": false,
+              "why": "s[-1] 才只取最后一个；s[::-1] 取的是全部，只是倒着取。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "切片可以写步长，s[::-1] 是常用写法，不会报错。"
+            }
+          ],
+          "tip": "s[::-1] 是反转字符串的常用写法。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出前 3 个字符：pyt",
+          "code": "s = \"python\"\nprint(s[{0}])",
+          "tokens": [
+            ":3",
+            "0:2",
+            "3:",
+            "1:3"
+          ],
+          "answer": [
+            ":3"
+          ],
+          "expected": "pyt",
+          "why": {
+            "0:2": "s[0:2] 不包含下标 2，只有 py 两个。",
+            "3:": "s[3:] 是从下标 3 到末尾：hon。",
+            "1:3": "s[1:3] 从下标 1 开始：yt，少了 p。"
+          },
+          "hint": "前 n 个：s[:n]。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"abc\"\nprint(s[1:10])",
+          "options": [
+            {
+              "text": "bc",
+              "correct": true,
+              "why": "切片的终点超出范围不报错，取到末尾为止：从下标 1 取到最后，就是 bc。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "单个下标 s[10] 会报 IndexError；切片超出范围不会，取到末尾就停。"
+            },
+            {
+              "text": "b",
+              "correct": false,
+              "why": "s[1:10] 不是只取下标 1；它取下标 1 到末尾。"
+            },
+            {
+              "text": "abc",
+              "correct": false,
+              "why": "起点是下标 1，a 不在里面。"
+            }
+          ],
+          "tip": "取单个字符会越界报错，切片不会。"
+        }
+      ]
+    },
+    {
+      "id": "U10L3",
+      "title": "一个字符一个字符看",
+      "concept": "for ch in s、计数、倒着拼",
+      "story": "for ch in s 每一轮取出一个字符，从左到右。配合 if 和计数变量，就能数出某种字符有几个，比如元音：if ch in \"aeiou\"。每轮把 ch 放到前面拼，r = ch + r，拼出来就是反过来的字符串。",
+      "introCode": "s = \"hi\"\nfor ch in s:\n    print(ch)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"abc\"\nfor ch in s:\n    print(ch * 2)",
+          "options": [
+            {
+              "text": "aa\nbb\ncc",
+              "correct": true,
+              "why": "每一轮 ch 是一个字符，ch * 2 把它重复两次；print 每轮一行。"
+            },
+            {
+              "text": "abcabc",
+              "correct": false,
+              "why": "乘 2 的是每一轮的单个字符，不是整个 s。"
+            },
+            {
+              "text": "aabbcc",
+              "correct": false,
+              "why": "print 每轮都会换行，所以是三行，不是一行。"
+            },
+            {
+              "text": "a\nb\nc",
+              "correct": false,
+              "why": "每个字符都乘了 2，所以是 aa、bb、cc。"
+            }
+          ],
+          "tip": "for ch in s：每一轮 ch 是一个字符。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出单词里元音字母（a e i o u）的个数：2",
+          "code": "s = \"apple\"\nn = 0\nfor ch in s:\n    if ch {0} \"aeiou\":\n        n = n + 1\nprint(n)",
+          "tokens": [
+            "in",
+            "not in",
+            "==",
+            "!="
+          ],
+          "answer": [
+            "in"
+          ],
+          "expected": "2",
+          "why": {
+            "not in": "数的是不在 aeiou 里的字符：p、p、l，得 3。",
+            "==": "ch == \"aeiou\" 是拿一个字符和整串比，永远不相等，得 0。",
+            "!=": "一个字符永远不等于整串 \"aeiou\"，每轮都成立，5 个字符全数上，得 5。"
+          },
+          "hint": "看 ch 是不是 \"aeiou\" 里的一个：用 in。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序，数出字母 a 出现的次数。输出：3",
+          "lines": [
+            "s = \"banana\"",
+            "n = 0",
+            "for ch in s:",
+            "    if ch == \"a\":",
+            "        n = n + 1",
+            "print(n)"
+          ],
+          "shuffled": [
+            5,
+            2,
+            4,
+            0,
+            3,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            [
+              1,
+              0,
+              2,
+              3,
+              4,
+              5
+            ]
+          ],
+          "expected": "3",
+          "hint": "s 和 n = 0 在循环前面；if 缩进在 for 里，计数再缩进在 if 里；最后在循环外输出一次。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"abc\"\nr = \"\"\nfor ch in s:\n    r = ch + r\nprint(r)",
+          "options": [
+            {
+              "text": "cba",
+              "correct": true,
+              "why": "每轮把 ch 放在 r 前面：a → ba → cba。拼出来是反过来的字符串。"
+            },
+            {
+              "text": "abc",
+              "correct": false,
+              "why": "r = r + ch 才是按原顺序拼；这里 ch 在前面，新字符总排到最前。"
+            },
+            {
+              "text": "c",
+              "correct": false,
+              "why": "r 每轮都留着之前的字符，再在前面加一个，最后有 3 个字符。"
+            },
+            {
+              "text": "a",
+              "correct": false,
+              "why": "r 不是每轮重来：它从空串开始，一轮比一轮长。"
+            }
+          ],
+          "tip": "一轮一轮追 r：每轮它变成什么？"
+        }
+      ]
+    },
+    {
+      "id": "U10L4",
+      "title": "查找、替换、计数",
+      "concept": "s.find()、s.count()、s.replace()",
+      "story": "s.find(\"lo\") 交回第一次出现的下标，找不到交回 -1；s.count(\"l\") 数出现几次；s.replace(\"a\", \"b\") 把所有 a 换成 b，交回一个新的字符串，原来的 s 不变。字符串本身不能改，只能做出新的。",
+      "introCode": "s = \"hello\"\nprint(s.find(\"l\"))\nprint(s.count(\"l\"))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"banana\"\nprint(s.find(\"na\"))\nprint(s.find(\"x\"))",
+          "options": [
+            {
+              "text": "2\n-1",
+              "correct": true,
+              "why": "na 第一次出现在下标 2（b 0、a 1、n 2）；x 找不到，find 交回 -1。"
+            },
+            {
+              "text": "3\n-1",
+              "correct": false,
+              "why": "下标从 0 开始数：n 在下标 2。3 是从 1 开始数的结果。"
+            },
+            {
+              "text": "2\n报错",
+              "correct": false,
+              "why": "find 找不到不会报错，交回 -1。"
+            },
+            {
+              "text": "2\n0",
+              "correct": false,
+              "why": "找不到交回的是 -1，不是 0：0 表示在开头找到了。"
+            }
+          ],
+          "tip": "find：找到交回下标，找不到交回 -1。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"cat\"\nt = s.replace(\"c\", \"b\")\nprint(s)\nprint(t)",
+          "options": [
+            {
+              "text": "cat\nbat",
+              "correct": true,
+              "why": "replace 交回新的字符串 bat 存进 t；原来的 s 没有变，还是 cat。"
+            },
+            {
+              "text": "bat\nbat",
+              "correct": false,
+              "why": "字符串不能原地改：replace 不会改 s，只是交回一个新的。"
+            },
+            {
+              "text": "cat\ncat",
+              "correct": false,
+              "why": "t 拿到的是替换后的新字符串 bat。"
+            },
+            {
+              "text": "bat\ncat",
+              "correct": false,
+              "why": "s 和 t 反了：s 没变是 cat，t 是新的 bat。"
+            }
+          ],
+          "tip": "replace 交回新字符串，原来的不变。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出字母 s 出现的次数：4",
+          "code": "s = \"mississippi\"\nprint(s.count({0}))",
+          "tokens": [
+            "\"s\"",
+            "\"p\"",
+            "\"ss\"",
+            "s"
+          ],
+          "answer": [
+            "\"s\""
+          ],
+          "expected": "4",
+          "why": {
+            "\"p\"": "p 只出现 2 次。要数的是字母 s。",
+            "\"ss\"": "数的是 \"ss\" 这两个字母连在一起出现几次：2 次。",
+            "s": "没有引号，s 是变量，就是整个 \"mississippi\"，它在自己里面出现 1 次。"
+          },
+          "hint": "要数的字母写成文字，带引号。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"a-b-c\"\nprint(s.replace(\"-\", \"\"))",
+          "options": [
+            {
+              "text": "abc",
+              "correct": true,
+              "why": "把每个 - 换成空字符串，等于删掉所有 -。"
+            },
+            {
+              "text": "a-b-c",
+              "correct": false,
+              "why": "replace 交回新的字符串并被 print 出来了；新的里面没有 -。"
+            },
+            {
+              "text": "a b c",
+              "correct": false,
+              "why": "换成的是空字符串 \"\"，不是空格。"
+            },
+            {
+              "text": "ab-c",
+              "correct": false,
+              "why": "replace 会换掉所有出现的，不只第一个。"
+            }
+          ],
+          "tip": "换成 \"\" 就是删掉。"
+        }
+      ]
+    },
+    {
+      "id": "U10L5",
+      "title": "拆分、拼接、大小写",
+      "concept": "s.split()、\"-\".join()、upper / lower",
+      "story": "s.split() 按空格把字符串拆成列表；\"-\".join(列表) 用 - 把列表里的字符串接成一个。s.upper() 全变大写，s.lower() 全变小写。它们都交回新的值，不改原来的 s。",
+      "introCode": "s = \"I love py\"\nw = s.split()\nprint(w)\nprint(\"-\".join(w))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "s = \"a b c\"\nprint(s.split())",
+          "options": [
+            {
+              "text": "['a', 'b', 'c']",
+              "correct": true,
+              "why": "split() 按空格拆开，得到一个列表，里面是三个字符串。"
+            },
+            {
+              "text": "abc",
+              "correct": false,
+              "why": "split 不是删空格；它交回列表。"
+            },
+            {
+              "text": "['a b c']",
+              "correct": false,
+              "why": "按空格拆开了：三个字母各是一个元素。"
+            },
+            {
+              "text": "['a', ' ', 'b', ' ', 'c']",
+              "correct": false,
+              "why": "空格是分隔的地方，不会留在列表里。"
+            }
+          ],
+          "tip": "split() 交回列表。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "w = [\"x\", \"y\", \"z\"]\nprint(\"+\".join(w))",
+          "options": [
+            {
+              "text": "x+y+z",
+              "correct": true,
+              "why": "用 + 接起来：只放在元素之间，开头结尾都不加。"
+            },
+            {
+              "text": "+x+y+z",
+              "correct": false,
+              "why": "join 只把分隔符放在元素之间，开头不加。"
+            },
+            {
+              "text": "x+y+z+",
+              "correct": false,
+              "why": "结尾也不加分隔符。"
+            },
+            {
+              "text": "xyz",
+              "correct": false,
+              "why": "分隔符是 \"+\"，每两个元素之间都放一个。"
+            }
+          ],
+          "tip": "\"分隔符\".join(列表)：分隔符放在元素之间。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出：HELLO",
+          "code": "s = \"Hello\"\nprint(s.{0}())",
+          "tokens": [
+            "upper",
+            "lower",
+            "title",
+            "split"
+          ],
+          "answer": [
+            "upper"
+          ],
+          "expected": "HELLO",
+          "why": {
+            "lower": "lower() 全变小写：hello。",
+            "title": "title() 只让每个单词首字母大写：Hello。",
+            "split": "split() 交回列表 ['Hello']。"
+          },
+          "hint": "全变大写：upper。"
+        },
+        {
+          "type": "predict",
+          "prompt": "笔试常见题：把句子里的单词顺序反过来。运行下面的程序，输出是什么？",
+          "code": "s = \"I am Tom\"\nw = s.split()\nprint(\" \".join(w[::-1]))",
+          "options": [
+            {
+              "text": "Tom am I",
+              "correct": true,
+              "why": "先拆成 ['I', 'am', 'Tom']，列表反过来是 ['Tom', 'am', 'I']，再用空格接起来。"
+            },
+            {
+              "text": "moT ma I",
+              "correct": false,
+              "why": "反过来的是列表（单词的顺序），每个单词里面的字母不动。"
+            },
+            {
+              "text": "I am Tom",
+              "correct": false,
+              "why": "w[::-1] 把列表反过来了，顺序变了。"
+            },
+            {
+              "text": "moT ma I ",
+              "correct": false,
+              "why": "join 不会在结尾加空格；而且单词里的字母不反。"
+            }
+          ],
+          "tip": "先 split 成列表，反转列表，再 join。"
+        }
+      ]
+    },
+    {
+      "id": "U10L6",
+      "title": "笔试题：回文串",
+      "concept": "回文判断：统一大小写，再和反转比较",
+      "story": "笔试常见题：判断字符串是不是回文——正着读和倒着读一样，比如 \"level\"。思路：先统一成小写，再和反过来的自己比：s == s[::-1]。写成函数，交回 True 或 False。",
+      "introCode": "def is_pal(s):\n    s = s.lower()\n    return s == s[::-1]\nprint(is_pal(\"Level\"))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "def is_pal(s):\n    return s == s[::-1]\nprint(is_pal(\"abba\"))\nprint(is_pal(\"abc\"))",
+          "options": [
+            {
+              "text": "True\nFalse",
+              "correct": true,
+              "why": "abba 反过来还是 abba，相等，交回 True；abc 反过来是 cba，不相等，交回 False。"
+            },
+            {
+              "text": "False\nTrue",
+              "correct": false,
+              "why": "两个反了：abba 是回文。"
+            },
+            {
+              "text": "True\nTrue",
+              "correct": false,
+              "why": "abc 反过来是 cba，和 abc 不一样。"
+            },
+            {
+              "text": "abba\ncba",
+              "correct": false,
+              "why": "is_pal 交回的是比较的结果 True / False，不是字符串。"
+            }
+          ],
+          "tip": "== 比较交回 True 或 False。"
+        },
+        {
+          "type": "predict",
+          "prompt": "题目要求不区分大小写（\"Aa\" 也算回文）。AI 写的 is_pal 没有统一大小写。用哪个输入测试，能看出它和题目要求不一致？",
+          "code": "def is_pal(s):\n    return s == s[::-1]",
+          "fixed": "不一致",
+          "options": [
+            {
+              "text": "is_pal(\"Aa\")",
+              "correct": true,
+              "why": "题目要求：Aa 统一成小写 aa，是回文，应交回 True；AI 的程序直接比 Aa 和 aA，不相等，交回 False。不一致，测出来了。",
+              "program": "def is_pal(s):\n    return s == s[::-1]\ndef rule(s):\n    s = s.lower()\n    return s == s[::-1]\nx = \"Aa\"\nprint(\"不一致\" if is_pal(x) != rule(x) else \"一致\")"
+            },
+            {
+              "text": "is_pal(\"aa\")",
+              "correct": false,
+              "why": "全是小写：题目和程序都交回 True，一致，测不出来。",
+              "program": "def is_pal(s):\n    return s == s[::-1]\ndef rule(s):\n    s = s.lower()\n    return s == s[::-1]\nx = \"aa\"\nprint(\"不一致\" if is_pal(x) != rule(x) else \"一致\")"
+            },
+            {
+              "text": "is_pal(\"ab\")",
+              "correct": false,
+              "why": "不是回文：题目和程序都交回 False，一致。",
+              "program": "def is_pal(s):\n    return s == s[::-1]\ndef rule(s):\n    s = s.lower()\n    return s == s[::-1]\nx = \"ab\"\nprint(\"不一致\" if is_pal(x) != rule(x) else \"一致\")"
+            },
+            {
+              "text": "is_pal(\"ABA\")",
+              "correct": false,
+              "why": "全是大写，反过来还是 ABA：程序交回 True，题目也是 True，一致。",
+              "program": "def is_pal(s):\n    return s == s[::-1]\ndef rule(s):\n    s = s.lower()\n    return s == s[::-1]\nx = \"ABA\"\nprint(\"不一致\" if is_pal(x) != rule(x) else \"一致\")"
+            }
+          ],
+          "tip": "能测出错的输入，要用上“有大有小”这一点。"
+        },
+        {
+          "type": "fill",
+          "prompt": "不区分大小写：输出 True",
+          "code": "def is_pal(s):\n    s = s.{0}()\n    return s == s[::-1]\nprint(is_pal(\"Noon\"))",
+          "tokens": [
+            "lower",
+            "count",
+            "title",
+            "strip"
+          ],
+          "answer": [
+            "lower"
+          ],
+          "expected": "True",
+          "why": {
+            "count": "count 要给出数什么，s.count() 没有参数会报 TypeError。这里要的是统一大小写。",
+            "title": "title() 让首字母大写：Noon，反过来 nooN，不相等，输出 False。",
+            "strip": "strip() 只去掉两头的空格，大小写没变：Noon 和 nooN 不相等，输出 False。"
+          },
+          "hint": "先把大小写统一：全变小写。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：写出不区分大小写的回文判断，并测试 \"Level\"。输出：True",
+          "lines": [
+            "def is_pal(s):",
+            "    s = s.lower()",
+            "    return s == s[::-1]",
+            "print(is_pal(\"Level\"))"
+          ],
+          "shuffled": [
+            3,
+            2,
+            0,
+            1
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expected": "True",
+          "hint": "先 def；函数里先统一小写，再 return 比较；最后在函数外调用。"
+        }
+      ]
+    }
+  ]
+}
