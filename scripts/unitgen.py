@@ -39,6 +39,7 @@ def fill(prompt, code, tokens, answer, why, hint):
     acc = [answer]  # 界面的填空判分只认一个答案，所以除标准答案外的词块都必须得不到期望输出
     for t in tokens:
         o, e2 = run(code.replace("{0}", t))
+        assert e2 != "Timeout", f"词块 {t!r} 会让程序停不下来（超时），学生点到就会卡住，换掉它"
         ok = e2 is None and o == expected
         assert ok == (t in acc), f"词块 {t!r}：输出 {o!r} / {e2}，期望 {expected!r}，可接受 {acc}"
         if t not in [answer]: assert t in why, f"词块 {t!r} 没有解释"

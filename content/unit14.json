@@ -1,0 +1,750 @@
+{
+  "id": "U14",
+  "title": "复杂度",
+  "subtitle": "程序跑多快：数一数做了几步",
+  "lessons": [
+    {
+      "id": "U14L1",
+      "title": "数一数做了几步",
+      "concept": "程序快不快，看它做了几步",
+      "story": "同一个问题，不同写法快慢可能差很多。比快慢不看秒表，看“做了几步”：在循环里放一个计数器 c = c + 1，循环跑几次，c 就是几。数据越多，步数差别越明显。",
+      "introCode": "c = 0\nfor i in range(5):\n    c = c + 1\nprint(c)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "c = 0\nfor i in range(10):\n    c = c + 1\nprint(c)",
+          "options": [
+            {
+              "text": "10",
+              "correct": true,
+              "why": "range(10) 走 10 次，每次加 1。"
+            },
+            {
+              "text": "9",
+              "correct": false,
+              "why": "range(10) 是 0 到 9，一共 10 个数，走 10 次。"
+            },
+            {
+              "text": "11",
+              "correct": false,
+              "why": "range(10) 不包括 10，一共走 10 次。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "c = c + 1 在循环里，每一轮都加。"
+            }
+          ],
+          "tip": "循环跑几次，计数器就是几。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "c = 0\nfor i in range(4):\n    for j in range(3):\n        c = c + 1\nprint(c)",
+          "options": [
+            {
+              "text": "12",
+              "correct": true,
+              "why": "外层 4 轮，每轮内层 3 次：4 × 3 = 12。"
+            },
+            {
+              "text": "7",
+              "correct": false,
+              "why": "两层循环的次数是相乘，不是相加。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "内层每轮还要走 3 次。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "外层有 4 轮，每轮内层都走一遍。"
+            }
+          ],
+          "tip": "两层循环：次数相乘。"
+        },
+        {
+          "type": "fill",
+          "prompt": "数一数循环跑了几次，输出：6",
+          "code": "c = 0\nfor i in range(6):\n    {0}\nprint(c)",
+          "tokens": [
+            "c = c + 1",
+            "c = c + 2",
+            "c = 0",
+            "c = i"
+          ],
+          "answer": [
+            "c = c + 1"
+          ],
+          "expected": "6",
+          "why": {
+            "c = c + 2": "每轮加 2：6 轮得 12。",
+            "c = 0": "每轮都清零，最后是 0。",
+            "c = i": "最后一轮 i 是 5，得 5。"
+          },
+          "hint": "外层每轮加 1。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [4, 7, 1, 9]\nc = 0\nfor x in a:\n    c = c + 1\n    if x == 1:\n        break\nprint(c)",
+          "options": [
+            {
+              "text": "3",
+              "correct": true,
+              "why": "比了 4、7、1，第 3 个就找到了，break 停下：3 步。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "找到 1 以后就 break 了，9 没有再看。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "第 3 个才是 1：4、7、1 一共 3 步。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "4 和 7 都不是，要继续往后找。"
+            }
+          ],
+          "tip": "找到就停：步数看要找的在第几个。"
+        }
+      ]
+    },
+    {
+      "id": "U14L2",
+      "title": "数据翻倍会怎样",
+      "concept": "O(n) 线性、O(n²) 平方",
+      "story": "把数据量记作 n。一层循环走 n 次，步数跟 n 成正比，记作 O(n)：n 翻倍，步数也翻倍。两层循环各走 n 次，步数是 n × n，记作 O(n²)：n 翻倍，步数变成 4 倍。n 很大时，O(n²) 慢得多。",
+      "introCode": "def steps(n):\n    c = 0\n    for i in range(n):\n        c = c + 1\n    return c\nprint(steps(5))\nprint(steps(10))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "def steps(n):\n    c = 0\n    for i in range(n):\n        c = c + 1\n    return c\na = steps(10)\nb = steps(20)\nprint(b // a)",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "一层循环：steps(10) 是 10，steps(20) 是 20，翻了 2 倍（// 是整除）。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "4 倍是两层循环的情况；这里只有一层。"
+            },
+            {
+              "text": "10",
+              "correct": false,
+              "why": "10 是 b - a；这里是整除 b // a。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "步数跟着 n 变：20 是 10 的 2 倍。"
+            }
+          ],
+          "tip": "O(n)：n 翻倍，步数翻倍。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "def steps(n):\n    c = 0\n    for i in range(n):\n        for j in range(n):\n            c = c + 1\n    return c\na = steps(10)\nb = steps(20)\nprint(b // a)",
+          "options": [
+            {
+              "text": "4",
+              "correct": true,
+              "why": "两层循环：steps(10) = 100，steps(20) = 400，变成 4 倍。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "每一层都翻倍，相乘起来是 2 × 2 = 4 倍。"
+            },
+            {
+              "text": "100",
+              "correct": false,
+              "why": "100 是 steps(10)；这里问的是倍数。"
+            },
+            {
+              "text": "20",
+              "correct": false,
+              "why": "b 是 400，a 是 100，400 // 100 = 4。"
+            }
+          ],
+          "tip": "O(n²)：n 翻倍，步数变 4 倍。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出两层循环在 n = 3 时的步数：9",
+          "code": "def steps(n):\n    c = 0\n    for i in range(n):\n        for j in range(n):\n            c = c + 1\n    return c\nprint(steps({0}))",
+          "tokens": [
+            "3",
+            "9",
+            "6",
+            "1"
+          ],
+          "answer": [
+            "3"
+          ],
+          "expected": "9",
+          "why": {
+            "9": "steps(9) 是 9 × 9 = 81。要问的是 n = 3。",
+            "6": "steps(6) 是 36。",
+            "1": "steps(1) 是 1。"
+          },
+          "hint": "传进去的是 n，不是步数。"
+        },
+        {
+          "type": "predict",
+          "prompt": "n = 100，比较一层循环和两层循环的步数。运行下面的程序，输出是什么？",
+          "code": "n = 100\na = 0\nfor i in range(n):\n    a = a + 1\nb = 0\nfor i in range(n):\n    for j in range(n):\n        b = b + 1\nprint(b // a)",
+          "options": [
+            {
+              "text": "100",
+              "correct": true,
+              "why": "一层：100 步；两层：100 × 100 = 10000 步，是 100 倍。n 越大差得越多。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "两层不是“多一倍”：是多乘一个 n。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "4 倍是 n 翻倍时 O(n²) 的变化；这里比较的是同一个 n 下两种写法。"
+            },
+            {
+              "text": "10000",
+              "correct": false,
+              "why": "10000 是 b；b // a 是 10000 // 100。"
+            }
+          ],
+          "tip": "同一个 n：O(n²) 比 O(n) 多乘一个 n。"
+        }
+      ]
+    },
+    {
+      "id": "U14L3",
+      "title": "不管多少数据都一步",
+      "concept": "O(1)：下标取值、字典按键取值",
+      "story": "有些操作不管数据多大都只要一步，记作 O(1)：a[5] 按下标取值，直接定位，不用从头数；d[\"key\"] 按键取值也是。可是“在列表里找某个值”要一个个比，是 O(n)。所以能按位置或按键拿，就别去遍历。",
+      "introCode": "a = [5, 8, 2, 9]\nprint(a[2])\nprint(a[-1])",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "两个函数都数自己做了几步。运行下面的程序，输出是什么？",
+          "code": "def walk(a):\n    c = 0\n    for x in a:\n        c = c + 1\n    return c\ndef last(a):\n    x = a[-1]\n    return 1\nb = []\nfor i in range(6):\n    b.append(i)\nprint(walk(b), last(b))",
+          "options": [
+            {
+              "text": "6 1",
+              "correct": true,
+              "why": "walk 把 6 个数都走一遍：6 步，O(n)；last 直接用下标取最后一个：1 步，O(1)。"
+            },
+            {
+              "text": "6 6",
+              "correct": false,
+              "why": "a[-1] 直接定位到最后一个，不用从头走。"
+            },
+            {
+              "text": "1 1",
+              "correct": false,
+              "why": "walk 里有循环，列表有几个数就走几步。"
+            },
+            {
+              "text": "6 5",
+              "correct": false,
+              "why": "last 交回的就是 1：它只做了取下标这一步。"
+            }
+          ],
+          "tip": "按下标取值：O(1)；遍历：O(n)。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "def find(a, t):\n    c = 0\n    for x in a:\n        c = c + 1\n        if x == t:\n            return c\n    return c\nprint(find([3, 5, 7, 9], 9))",
+          "options": [
+            {
+              "text": "4",
+              "correct": true,
+              "why": "9 在最后：3、5、7、9 一个个比，第 4 步才找到。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "按值找要从头比，不是直接定位。"
+            },
+            {
+              "text": "9",
+              "correct": false,
+              "why": "返回的是比了几次，不是找到的值。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "9 是第 4 个，要比 4 次。"
+            }
+          ],
+          "tip": "按值找：最坏要看完整个列表，O(n)。"
+        },
+        {
+          "type": "fill",
+          "prompt": "输出：True（直接按键查，不用遍历）",
+          "code": "d = {\"a\": 1, \"b\": 2}\nprint({0} in d)",
+          "tokens": [
+            "\"b\"",
+            "2",
+            "\"c\"",
+            "b"
+          ],
+          "answer": [
+            "\"b\""
+          ],
+          "expected": "True",
+          "why": {
+            "2": "in 字典看的是键，不是值；2 不是键，输出 False。",
+            "\"c\"": "字典里没有键 \"c\"，输出 False。",
+            "b": "没有引号，b 是一个没定义的变量，报 NameError。"
+          },
+          "hint": "in 字典：查的是键。"
+        },
+        {
+          "type": "predict",
+          "prompt": "步数一样吗？运行下面的程序，输出是什么？",
+          "code": "a = []\nfor i in range(100):\n    a.append(i)\ns = set(a)\nc = 0\nfor x in a:\n    c = c + 1\n    if x == 99:\n        break\nprint(c)\nprint(99 in s)",
+          "options": [
+            {
+              "text": "100\nTrue",
+              "correct": true,
+              "why": "在列表里一个个比，99 在最后，比了 100 次；集合查 99 in s 不用一个个比，直接给出 True。"
+            },
+            {
+              "text": "1\nTrue",
+              "correct": false,
+              "why": "列表要从头比：99 是第 100 个。"
+            },
+            {
+              "text": "99\nTrue",
+              "correct": false,
+              "why": "0 到 99 一共 100 个，99 是第 100 个。"
+            },
+            {
+              "text": "100\n100",
+              "correct": false,
+              "why": "99 in s 交回的是 True / False。"
+            }
+          ],
+          "tip": "列表 in：一个个比，O(n)；集合 / 字典 in：O(1)。"
+        }
+      ]
+    },
+    {
+      "id": "U14L4",
+      "title": "每次减半",
+      "concept": "O(log n)；整除 //",
+      "story": "// 是整除：7 // 2 得 3，只留整数部分。如果每一步都把剩下的减掉一半，步数就很少：1000 个只要 10 步左右，100 万个也只要 20 步左右。这记作 O(log n)，比 O(n) 快得多，二分查找就是这样。",
+      "introCode": "print(7 // 2)\nprint(8 // 2)\nprint(1 // 2)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "print(9 // 2)\nprint(10 // 4)",
+          "options": [
+            {
+              "text": "4\n2",
+              "correct": true,
+              "why": "9 ÷ 2 = 4.5，整除只留 4；10 ÷ 4 = 2.5，留 2。"
+            },
+            {
+              "text": "4.5\n2.5",
+              "correct": false,
+              "why": "// 是整除，去掉小数部分；带小数的是 /。"
+            },
+            {
+              "text": "5\n3",
+              "correct": false,
+              "why": "整除是直接去掉小数，不是四舍五入。"
+            },
+            {
+              "text": "1\n2",
+              "correct": false,
+              "why": "9 // 2 是商 4，不是余数 1。"
+            }
+          ],
+          "tip": "//：只留整数部分。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "n = 16\nc = 0\nwhile n > 1:\n    n = n // 2\n    c = c + 1\nprint(c)",
+          "options": [
+            {
+              "text": "4",
+              "correct": true,
+              "why": "16 → 8 → 4 → 2 → 1：减半了 4 次。"
+            },
+            {
+              "text": "16",
+              "correct": false,
+              "why": "每次减半，不是每次减 1。"
+            },
+            {
+              "text": "8",
+              "correct": false,
+              "why": "8 是第一次减半后的值；一共减半 4 次。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "n 变成 1 时 while 就停了，不再减。"
+            }
+          ],
+          "tip": "每次减半：数一数要几次才到 1。"
+        },
+        {
+          "type": "fill",
+          "prompt": "n 从 1024 开始每次减半，数到 1 一共几步：10",
+          "code": "n = 1024\nc = 0\nwhile n > 1:\n    n = {0}\n    c = c + 1\nprint(c)",
+          "tokens": [
+            "n // 2",
+            "n - 1",
+            "n // 4",
+            "n // 3"
+          ],
+          "answer": [
+            "n // 2"
+          ],
+          "expected": "10",
+          "why": {
+            "n - 1": "每次减 1：要 1023 步。",
+            "n // 4": "每次变成四分之一：只要 5 步。",
+            "n // 3": "每次变成三分之一：1024、341、113、37、12、4、1，只要 6 步。"
+          },
+          "hint": "减半：n // 2。"
+        },
+        {
+          "type": "predict",
+          "prompt": "n 从 1000 增加到 1000000（多了 1000 倍）。运行下面的程序，输出是什么？",
+          "code": "def half(n):\n    c = 0\n    while n > 1:\n        n = n // 2\n        c = c + 1\n    return c\nprint(half(1000))\nprint(half(1000000))",
+          "options": [
+            {
+              "text": "9\n19",
+              "correct": true,
+              "why": "数据多了 1000 倍，减半的步数只多了 10 步左右：这就是 O(log n)。"
+            },
+            {
+              "text": "9\n9000",
+              "correct": false,
+              "why": "减半的步数不会跟着数据量成倍增长。"
+            },
+            {
+              "text": "10\n20",
+              "correct": false,
+              "why": "1000 减半 9 次就到 1（1000、500、250、125、62、31、15、7、3、1），不是 10 次。"
+            },
+            {
+              "text": "1000\n1000000",
+              "correct": false,
+              "why": "这是数据量本身；返回的是减半的次数。"
+            }
+          ],
+          "tip": "O(log n)：数据量翻很多倍，步数只多一点。"
+        }
+      ]
+    },
+    {
+      "id": "U14L5",
+      "title": "选对数据结构",
+      "concept": "反复查“在不在”：先变成集合",
+      "story": "要在一组数里反复查“某个数在不在”，用列表每查一次都要 O(n)，查 n 次就是 O(n²)。先把它变成集合，每查一次 O(1)，总共 O(n)。笔试题里看到“找重复”“找配对”，常常就是这样从 O(n²) 降到 O(n)。",
+      "introCode": "a = [3, 1, 4, 1]\ns = set(a)\nprint(4 in s)\nprint(len(s))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "找出列表里有没有重复。运行下面的程序，输出是什么？",
+          "code": "a = [5, 3, 8, 3]\nseen = set()\nfor x in a:\n    if x in seen:\n        print(\"重复\", x)\n        break\n    seen.add(x)",
+          "options": [
+            {
+              "text": "重复 3",
+              "correct": true,
+              "why": "一边走一边记进 seen：走到第二个 3 时，3 已经在 seen 里了。只走一遍，O(n)。"
+            },
+            {
+              "text": "重复 5",
+              "correct": false,
+              "why": "5 只出现一次；第一次查到在 seen 里的是 3。"
+            },
+            {
+              "text": "什么都不显示",
+              "correct": false,
+              "why": "3 出现了两次，第二次会被发现。"
+            },
+            {
+              "text": "重复 3\n重复 8",
+              "correct": false,
+              "why": "找到第一个重复就 break 了。"
+            }
+          ],
+          "tip": "边走边记：见过的放进集合。"
+        },
+        {
+          "type": "predict",
+          "prompt": "两层循环找重复，数一数比较了几次。运行下面的程序，输出是什么？",
+          "code": "a = [1, 2, 3, 4]\nc = 0\nfor i in range(len(a)):\n    for j in range(i):\n        c = c + 1\nprint(c)",
+          "options": [
+            {
+              "text": "6",
+              "correct": true,
+              "why": "j 只取比 i 小的，每两个数比一次：i = 1 比 1 次，i = 2 比 2 次，i = 3 比 3 次，共 6 次。这是 O(n²) 的写法。"
+            },
+            {
+              "text": "16",
+              "correct": false,
+              "why": "j 只到 i 之前，每对只比一次，不是 4 × 4。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "不是每个数比一次，是每两个数比一次。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "3 只是 i = 3 那一轮；前面几轮也在比。"
+            }
+          ],
+          "tip": "两两比较：n 个数大约要 n × n ÷ 2 次。"
+        },
+        {
+          "type": "fill",
+          "prompt": "边走边记，找出第一个重复的数：7",
+          "code": "a = [2, 7, 5, 7, 2]\nseen = set()\nfor x in a:\n    if x {0} seen:\n        print(x)\n        break\n    seen.add(x)",
+          "tokens": [
+            "in",
+            "not in",
+            "==",
+            "!="
+          ],
+          "answer": [
+            "in"
+          ],
+          "expected": "7",
+          "why": {
+            "not in": "第一个 2 就不在 seen 里，马上显示 2 并停下。",
+            "==": "一个数和整个集合比较，永远不相等，什么都不显示。",
+            "!=": "一个数永远不等于整个集合，第一个 2 就显示了。"
+          },
+          "hint": "见过（在 seen 里）就是重复。"
+        },
+        {
+          "type": "predict",
+          "prompt": "a 是 2000 个互不相同的数。同样是“有没有重复”，哪种写法是 O(n)？（每个选项都数一数做了几步，少于 10000 步才输出“快”）",
+          "code": "# a 是 2000 个不同的数\n# 看哪种写法步数少",
+          "fixed": "快",
+          "options": [
+            {
+              "text": "用 seen 集合边走边记",
+              "correct": true,
+              "why": "只走一遍，每个数查一次集合：2000 步，O(n)。",
+              "program": "a = []\nfor i in range(2000):\n    a.append(i)\nc = 0\nseen = set()\nfor x in a:\n    c = c + 1\n    if x in seen:\n        break\n    seen.add(x)\nprint(\"快\" if c < 10000 else \"慢\")"
+            },
+            {
+              "text": "两层循环，每两个数比一次",
+              "correct": false,
+              "why": "每两个数比一次：约 200 万次，O(n²)。",
+              "program": "a = []\nfor i in range(2000):\n    a.append(i)\nc = 0\nfor i in range(len(a)):\n    for j in range(i):\n        c = c + 1\nprint(\"快\" if c < 10000 else \"慢\")"
+            },
+            {
+              "text": "每个数都到列表 a 里从头比一遍",
+              "correct": false,
+              "why": "列表里查一个数要从头比：2000 个数各比 2000 次，400 万步，O(n²)。",
+              "program": "a = []\nfor i in range(2000):\n    a.append(i)\nc = 0\nfor x in a:\n    for y in a:\n        c = c + 1\nprint(\"快\" if c < 10000 else \"慢\")"
+            }
+          ],
+          "tip": "反复查“在不在”：用集合。"
+        }
+      ]
+    },
+    {
+      "id": "U14L6",
+      "title": "笔试题：两数之和",
+      "concept": "字典记下见过的数和位置：O(n²) 降到 O(n)",
+      "story": "笔试常见题：列表 a 里找两个数，加起来等于 t，输出它们的下标。两层循环每两个数试一次是 O(n²)。更快：走一遍，用字典记下“见过的数 → 下标”；对每个数先问 t - 它 见过没有，见过就找到了。O(n)。",
+      "introCode": "a = [3, 4]\nt = 7\nseen = {}\nfor i in range(2):\n    need = t - a[i]\n    if need in seen:\n        print(seen[need], i)\n    seen[a[i]] = i",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "a = [2, 7, 11, 15]\nt = 9\nseen = {}\nfor i in range(len(a)):\n    need = t - a[i]\n    if need in seen:\n        print(seen[need], i)\n    seen[a[i]] = i",
+          "options": [
+            {
+              "text": "0 1",
+              "correct": true,
+              "why": "i = 0 时 need 是 7，没见过，记下 {2: 0}；i = 1 时 need 是 2，见过，下标 0：输出 0 1。"
+            },
+            {
+              "text": "1 0",
+              "correct": false,
+              "why": "seen[need] 是先见过的那个（下标 0），i 是现在的（下标 1），先输出 0。"
+            },
+            {
+              "text": "2 7",
+              "correct": false,
+              "why": "输出的是下标，不是数本身。"
+            },
+            {
+              "text": "什么都不显示",
+              "correct": false,
+              "why": "2 + 7 = 9，在 i = 1 时就找到了。"
+            }
+          ],
+          "tip": "先查 t - 当前数 见过没有，再把当前数记下。"
+        },
+        {
+          "type": "predict",
+          "prompt": "两层循环版本，数一数试了几对。运行下面的程序，输出是什么？",
+          "code": "a = [1, 2, 3, 4, 5]\nc = 0\nfor i in range(len(a)):\n    for j in range(i):\n        c = c + 1\nprint(c)",
+          "options": [
+            {
+              "text": "10",
+              "correct": true,
+              "why": "5 个数两两配对：4 + 3 + 2 + 1 = 10 对。字典版只要走 5 步。"
+            },
+            {
+              "text": "25",
+              "correct": false,
+              "why": "j 只到 i 之前，每对只试一次，不是 5 × 5。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "5 是字典版的步数；两层循环要试每一对。"
+            },
+            {
+              "text": "20",
+              "correct": false,
+              "why": "每对只试一次：10 对。"
+            }
+          ],
+          "tip": "两层循环试每一对：O(n²)。"
+        },
+        {
+          "type": "fill",
+          "prompt": "找出和为 10 的两个数的下标：1 3",
+          "code": "a = [5, 4, 9, 6]\nt = 10\nseen = {}\nfor i in range(len(a)):\n    need = {0}\n    if need in seen:\n        print(seen[need], i)\n    seen[a[i]] = i",
+          "tokens": [
+            "t - a[i]",
+            "a[i] - t",
+            "t + a[i]",
+            "t - i"
+          ],
+          "answer": [
+            "t - a[i]"
+          ],
+          "expected": "1 3",
+          "why": {
+            "a[i] - t": "4 - 10 = -6：要找的另一个数是 t 减去当前数，方向反了，什么都找不到。",
+            "t + a[i]": "要找的是“加上当前数等于 t”的那个，应该是 t - a[i]。",
+            "t - i": "i 是下标，不是数；要减的是 a[i]。"
+          },
+          "hint": "另一个数 = 目标 - 当前数。"
+        },
+        {
+          "type": "order",
+          "prompt": "排好顺序：字典版两数之和。输出：1 2",
+          "lines": [
+            "a = [5, 2, 8]",
+            "t = 10",
+            "seen = {}",
+            "for i in range(3):",
+            "    need = t - a[i]",
+            "    if need in seen:",
+            "        print(seen[need], i)",
+            "    seen[a[i]] = i"
+          ],
+          "shuffled": [
+            7,
+            4,
+            6,
+            0,
+            5,
+            3,
+            1,
+            2
+          ],
+          "answers": [
+            [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            [
+              0,
+              2,
+              1,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            [
+              1,
+              0,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            [
+              1,
+              2,
+              0,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            [
+              2,
+              0,
+              1,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            [
+              2,
+              1,
+              0,
+              3,
+              4,
+              5,
+              6,
+              7
+            ]
+          ],
+          "expected": "1 2",
+          "hint": "先查（need 见过没有），后记（把当前数放进 seen）；记在查的后面，避免一个数和自己配对。"
+        }
+      ]
+    }
+  ]
+}
