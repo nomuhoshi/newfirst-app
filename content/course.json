@@ -60,7 +60,14 @@
     {
       "id": "U9",
       "title": "小项目",
-      "subtitle": "把学过的拼成一个点单小程序",
+      "subtitle": "菜单、订单、函数拼成一张小票",
+      "available": true,
+      "file": "unit9.json"
+    },
+    {
+      "id": "U10",
+      "title": "字符串操作",
+      "subtitle": "切片、查找、替换、格式化",
       "available": false
     }
   ]

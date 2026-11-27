@@ -24,11 +24,24 @@ def check_error(c, w, ex):
             else: c.ok(e2 is not None or o2 != ex.get("fixed"), w, f"错误改法 {o['text']!r} 也能得到期望输出")
     if any("program" in o for o in ex["options"]):
         c.ok(all("program" in o for o in ex["options"]) and "fixed" in ex, w, "改法题的每个选项都要有 program，并写明 fixed")
+# 选改法 / 选测试输入题（predict，不报错，U9 起）：每个选项都带 program（选了它之后的完整程序），题目写明 fixed（规则要求的输出）。
+#   真实运行每个选项的程序：只有不报错且输出 == fixed 的那个选项才是正确选项（恰好一个）；选项文字不是程序输出，所以不按“选输出”核对。
+def check_choose(c, w, ex):
+    c.ok("fixed" in ex, w, "选改法题要写明 fixed")
+    c.ok(all("program" in o for o in ex["options"]), w, "选改法题的每个选项都要有 program")
+    c.ok(len({o["text"] for o in ex["options"]}) == len(ex["options"]), w, "选项文字有重复")
+    c.ok(sum(1 for o in ex["options"] if o["correct"]) == 1, w, "正确选项不是恰好一个")
+    for o in ex["options"]:
+        c.ok(bool(o.get("why")), w, f"选项 {o['text']!r} 没有解释")
+        if "program" not in o: continue
+        out, err = run(o["program"]); good = err is None and out == ex.get("fixed")
+        c.ok(good == bool(o["correct"]), w, f"选项 {o['text']!r}：真实运行{'报错 ' + str(err) if err else '输出 ' + repr(out)}，期望 {ex.get('fixed')!r}，correct={o['correct']}")
 def check(items):
     c = Check("选输出 predict")
     for w, l, ex in items:
         if ex["type"] != "predict": continue
         if "expectError" in ex: check_error(c, w, ex); continue
+        if any("program" in o for o in ex["options"]): check_choose(c, w, ex); continue
         out, err = run(ex["code"])
         c.ok(err is None, w, f"程序出错 {err}")
         cor = [o for o in ex["options"] if o["correct"]]
