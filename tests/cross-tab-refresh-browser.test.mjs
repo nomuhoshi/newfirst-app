@@ -34,7 +34,7 @@ let browser;
 try { browser = await browserType.launch(); } catch (e) { console.log("环境失败：浏览器启动失败 " + String(e.message).split("\n")[0]); srv.closeAllConnections(); srv.close(); process.exit(2); }
 
 // ---------- 假 Supabase（HTTP 层）----------
-const S = { users: new Map(), rows: new Map(), tokens: new Map(), n: 0, expired: new Set(), atOf: new Map(), usedRt: new Set(), rtReuse: 0, refreshCount: 0, log: [], skew: 0 }; // G-LOGIN-13：令牌严格——被标记过期 / 刷新后旧访问令牌立即 401，刷新令牌一次性
+const S = { users: new Map(), rows: new Map(), tokens: new Map(), n: 0, expired: new Set(), atOf: new Map(), usedRt: new Set(), rtReuse: 0, refreshCount: 0, log: [], skew: 0, deleted: new Set() }; // G-LOGIN-13：令牌严格——被标记过期 / 刷新后旧访问令牌立即 401，刷新令牌一次性
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS" };
 const json = (route, status, body) => route.fulfill({ status, headers: { ...CORS, "content-type": "application/json" }, body: body === undefined ? "" : JSON.stringify(body) });
 async function fakeSupabase(ctx) {
@@ -63,10 +63,12 @@ async function fakeSupabase(ctx) {
       }
       return json(route, 200, S.rows.has(uid) ? [S.rows.get(uid)] : []);
     }
+    // 和正式库一致：progress.user_id 外键引用 auth.users（on delete cascade），账号删掉后，同一用户的旧令牌再建进度行会被外键拒绝（23503），不会把行建回来
+    if (u.pathname === "/rest/v1/rpc/create_progress" && S.deleted.has(uid)) return json(route, 409, { code: "23503", message: "insert or update on table \"progress\" violates foreign key constraint" });
     if (u.pathname === "/rest/v1/rpc/create_progress") { if (S.rows.has(uid)) return json(route, 200, null); S.rows.set(uid, { doc: body.new_doc, rev: 1 }); return json(route, 200, 1); }
     if (u.pathname === "/rest/v1/rpc/save_progress" && ctx.__failSave) return json(route, 503, { message: "injected 503" });
     if (u.pathname === "/rest/v1/rpc/save_progress") { const r = S.rows.get(uid); if (ctx.__conflictOnce && r) { const f = ctx.__conflictOnce; ctx.__conflictOnce = null; r.rev++; await f(); return json(route, 200, null); } if (!r || r.rev !== body.expected_rev) return json(route, 200, null); r.doc = body.new_doc; r.rev++; return json(route, 200, r.rev); }
-    if (u.pathname === "/rest/v1/rpc/delete_my_account") { S.rows.delete(uid); return json(route, 200, null); }
+    if (u.pathname === "/rest/v1/rpc/delete_my_account") { S.rows.delete(uid); S.deleted.add(uid); return json(route, 200, null); }
     return json(route, 404, { message: "no route" });
   });
 }
@@ -176,7 +178,7 @@ try {
     const dels = S.log.filter((x) => x.p === "/rest/v1/rpc/delete_my_account");
     check("G15 第二页删除完成：账号已退出", done);
     check("G15 刷新令牌只用了一次（没有复用被拒）", S.rtReuse === 0 && S.refreshCount === 1, `reuse=${S.rtReuse} refresh=${S.refreshCount}`);
-    check("G15 删除请求发出一次且带着另一页刷新后发布的有效令牌（云端行已删）", dels.length === 1 && dels[0].ok === true && !S.rows.has(uid), JSON.stringify(dels));
+    check("G15 删除请求发出一次且带着另一页刷新后发布的有效令牌（云端行已删）", dels.length === 1 && dels[0].ok === true && !S.rows.has(uid), JSON.stringify([dels, S.log.filter((x) => /progress|delete/.test(x.p)).map((x) => x.p.split("/").pop())]));
     check("G15 没有任何请求因令牌无效被拒（401）", bad401().length === 0, JSON.stringify(bad401()));
     check("G15 本机登录凭证已清理，两页都没有脚本错误", !(await hasAuth(p2)) && d.errors.length === 0 && errors2.length === 0, JSON.stringify([d.errors, errors2]));
     await d.ctx.close();

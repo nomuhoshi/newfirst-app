@@ -301,6 +301,8 @@ body { background: var(--g-bg); color: var(--g-fg); }
 
 .intro-screen { background: var(--g-code-bg); border-radius: 12px; padding: 22px 16px; display: flex; justify-content: center; margin: 8px 0 18px; }
 .intro-screen .codeblock.phone { border: 6px solid #3A5266; border-radius: 22px; max-width: 280px; width: 100%; transform: rotate(-4deg); background: #0B1820; }
+/* 开场示例较宽（>22 格）：整行宽、不旋转、字号略小（U9 起） */
+.intro-screen .codeblock.phone.wide { max-width: none; transform: none; font-size: 15px; }
 .intro-panel { background: var(--g-card); border: 1.5px solid var(--g-line); border-radius: 12px; padding: 14px 16px; }
 .intro-concept { font-size: 13px; font-weight: 700; color: var(--g-copper); }
 .intro-title { font-size: 30px; margin: 4px 0 8px; }
@@ -550,6 +552,7 @@ button.link, button.link.small, button.link.reset { min-height: 44px; padding: 0
   .lessonfoot, .ios-browser .lessonfoot { padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); }
   .intro-screen { padding: 10px 16px; margin: 6px 0 10px; }
   .intro-screen .codeblock.phone { max-width: 220px; font-size: 15px; }
+  .intro-screen .codeblock.phone.wide { max-width: none; font-size: 14px; }
   .intro-title { font-size: 24px; margin: 2px 0 6px; }
   .intro-story { font-size: 16px !important; line-height: 1.6 !important; }
   .intro-panel { padding: 10px 14px; }
