@@ -138,6 +138,13 @@
       "id": "U20",
       "title": "BFS 与 DFS",
       "subtitle": "一层层找、一条路走到底",
+      "available": true,
+      "file": "unit20.json"
+    },
+    {
+      "id": "U21",
+      "title": "加练：动态规划",
+      "subtitle": "主线学完后的加练（评估中）",
       "available": false
     }
   ]

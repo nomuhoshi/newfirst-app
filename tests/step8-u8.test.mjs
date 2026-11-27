@@ -35,7 +35,7 @@ const wideIntro = L.flatMap((l) => l.introCode.split("\n").filter((x) => cellW(x
 check("U8：开场讲解示例每行不超过 22 格（全角算 2）", wideIntro.length === 0, wideIntro.join(" | "));
 const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json", "unit6.json", "unit7.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
 check("U8：关卡 id 不和已有单元重复", L.every((l) => !otherIds.includes(l.id)));
-check("U8：已接入课程路线（course.json 里 U8 开放并指向 unit8.json），之后的单元按顺序接入（第 9–11 单元已开放，第 20 单元即将推出）", course.units.some((u) => u.id === "U8" && u.available === true && u.file === "unit8.json") && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U20");
+check("U8：已接入课程路线（course.json 里 U8 开放并指向 unit8.json），之后的单元按顺序接入（第 9–11 单元已开放，第 21 单元即将推出）", course.units.some((u) => u.id === "U8" && u.available === true && u.file === "unit8.json") && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U21");
 check("U8：没有代码题 pending（正式构建 codeTasksEnabled 仍为 []，U8L7 项目留在生成脚本里）", L.every((l) => !l.pending) && !unitN.heldLessons);
 const before = readFileSync(join(ROOT, "content/unit8.json"), "utf8");
 execFileSync("python3", [join(ROOT, "scripts/make-unit8.py")], { stdio: "pipe" }); // 生成脚本里的断言：题面写的每个输出、行号、错误类型都和真实运行一致
