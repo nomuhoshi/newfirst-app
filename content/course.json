@@ -117,6 +117,20 @@
       "id": "U17",
       "title": "排序与二分",
       "subtitle": "排序后的规律、二分查找",
+      "available": true,
+      "file": "unit17.json"
+    },
+    {
+      "id": "U18",
+      "title": "双指针与滑动窗口",
+      "subtitle": "两头往中间、快慢指针、窗口",
+      "available": true,
+      "file": "unit18.json"
+    },
+    {
+      "id": "U19",
+      "title": "栈与队列",
+      "subtitle": "后进先出、先进先出、括号匹配",
       "available": false
     }
   ]
