@@ -19,9 +19,9 @@ async function bounded(p, label) {
   finally { clearTimeout(timer); }
 }
 const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
-function locks() {
+function locks({ query = false } = {}) {
   const chains = new Map(), busy = new Map();
-  return { request(name, opts, fn) {
+  return { ...(query ? { query: async () => ({ held: [...busy].filter(([, n]) => n > 0).map(([name]) => ({ name })), pending: [] }) } : {}), request(name, opts, fn) {
     if (opts && opts.ifAvailable && (busy.get(name) || 0) > 0) return Promise.resolve().then(() => fn(null)); // 与真实 Web Locks 一致：ifAvailable 且锁被占着 → 回调拿到 null，不排队
     const sig = opts && opts.signal;
     if (sig && sig.aborted) return Promise.reject(abortError());
@@ -87,7 +87,7 @@ function fixture(withLocks, { provider: given = null, waitMs } = {}) {
     async signOut() { return { ok: true }; },
   };
   const provider = given || (withLocks ? locks() : {});
-  const make = () => createSync({ storage: raw, api, projectId: PROJECT, legacyProject: 'legacy.invalid', now: () => clock, schedule: () => 0, retryLocks: provider, ...(waitMs ? { refreshLockWaitMs: waitMs } : {}) });
+  const make = (r = raw) => createSync({ storage: r, api, projectId: PROJECT, legacyProject: 'legacy.invalid', now: () => clock, schedule: () => 0, retryLocks: provider, ...(waitMs ? { refreshLockWaitMs: waitMs } : {}) });
   const sync = make();
   const first = (() => {
     saveAccount(storage, A, { doc: rows.get(A).doc, base: rows.get(A).rev, dirty: {} }, { now: clock });
@@ -98,7 +98,7 @@ function fixture(withLocks, { provider: given = null, waitMs } = {}) {
   const f = {
     raw, storage, calls, rows, sync, first, issue, hooks, make, provider,
     snap: () => JSON.stringify([...m].sort(([a], [b]) => a.localeCompare(b))),
-    tab: () => { const t = make(); assert.ok(t.restore(freshState()), '第二个页面恢复同一份登录'); return t; },
+    tab: (r) => { const t = make(r); assert.ok(t.restore(freshState()), '第二个页面恢复同一份登录'); return t; },
     stored: () => JSON.parse(storage.getItem(AUTH_KEY)).session,
     expireSoon: sess => { clock = exp.get(sess.accessToken) - 30_000; }, // 距过期不足 60 秒：下次用令牌前必须刷新
     gateOn: (n, reply = null) => { const g = { n, reply, used: false, entered: defer(), release: defer() }; gates.push(g); return g; },
@@ -415,4 +415,46 @@ test('模拟 Web Locks：锁请求失败后恢复，用户重试成功；仍在�
   g.release.resolve(); await sp.catch(() => {});
   const d2 = await B.deleteAccount();
   assert.equal(d2.ok, true, 'G16_RETRY 恢复后用户重试成功：' + JSON.stringify(d2));
+});
+
+
+// G-LOGIN-18：持锁页刷新后写回的新凭证，晚一点才在等待页的存储里可见（实测 WebKit 多进程：锁释放比 localStorage 跨页同步先到）。
+// 等待页拿到锁时如果直接读存储，会拿旧刷新令牌再刷新一次（被当作令牌复用拒绝）。基线上本测试失败：refresh 2 次、第二次是复用。
+function laggy(raw, ms) {
+  const late = new Map(); // key → { old, until }：写入方刚写的值，在 ms 毫秒内对另一页还不可见
+  return {
+    writer: { getItem: k => raw.getItem(k), setItem: (k, v) => { late.set(k, { old: raw.getItem(k), until: Date.now() + ms }); raw.setItem(k, v); }, removeItem: k => raw.removeItem(k) },
+    reader: { getItem: k => { const x = late.get(k); return x && Date.now() < x.until ? x.old : raw.getItem(k); }, setItem: (k, v) => raw.setItem(k, v), removeItem: k => raw.removeItem(k) },
+  };
+}
+test('G-LOGIN-18 跨页存储传播晚于锁释放：等待页等到新凭证再判断，只刷新一次，删除用新凭证成功', async () => {
+  const f = fixture(true, { provider: locks({ query: true }) });
+  const lag = laggy(f.raw, 150);
+  const A = f.tab(lag.writer), B = f.tab(lag.reader);
+  const g = f.gateOn(1);
+  const sp = A.syncNow({ manual: true });
+  await bounded(g.entered.promise, 'refresh');
+  const dp = B.deleteAccount();
+  await sleep(60);
+  g.release.resolve();
+  const [s, d] = await Promise.all([sp, dp]);
+  assert.ok(!authFailure(s), 'G18_NOAUTH 同步：' + JSON.stringify(s));
+  assert.equal(f.refreshes(), 1, 'G18_ONE 只刷新一次（没有拿旧令牌复用）：' + JSON.stringify(f.of('refresh')));
+  assert.equal(d.ok, true, 'G18_DELETE 删除成功：' + JSON.stringify(d));
+  assert.equal(f.of('delete').length, 1);
+  assert.notEqual(f.of('delete')[0].at, f.first.accessToken, 'G18_ADOPT 删除不能用刷新前的旧访问令牌');
+});
+test('G-LOGIN-18 持锁页刷新失败（没有写回新凭证）：等待页最多短暂等一下，然后自己刷新，不会卡住', async () => {
+  const f = fixture(true, { provider: locks({ query: true }) });
+  const A = f.tab(), B = f.tab();
+  const g = f.gateOn(1, { ok: false, kind: 'network', message: '网络连不上' });
+  const sp = A.syncNow({ manual: true });
+  await bounded(g.entered.promise, 'refresh');
+  const dp = B.deleteAccount();
+  await sleep(30);
+  g.release.resolve();
+  const t0 = Date.now();
+  const r = await within(Promise.all([sp, dp]), 3000);
+  assert.ok(r.settled, 'G18_NOHANG 不能卡住');
+  assert.ok(Date.now() - t0 < 2500, 'G18_BOUNDED 等待有上限');
 });

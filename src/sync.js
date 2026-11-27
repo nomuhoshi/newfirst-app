@@ -25,7 +25,7 @@ export function scopedStorage(raw, ns) {
   return { getItem: (k) => raw.getItem(scoped(k)), setItem: (k, v) => raw.setItem(scoped(k), v), removeItem: (k) => raw.removeItem(scoped(k)) };
 }
 
-export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, onSessionLost = () => {}, retryLocks = null, refreshLockWaitMs = 20_000 }) {
+export function createSync({ storage: rawStorage, api, projectId = null, legacyProject = null, now = () => Date.now(), today = () => dayKey(), schedule = (fn, ms) => setTimeout(fn, ms), onStatus = () => {}, onState = () => {}, onNotice = () => {}, onSessionLost = () => {}, retryLocks = null, refreshLockWaitMs = 20_000, refreshSettleMs = 400 }) {
   const storage = scopedStorage(rawStorage, projectNamespace(projectId, legacyProject));
   // onNotice("replaced")：别的设备选择“覆盖云端”（代数 +1），这台设备上还没上传的学习内容被替换掉了（docs/15 §5，界面要提示用户）
   let session = null, userId = null, email = "", loginInstanceId = null;
@@ -243,6 +243,18 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
   // 仍然需要才自己刷新；刷新结果的落盘也在锁内完成。锁顺序固定为：本机写回锁 → 刷新锁；刷新锁里不再申请任何别的锁，所以不会死锁。
   // 没有 Web Locks 时退回单页去重（不宣称跨页去重）；锁请求本身失败（没进入回调）时不刷新、不动任何数据，返回可重试的本机错误。
   let refreshFlight = null;
+  // G-LOGIN-18：持锁页刷新后写回的新凭证可能晚一点才在本页的存储里可见。按次数轮询（不读 now()，假时钟下也会结束），
+  // 看到同一用户、不同于来源刷新令牌的凭证就返回；到时没看到（持锁页刷新失败或没有刷新）就照常往下走、自己刷新。
+  async function awaitPublished(f) {
+    const n = Math.max(1, Math.ceil(refreshSettleMs / 25));
+    for (let i = 0; i < n; i++) {
+      const s = readAuth();
+      if (s && s.userId === f.uid && s.refreshToken !== f.rt) return true;
+      if (!(f.gen === acctGen && f.inst === loginInstanceId && f.uid === userId)) return false;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return false;
+  }
   const refreshLockName = (inst) => `suipian:refresh:${projectNamespace(projectId, legacyProject)}:${userId}:${inst ?? "-"}`;
   function startRefresh(src, wait = true) {
     const f = { gen: acctGen, inst: loginInstanceId, uid: userId, rt: src.refreshToken, promise: null };
@@ -278,6 +290,13 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
         waitEnded.finally(() => abandonWaiters.delete(abandonQueue));
         f.dropQueue = () => abandonWaiters.delete(abandonQueue);
       }
+      // G-LOGIN-18：排队前看这把锁是不是正被别页持有（或已有人在排队）。实测 WebKit 多进程下，锁的释放比 localStorage 的跨页同步先到达：
+      // 等待页拿到锁时直接读存储，可能还是别页刷新前的旧凭证，再拿旧刷新令牌去刷新会被当作“令牌复用”拒绝（真实服务端可能作废整个会话）。
+      // 只有确实有人先持锁时，拿到锁后才短暂等存储里出现新凭证；锁实现没有 query()（旧浏览器、测试替身）时行为不变。
+      let contended = false;
+      if (wait && refreshSettleMs > 0 && typeof retryLockProvider.query === "function") {
+        try { const q = await retryLockProvider.query(); const nm = refreshLockName(f.inst); contended = [...(q?.held || []), ...(q?.pending || [])].some((x) => x && x.name === nm); } catch {}
+      }
       try {
         // 退出（wait=false）不排队：别页的刷新卡住时，退出照旧立刻进行（拿不到锁就按原来的方式自己刷新），不会被拖住
         const opts = wait ? { mode: "exclusive", ...(ctl ? { signal: ctl.signal } : {}) } : { mode: "exclusive", ifAvailable: true };
@@ -288,6 +307,8 @@ export function createSync({ storage: rawStorage, api, projectId = null, legacyP
           f.dropQueue?.();
           if (!wait && lock === null) return doRefresh();
           if (!mine()) return staleResult(); // 排队等锁期间已退出 / 换账号 / 重登：拿到锁立刻还
+          if (contended) await awaitPublished(f); // G-LOGIN-18：等别页写回的新凭证传到本页（最多 refreshSettleMs），出现了 doRefresh 会直接采纳
+          if (!mine()) return staleResult();
           let abandon;
           const abandoned = new Promise((res) => { abandon = () => res(staleResult()); });
           abandonWaiters.add(abandon); // 代次前进时立刻放锁，新会话的刷新不排在旧刷新后面
