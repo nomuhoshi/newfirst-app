@@ -34,7 +34,7 @@ check("U11：题目代码和按代码排的选项每行不超过 28 格（全角
 check("U11：开场讲解示例每行不超过 28 格（超过 22 格的用宽版“手机”框，下面在浏览器里核对不横向溢出）", L.every((l) => l.introCode.split("\n").every((x) => cellW(x) <= 28)));
 const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json", "unit6.json", "unit7.json", "unit8.json", "unit9.json", "unit10.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
 check("U11：关卡 id 不和已有单元重复", L.every((l) => !otherIds.includes(l.id)));
-check("U11：已接入课程路线（course.json 里 U11 开放并指向 unit11.json），第 12 单元已开放、第 19 单元即将推出", course.units.some((u) => u.id === "U11" && u.available === true && u.file === "unit11.json") && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U19");
+check("U11：已接入课程路线（course.json 里 U11 开放并指向 unit11.json），第 12 单元已开放、第 20 单元即将推出", course.units.some((u) => u.id === "U11" && u.available === true && u.file === "unit11.json") && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U20");
 check("U11：填空题只有一个可接受答案（界面的填空判分只认 answer）", L.every((l) => l.exercises.every((e) => e.type !== "fill" || !e.answers)));
 check("U11：没有代码题 pending（正式构建 codeTasksEnabled 仍为 []），不用 +=、%；题面是笔试风格（不用“点单屏”）", L.every((l) => !l.pending) && !JSON.stringify(unitN).includes("+=") && !/ % /.test(JSON.stringify(unitN)) && !JSON.stringify(unitN).includes("点单屏"));
 const before = readFileSync(join(ROOT, "content/unit11.json"), "utf8");
