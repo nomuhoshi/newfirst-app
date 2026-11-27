@@ -35,6 +35,7 @@ def choose(prompt, code, fixed, opts, tip):
             "options": [{"text": t, "correct": i == 0, "why": w, "program": p} for i, (t, w, p) in enumerate(opts)], "tip": tip}
 
 def fill(prompt, code, tokens, answer, why, hint):
+    assert code.count("{0}") == 1, "填空题只能有一个空（界面按 {数字} 的个数出空格）"
     expected, e = run(code.replace("{0}", answer)); assert e is None, (code, e)
     acc = [answer]  # 界面的填空判分只认一个答案，所以除标准答案外的词块都必须得不到期望输出
     for t in tokens:
@@ -46,6 +47,7 @@ def fill(prompt, code, tokens, answer, why, hint):
     return {"type": "fill", "prompt": prompt, "code": code, "tokens": tokens, "answer": [answer], "expected": expected, "why": why, "hint": hint}
 
 def order(prompt, lines, shuffled, hint):
+    assert len(lines) <= 8, f"排序题最多 8 行（校验要穷举所有排列，手机上也排不过来），现在 {len(lines)} 行"
     expected, e = run("\n".join(lines)); assert e is None
     acc = sorted({tuple(p) for p in itertools.permutations(range(len(lines)))
                   if run("\n".join(lines[k] for k in p)) == (expected, None)})
