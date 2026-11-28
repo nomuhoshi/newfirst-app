@@ -1,0 +1,686 @@
+{
+  "id": "U20",
+  "title": "BFS 与 DFS",
+  "subtitle": "一层层找、一条路走到底",
+  "lessons": [
+    {
+      "id": "U20L1",
+      "title": "图怎么存",
+      "concept": "邻接表：字典里放“能直接到的点”",
+      "story": "地铁线路、好友关系、网页链接都是“图”：一些点，加上点和点之间的连线。最常用的存法叫邻接表：一个字典，键是点，值是它能直接到的点的列表。g[\"A\"] 就是 A 的邻居。",
+      "introCode": "g = {\"A\": [\"B\", \"C\"],\n     \"B\": []}\nprint(g[\"A\"])",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nprint(g[\"A\"])\nprint(len(g[\"D\"]))",
+          "options": [
+            {
+              "text": "['B', 'C']\n0",
+              "correct": true,
+              "why": "A 能直接到 B、C；D 的列表是空的，没有能去的点。"
+            },
+            {
+              "text": "['B', 'C', 'D']\n0",
+              "correct": false,
+              "why": "g[\"A\"] 只列直接相连的点；D 要经过 B 或 C 才到。"
+            },
+            {
+              "text": "['B', 'C']\n2",
+              "correct": false,
+              "why": "len(g[\"D\"]) 数的是 D 能去的点：一个也没有。"
+            },
+            {
+              "text": "A\n0",
+              "correct": false,
+              "why": "g[\"A\"] 交回的是 A 对应的列表。"
+            }
+          ],
+          "tip": "g[点] 就是它的邻居列表。"
+        },
+        {
+          "type": "predict",
+          "prompt": "图里一共有几条连线？运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nc = 0\nfor x in g:\n    c = c + len(g[x])\nprint(c)",
+          "options": [
+            {
+              "text": "4",
+              "correct": true,
+              "why": "A 两条、B 一条、C 一条、D 零条：一共 4 条。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "A 有两条线：到 B 和到 C。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "D 没有往外的线。"
+            },
+            {
+              "text": "8",
+              "correct": false,
+              "why": "每条线只记在出发的那个点下面一次。"
+            }
+          ],
+          "tip": "把每个点的列表长度加起来。"
+        },
+        {
+          "type": "fill",
+          "prompt": "列出 B 能直接到的点，输出：D",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nfor y in {0}:\n    print(y)",
+          "tokens": [
+            "g[\"B\"]",
+            "g",
+            "\"B\"",
+            "g[\"D\"]"
+          ],
+          "answer": [
+            "g[\"B\"]"
+          ],
+          "expected": "D",
+          "why": {
+            "g": "for 走字典走的是键：A、B、C、D。",
+            "\"B\"": "走一个字符串，就是走它的字符：只输出 B。",
+            "g[\"D\"]": "D 的邻居列表是空的，什么也不输出。"
+          },
+          "hint": "B 的邻居：g[\"B\"]。"
+        },
+        {
+          "type": "predict",
+          "prompt": "朋友关系是双向的，两边都要记。运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\"],\n    \"B\": [\"A\", \"C\"],\n    \"C\": [\"B\"]\n}\nprint(g[\"B\"])\nprint(\"A\" in g[\"C\"])",
+          "options": [
+            {
+              "text": "['A', 'C']\nFalse",
+              "correct": true,
+              "why": "B 和 A、C 都是朋友；C 只和 B 相连，A 不在 C 的列表里。"
+            },
+            {
+              "text": "['A', 'C']\nTrue",
+              "correct": false,
+              "why": "看 g[\"C\"]：只有 B。"
+            },
+            {
+              "text": "['C']\nFalse",
+              "correct": false,
+              "why": "双向的关系，B 的列表里也记着 A。"
+            },
+            {
+              "text": "['A', 'C']\n报错",
+              "correct": false,
+              "why": "in 检查列表里有没有，不会报错。"
+            }
+          ],
+          "tip": "无向图：A—B 要在两边各记一次。"
+        }
+      ]
+    },
+    {
+      "id": "U20L2",
+      "title": "BFS：一层层找",
+      "concept": "队列里排着要去的点，seen 记着见过的点",
+      "story": "BFS（广度优先搜索）像水波一圈圈往外扩：先看起点，再看离它一步的点，再看两步的。用队列：从队头拿出一个点，把它没见过的邻居排到队尾。seen 记下见过的点，同一个点只排一次。",
+      "introCode": "q = [\"A\"]\nx = q.pop(0)\nq.append(\"B\")\nq.append(\"C\")\nprint(q)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nq = [\"A\"]\nseen = [\"A\"]\nwhile len(q) > 0:\n    x = q.pop(0)\n    print(x)\n    for y in g[x]:\n        if y not in seen:\n            seen.append(y)\n            q.append(y)",
+          "options": [
+            {
+              "text": "A\nB\nC\nD",
+              "correct": true,
+              "why": "先 A；A 的邻居 B、C 排队；B 出队，D 排队；C 出队时 D 已见过；最后 D。"
+            },
+            {
+              "text": "A\nB\nD\nC",
+              "correct": false,
+              "why": "这是一条路先走到底的顺序（DFS）。BFS 先把一步能到的 B、C 都看完。"
+            },
+            {
+              "text": "A\nB\nC\nD\nD",
+              "correct": false,
+              "why": "D 第一次被发现就记进 seen，第二次不会再排队。"
+            },
+            {
+              "text": "A\nC\nB\nD",
+              "correct": false,
+              "why": "B 在 A 的列表里排在前面，先进队先出队。"
+            }
+          ],
+          "tip": "先近后远：一层看完再看下一层。"
+        },
+        {
+          "type": "predict",
+          "prompt": "这次没有 seen。运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nq = [\"A\"]\nwhile len(q) > 0:\n    x = q.pop(0)\n    print(x)\n    for y in g[x]:\n        q.append(y)",
+          "options": [
+            {
+              "text": "A\nB\nC\nD\nD",
+              "correct": true,
+              "why": "B 和 C 都把 D 排进队，D 被看了两次。"
+            },
+            {
+              "text": "A\nB\nC\nD",
+              "correct": false,
+              "why": "没有 seen，D 被 B 和 C 各排了一次。"
+            },
+            {
+              "text": "停不下来",
+              "correct": false,
+              "why": "这张图没有绕回去的线，队列最后会空。"
+            },
+            {
+              "text": "A\nB\nD\nC\nD",
+              "correct": false,
+              "why": "队列先进先出：B、C 都比 D 先出队。"
+            }
+          ],
+          "tip": "不记 seen，同一个点会被重复看。"
+        },
+        {
+          "type": "fill",
+          "prompt": "同一个点只排一次队。输出：\nA\nB\nC\nD",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nq = [\"A\"]\nseen = [\"A\"]\nwhile len(q) > 0:\n    x = q.pop(0)\n    print(x)\n    for y in g[x]:\n        if y {0} seen:\n            seen.append(y)\n            q.append(y)",
+          "tokens": [
+            "not in",
+            "in",
+            "==",
+            "!="
+          ],
+          "answer": [
+            "not in"
+          ],
+          "expected": "A\nB\nC\nD",
+          "why": {
+            "in": "只排见过的点：一开始只见过 A，B、C 都排不进去，只输出 A。",
+            "==": "y 是点，seen 是列表，永远不相等，谁也排不进去，只输出 A。",
+            "!=": "永远不相等，等于不检查：D 被排了两次，输出 A、B、C、D、D。"
+          },
+          "hint": "没见过的才排队：not in。"
+        },
+        {
+          "type": "predict",
+          "prompt": "A 和 B 互相连着，绕成了一个圈。运行下面的程序，输出是什么？",
+          "code": "g = {\"A\": [\"B\"], \"B\": [\"A\"]}\nq = [\"A\"]\nseen = [\"A\"]\nwhile len(q) > 0:\n    x = q.pop(0)\n    print(x)\n    for y in g[x]:\n        if y not in seen:\n            seen.append(y)\n            q.append(y)",
+          "options": [
+            {
+              "text": "A\nB",
+              "correct": true,
+              "why": "B 出队时，它的邻居 A 已经在 seen 里，不再排队，队列空了就停。"
+            },
+            {
+              "text": "停不下来",
+              "correct": false,
+              "why": "seen 挡住了回头路：A 不会再排一次。"
+            },
+            {
+              "text": "A\nB\nA",
+              "correct": false,
+              "why": "A 一开始就在 seen 里。"
+            },
+            {
+              "text": "A",
+              "correct": false,
+              "why": "A 的邻居 B 没见过，会排进去。"
+            }
+          ],
+          "tip": "有圈的图更要记 seen。"
+        }
+      ]
+    },
+    {
+      "id": "U20L3",
+      "title": "最少要走几步",
+      "concept": "BFS 第一次走到一个点，用的步数就是最少的",
+      "story": "笔试常见：从起点到某个点，最少走几步。BFS 一层层往外扩，第一次碰到一个点时用的步数一定最少。用字典 d 记步数：d[y] = d[x] + 1。没出现在 d 里的点，说明根本走不到。",
+      "introCode": "d = {\"A\": 0}\nd[\"B\"] = d[\"A\"] + 1\nprint(d)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "从 A 走到 E 最少几步？运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"E\"],\n    \"D\": [\"E\"],\n    \"E\": []\n}\nd = {\"A\": 0}\nq = [\"A\"]\nwhile len(q) > 0:\n    x = q.pop(0)\n    for y in g[x]:\n        if y not in d:\n            d[y] = d[x] + 1\n            q.append(y)\nprint(d[\"E\"])",
+          "options": [
+            {
+              "text": "2",
+              "correct": true,
+              "why": "A→C→E 两步。BFS 先从 C 走到了 E，记下 2。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "A→B→D→E 是 3 步，但 A→C→E 更短，而且 BFS 先碰到它。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "E 不在 A 的邻居列表里，至少 2 步。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "E 能走到，d 里有它。"
+            }
+          ],
+          "tip": "BFS 第一次碰到就是最少步数。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"E\"],\n    \"D\": [\"E\"],\n    \"E\": []\n}\nd = {\"A\": 0}\nq = [\"A\"]\nwhile len(q) > 0:\n    x = q.pop(0)\n    for y in g[x]:\n        if y not in d:\n            d[y] = d[x] + 1\n            q.append(y)\nfor x in d:\n    print(x, d[x])",
+          "options": [
+            {
+              "text": "A 0\nB 1\nC 1\nD 2\nE 2",
+              "correct": true,
+              "why": "B、C 一步；D 从 B 来两步；E 从 C 来两步。"
+            },
+            {
+              "text": "A 0\nB 1\nC 1\nD 2\nE 3",
+              "correct": false,
+              "why": "E 先被 C 碰到，记的是 2；D 再碰到它时 E 已经在 d 里，不改。"
+            },
+            {
+              "text": "A 0\nB 1\nC 2\nD 2\nE 3",
+              "correct": false,
+              "why": "C 也是 A 的邻居，一步。"
+            },
+            {
+              "text": "B 1\nC 1\nD 2\nE 2",
+              "correct": false,
+              "why": "d 一开始就有 A: 0。"
+            }
+          ],
+          "tip": "每个点只记第一次的步数。"
+        },
+        {
+          "type": "fill",
+          "prompt": "下一层的步数比这一层多 1。输出：2",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"E\"],\n    \"D\": [\"E\"],\n    \"E\": []\n}\nd = {\"A\": 0}\nq = [\"A\"]\nwhile len(q) > 0:\n    x = q.pop(0)\n    for y in g[x]:\n        if y not in d:\n            d[y] = {0}\n            q.append(y)\nprint(d[\"E\"])",
+          "tokens": [
+            "d[x] + 1",
+            "d[x]",
+            "1",
+            "d[y] + 1"
+          ],
+          "answer": [
+            "d[x] + 1"
+          ],
+          "expected": "2",
+          "why": {
+            "d[x]": "没有加 1，所有点都记成 0。",
+            "1": "所有点都记成 1 步，不管离多远。",
+            "d[y] + 1": "y 还没记进 d，取 d[y] 报 KeyError。"
+          },
+          "hint": "多走一步：d[x] + 1。"
+        },
+        {
+          "type": "predict",
+          "prompt": "F 和谁都不相连。运行下面的程序，输出是什么？",
+          "code": "g = {\"A\": [\"B\"],\n     \"B\": [],\n     \"F\": []}\nd = {\"A\": 0}\nq = [\"A\"]\nwhile len(q) > 0:\n    x = q.pop(0)\n    for y in g[x]:\n        if y not in d:\n            d[y] = d[x] + 1\n            q.append(y)\nprint(len(d))\nprint(\"F\" in d)",
+          "options": [
+            {
+              "text": "2\nFalse",
+              "correct": true,
+              "why": "从 A 只能走到 B，d 里只有 A、B；F 走不到，不在 d 里。"
+            },
+            {
+              "text": "3\nTrue",
+              "correct": false,
+              "why": "F 没有任何线和 A 连着，BFS 碰不到它。"
+            },
+            {
+              "text": "3\nFalse",
+              "correct": false,
+              "why": "d 只记走得到的点：A 和 B。"
+            },
+            {
+              "text": "1\nFalse",
+              "correct": false,
+              "why": "A 能走到 B，B 也记进了 d。"
+            }
+          ],
+          "tip": "不在 d 里 = 走不到。"
+        }
+      ]
+    },
+    {
+      "id": "U20L4",
+      "title": "DFS：一条路走到底",
+      "concept": "递归：先走到底，走不动了再退回来换一条",
+      "story": "DFS（深度优先搜索）像走迷宫：沿一条路一直走，走到头再退回上一个路口换一条。用递归写最短：访问一个点，再对每个没见过的邻居调用自己。DFS 能找到所有走得到的点，但不保证步数最少。",
+      "introCode": "def go(n):\n    if n == 0:\n        return\n    print(n)\n    go(n - 1)\ngo(3)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nseen = []\ndef dfs(x):\n    seen.append(x)\n    print(x)\n    for y in g[x]:\n        if y not in seen:\n            dfs(y)\ndfs(\"A\")",
+          "options": [
+            {
+              "text": "A\nB\nD\nC",
+              "correct": true,
+              "why": "A 先去 B，B 再去 D，D 走不动了；退回 A 去 C，C 的邻居 D 已见过。"
+            },
+            {
+              "text": "A\nB\nC\nD",
+              "correct": false,
+              "why": "这是 BFS 的一层层顺序。DFS 从 B 继续往下走到 D。"
+            },
+            {
+              "text": "A\nB\nD\nC\nD",
+              "correct": false,
+              "why": "D 已经在 seen 里，不会再访问。"
+            },
+            {
+              "text": "A\nC\nD\nB",
+              "correct": false,
+              "why": "for 先走列表里排前面的 B。"
+            }
+          ],
+          "tip": "一条路走到底，再退回来。"
+        },
+        {
+          "type": "predict",
+          "prompt": "k 记着从 A 走到这里用了几步。运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"E\"],\n    \"D\": [\"E\"],\n    \"E\": []\n}\nseen = []\ndef dfs(x, k):\n    seen.append(x)\n    print(x, k)\n    for y in g[x]:\n        if y not in seen:\n            dfs(y, k + 1)\ndfs(\"A\", 0)",
+          "options": [
+            {
+              "text": "A 0\nB 1\nD 2\nE 3\nC 1",
+              "correct": true,
+              "why": "DFS 沿 A→B→D→E 走到 E，记的是 3 步；可最短其实是 A→C→E 的 2 步。"
+            },
+            {
+              "text": "A 0\nB 1\nC 1\nD 2\nE 2",
+              "correct": false,
+              "why": "这是 BFS 的顺序和步数。DFS 先一路走到底。"
+            },
+            {
+              "text": "A 0\nB 1\nD 2\nE 3\nC 1\nE 2",
+              "correct": false,
+              "why": "E 第一次就进了 seen，从 C 不会再去。"
+            },
+            {
+              "text": "A 0\nB 1\nD 2\nE 3",
+              "correct": false,
+              "why": "退回 A 后还有 C 没走。"
+            }
+          ],
+          "tip": "最少步数用 BFS，不用 DFS。"
+        },
+        {
+          "type": "fill",
+          "prompt": "访问 A 能走到的所有点。输出：\nA\nB\nD\nC",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nseen = []\ndef dfs(x):\n    seen.append(x)\n    print(x)\n    for y in g[x]:\n        if y not in seen:\n            {0}\ndfs(\"A\")",
+          "tokens": [
+            "dfs(y)",
+            "print(y)",
+            "seen.append(y)",
+            "q.append(y)"
+          ],
+          "answer": [
+            "dfs(y)"
+          ],
+          "expected": "A\nB\nD\nC",
+          "why": {
+            "print(y)": "只打印邻居，不往下走：A、B、C，D 没被访问到。",
+            "seen.append(y)": "只记下，不访问：只输出 A。",
+            "q.append(y)": "这里没有队列 q：输出 A 之后报 NameError。"
+          },
+          "hint": "对没见过的邻居调用自己：dfs(y)。"
+        },
+        {
+          "type": "predict",
+          "prompt": "不用递归，换成栈。运行下面的程序，输出是什么？",
+          "code": "g = {\n    \"A\": [\"B\", \"C\"],\n    \"B\": [\"D\"],\n    \"C\": [\"D\"],\n    \"D\": []\n}\nst = [\"A\"]\nseen = []\nwhile len(st) > 0:\n    x = st.pop()\n    if x not in seen:\n        seen.append(x)\n        print(x)\n        for y in g[x]:\n            st.append(y)",
+          "options": [
+            {
+              "text": "A\nC\nD\nB",
+              "correct": true,
+              "why": "A 出栈，压入 B、C；后进的 C 先出，压入 D；D 出栈；最后 B（它的 D 已见过）。"
+            },
+            {
+              "text": "A\nB\nD\nC",
+              "correct": false,
+              "why": "栈后进先出：C 比 B 后压进去，先出来。"
+            },
+            {
+              "text": "A\nB\nC\nD",
+              "correct": false,
+              "why": "那是队列（先进先出）的顺序。"
+            },
+            {
+              "text": "A\nC\nD\nB\nD",
+              "correct": false,
+              "why": "D 第二次出栈时已在 seen 里，不打印。"
+            }
+          ],
+          "tip": "栈：后进先出，也是一条路走到底。"
+        }
+      ]
+    },
+    {
+      "id": "U20L5",
+      "title": "网格上的 DFS",
+      "concept": "上下左右四个方向；走过的格子改成 0",
+      "story": "很多题的图是一张网格：1 是陆地，0 是水。从一个格子能走到上下左右四个格子（斜着不算）。DFS 时先检查越界和是不是水，再把自己改成 0（淹掉，防止走回来），然后往四个方向走。",
+      "introCode": "g = [[1, 0],\n     [1, 1]]\nprint(g[1][0])\nprint(len(g), len(g[0]))",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "数一数从 (0, 0) 出发连着的陆地有几格。运行下面的程序，输出是什么？",
+          "code": "g = [[1, 1, 0],\n     [0, 1, 0],\n     [0, 0, 1]]\nH = len(g)\nW = len(g[0])\ndef dfs(r, c):\n    if r < 0 or r >= H:\n        return 0\n    if c < 0 or c >= W:\n        return 0\n    if g[r][c] == 0:\n        return 0\n    g[r][c] = 0\n    n = 1\n    n = n + dfs(r + 1, c)\n    n = n + dfs(r - 1, c)\n    n = n + dfs(r, c + 1)\n    n = n + dfs(r, c - 1)\n    return n\nprint(dfs(0, 0))",
+          "options": [
+            {
+              "text": "3",
+              "correct": true,
+              "why": "(0,0)→右边 (0,1)→下面 (1,1)，三格连着；右下角的 1 只和它们斜着相邻，不算。"
+            },
+            {
+              "text": "4",
+              "correct": false,
+              "why": "右下角 (2,2) 和 (1,1) 是斜着相邻，不算连着。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "(1,1) 在 (0,1) 的正下方，也连着。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "dfs 会继续往四个方向走，把连着的都数上。"
+            }
+          ],
+          "tip": "上下左右才算连着。"
+        },
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 0],\n     [0, 1]]\nH = len(g)\nW = len(g[0])\ndef dfs(r, c):\n    if r < 0 or r >= H:\n        return 0\n    if c < 0 or c >= W:\n        return 0\n    if g[r][c] == 0:\n        return 0\n    g[r][c] = 0\n    n = 1\n    n = n + dfs(r + 1, c)\n    n = n + dfs(r - 1, c)\n    n = n + dfs(r, c + 1)\n    n = n + dfs(r, c - 1)\n    return n\nprint(dfs(0, 0))\nprint(g)",
+          "options": [
+            {
+              "text": "1\n[[0, 0], [0, 1]]",
+              "correct": true,
+              "why": "(0,0) 四周都是水或边界，只有 1 格；它被改成 0，右下角没走到，还是 1。"
+            },
+            {
+              "text": "2\n[[0, 0], [0, 0]]",
+              "correct": false,
+              "why": "两个 1 是斜着相邻的，不连着。"
+            },
+            {
+              "text": "1\n[[1, 0], [0, 1]]",
+              "correct": false,
+              "why": "走过的格子改成了 0。"
+            },
+            {
+              "text": "报错",
+              "correct": false,
+              "why": "越界的格子先被 if 挡住，交回 0，不会取下标。"
+            }
+          ],
+          "tip": "走过就改成 0。"
+        },
+        {
+          "type": "fill",
+          "prompt": "自己这一格也要算上。输出：3",
+          "code": "g = [[1, 1, 0],\n     [0, 1, 0],\n     [0, 0, 1]]\nH = len(g)\nW = len(g[0])\ndef dfs(r, c):\n    if r < 0 or r >= H:\n        return 0\n    if c < 0 or c >= W:\n        return 0\n    if g[r][c] == 0:\n        return 0\n    g[r][c] = 0\n    n = {0}\n    n = n + dfs(r + 1, c)\n    n = n + dfs(r - 1, c)\n    n = n + dfs(r, c + 1)\n    n = n + dfs(r, c - 1)\n    return n\nprint(dfs(0, 0))",
+          "tokens": [
+            "1",
+            "0",
+            "2"
+          ],
+          "answer": [
+            "1"
+          ],
+          "expected": "3",
+          "why": {
+            "0": "每一格都没算自己，加来加去都是 0。",
+            "2": "每格算了两次：输出 6。"
+          },
+          "hint": "自己算 1 格，再加上四个方向的。"
+        },
+        {
+          "type": "predict",
+          "prompt": "先检查越界，再取下标。运行下面的程序，输出是什么？",
+          "code": "g = [[1]]\nH = len(g)\nW = len(g[0])\ndef dfs(r, c):\n    if r < 0 or r >= H:\n        return 0\n    if c < 0 or c >= W:\n        return 0\n    if g[r][c] == 0:\n        return 0\n    g[r][c] = 0\n    n = 1\n    n = n + dfs(r + 1, c)\n    n = n + dfs(r - 1, c)\n    n = n + dfs(r, c + 1)\n    n = n + dfs(r, c - 1)\n    return n\nprint(dfs(0, 0))\nprint(dfs(5, 5))",
+          "options": [
+            {
+              "text": "1\n0",
+              "correct": true,
+              "why": "(0,0) 是 1 格陆地；(5,5) 越界，第一个 if 就交回 0。"
+            },
+            {
+              "text": "1\n报错",
+              "correct": false,
+              "why": "越界先被 if 挡住，不会去取 g[5]。"
+            },
+            {
+              "text": "1\n1",
+              "correct": false,
+              "why": "(5,5) 不在网格里，交回 0。"
+            },
+            {
+              "text": "0\n0",
+              "correct": false,
+              "why": "(0,0) 一开始是 1，算 1 格。"
+            }
+          ],
+          "tip": "先判越界，再看格子。"
+        }
+      ]
+    },
+    {
+      "id": "U20L6",
+      "title": "笔试题：岛屿数量",
+      "concept": "每碰到一块没淹的陆地：岛屿 + 1，再把整座岛淹掉",
+      "story": "笔试常见题（LeetCode 200）：网格里 1 是陆地、0 是水，上下左右连着的陆地算一座岛，问有几座岛。一格一格扫：碰到 1，岛屿数加 1，再用 DFS 把这座岛整个改成 0，免得同一座岛被数两次。",
+      "introCode": "g = [[1, 1],\n     [0, 1]]\nprint(g[0][1] == 1)",
+      "exercises": [
+        {
+          "type": "predict",
+          "prompt": "运行下面的程序，输出是什么？",
+          "code": "g = [[1, 1, 0],\n     [0, 0, 1],\n     [1, 0, 1]]\nH = len(g)\nW = len(g[0])\ndef dfs(r, c):\n    if r < 0 or r >= H:\n        return\n    if c < 0 or c >= W:\n        return\n    if g[r][c] == 0:\n        return\n    g[r][c] = 0\n    dfs(r + 1, c)\n    dfs(r - 1, c)\n    dfs(r, c + 1)\n    dfs(r, c - 1)\nans = 0\nfor r in range(H):\n    for k in range(W):\n        if g[r][k] == 1:\n            dfs(r, k)\n            ans = ans + 1\nprint(ans)",
+          "options": [
+            {
+              "text": "3",
+              "correct": true,
+              "why": "左上两格一座；右边竖着两格一座；左下角一格一座：3 座。"
+            },
+            {
+              "text": "5",
+              "correct": false,
+              "why": "5 是陆地的格数；连着的陆地只算一座岛。"
+            },
+            {
+              "text": "2",
+              "correct": false,
+              "why": "左下角的 1 四周都是水，自己就是一座岛。"
+            },
+            {
+              "text": "1",
+              "correct": false,
+              "why": "斜着相邻不算连着，它们不是一座岛。"
+            }
+          ],
+          "tip": "连着的陆地算一座。"
+        },
+        {
+          "type": "fill",
+          "prompt": "只有碰到陆地才算新岛。输出：3",
+          "code": "g = [[1, 1, 0],\n     [0, 0, 1],\n     [1, 0, 1]]\nH = len(g)\nW = len(g[0])\ndef dfs(r, c):\n    if r < 0 or r >= H:\n        return\n    if c < 0 or c >= W:\n        return\n    if g[r][c] == 0:\n        return\n    g[r][c] = 0\n    dfs(r + 1, c)\n    dfs(r - 1, c)\n    dfs(r, c + 1)\n    dfs(r, c - 1)\nans = 0\nfor r in range(H):\n    for k in range(W):\n        if g[r][k] == {0}:\n            dfs(r, k)\n            ans = ans + 1\nprint(ans)",
+          "tokens": [
+            "1",
+            "0",
+            "2"
+          ],
+          "answer": [
+            "1"
+          ],
+          "expected": "3",
+          "why": {
+            "0": "数的是水：DFS 碰到水直接返回，4 个水格各算一次，输出 4。",
+            "2": "网格里没有 2，一座也数不到，输出 0。"
+          },
+          "hint": "碰到 1 才是新岛。"
+        },
+        {
+          "type": "predict",
+          "prompt": "数完以后看看网格。运行下面的程序，输出是什么？",
+          "code": "g = [[1, 1, 0],\n     [0, 0, 1],\n     [1, 0, 1]]\nH = len(g)\nW = len(g[0])\ndef dfs(r, c):\n    if r < 0 or r >= H:\n        return\n    if c < 0 or c >= W:\n        return\n    if g[r][c] == 0:\n        return\n    g[r][c] = 0\n    dfs(r + 1, c)\n    dfs(r - 1, c)\n    dfs(r, c + 1)\n    dfs(r, c - 1)\nans = 0\nfor r in range(H):\n    for k in range(W):\n        if g[r][k] == 1:\n            dfs(r, k)\n            ans = ans + 1\nfor row in g:\n    print(row)",
+          "options": [
+            {
+              "text": "[0, 0, 0]\n[0, 0, 0]\n[0, 0, 0]",
+              "correct": true,
+              "why": "每座岛都被 DFS 淹掉了，所有 1 都改成了 0。"
+            },
+            {
+              "text": "[1, 1, 0]\n[0, 0, 1]\n[1, 0, 1]",
+              "correct": false,
+              "why": "dfs 里把走过的格子改成了 0，原网格被改了。"
+            },
+            {
+              "text": "[0, 1, 0]\n[0, 0, 0]\n[0, 0, 0]",
+              "correct": false,
+              "why": "淹岛会顺着四个方向把整座岛都改掉，(0,1) 也在里面。"
+            },
+            {
+              "text": "3",
+              "correct": false,
+              "why": "这里打印的是网格 g，不是 ans。"
+            }
+          ],
+          "tip": "数完，岛都被淹掉了。"
+        },
+        {
+          "type": "predict",
+          "prompt": "AI 把所有 1 加起来当岛屿数。用哪个网格测试，能看出它错了？",
+          "code": "def count(g):\n    ans = 0\n    for row in g:\n        for v in row:\n            ans = ans + v\n    return ans",
+          "fixed": "不一致",
+          "options": [
+            {
+              "text": "[[1, 1]]",
+              "correct": true,
+              "why": "两格陆地连着，只是一座岛；AI 交回 2。不一致。",
+              "program": "def count(g):\n    ans = 0\n    for row in g:\n        for v in row:\n            ans = ans + v\n    return ans\ndef ok(g):\n    H = len(g)\n    W = len(g[0])\n    def dfs(r, c):\n        if r < 0 or r >= H or c < 0 or c >= W:\n            return\n        if g[r][c] == 0:\n            return\n        g[r][c] = 0\n        dfs(r + 1, c)\n        dfs(r - 1, c)\n        dfs(r, c + 1)\n        dfs(r, c - 1)\n    ans = 0\n    for r in range(H):\n        for k in range(W):\n            if g[r][k] == 1:\n                dfs(r, k)\n                ans = ans + 1\n    return ans\na = count([[1, 1]])\nb = ok([[1, 1]])\nprint(\"不一致\" if a != b else \"一致\")"
+            },
+            {
+              "text": "[[1, 0, 1]]",
+              "correct": false,
+              "why": "两座各一格的岛，AI 也交回 2，一致。",
+              "program": "def count(g):\n    ans = 0\n    for row in g:\n        for v in row:\n            ans = ans + v\n    return ans\ndef ok(g):\n    H = len(g)\n    W = len(g[0])\n    def dfs(r, c):\n        if r < 0 or r >= H or c < 0 or c >= W:\n            return\n        if g[r][c] == 0:\n            return\n        g[r][c] = 0\n        dfs(r + 1, c)\n        dfs(r - 1, c)\n        dfs(r, c + 1)\n        dfs(r, c - 1)\n    ans = 0\n    for r in range(H):\n        for k in range(W):\n            if g[r][k] == 1:\n                dfs(r, k)\n                ans = ans + 1\n    return ans\na = count([[1, 0, 1]])\nb = ok([[1, 0, 1]])\nprint(\"不一致\" if a != b else \"一致\")"
+            },
+            {
+              "text": "[[0, 0]]",
+              "correct": false,
+              "why": "没有岛，AI 交回 0，一致。",
+              "program": "def count(g):\n    ans = 0\n    for row in g:\n        for v in row:\n            ans = ans + v\n    return ans\ndef ok(g):\n    H = len(g)\n    W = len(g[0])\n    def dfs(r, c):\n        if r < 0 or r >= H or c < 0 or c >= W:\n            return\n        if g[r][c] == 0:\n            return\n        g[r][c] = 0\n        dfs(r + 1, c)\n        dfs(r - 1, c)\n        dfs(r, c + 1)\n        dfs(r, c - 1)\n    ans = 0\n    for r in range(H):\n        for k in range(W):\n            if g[r][k] == 1:\n                dfs(r, k)\n                ans = ans + 1\n    return ans\na = count([[0, 0]])\nb = ok([[0, 0]])\nprint(\"不一致\" if a != b else \"一致\")"
+            }
+          ],
+          "tip": "试试连在一起的陆地。"
+        }
+      ]
+    }
+  ]
+}

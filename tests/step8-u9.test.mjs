@@ -34,7 +34,7 @@ check("U9：题目代码和按代码排的选项每行不超过 28 格（全角�
 check("U9：开场讲解示例每行不超过 28 格（超过 22 格的用宽版“手机”框，下面在浏览器里核对不横向溢出）", L.every((l) => l.introCode.split("\n").every((x) => cellW(x) <= 28)));
 const otherIds = ["unit1.json", "unit2.json", "unit3.json", "unit4.json", "unit5.json", "unit6.json", "unit7.json", "unit8.json"].flatMap((f) => readJ(f).lessons.map((l) => l.id));
 check("U9：关卡 id 不和已有单元重复", L.every((l) => !otherIds.includes(l.id)));
-check("U9：已接入课程路线（course.json 里 U9 开放并指向 unit9.json），第 10、11 单元已开放、第 19 单元即将推出", course.units.some((u) => u.id === "U9" && u.available === true && u.file === "unit9.json") && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U19");
+check("U9：已接入课程路线（course.json 里 U9 开放并指向 unit9.json），第 10、11 单元已开放、第 21 单元即将推出", course.units.some((u) => u.id === "U9" && u.available === true && u.file === "unit9.json") && course.units.filter((u) => !u.available).map((u) => u.id).join() === "U21");
 check("U9：没有代码题 pending（正式构建 codeTasksEnabled 仍为 []），也不用 +=（没有正式教过）", L.every((l) => !l.pending) && !JSON.stringify(unitN).includes("+="));
 // U9 以 content/unit9.json 为准（和 U1 一样没有生成脚本；来源与改动见 docs/release-checklist-v1.md §6）。
 const py = `
